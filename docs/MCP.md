@@ -6,7 +6,7 @@ lui-même et ne demande aucune clé OpenAI/Anthropic.
 
 ## Client local : Claude, Codex et autres clients stdio
 
-1. Ouvre DeckForge et active **Assistant IA** dans la barre latérale.
+1. Ouvre DeckForge, puis **Réglages → Assistant IA / MCP**, et active l’assistant.
 2. Clique **Copier la configuration MCP**.
 3. Ajoute cette entrée à la configuration MCP du client choisi, sans remplacer
    ses autres serveurs, puis reconnecte ce client.

@@ -94,7 +94,7 @@ Voir [l’import Stream Deck](docs/ELGATO.md) pour les profils exportés compati
 
 ## Assistant IA
 
-Active **Assistant IA** dans la barre latérale. **Copier la configuration MCP**
+Ouvre **Réglages → Assistant IA / MCP** et active l’assistant. **Copier la configuration MCP**
 fournit les paramètres du client local. Pour un client HTTP, le même écran lance
 `http://127.0.0.1:9846/mcp` et permet de copier sa clé d’accès.
 
