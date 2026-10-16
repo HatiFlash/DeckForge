@@ -5,8 +5,11 @@ use std::{fs, io::Write, path::Path};
 pub fn load(path: &Path) -> Result<Config> {
     let data = fs::read(path).context("Lecture de la configuration impossible")?;
     anyhow::ensure!(data.len() <= 8_000_000, "Configuration trop volumineuse");
-    let c: Config = serde_json::from_slice(&data).context("Configuration JSON invalide")?;
+    let mut c: Config = serde_json::from_slice(&data).context("Configuration JSON invalide")?;
     c.validate()?;
+    if c.schema == 1 {
+        c.schema = 2;
+    }
     Ok(c)
 }
 pub fn save(path: &Path, c: &Config) -> Result<()> {
@@ -27,6 +30,26 @@ pub fn save(path: &Path, c: &Config) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn old_configuration_migrates_without_losing_keys_or_images() {
+        let mut old = serde_json::to_value(Config::default()).unwrap();
+        old["schema"] = 1.into();
+        old.as_object_mut().unwrap().remove("page");
+        old.as_object_mut().unwrap().remove("trail");
+        old["profiles"][0].as_object_mut().unwrap().remove("pages");
+        old["profiles"][0]["keys"][0]["image"] = "C:\\icons\\my-image.png".into();
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("config.json");
+        let original = serde_json::to_vec(&old).unwrap();
+        fs::write(&path, &original).unwrap();
+        let c = load(&path).unwrap();
+        assert_eq!(c.schema, 2);
+        assert_eq!(c.keys()[0].image, "C:\\icons\\my-image.png");
+        assert_eq!(c.keys()[1].label, "Lecture");
+        assert_eq!(fs::read(&path).unwrap(), original);
+        save(&path, &c).unwrap();
+        assert_eq!(fs::read(path.with_extension("json.bak")).unwrap(), original);
+    }
     #[test]
     fn save_replaces_and_preserves_backup() {
         let dir = tempfile::tempdir().unwrap();

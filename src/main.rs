@@ -1,12 +1,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod assistant;
+mod catalog;
 mod control;
 mod device;
+mod elgato;
 mod engine;
+mod gesture;
+mod icons;
 #[allow(dead_code)]
 mod mcp_protocol;
 mod mcp_server;
 mod model;
+mod recorder;
 mod store;
 mod theme;
 mod ui;
@@ -18,6 +23,7 @@ pub enum Event {
     Device(bool, String),
     Applied(u64),
     Profile(String),
+    Navigate(model::Step),
 }
 
 fn main() -> eframe::Result<()> {

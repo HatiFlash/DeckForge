@@ -33,6 +33,8 @@ struct Create {
 #[serde(deny_unknown_fields)]
 struct Binding {
     profile: String,
+    #[serde(default)]
+    page: String,
     key: usize,
     label: String,
     #[serde(default)]
@@ -45,6 +47,8 @@ struct Binding {
 #[serde(deny_unknown_fields)]
 pub struct Position {
     pub profile: String,
+    #[serde(default)]
+    pub page: String,
     pub key: usize,
 }
 #[derive(Deserialize)]
@@ -52,11 +56,12 @@ pub struct Position {
 struct Status {
     id: String,
 }
-pub fn position(c: &Config, a: &Value) -> Result<(usize, usize), String> {
+pub fn position(c: &Config, a: &Value) -> Result<(usize, String, usize), String> {
     let p: Position = serde_json::from_value(a.clone()).map_err(|e| e.to_string())?;
-    locate(c, &p.profile, p.key)
+    let (profile, key) = locate(c, &p.profile, &p.page, p.key)?;
+    Ok((profile, p.page, key))
 }
-fn locate(c: &Config, name: &str, key: usize) -> Result<(usize, usize), String> {
+fn locate(c: &Config, name: &str, page: &str, key: usize) -> Result<(usize, usize), String> {
     if !(1..=15).contains(&key) {
         return Err("La touche doit être comprise entre 1 et 15".into());
     }
@@ -65,6 +70,9 @@ fn locate(c: &Config, name: &str, key: usize) -> Result<(usize, usize), String> 
         .iter()
         .position(|p| p.name == name)
         .ok_or("Profil introuvable")?;
+    if c.profiles[p].keys_at(page).is_none() {
+        return Err("Page ou dossier introuvable".into());
+    }
     Ok((p, key - 1))
 }
 impl Proposals {
@@ -87,6 +95,7 @@ impl Proposals {
                 let mut next = c.clone();
                 next.profiles.push(Profile::new(a.name.clone()));
                 next.active = next.profiles.len() - 1;
+                next.reset_navigation();
                 next.validate().map_err(|e| e.to_string())?;
                 (
                     format!("Créer le profil « {} »", a.name),
@@ -99,10 +108,10 @@ impl Proposals {
                 if a.label.len() > 128 {
                     return Err("Titre trop long".into());
                 }
-                let (p, k) = locate(c, &a.profile, a.key)?;
+                let (p, k) = locate(c, &a.profile, &a.page, a.key)?;
                 let mut next = c.clone();
-                let old = &c.profiles[p].keys[k];
-                next.profiles[p].keys[k] = Key {
+                let old = &c.profiles[p].keys_at(&a.page).unwrap()[k];
+                next.profiles[p].keys_at_mut(&a.page).unwrap()[k] = Key {
                     label: a.label.clone(),
                     color: a.color.unwrap_or(old.color),
                     image: old.image.clone(),
@@ -110,7 +119,7 @@ impl Proposals {
                     steps: a.steps,
                 };
                 next.validate().map_err(|e| e.to_string())?;
-                let details = describe(&next.profiles[p].keys[k]);
+                let details = describe(&next.profiles[p].keys_at(&a.page).unwrap()[k]);
                 (
                     format!(
                         "Configurer {} · touche {:02} · {}",
@@ -121,8 +130,23 @@ impl Proposals {
                 )
             }
             "deckforge_request_run" => {
-                let (p, k) = position(c, args)?;
-                let key = c.profiles[p].keys[k].clone();
+                let (p, page, k) = position(c, args)?;
+                let key = c.profiles[p].keys_at(&page).unwrap()[k].clone();
+                if key.steps.iter().any(|s| {
+                    matches!(
+                        s,
+                        Step::Page { .. }
+                            | Step::Folder { .. }
+                            | Step::Back
+                            | Step::PageNext
+                            | Step::PagePrevious
+                    )
+                }) && (p != c.active || page != c.page)
+                {
+                    return Err(
+                        "Ouvre ce profil et cette page avant de tester sa navigation".into(),
+                    );
+                }
                 crate::model::validate_key(&key, c).map_err(|e| e.to_string())?;
                 if key.steps.is_empty() {
                     return Err("Cette touche n’a aucune action".into());
@@ -195,7 +219,7 @@ fn describe(key: &Key) -> String {
         Step::Delay{ms}=>format!("Attendre {ms} ms"),Step::Hotkey{keys}=>format!("Raccourci : {keys}"),Step::Text{text}=>format!("Saisir ce texte :\n{text}"),
         Step::Launch{program,args}=>format!("Ouvrir : {program}\nArguments : {}",args.join(" | ")),Step::Url{url}=>format!("Ouvrir le site : {url}"),
         Step::WaitWindow{title,timeout_ms,focus}=>format!("Attendre une fenêtre contenant « {title} » ({timeout_ms} ms maximum)\nMettre au premier plan : {}",if *focus{"oui"}else{"non"}),
-        Step::Media{command}=>format!("Média / volume : {command}"),Step::Profile{name}=>format!("Passer au profil : {name}")};
+        Step::Media{command}=>format!("Média / volume : {command}"),Step::Profile{name}=>format!("Passer au profil : {name}"),Step::Page{id}=>format!("Aller à la page : {id}"),Step::Folder{id}=>format!("Ouvrir le dossier : {id}"),Step::Back=>"Retour au dossier précédent".into(),Step::PageNext=>"Page suivante".into(),Step::PagePrevious=>"Page précédente".into()};
         text.push_str(&format!("{:02}. {detail}\n\n", i + 1));
     }
     text

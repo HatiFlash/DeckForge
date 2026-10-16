@@ -1,8 +1,8 @@
-# DeckForge 0.2
+# DeckForge 0.3
 
 Application Windows native en **Rust** pour le **FIFINE AmpliGame D6 `3142:0060`**.
-Macros, profils, images et accès USB direct, avec une interface claire inspirée
-des applications Apple. Aucun compte ni logiciel FIFINE requis.
+Macros, profils, images et accès USB direct, avec une interface inspirée de l’organisation Stream Deck
+et des contrôles iOS. Aucun compte ni logiciel FIFINE requis.
 
 ![Interface](docs/interface.png)
 
@@ -12,11 +12,11 @@ des applications Apple. Aucun compte ni logiciel FIFINE requis.
 2. Quitte FIFINE Control Deck et ouvre `DeckForge.exe`.
 3. La connexion est automatique. Attends **D6 connecté** et **Touches actives** :
    les appuis physiques exécutent alors les actions enregistrées.
-4. Choisis une touche et compose ses étapes dans l’éditeur à droite.
+4. Choisis une touche et compose ses étapes dans l’inspecteur en bas.
 5. Les modifications valides sont sauvegardées après une courte pause, puis
    envoyées au D6. L’état des touches reste visible dans la barre supérieure.
 
-**Simuler** affiche une itération sans effet sur le PC. **Exécuter dans 3 s**
+**Simuler** affiche une itération sans effet sur le PC. **Tester dans 3 s**
 exécute réellement la macro après un délai initial pour changer de fenêtre.
 Raccourcis et texte sont envoyés à la fenêtre active ; l’étape **Attendre une
 fenêtre**, avec mise au premier plan, permet de cibler une application.
@@ -52,6 +52,46 @@ Les touches reprennent après sauvegarde et confirmation de la bonne révision.
 Une ancienne confirmation USB et les appuis accumulés pendant un dialogue ne
 peuvent pas déclencher une configuration devenue obsolète.
 
+
+## Bibliothèque, pages et dossiers — version 0.3
+
+L’aperçu du D6 présente un boîtier en relief avec des touches creusées, des ombres
+et des reflets discrets. L’inspecteur se trouve sous les touches ; sa séparation
+est redimensionnable. **Clair / Sombre** dans la barre supérieure mémorise le thème.
+Les icônes distinguent les actions, les macros, les pages, les dossiers et le retour.
+Des icônes sont aussi dessinées sur les LCD quand aucune image personnalisée n’est choisie.
+
+- **Actions** : cliquer ajoute une étape à la touche sélectionnée ; on peut aussi
+  glisser une action sur une touche. Une touche de navigation conserve une action unique.
+- **Magasin** : 37 binds gratuits intégrés, recherche et catégories. Cliquer affiche
+  les détails ; **Utiliser sur la touche** ou glisser affecte le bind entier.
+- **Mes binds** : enregistre une copie de ta touche, importe/exporte des packs JSON.
+  128 binds personnels maximum ; les images restent des chemins locaux.
+- Glisser une touche sur une autre **échange** leurs contenus. **Annuler l’affectation**
+  restaure la dernière affectation tant qu’aucune autre modification n’a eu lieu.
+
+Dans la barre sous le profil, **+ → Nouvelle page** ajoute une page. Les flèches et
+le sélecteur naviguent dans les pages. Si les emplacements 14 et 15 sont vides,
+des touches précédente/suivante y sont proposées ; les emplacements occupés sont conservés.
+Les mêmes actions sont disponibles dans la bibliothèque pour les affecter ailleurs.
+
+**+ → Dossier sur la touche sélectionnée** crée un dossier. Double-clique sa touche
+dans l’aperçu pour l’éditer, ou appuie sur le D6 pour l’ouvrir. La première touche
+du dossier est **Retour**. Les sous-dossiers fonctionnent aussi ; le bouton Retour
+de l’app reste disponible même si sa touche LCD a été remplacée.
+**+ → Gérer pages et dossiers** permet d’ouvrir, renommer et supprimer les contenus.
+Limites : 128 pages/dossiers par profil, 32 niveaux de navigation.
+
+Pour un raccourci, choisis **Enregistrer…**, puis effectue la combinaison souhaitée
+(ex. Ctrl + Maj + S). La fenêtre capture une combinaison, sans enregistrer en
+arrière-plan ; les touches physiques sont suspendues pendant cette saisie.
+Les raccourcis réservés à Windows peuvent quitter cette fenêtre ; les touches
+qui n’y sont pas reçues ne peuvent pas être capturées. Les symboles dépendent
+du clavier Windows. La saisie manuelle reste disponible.
+
+Ce magasin est un catalogue local DeckForge, pas un accès au marketplace Elgato.
+Voir [l’import Stream Deck](docs/ELGATO.md) pour les profils exportés compatibles.
+
 ## Assistant IA
 
 Active **Assistant IA** dans la barre latérale. **Copier la configuration MCP**
@@ -67,6 +107,10 @@ Voir [le guide MCP](docs/MCP.md), [la synthèse](docs/PROJECT.md) et
 [le rapport de validation](docs/VALIDATION.md).
 
 ## Fichiers locaux
+
+Le format de configuration 1 est lu et migré vers le format 2 en conservant les touches et images ; la sauvegarde précédente est gardée.
+
+`preferences.json` contient le thème et Mes binds, avec une copie `.bak`.
 
 `config.json` est enregistré à côté de l’exécutable, avec une copie précédente
 `config.json.bak`. Les images restent des chemins absolus ; l’export JSON ne les
@@ -91,9 +135,10 @@ Les paquets `ACK … OK` utilisent `1` à l’appui et `0` au relâchement ; seu
 déclenche une macro.
 
 Version expérimentale : endurance, veille/reprise et toutes les actions dans les
-applications réelles restent à éprouver. Pas encore d’OBS WebSocket/Discord natif,
-mixeur par application, marketplace, import FIFINE, GIF, appui long, variables,
-conditions imbriquées, enregistreur de macros, icône de notification ou démarrage
+applications réelles restent à éprouver. La capture des raccourcis est locale à la fenêtre, et ne constitue pas un enregistreur global de macros.
+Pas encore d’OBS WebSocket/Discord natif,
+mixeur par application, plugins de marketplace tiers, import FIFINE, GIF, appui long, variables,
+conditions imbriquées, enregistreur de séquences clavier/souris, icône de notification ou démarrage
 Windows. OBS/Discord peuvent être pilotés par leurs raccourcis configurés.
 Windows peut refuser la saisie dans une application plus privilégiée.
 

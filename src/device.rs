@@ -276,8 +276,8 @@ impl Deck {
         .join("Fonts/segoeui.ttf");
         let font = FontArc::try_from_vec(std::fs::read(fontpath)?)
             .map_err(|_| anyhow::anyhow!("Police Windows illisible"))?;
-        let images = c.profiles[c.active]
-            .keys
+        let images = c
+            .keys()
             .iter()
             .map(|k| render_key(k, c.image_size, &font))
             .collect::<Result<Vec<_>>>()?;
@@ -323,16 +323,22 @@ fn render_key(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8
             .resize_to_fill(size, size, image::imageops::FilterType::Lanczos3)
             .into_rgb8()
     };
+    let has_icon = k.image.is_empty() && !k.steps.is_empty();
+    if has_icon {
+        crate::icons::draw(&mut image, crate::icons::kind(k));
+    }
     if !k.label.is_empty() {
         let chars = k.label.chars().take(48).collect::<Vec<_>>();
         let lines = chars
             .chunks(12)
-            .take(3)
+            .take(if has_icon { 2 } else { 3 })
             .map(|chunk| chunk.iter().collect::<String>())
             .collect::<Vec<_>>();
         let scaled = font.as_scaled(PxScale::from(size as f32 * 0.14));
         let height = scaled.height();
-        let y0 = if k.image.is_empty() {
+        let y0 = if has_icon {
+            size as f32 * 0.59
+        } else if k.image.is_empty() {
             (size as f32 - height * lines.len() as f32) / 2.0
         } else {
             size as f32 - height * lines.len() as f32 - 4.0

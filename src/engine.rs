@@ -170,6 +170,14 @@ fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>) -> Result<
                 Step::Profile { name } => {
                     let _ = tx.send(Event::Profile(name.clone()));
                 }
+                Step::Page { .. }
+                | Step::Folder { .. }
+                | Step::Back
+                | Step::PageNext
+                | Step::PagePrevious => {
+                    let _ = tx.send(Event::Navigate(step.clone()));
+                    return Ok(());
+                }
             }
             wait(10, cancel)?;
         }

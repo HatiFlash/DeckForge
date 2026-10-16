@@ -1,6 +1,6 @@
 [package]
 name = "deckforge"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "Independent Windows macro controller for FIFINE D6 3142:0060"
@@ -13,6 +13,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 ab_glyph = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+zip = { version = "=9.0.4", default-features = false, features = ["deflate"] }
 tempfile = "3"
 getrandom = "0.4"
 rfd = "0.15"

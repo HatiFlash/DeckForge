@@ -8,3 +8,8 @@
 /ui-smoke.json
 /hardware-test.json
 *.log
+/preferences.json
+/preferences.json.bak
+
+/assets/
+/elgato-import-check.json

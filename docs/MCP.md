@@ -104,3 +104,15 @@ Expiration : dix minutes ; file limitée à dix propositions.
 Les erreurs d’outils utilisent `isError: true`. Les réessais identiques sont mis
 en cache pour éviter les doublons. `approved` signifie accepté par l’utilisateur,
 et ne garantit pas l’achèvement des actions dans les applications externes.
+
+
+## Pages et dossiers en 0.3
+
+Les outils configure_key, simulate_macro et request_run acceptent le champ optionnel
+`page` : identifiant d’une page ou d’un dossier existant ; `""` ou champ absent vise
+la page principale du profil. get_profile expose les contenus et identifiants.
+Les étapes `page` et `folder` prennent `id`; `back`, `page_next` et `page_previous`
+n’ont aucun autre champ. Une touche de navigation contient une seule étape, avec
+repeat=1. Les pages se créent dans l’app ; le connecteur ne propose pas encore
+un outil de création de page. Une demande d’exécution de navigation nécessite
+que le profil et la page concernés soient déjà ouverts dans l’app.

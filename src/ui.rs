@@ -1,4 +1,5 @@
 use crate::{
+    catalog::{self, Library, Preferences},
     control::{Decision, InputGate},
     device::{self, Command},
     engine::Engine,
@@ -33,7 +34,6 @@ pub struct App {
     logs: VecDeque<String>,
     started: Instant,
     last_edit: Instant,
-    new_step: usize,
     show_logs: bool,
     settings: bool,
     rename: bool,
@@ -49,13 +49,43 @@ pub struct App {
     assistant_cache: HashMap<String, Result<serde_json::Value, String>>,
     assistant_settings: bool,
     http_child: Option<std::process::Child>,
+    preferences: Preferences,
+    preferences_valid: bool,
+    catalog_tab: usize,
+    catalog_search: String,
+    catalog_category: String,
+    catalog_selection: Option<usize>,
+    save_bind: bool,
+    bind_name: String,
+    undo: Option<(String, String, Vec<Key>)>,
+    drag: crate::gesture::Drag<DragItem>,
+    drag_sources: Vec<(egui::Rect, DragItem)>,
+    drop_targets: Vec<(egui::Rect, usize)>,
+    recording: Option<(usize, String, usize, usize, bool)>,
+    recording_error: String,
+    import_report: Option<crate::elgato::Report>,
+    page_manager: bool,
+    delete_page: Option<String>,
+}
+#[derive(Clone)]
+enum DragItem {
+    Bind(Key),
+    Action(Key),
+    Position(usize, String, usize),
+    NewFolder,
 }
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        theme::install(&cc.egui_ctx);
-        let path = std::env::current_exe()
-            .unwrap_or_else(|_| PathBuf::from("DeckForge.exe"))
-            .with_file_name("config.json");
+        Self::init(&cc.egui_ctx, None)
+    }
+    fn init(ctx: &egui::Context, override_path: Option<PathBuf>) -> Self {
+        let isolated = override_path.is_some();
+        theme::install(ctx);
+        let path = override_path.unwrap_or_else(|| {
+            std::env::current_exe()
+                .unwrap_or_else(|_| PathBuf::from("DeckForge.exe"))
+                .with_file_name("config.json")
+        });
         let mut load_error = None;
         let config = if path.exists() {
             store::load(&path).unwrap_or_else(|e| {
@@ -67,14 +97,32 @@ impl App {
         } else {
             Config::default()
         };
-        let smoke = std::env::args().any(|a| a == "--ui-smoke");
+        let smoke = !isolated && std::env::args().any(|a| a == "--ui-smoke");
+        let preferences_result = Preferences::load(&path.with_file_name("preferences.json"));
+        let preferences_valid = preferences_result.is_ok();
+        let mut preferences = preferences_result.unwrap_or_default();
+        if std::env::args().any(|a| a == "--light") {
+            preferences.dark = false;
+        }
+        theme::apply(ctx, preferences.dark);
         let (tx, events) = mpsc::channel();
-        let device = device::spawn(tx.clone());
+        let device = if isolated {
+            mpsc::channel().0
+        } else {
+            device::spawn(tx.clone())
+        };
         let engine = Engine::new(tx);
         let mut gate = InputGate::default();
+        let ui_test = isolated || std::env::args().any(|a| a == "--ui-test");
+        if ui_test {
+            gate.enabled = false;
+        }
         gate.invalid = load_error.is_some();
-        let assistant =
-            crate::mcp_server::Server::new(path.with_file_name("mcp-connection.json")).ok();
+        let assistant = if isolated {
+            None
+        } else {
+            crate::mcp_server::Server::new(path.with_file_name("mcp-connection.json")).ok()
+        };
         let mut app = Self {
             applied: config.clone(),
             config,
@@ -90,7 +138,6 @@ impl App {
             logs: VecDeque::new(),
             started: Instant::now(),
             last_edit: Instant::now(),
-            new_step: 0,
             show_logs: false,
             settings: false,
             rename: false,
@@ -106,11 +153,31 @@ impl App {
             assistant_cache: HashMap::new(),
             assistant_settings: false,
             http_child: None,
+            preferences,
+            preferences_valid,
+            catalog_tab: 1,
+            catalog_search: String::new(),
+            catalog_category: "Tout".into(),
+            catalog_selection: Some(0),
+            save_bind: false,
+            bind_name: String::new(),
+            undo: None,
+            drag: Default::default(),
+            drag_sources: vec![],
+            drop_targets: vec![],
+            recording: None,
+            recording_error: String::new(),
+            import_report: None,
+            page_manager: false,
+            delete_page: None,
         };
         if let Some(e) = load_error {
             app.fail(e);
-        } else if !smoke || std::env::args().any(|a| a == "--connect") {
+        } else if !ui_test && (!smoke || std::env::args().any(|a| a == "--connect")) {
             app.connect();
+        }
+        if !preferences_valid {
+            app.fail("Préférences illisibles : le fichier est conservé. Restaure preferences.json.bak avant d’enregistrer Mes binds.".into());
         }
         app
     }
@@ -130,6 +197,7 @@ impl App {
         self.error = true;
     }
     fn edited(&mut self) {
+        self.undo = None;
         self.gate.dirty = true;
         self.last_edit = Instant::now();
     }
@@ -186,13 +254,16 @@ impl App {
             return;
         }
         if key.steps.is_empty() {
-            self.log("Cette touche n’a pas encore d’action. Ajoute une étape à droite.".into());
+            self.log(
+                "Cette touche n’a pas encore d’action. Ajoute une action depuis la bibliothèque."
+                    .into(),
+            );
             return;
         }
         self.engine.start(key, dry, if delayed { 3000 } else { 0 });
     }
     fn preview(&mut self, dry: bool) {
-        let key = self.config.profiles[self.config.active].keys[self.selected].clone();
+        let key = self.config.keys()[self.selected].clone();
         let c = self.config.clone();
         self.execute_key(key, dry, !dry, &c);
     }
@@ -242,24 +313,152 @@ impl App {
                         }
                         Decision::Execute => {
                             let c = self.applied.clone();
-                            let key = c.profiles[c.active].keys[index].clone();
+                            let key = c.keys()[index].clone();
                             self.execute_key(key, false, false, &c);
                         }
                     }
                 }
+                Event::Navigate(step) => {
+                    self.navigate(step);
+                }
                 Event::Profile(name) => {
                     if let Some(index) = self.config.profiles.iter().position(|p| p.name == name) {
                         self.config.active = index;
+                        self.config.reset_navigation();
                         self.save();
                     }
                 }
             }
         }
     }
+    fn navigate(&mut self, step: Step) {
+        match self.config.navigate(&step) {
+            Ok(()) => {
+                self.undo = None;
+                self.selected = 0;
+                self.save();
+            }
+            Err(e) => self.fail(format!("Navigation impossible : {e}")),
+        }
+    }
+    fn create_page(&mut self, folder: bool) {
+        if self.config.profiles[self.config.active].pages.len() >= 128 {
+            self.fail("128 pages et dossiers maximum par profil.".into());
+            return;
+        }
+        let id = format!(
+            "page-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let prefix = if folder { "Dossier" } else { "Page" };
+        let mut number = if folder { 1 } else { 2 };
+        while self.config.profiles[self.config.active]
+            .pages
+            .iter()
+            .any(|p| p.name.eq_ignore_ascii_case(&format!("{prefix} {number}")))
+        {
+            number += 1;
+        }
+        let name = format!("{prefix} {number}");
+        let mut page = crate::model::Page::new(id.clone(), name.clone(), folder);
+        if !folder {
+            for (index, step, label) in [
+                (13, Step::PagePrevious, "Page précédente"),
+                (14, Step::PageNext, "Page suivante"),
+            ] {
+                page.keys[index] = Key {
+                    label: label.into(),
+                    color: [137, 165, 218],
+                    steps: vec![step],
+                    ..Key::default()
+                };
+                if self.config.keys()[index].steps.is_empty() {
+                    self.config.keys_mut()[index] = page.keys[index].clone();
+                }
+            }
+        }
+        self.config.profiles[self.config.active].pages.push(page);
+        if folder {
+            self.assign(
+                DragItem::Bind(Key {
+                    label: name.into(),
+                    color: [230, 175, 74],
+                    steps: vec![Step::Folder { id: id.clone() }],
+                    ..Key::default()
+                }),
+                self.selected,
+            );
+        } else {
+            self.config.page = id;
+            self.config.trail.clear();
+            self.selected = 0;
+            self.edited();
+        }
+    }
+    fn remove_page(&mut self, id: &str) {
+        let profile = &mut self.config.profiles[self.config.active];
+        profile.pages.retain(|p| p.id != id);
+        for keys in
+            std::iter::once(&mut profile.keys).chain(profile.pages.iter_mut().map(|p| &mut p.keys))
+        {
+            for key in keys {
+                if key
+                    .steps
+                    .iter()
+                    .any(|s| matches!(s,Step::Page{id:target}|Step::Folder{id:target}if target==id))
+                {
+                    *key = Key::default();
+                }
+            }
+        }
+        if self.config.page == id {
+            self.config.reset_navigation();
+        } else {
+            self.config.trail.retain(|p| p != id);
+        }
+        self.edited();
+        self.log("Page supprimée et touches de navigation correspondantes retirées.".into());
+    }
+    fn record_events(&mut self, ctx: &egui::Context) {
+        let Some((profile, page, key, step, enabled)) = self.recording.clone() else {
+            return;
+        };
+        if !ctx.input(|i| i.focused) {
+            return;
+        }
+        let events = ctx.input(|i| i.events.clone());
+        if let Some(result) = crate::recorder::combination(&events) {
+            ctx.input_mut(|i| i.events.clear());
+            match result {
+                Ok(text) => {
+                    if let Some(Step::Hotkey { keys }) = self
+                        .config
+                        .profiles
+                        .get_mut(profile)
+                        .and_then(|p| p.keys_at_mut(&page))
+                        .and_then(|keys| keys.get_mut(key))
+                        .and_then(|key| key.steps.get_mut(step))
+                    {
+                        *keys = text.clone();
+                        self.edited();
+                        self.log(format!("Raccourci enregistré : {text}"));
+                    }
+                    self.recording = None;
+                    self.gate.enabled = enabled;
+                }
+                Err(e) => self.recording_error = e,
+            }
+        }
+    }
     fn select_profile(&mut self, index: usize) {
         if index != self.config.active {
+            self.undo = None;
             self.engine.stop();
             self.config.active = index;
+            self.config.reset_navigation();
             self.selected = 0;
             self.save();
         }
@@ -282,6 +481,7 @@ impl App {
         p.name = format!("Profil {n}");
         self.config.profiles.push(p);
         self.config.active = self.config.profiles.len() - 1;
+        self.config.reset_navigation();
         self.selected = 0;
         self.edited();
     }
@@ -386,7 +586,7 @@ impl App {
         self.log(format!("Assistant IA : {name}"));
         match name {
             "deckforge_get_state" => Ok(
-                json!({"connected":self.gate.connected,"physical_keys":format!("{:?}",self.gate.decision()),"current_profile":self.config.profiles[self.config.active].name,"profiles":self.config.profiles.iter().map(|p|json!({"name":p.name,"keys":p.keys.iter().enumerate().map(|(i,k)|json!({"key":i+1,"label":k.label,"steps":k.steps.len()})).collect::<Vec<_>>()})).collect::<Vec<_>>(),"pending_proposals":self.proposals.pending.len(),"configuration_invalid":self.gate.invalid}),
+                json!({"connected":self.gate.connected,"physical_keys":format!("{:?}",self.gate.decision()),"current_profile":self.config.profiles[self.config.active].name,"current_page":self.config.page,"trail":self.config.trail,"profiles":self.config.profiles.iter().map(|p|json!({"name":p.name,"pages":p.pages.iter().map(|page|json!({"id":page.id,"name":page.name,"folder":page.folder})).collect::<Vec<_>>(),"keys":p.keys.iter().enumerate().map(|(i,k)|json!({"key":i+1,"label":k.label,"steps":k.steps.len()})).collect::<Vec<_>>()})).collect::<Vec<_>>(),"pending_proposals":self.proposals.pending.len(),"configuration_invalid":self.gate.invalid}),
             ),
             "deckforge_get_profile" => {
                 let name = args["profile"].as_str().ok_or("Nom de profil requis")?;
@@ -409,9 +609,9 @@ impl App {
                 self.proposals.propose(name, args, &self.config)
             }
             "deckforge_simulate_macro" => {
-                let (p, k) = crate::assistant::position(&self.config, args)?;
+                let (p, page, k) = crate::assistant::position(&self.config, args)?;
                 let c = self.config.clone();
-                let key = c.profiles[p].keys[k].clone();
+                let key = c.profiles[p].keys_at(&page).unwrap()[k].clone();
                 self.execute_key(key, true, false, &c);
                 Ok(json!({"status":"simulation_requested","effects_on_pc":false}))
             }
@@ -455,6 +655,7 @@ impl App {
         }
     }
     fn assistant_window(&mut self, ctx: &egui::Context) {
+        let p = theme::palette(ctx);
         if self.assistant_settings {
             let mut open = true;
             egui::Window::new("Assistant IA").open(&mut open).collapsible(false).resizable(false).default_width(460.0).show(ctx,|ui|{
@@ -463,11 +664,11 @@ impl App {
             ui.horizontal(|ui|{if theme::toggle(ui,&mut enabled).changed(){if let Some(server)=&self.assistant{server.set_enabled(enabled);}if !enabled{self.stop_http();self.proposals.reject_all();self.assistant_cache.clear();}self.log(if enabled{"Connecteur MCP activé."}else{"Connecteur MCP désactivé."}.into());}ui.label(RichText::new(if enabled{"Assistant IA activé"}else{"Assistant IA désactivé"}).strong());});
             ui.add_space(10.0);ui.label("Ton assistant peut lire les profils et proposer des actions. Les changements et les exécutions réelles attendent toujours ta validation ici.");ui.add_space(8.0);
             if self.assistant.is_none(){ui.colored_label(Color32::DARK_RED,"Le connecteur local n’a pas pu démarrer.");}
-            ui.label(RichText::new("Connexion locale MCP · Claude, Codex et clients compatibles stdio. Aucune clé d’IA à saisir dans DeckForge.").small().color(MUTED));
+            ui.label(RichText::new("Connexion locale MCP · Claude, Codex et clients compatibles stdio. Aucune clé d’IA à saisir dans DeckForge.").small().color(p.muted));
             if ui.button("Copier la configuration MCP").clicked(){let exe=self.path.with_file_name("deckforge-mcp.exe");let config=serde_json::json!({"mcpServers":{"deckforge":{"command":exe.to_string_lossy(),"args":[]}}});ui.ctx().copy_text(serde_json::to_string_pretty(&config).unwrap());self.log("Configuration MCP copiée.".into());}
-            ui.label(RichText::new("Le guide MCP fourni avec l’application détaille la connexion à ChatGPT et aux autres clients.").small().color(MUTED));
+            ui.label(RichText::new("Le guide MCP fourni avec l’application détaille la connexion à ChatGPT et aux autres clients.").small().color(p.muted));
             ui.add_space(14.0);ui.separator();ui.label(RichText::new("ChatGPT web / clients HTTP").strong());
-            ui.label(RichText::new("Le mode HTTP reste local au PC. Un tunnel ou un proxy compatible est nécessaire pour un service IA distant.").small().color(MUTED));
+            ui.label(RichText::new("Le mode HTTP reste local au PC. Un tunnel ou un proxy compatible est nécessaire pour un service IA distant.").small().color(p.muted));
             ui.horizontal(|ui|{if ui.add_enabled(enabled,egui::Button::new(if self.http_child.is_some(){"Arrêter HTTP"}else{"Démarrer HTTP"})).clicked(){if self.http_child.is_some(){self.stop_http();}else{self.start_http();}}if self.http_child.is_some()&&ui.button("Copier l’adresse").clicked(){ui.ctx().copy_text("http://127.0.0.1:9846/mcp".into());}});
             if self.http_child.is_some()&&ui.button("Copier la clé HTTP").clicked(){match std::fs::read_to_string(self.path.with_file_name("mcp-http-token.txt")){Ok(t)=>{ui.ctx().copy_text(t.trim().into());self.log("Clé HTTP copiée. Utilise-la uniquement dans ton client MCP.".into());},Err(_)=>self.fail("La clé n’est pas encore prête. Réessaie dans un instant.".into())}}
         });
@@ -477,9 +678,9 @@ impl App {
         if let Some(p) = self.proposals.pending.front() {
             egui::Window::new("Proposition de ton assistant").id(egui::Id::new("ai_review")).collapsible(false).resizable(true).default_width(570.0).show(ctx,|ui|{
                 theme::pill(ui,"VALIDATION NÉCESSAIRE",BLUE);ui.add_space(8.0);ui.label(RichText::new(&p.title).size(18.0).strong());
-                ui.label(RichText::new("Aucun changement ni lancement n’a encore eu lieu. Vérifie les actions avant de continuer.").color(MUTED));
+                ui.label(RichText::new("Aucun changement ni lancement n’a encore eu lieu. Vérifie les actions avant de continuer.").color(theme::palette(ctx).muted));
                 egui::ScrollArea::vertical().max_height(360.0).show(ui,|ui|{ui.label(&p.details);});ui.add_space(12.0);
-                ui.horizontal(|ui|{if ui.button("Refuser").clicked(){decision=Some(false);}if ui.add(theme::primary(RichText::new("Valider cette proposition").color(WHITE))).clicked(){decision=Some(true);}});
+                ui.horizontal(|ui|{if ui.button("Refuser").clicked(){decision=Some(false);}if ui.add(theme::primary(RichText::new("Valider cette proposition").color(Color32::WHITE))).clicked(){decision=Some(true);}});
             });
         }
         if let Some(accept) = decision {
@@ -539,7 +740,7 @@ impl App {
                 img.size[1] as u32,
                 image::ExtendedColorType::Rgba8,
             );
-            let report = serde_json::json!({"rendered":true,"connected":self.gate.connected,"physical_keys":format!("{:?}",self.gate.decision()),"version":"0.2.0","image_size":img.size,"assistant_enabled":self.assistant.as_ref().is_some_and(|s|s.enabled())});
+            let report = serde_json::json!({"rendered":true,"connected":self.gate.connected,"physical_keys":format!("{:?}",self.gate.decision()),"version":env!("CARGO_PKG_VERSION"),"dark":self.preferences.dark,"catalog_binds":catalog::presets().len(),"image_size":img.size,"assistant_enabled":self.assistant.as_ref().is_some_and(|s|s.enabled())});
             let _ = std::fs::write(
                 self.path.with_file_name("ui-smoke.json"),
                 serde_json::to_vec_pretty(&report).unwrap(),
@@ -551,38 +752,28 @@ impl App {
         }
     }
     fn header(&mut self, ctx: &egui::Context) {
-        let running = self.engine.running.load(Ordering::SeqCst);
+        let p = theme::palette(ctx);
         egui::TopBottomPanel::top("header")
             .frame(
                 egui::Frame::new()
-                    .fill(WHITE)
-                    .inner_margin(egui::Margin::symmetric(24, 16)),
+                    .fill(p.surface)
+                    .inner_margin(egui::Margin::symmetric(18, 10)),
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    let (r, _) = ui.allocate_exact_size(Vec2::splat(34.0), egui::Sense::hover());
-                    ui.painter().rect_filled(r, 10.0, BLUE);
+                    let (r, _) = ui.allocate_exact_size(Vec2::splat(27.0), egui::Sense::hover());
+                    ui.painter().rect_filled(r, 6.0, BLUE);
                     for y in 0..2 {
                         for x in 0..3 {
-                            ui.painter().rect_filled(
-                                egui::Rect::from_min_size(
-                                    r.min + Vec2::new(7.0 + x as f32 * 7.0, 10.0 + y as f32 * 8.0),
-                                    Vec2::splat(4.0),
-                                ),
-                                1.0,
-                                WHITE,
+                            ui.painter().circle_filled(
+                                r.min + Vec2::new(7.0 + x as f32 * 6.5, 9.0 + y as f32 * 8.0),
+                                1.8,
+                                Color32::WHITE,
                             );
                         }
                     }
-                    ui.vertical(|ui| {
-                        ui.label(RichText::new("DeckForge").size(21.0).strong());
-                        ui.label(
-                            RichText::new("Ton espace de raccourcis")
-                                .small()
-                                .color(MUTED),
-                        );
-                    });
-                    ui.add_space(18.0);
+                    ui.label(RichText::new("DeckForge").size(20.0).strong());
+                    ui.add_space(8.0);
                     theme::pill(
                         ui,
                         if self.gate.connected {
@@ -592,17 +783,68 @@ impl App {
                         } else {
                             "D6 déconnecté"
                         },
-                        if self.gate.connected { GREEN } else { MUTED },
+                        if self.gate.connected { GREEN } else { p.muted },
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.menu_button("Réglages", |ui| {
+                            if ui.button("Importer depuis Stream Deck…").clicked() {
+                                self.import_elgato();
+                                ui.close_menu();
+                            }
+                            if ui.button("Réglages du D6").clicked() {
+                                self.settings = true;
+                                ui.close_menu();
+                            }
+                            if ui.button("Assistant IA / MCP").clicked() {
+                                self.assistant_settings = true;
+                                ui.close_menu();
+                            }
+                            ui.separator();
+                            if ui.button("Importer des profils…").clicked() {
+                                self.import();
+                                ui.close_menu();
+                            }
+                            if ui.button("Exporter les profils…").clicked() {
+                                self.export();
+                                ui.close_menu();
+                            }
+                            ui.separator();
+                            if ui
+                                .button(if self.wanted {
+                                    "Déconnecter le D6"
+                                } else {
+                                    "Connecter le D6"
+                                })
+                                .clicked()
+                            {
+                                if self.wanted {
+                                    self.wanted = false;
+                                    let _ = self.device.send(Command::Disconnect);
+                                    self.gate.disconnect();
+                                    self.engine.stop();
+                                } else {
+                                    self.connect();
+                                }
+                                ui.close_menu();
+                            }
+                        });
+                        if ui
+                            .button(if self.preferences.dark {
+                                "Clair"
+                            } else {
+                                "Sombre"
+                            })
+                            .on_hover_text("Changer le thème de toute l’interface")
+                            .clicked()
+                        {
+                            self.preferences.dark = !self.preferences.dark;
+                            theme::apply(ctx, self.preferences.dark);
+                            self.save_preferences();
+                        }
                         if ui
                             .button(
-                                RichText::new(if running {
-                                    "Arrêter la macro"
-                                } else {
-                                    "Tout arrêter"
-                                })
-                                .color(Color32::from_rgb(206, 58, 64)),
+                                RichText::new("Tout arrêter")
+                                    .color(Color32::from_rgb(238, 106, 115)),
                             )
                             .clicked()
                         {
@@ -616,226 +858,360 @@ impl App {
                             } else {
                                 self.gate.inspect = false;
                             }
-                            self.log(
-                                if self.gate.enabled {
-                                    "Touches réactivées."
+                        }
+                        let (label, color) = match self.gate.decision() {
+                            Decision::Execute => ("Touches actives", GREEN),
+                            Decision::Inspect => ("Diagnostic", BLUE),
+                            Decision::Blocked(_) => (
+                                if !self.gate.enabled {
+                                    "En pause"
                                 } else {
-                                    "Touches en pause."
-                                }
-                                .into(),
-                            );
-                        }
-                        let active = matches!(self.gate.decision(), Decision::Execute);
-                        ui.label(
-                            RichText::new(if active {
-                                "Touches actives"
-                            } else if self.gate.inspect {
-                                "Diagnostic"
-                            } else if !self.gate.enabled {
-                                "En pause"
-                            } else {
-                                "À synchroniser"
-                            })
-                            .strong()
-                            .color(if active { BLUE } else { MUTED }),
-                        );
-                        if self.gate.dirty
-                            && ui
-                                .add(theme::primary(RichText::new("Enregistrer").color(WHITE)))
-                                .clicked()
-                        {
-                            self.save();
-                        }
-                    });
-                });
-            });
-    }
-    fn sidebar(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("sidebar")
-            .exact_width(184.0)
-            .resizable(false)
-            .frame(egui::Frame::new().fill(BG).inner_margin(16))
-            .show(ctx, |ui| {
-                ui.add_space(15.0);
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("PROFILS").size(10.0).strong().color(MUTED));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui
-                            .add_enabled(
-                                self.config.profiles.len() < 64,
-                                egui::Button::new("+").frame(false),
-                            )
-                            .on_hover_text("Créer un profil")
-                            .clicked()
-                        {
-                            self.add_profile(false);
-                        }
-                    });
-                });
-                let mut choose = None;
-                for (i, p) in self.config.profiles.iter().enumerate() {
-                    let selected = i == self.config.active;
-                    let text = RichText::new(&p.name)
-                        .color(if selected { BLUE } else { INK })
-                        .strong();
-                    if ui
-                        .add_sized(
-                            [ui.available_width(), 36.0],
-                            egui::Button::new(text)
-                                .fill(if selected { WASH } else { BG })
-                                .stroke(egui::Stroke::NONE)
-                                .corner_radius(10),
-                        )
-                        .clicked()
-                    {
-                        choose = Some(i);
-                    }
-                }
-                if let Some(i) = choose {
-                    self.select_profile(i);
-                }
-                ui.add_space(24.0);
-                ui.label(
-                    RichText::new("BIBLIOTHÈQUE")
-                        .size(10.0)
-                        .strong()
-                        .color(MUTED),
-                );
-                if ui
-                    .add_sized(
-                        [ui.available_width(), 34.0],
-                        egui::Button::new("Réglages du D6").frame(false),
-                    )
-                    .clicked()
-                {
-                    self.settings = true;
-                }
-                if ui
-                    .add_sized(
-                        [ui.available_width(), 34.0],
-                        egui::Button::new("Importer des profils").frame(false),
-                    )
-                    .clicked()
-                {
-                    self.import();
-                }
-                if ui
-                    .add_sized(
-                        [ui.available_width(), 34.0],
-                        egui::Button::new("Exporter mes profils").frame(false),
-                    )
-                    .clicked()
-                {
-                    self.export();
-                }
-                if ui
-                    .add_sized(
-                        [ui.available_width(), 34.0],
-                        egui::Button::new("Journal d’activité").frame(false),
-                    )
-                    .clicked()
-                {
-                    self.show_logs = !self.show_logs;
-                }
-                let ai_on = self.assistant.as_ref().is_some_and(|s| s.enabled());
-                if ui
-                    .add_sized(
-                        [ui.available_width(), 34.0],
-                        egui::Button::new(
-                            RichText::new(if ai_on {
-                                "Assistant IA · actif"
-                            } else {
-                                "Assistant IA"
-                            })
-                            .color(if ai_on { BLUE } else { INK }),
-                        )
-                        .frame(false),
-                    )
-                    .clicked()
-                {
-                    self.assistant_settings = true;
-                }
-                ui.add_space(24.0);
-                theme::card().inner_margin(12).show(ui, |ui| {
-                    ui.label(RichText::new("FIFINE D6").strong());
-                    ui.label(RichText::new("15 touches LCD").small().color(MUTED));
-                    ui.add_space(8.0);
-                    let (r, _) =
-                        ui.allocate_exact_size(Vec2::new(125.0, 63.0), egui::Sense::hover());
-                    ui.painter()
-                        .rect_filled(r, 8.0, Color32::from_rgb(34, 37, 45));
-                    for y in 0..3 {
-                        for x in 0..5 {
-                            ui.painter().rect_filled(
-                                egui::Rect::from_min_size(
-                                    r.min + Vec2::new(8.0 + x as f32 * 23.0, 7.0 + y as f32 * 18.0),
-                                    Vec2::new(17.0, 13.0),
-                                ),
-                                3.0,
-                                if self.gate.connected {
-                                    BLUE
-                                } else {
-                                    Color32::from_gray(90)
+                                    if !self.gate.connected {
+                                        if self.wanted {
+                                            "Connexion…"
+                                        } else {
+                                            "Déconnecté"
+                                        }
+                                    } else {
+                                        "Synchronisation…"
+                                    }
                                 },
-                            );
-                        }
-                    }
-                    ui.add_space(5.0);
-                    if ui
-                        .add_sized(
-                            [ui.available_width(), 30.0],
-                            egui::Button::new(if self.wanted {
-                                if self.gate.connected {
-                                    "Déconnecter"
-                                } else {
-                                    "Annuler"
-                                }
-                            } else {
-                                "Connecter"
-                            }),
-                        )
-                        .clicked()
-                    {
-                        if self.wanted {
-                            self.wanted = false;
-                            let _ = self.device.send(Command::Disconnect);
-                            self.gate.disconnect();
-                            self.engine.stop();
-                        } else {
-                            self.connect();
-                        }
-                    }
+                                p.muted,
+                            ),
+                        };
+                        ui.label(RichText::new(label).size(12.0).strong().color(color));
+                    });
                 });
-                ui.add_space(20.0);
-                ui.label(
-                    RichText::new("DeckForge 0.2\nConçu pour Windows")
-                        .small()
-                        .color(MUTED),
-                );
             });
     }
+
+    fn save_preferences(&mut self) -> bool {
+        if !self.preferences_valid {
+            self.fail("Le fichier preferences.json est illisible et reste préservé. Restaure sa sauvegarde avant d’enregistrer.".into());
+            return false;
+        }
+        match self
+            .preferences
+            .save(&self.path.with_file_name("preferences.json"))
+        {
+            Ok(()) => true,
+            Err(e) => {
+                self.fail(format!("Enregistrement de Mes binds impossible : {e}"));
+                false
+            }
+        }
+    }
+    fn assign(&mut self, item: DragItem, target: usize) {
+        if matches!(item, DragItem::NewFolder) {
+            self.selected = target;
+            self.create_page(true);
+            return;
+        }
+        let active = self.config.active;
+        let before = self.config.keys().clone();
+        let page = self.config.page.clone();
+        let name = self.config.profiles[active].name.clone();
+        match item {
+            DragItem::Position(profile, origin, from)
+                if profile == active
+                    && origin == page
+                    && from < 15
+                    && target < 15
+                    && from != target =>
+            {
+                self.config.keys_mut().swap(from, target);
+            }
+            DragItem::Position(_, _, _) => return,
+            DragItem::NewFolder => unreachable!(),
+            DragItem::Bind(key) => {
+                if let Err(e) = crate::model::validate_key_in_profile(
+                    &key,
+                    &self.config,
+                    &self.config.profiles[active],
+                ) {
+                    self.fail(format!("Bind incompatible : {e}"));
+                    return;
+                }
+                self.config.keys_mut()[target] = key;
+            }
+            DragItem::Action(key) => {
+                let current = &mut self.config.keys_mut()[target];
+                if current.steps.len() >= 256 {
+                    self.fail("Une macro contient au maximum 256 étapes.".into());
+                    return;
+                }
+                if current.steps.is_empty() {
+                    *current = key;
+                } else {
+                    current.steps.extend(key.steps);
+                }
+            }
+        }
+        self.selected = target;
+        if let Err(e) = crate::model::validate_key_in_profile(
+            &self.config.keys()[target],
+            &self.config,
+            &self.config.profiles[active],
+        ) {
+            *self.config.keys_mut() = before;
+            self.fail(format!("Affectation refusée : {e}"));
+            return;
+        }
+        self.edited();
+        self.undo = Some((name, page, before));
+        self.log(format!(
+            "Touche {:02} mise à jour. Tu peux annuler cette affectation.",
+            target + 1
+        ));
+    }
+    fn undo_assignment(&mut self) {
+        if let Some((name, page, keys)) = self.undo.take() {
+            if let Some(profile) = self.config.profiles.iter_mut().find(|p| p.name == name) {
+                if let Some(current) = profile.keys_at_mut(&page) {
+                    *current = keys;
+                }
+                self.edited();
+                self.log("Dernière affectation annulée.".into());
+            }
+        }
+    }
+    fn import_elgato(&mut self) {
+        self.gate.enabled = false;
+        self.engine.stop();
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter(
+                "Profil ou action Stream Deck",
+                &["streamDeckProfile", "streamDeckAction", "json"],
+            )
+            .pick_file()
+        {
+            match crate::elgato::load(&path) {
+                Ok(report) => self.import_report = Some(report),
+                Err(e) => self.fail(format!("Import Stream Deck impossible : {e}")),
+            }
+        }
+    }
+    fn apply_elgato(&mut self) {
+        let Some(mut report) = self.import_report.take() else {
+            return;
+        };
+        if self.config.profiles.len() >= 64 {
+            self.fail("64 profils maximum.".into());
+            self.import_report = Some(report);
+            return;
+        }
+        let original = report.profile.name.clone();
+        let mut suffix = 2;
+        while self
+            .config
+            .profiles
+            .iter()
+            .any(|p| p.name.eq_ignore_ascii_case(&report.profile.name))
+        {
+            report.profile.name = format!("{original} ({suffix})");
+            suffix += 1;
+        }
+        let result = (|| -> anyhow::Result<()> {
+            if !report.icons.is_empty() {
+                let dir = self.path.parent().unwrap().join("assets").join(format!(
+                    "import-{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)?
+                        .as_nanos()
+                ));
+                std::fs::create_dir_all(&dir)?;
+                for (i, (page, key, bytes)) in report.icons.iter().enumerate() {
+                    let path = dir.join(format!("icon-{i}.png"));
+                    std::fs::write(&path, bytes)?;
+                    report.profile.keys_at_mut(page).unwrap()[*key].image =
+                        path.to_string_lossy().into_owned();
+                }
+            }
+            let mut next = self.config.clone();
+            next.profiles.push(report.profile.clone());
+            next.active = next.profiles.len() - 1;
+            next.reset_navigation();
+            next.validate()?;
+            store::save(&self.path, &next)?;
+            self.config = next;
+            self.selected = 0;
+            self.undo = None;
+            self.gate.dirty = false;
+            if self.wanted {
+                self.upload(false);
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(()) => self.log(format!(
+                "Profil importé : {} actions converties, {} avertissements. Touches en pause.",
+                report.converted,
+                report.warnings.len()
+            )),
+            Err(e) => {
+                self.fail(format!("Import non enregistré : {e}"));
+                self.import_report = Some(report);
+            }
+        }
+    }
+    fn import_binds(&mut self) {
+        self.gate.enabled = false;
+        self.engine.stop();
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Pack DeckForge", &["json"])
+            .pick_file()
+        {
+            let result = (|| -> anyhow::Result<usize> {
+                let bytes = std::fs::read(path)?;
+                anyhow::ensure!(bytes.len() <= 8_000_000, "Pack trop volumineux");
+                let pack: Library = serde_json::from_slice(&bytes)?;
+                let mut next = self.preferences.library.clone();
+                let count = next.merge(pack, &self.config)?;
+                let previous = std::mem::replace(&mut self.preferences.library, next);
+                if !self.save_preferences() {
+                    self.preferences.library = previous;
+                    anyhow::bail!("Pack non enregistré");
+                }
+                Ok(count)
+            })();
+            match result {
+                Ok(n) => self.log(format!("{n} binds importés. Les touches sont en pause.")),
+                Err(e) => self.fail(format!("Import refusé : {e}")),
+            }
+        }
+    }
+    fn export_binds(&mut self) {
+        self.gate.enabled = false;
+        self.engine.stop();
+        if let Some(path) = rfd::FileDialog::new()
+            .set_file_name("mes-binds-deckforge.json")
+            .add_filter("Pack DeckForge", &["json"])
+            .save_file()
+        {
+            match serde_json::to_vec_pretty(&self.preferences.library)
+                .map_err(anyhow::Error::from)
+                .and_then(|b| std::fs::write(path, b).map_err(Into::into))
+            {
+                Ok(()) => self.log("Pack exporté. Les touches sont en pause.".into()),
+                Err(e) => self.fail(format!("Export impossible : {e}")),
+            }
+        }
+    }
+    fn catalog(&mut self, ctx: &egui::Context) {
+        let p = theme::palette(ctx);
+        egui::SidePanel::right("action_catalog").exact_width(296.0).resizable(false).frame(egui::Frame::new().fill(p.surface).inner_margin(16)).show(ctx,|ui| {
+            ui.horizontal(|ui| { ui.label(RichText::new("Bibliothèque").size(19.0).strong()); ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| { theme::pill(ui,"37 binds",BLUE); }); });
+            ui.add_space(5.0);
+            ui.horizontal(|ui| { for (i,label) in ["Actions","Magasin","Mes binds"].iter().enumerate() {
+                let(r,response)=ui.allocate_exact_size(Vec2::new(80.0,51.0),egui::Sense::click());let selected=i==self.catalog_tab;
+                ui.painter().rect_filled(r,10.0,if selected{p.wash}else{p.surface});
+                theme::symbol(ui.painter(),r.center_top()+Vec2::new(0.0,16.0),18.0,[21,20,15][i],if selected{BLUE}else{p.muted});
+                ui.painter().text(r.center_bottom()-Vec2::new(0.0,7.0),egui::Align2::CENTER_BOTTOM,*label,egui::FontId::proportional(11.0),if selected{p.ink}else{p.muted});
+                if response.clicked(){self.catalog_tab=i;self.catalog_selection=None;self.catalog_search.clear();}
+            }});
+            ui.add_space(6.0);
+            ui.add(egui::TextEdit::singleline(&mut self.catalog_search).desired_width(f32::INFINITY).hint_text("Rechercher une action…"));
+            let search=self.catalog_search.to_lowercase();
+            if self.catalog_tab==0 {
+                ui.label(RichText::new("Glisse une action sur une touche. Elle s’ajoute à la fin de sa macro.").small().color(p.muted));
+                let actions=["Raccourci clavier","Saisir du texte","Application","Site web","Média / volume","Pause","Attendre une fenêtre","Changer de profil","Page suivante","Page précédente","Retour au dossier","Page 1","Créer un dossier"];
+                egui::ScrollArea::vertical().id_salt("action_browser").show(ui,|ui| {
+                    for (i,label) in actions.iter().enumerate() {
+                        if !label.to_lowercase().contains(&search) { continue; }
+                        let item=if i==12{DragItem::NewFolder}else{DragItem::Action(catalog::action(i,&self.config.profiles[self.config.active].name))};
+                        ui.push_id(i,|ui| {
+                            let(r,response)=ui.allocate_exact_size(Vec2::new(ui.available_width(),44.0),egui::Sense::click_and_drag());
+                            ui.painter().rect_filled(r,8.0,if response.hovered(){p.wash}else{p.bg});
+                            let kind=match &item{DragItem::Action(key)=>crate::icons::kind(key),_=>15};
+                            theme::symbol(ui.painter(),r.left_center()+Vec2::new(21.0,0.0),20.0,kind,BLUE);
+                            ui.painter().text(r.left_center()+Vec2::new(43.0,0.0),egui::Align2::LEFT_CENTER,*label,egui::FontId::proportional(12.0),p.ink);
+                            self.drag_sources.push((response.rect.intersect(ui.clip_rect()),item.clone()));
+                            if response.clicked() { self.assign(item,self.selected); }
+                            response.on_hover_text("Glisser sur une touche, ou cliquer pour ajouter à la touche sélectionnée");
+                        });
+                    }
+                    ui.add_space(14.0); ui.label(RichText::new("Macro personnalisée").strong());
+                    ui.label(RichText::new("Combine plusieurs actions dans l’inspecteur du bas, puis enregistre le résultat dans Mes binds.").small().color(p.muted));
+                });
+            } else {
+                if self.catalog_tab==1 {
+                    egui::ComboBox::from_id_salt("catalog_category").width(ui.available_width()-8.0).selected_text(&self.catalog_category).show_ui(ui,|ui| { for category in ["Tout","Média","Windows","Édition","Navigateur","Sites","Workflows"] { ui.selectable_value(&mut self.catalog_category,category.into(),category); } });
+                    ui.label(RichText::new("Gratuit · hors ligne · modifiable").small().color(p.muted));
+                } else {
+                    ui.horizontal(|ui| { if ui.button("Enregistrer la touche").clicked() { self.bind_name=self.config.keys()[self.selected].label.clone(); self.save_bind=true; } ui.menu_button("•••",|ui| { if ui.button("Importer un pack…").clicked() { self.import_binds(); ui.close_menu(); } if ui.button("Exporter Mes binds…").clicked() { self.export_binds(); ui.close_menu(); } }); });
+                }
+                let items:Vec<(String,String,Key)>=if self.catalog_tab==1 { catalog::presets().into_iter().map(|v|(v.category.into(),v.description.into(),v.key)).collect() } else { self.preferences.library.binds.iter().map(|b|("Personnel".into(),format!("{} · {} étape(s). Les images restent liées à leur fichier local.",b.name,b.key.steps.len()),{let mut k=b.key.clone();k.label=b.name.clone();k})).collect() };
+                let selected=self.catalog_selection.filter(|i|*i<items.len());
+                let detail_height=if selected.is_some(){212.0}else{40.0};
+                let mut found=0;
+                egui::ScrollArea::vertical().id_salt("preset_list").max_height((ui.available_height()-detail_height).max(90.0)).show(ui,|ui| {
+                    for (i,(category,description,key)) in items.iter().enumerate() {
+                        if self.catalog_tab==1 && self.catalog_category!="Tout" && self.catalog_category!=*category {continue;}
+                        if !format!("{} {} {}",key.label,category,description).to_lowercase().contains(&search) {continue;}
+                        found+=1;
+                        let response=ui.push_id(i,|ui| {
+                            let (r,response)=ui.allocate_exact_size(Vec2::new(ui.available_width(),51.0),egui::Sense::click_and_drag());
+                            ui.painter().rect_filled(r,6.0,if selected==Some(i){p.wash}else if response.hovered(){p.bg}else{p.surface});
+                            let color=Color32::from_rgb(key.color[0],key.color[1],key.color[2]);
+                            theme::symbol(ui.painter(),r.left_center()+Vec2::new(21.0,0.0),20.0,crate::icons::kind(&key),color);
+                            let title=egui::text::LayoutJob::simple_singleline(key.label.clone(),egui::FontId::proportional(13.0),p.ink);
+                            let mut title=title;title.wrap.max_width=r.width()-56.0;title.wrap.max_rows=1;
+                            ui.painter().galley(r.min+Vec2::new(45.0,7.0),ui.painter().layout_job(title),p.ink);
+                            ui.painter().text(r.min+Vec2::new(45.0,29.0),egui::Align2::LEFT_TOP,format!("{} · {} action(s)",category,key.steps.len()),egui::FontId::proportional(10.0),p.muted);
+                            response
+                        }).inner;
+                        self.drag_sources.push((response.rect.intersect(ui.clip_rect()),DragItem::Bind(key.clone())));
+                        if response.clicked() {self.catalog_selection=Some(i);}
+                        response.on_hover_text(description);
+                    }
+                    if found==0 {ui.add_space(14.0);ui.label(if self.catalog_tab==2 && items.is_empty(){"Tes binds enregistrés apparaîtront ici."}else{"Aucun résultat. Essaie un autre mot."});}
+                });
+                ui.separator();
+                if let Some(i)=self.catalog_selection.filter(|i|*i<items.len()) {
+                    let (_,description,key)=&items[i];
+                    egui::ScrollArea::vertical().id_salt("preset_details").max_height(195.0).show(ui,|ui| {
+                        ui.label(RichText::new(&key.label).strong()); ui.label(RichText::new(description).small().color(p.muted));
+                        ui.label(RichText::new(key.steps.iter().map(step_summary).collect::<Vec<_>>().join(" → ")).size(10.0).color(p.muted));
+                        if ui.add(theme::primary(RichText::new(format!("Utiliser sur la touche {:02}",self.selected+1)).color(Color32::WHITE))).clicked() {self.assign(DragItem::Bind(key.clone()),self.selected);}
+                        if self.catalog_tab==2 && ui.small_button("Supprimer de Mes binds").clicked() {
+                            let previous=self.preferences.library.clone(); self.preferences.library.binds.remove(i);
+                            if self.save_preferences(){self.catalog_selection=None;}else{self.preferences.library=previous;}
+                        }
+                    });
+                } else {ui.label(RichText::new("Glisse un bind sur une touche, ou clique pour voir ses actions.").small().color(p.muted));}
+            }
+        });
+    }
+
     fn footer(&mut self, ctx: &egui::Context) {
+        let p = theme::palette(ctx);
+        let validation = if self.gate.dirty {
+            self.config.validate().err().map(|e| e.to_string())
+        } else {
+            None
+        };
+        let message = if let Some(e) = &validation {
+            format!("À compléter : {e}")
+        } else if self.gate.dirty {
+            "Sauvegarde automatique…".into()
+        } else {
+            self.notice.clone()
+        };
         egui::TopBottomPanel::bottom("footer")
             .frame(
                 egui::Frame::new()
-                    .fill(WHITE)
+                    .fill(p.surface)
                     .inner_margin(egui::Margin::symmetric(20, 7)),
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(if self.gate.dirty {
-                            "Sauvegarde automatique…"
+                    ui.label(RichText::new(&message).size(11.0).color(
+                        if self.error || validation.is_some() {
+                            Color32::from_rgb(233, 119, 109)
                         } else {
-                            &self.notice
-                        })
-                        .size(11.0)
-                        .color(if self.error {
-                            Color32::DARK_RED
-                        } else {
-                            MUTED
-                        }),
-                    );
+                            p.muted
+                        },
+                    ));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .small_button(if self.show_logs {
@@ -850,7 +1226,7 @@ impl App {
                         ui.label(
                             RichText::new("Arrêt : Ctrl + Alt + F12")
                                 .size(10.0)
-                                .color(MUTED),
+                                .color(p.muted),
                         );
                     });
                 });
@@ -860,7 +1236,7 @@ impl App {
                 .default_height(165.0)
                 .height_range(100.0..=320.0)
                 .resizable(true)
-                .frame(egui::Frame::new().fill(WHITE).inner_margin(16))
+                .frame(egui::Frame::new().fill(p.surface).inner_margin(16))
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Activité récente").strong());
@@ -872,77 +1248,336 @@ impl App {
                         .stick_to_bottom(true)
                         .show(ui, |ui| {
                             for s in &self.logs {
-                                ui.label(RichText::new(s).monospace().size(11.0).color(MUTED));
+                                ui.label(RichText::new(s).monospace().size(11.0).color(p.muted));
                             }
                         });
                 });
         }
     }
     fn editor(&mut self, ctx: &egui::Context) {
+        let p = theme::palette(ctx);
         let running = self.engine.running.load(Ordering::SeqCst);
-        egui::SidePanel::right("editor").exact_width(360.0).resizable(false).frame(egui::Frame::new().fill(WHITE).inner_margin(20)).show(ctx,|ui|{
-            ui.add_space(6.0);ui.horizontal(|ui|{ui.label(RichText::new(format!("Touche {:02}",self.selected+1)).size(22.0).strong());ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{theme::pill(ui,"ÉDITEUR",BLUE);});});
-            ui.label(RichText::new("Personnalise son apparence et ses actions.").small().color(MUTED));ui.add_space(15.0);
-            let names=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();let active=self.config.active;
-            let key=&mut self.config.profiles[active].keys[self.selected];let mut changed=false;
-            ui.label(RichText::new("Nom de la touche").small().strong());changed|=ui.add(egui::TextEdit::singleline(&mut key.label).desired_width(f32::INFINITY).hint_text("Ex. Lecture, Mon application…").margin(Vec2::new(10.0,8.0))).changed();
-            ui.horizontal(|ui|{ui.label(RichText::new("Couleur").small().color(MUTED));changed|=ui.color_edit_button_srgb(&mut key.color).changed();ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{if ui.small_button(if key.image.is_empty(){"Ajouter une image"}else{"Changer l’image"}).clicked(){if let Some(path)=rfd::FileDialog::new().add_filter("Image",&["png","jpg","jpeg"]).pick_file(){key.image=path.to_string_lossy().into_owned();changed=true;}}});});
-            if !key.image.is_empty(){ui.horizontal(|ui|{ui.label(RichText::new(PathBuf::from(&key.image).file_name().unwrap_or_default().to_string_lossy()).small().color(MUTED));if ui.small_button("Retirer").clicked(){key.image.clear();changed=true;}});}
-            ui.add_space(12.0);ui.horizontal(|ui|{ui.label(RichText::new("Actions").size(17.0).strong());ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{ui.label(RichText::new(format!("{} étape(s)",key.steps.len())).small().color(MUTED));});});
-            ui.horizontal(|ui|{ui.label(RichText::new("Répéter").small().color(MUTED));changed|=ui.add(egui::DragValue::new(&mut key.repeat).range(1..=1000)).changed();ui.label(RichText::new("fois").small().color(MUTED));});
-            let mut remove=None;let mut movement=None;
-            egui::ScrollArea::vertical().id_salt("step_list").max_height((ui.available_height()-160.0).max(120.0)).show(ui,|ui|{
-                if key.steps.is_empty(){theme::card().fill(BG).show(ui,|ui|{ui.label(RichText::new("Une touche, plusieurs possibilités.").strong());ui.label(RichText::new("Ajoute une action ci-dessous pour commencer.").color(MUTED));});}
-                let count=key.steps.len();
-                for (i,step)in key.steps.iter_mut().enumerate(){ui.push_id(i,|ui|{egui::Frame::new().fill(BG).corner_radius(12).inner_margin(12).show(ui,|ui|{
-                    ui.horizontal(|ui|{ui.label(RichText::new(format!("{:02}",i+1)).size(11.0).color(BLUE).strong());ui.label(RichText::new(step.name()).size(13.0).strong());ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{if ui.small_button("×").on_hover_text("Retirer l’étape").clicked(){remove=Some(i);}if ui.add_enabled(i+1<count,egui::Button::new("↓").small()).clicked(){movement=Some((i,i+1));}if ui.add_enabled(i>0,egui::Button::new("↑").small()).clicked(){movement=Some((i,i-1));}});});
-                    changed|=edit_step(ui,step,&names);
-                });ui.add_space(3.0);});}
+        egui::TopBottomPanel::bottom("key_inspector").default_height(if ctx.screen_rect().height()<800.0 {240.0}else{260.0}).height_range(240.0..=420.0).resizable(true).frame(egui::Frame::new().fill(p.surface).inner_margin(16)).show(ctx,|ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(format!("Touche {:02}",self.selected+1)).size(16.0).strong());
+                ui.label(RichText::new("· Personnalisation").color(p.muted).size(12.0));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| {
+                    if ui.button("Enregistrer dans Mes binds").on_hover_text("Conserver cette macro pour la réutiliser").clicked(){self.bind_name=self.config.keys()[self.selected].label.clone();self.save_bind=true;}
+                    if ui.add_enabled(!self.config.keys()[self.selected].steps.is_empty(),egui::Button::new("Vider")).clicked(){self.assign(DragItem::Bind(Key::default()),self.selected);}
+                    if ui.add_enabled(!running,theme::primary(RichText::new("Tester dans 3 s").color(Color32::WHITE))).on_hover_text("Exécute la macro sur ton PC après 3 secondes, dans la fenêtre active.").clicked(){self.preview(false);}
+                    if ui.add_enabled(!running,egui::Button::new("Simuler")).on_hover_text("Affiche les étapes sans les exécuter.").clicked(){self.preview(true);}
+                });
             });
-            if let Some(i)=remove{key.steps.remove(i);changed=true;}if let Some((a,b))=movement{key.steps.swap(a,b);changed=true;}
-            ui.add_space(8.0);
-            let actions=["Pause","Raccourci clavier","Saisir du texte","Application","Site web","Attendre une fenêtre","Média / volume","Changer de profil"];
-            ui.horizontal(|ui|{egui::ComboBox::from_id_salt("add_action").width(195.0).selected_text(actions[self.new_step]).show_ui(ui,|ui|{for (i,name)in actions.iter().enumerate(){ui.selectable_value(&mut self.new_step,i,*name);}});if ui.add_enabled(key.steps.len()<256,egui::Button::new("+").min_size(Vec2::splat(32.0))).clicked(){key.steps.push(match self.new_step{0=>Step::Delay{ms:500},1=>Step::Hotkey{keys:"CTRL+C".into()},2=>Step::Text{text:String::new()},3=>Step::Launch{program:String::new(),args:vec![]},4=>Step::Url{url:"https://".into()},5=>Step::WaitWindow{title:String::new(),timeout_ms:10000,focus:true},6=>Step::Media{command:"play_pause".into()},_=>Step::Profile{name:names[active].clone()}});changed=true;}});
-            ui.add_space(9.0);
-            ui.horizontal(|ui|{if ui.add_enabled(!running,egui::Button::new("Simuler").min_size(Vec2::new(95.0,36.0))).clicked(){self.preview(true);}if ui.add_enabled(!running,theme::primary(RichText::new("Exécuter dans 3 s").color(WHITE)).min_size(Vec2::new(175.0,36.0))).clicked(){self.preview(false);}});
-            ui.label(RichText::new("Simuler n’a aucun effet sur ton PC. Le test réel te laisse 3 secondes pour changer de fenêtre.").size(10.0).color(MUTED));
-            if changed{self.edited();}
+            ui.separator();
+            let active=self.config.active; let names=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
+            let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let key=&mut self.config.keys_mut()[selected];
+            let mut changed=false; let mut add_kind=None; let mut record_step=None;
+            let width=ui.available_width(); let body_height=ui.available_height();
+            ui.horizontal_top(|ui| {
+                ui.allocate_ui_with_layout(Vec2::new(215.0,body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
+                    egui::ScrollArea::vertical().id_salt("key_appearance").max_height(body_height).show(ui,|ui| {
+                        ui.label(RichText::new("Titre sur le D6").small().color(p.muted));
+                        changed|=ui.add(egui::TextEdit::singleline(&mut key.label).desired_width(200.0).hint_text("Nom de la touche")).changed();
+                        ui.horizontal(|ui|{ui.label("Couleur");changed|=ui.color_edit_button_srgb(&mut key.color).changed();});
+                        ui.horizontal(|ui| {
+                            if ui.button(if key.image.is_empty(){"Choisir une icône…"}else{"Changer l’icône…"}).clicked(){if let Some(path)=rfd::FileDialog::new().add_filter("Image",&["png","jpg","jpeg"]).pick_file(){key.image=path.to_string_lossy().into_owned();changed=true;}}
+                            if !key.image.is_empty()&&ui.small_button("×").on_hover_text("Retirer l’image").clicked(){key.image.clear();changed=true;}
+                        });
+                        ui.horizontal(|ui|{ui.label("Répéter");changed|=ui.add(egui::DragValue::new(&mut key.repeat).range(1..=1000)).changed();ui.label("fois");});
+                        ui.add_space(6.0);
+                        ui.label(RichText::new("La simulation ne lance aucune action. Le test réel vise la fenêtre active.").size(10.0).color(p.muted));
+                    });
+                });
+                ui.separator();
+                ui.allocate_ui_with_layout(Vec2::new((width-240.0).max(200.0),body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
+                    ui.horizontal(|ui|{
+                        ui.label(RichText::new(format!("Actions · {} étape(s)",key.steps.len())).strong());
+                        ui.menu_button("+ Ajouter",|ui|{for (i,label) in ["Raccourci clavier","Saisir du texte","Application","Site web","Média / volume","Pause","Attendre une fenêtre","Changer de profil","Page suivante","Page précédente","Retour au dossier","Page 1","Créer un dossier"].iter().enumerate(){if ui.add_enabled(key.steps.len()<256,egui::Button::new(*label)).clicked(){add_kind=Some(i);ui.close_menu();}}});
+                    });
+                    let mut remove=None;let mut movement=None;
+                    egui::ScrollArea::vertical().id_salt("step_list").max_height((body_height-40.0).max(100.0)).show(ui,|ui| {
+                        if key.steps.is_empty(){ui.add_space(12.0);ui.label(RichText::new("Glisse une action ou un bind sur cette touche.").strong());ui.label(RichText::new("La bibliothèque à droite propose des raccourcis prêts à l’emploi. Tu peux ensuite combiner et modifier leurs actions ici.").color(p.muted));}
+                        let count=key.steps.len();
+                        for(i,step) in key.steps.iter_mut().enumerate(){ui.push_id(i,|ui|{
+                            egui::Frame::new().fill(p.bg).corner_radius(6).inner_margin(10).show(ui,|ui| {
+                                ui.horizontal(|ui|{ui.label(RichText::new(format!("{:02}",i+1)).color(BLUE).size(11.0));ui.label(RichText::new(step.name()).strong().size(12.0));ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{if ui.small_button("×").on_hover_text("Supprimer cette étape").clicked(){remove=Some(i);}if ui.add_enabled(i+1<count,egui::Button::new("↓").small()).clicked(){movement=Some((i,i+1));}if ui.add_enabled(i>0,egui::Button::new("↑").small()).clicked(){movement=Some((i,i-1));}});});
+                                let mut record=false;changed|=edit_step(ui,step,&names,&pages,&mut record);if record{record_step=Some(i);}
+                            });
+                        });}
+                    });
+                    if let Some(i)=remove{key.steps.remove(i);changed=true;}if let Some((a,b))=movement{key.steps.swap(a,b);changed=true;}
+                });
+            });
+            if let Some(step)=record_step {self.recording=Some((active,self.config.page.clone(),self.selected,step,self.gate.enabled));self.recording_error.clear();self.gate.enabled=false;self.engine.stop();}
+            if changed {self.edited();}
+            if let Some(i)=add_kind {if i==12{self.create_page(true);}else{self.assign(DragItem::Action(catalog::action(i,&names[active])),self.selected);}}
+
         });
     }
+
     fn deck(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(BG).inner_margin(26)).show(ctx,|ui|{egui::ScrollArea::vertical().show(ui,|ui|{
-            ui.horizontal(|ui|{ui.vertical(|ui|{ui.heading(&self.config.profiles[self.config.active].name);ui.label(RichText::new("Choisis une touche. Crée ton prochain raccourci.").color(MUTED).size(13.0));});ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{if ui.button("•••").clicked(){self.rename=true;}});});
-            ui.add_space(22.0);
-            let width=((ui.available_width()-48.0)/5.0).clamp(62.0,145.0);let height=if width<88.0{112.0}else{126.0};
-            egui::Grid::new("deck_grid_v2").spacing([12.0,12.0]).show(ui,|ui|{
-                for i in 0..15{let key=&self.config.profiles[self.config.active].keys[i];let selected=i==self.selected;let flashing=self.last_key.is_some_and(|(idx,t)|idx==i&&t.elapsed()<Duration::from_millis(350));
-                    let (r,response)=ui.allocate_exact_size(Vec2::new(width,height),egui::Sense::click());
-                    let shadow=r.translate(Vec2::new(0.0,3.0));ui.painter().rect_filled(shadow,16.0,Color32::from_black_alpha(5));
-                    ui.painter().rect_filled(r,16.0,if selected{Color32::from_rgb(245,250,255)}else{WHITE});
-                    ui.painter().rect_stroke(r,16.0,egui::Stroke::new(if selected||flashing{2.0_f32}else{1.0_f32},if selected||flashing{BLUE}else{LINE}),egui::StrokeKind::Inside);
-                    let color=Color32::from_rgb(key.color[0],key.color[1],key.color[2]);let center=r.center_top()+Vec2::new(0.0,34.0);
-                    let mut has_image=false;
-                    if !key.image.is_empty(){let texture=self.textures.entry(key.image.clone()).or_insert_with(||{
-                        let mut reader=image::ImageReader::open(&key.image).ok()?.with_guessed_format().ok()?;let mut limits=image::Limits::default();limits.max_image_width=Some(8192);limits.max_image_height=Some(8192);limits.max_alloc=Some(64*1024*1024);reader.limits(limits);
-                        let img=reader.decode().ok()?.thumbnail(112,112).into_rgba8();let size=[img.width()as usize,img.height()as usize];Some(ctx.load_texture(key.image.clone(),egui::ColorImage::from_rgba_unmultiplied(size,&img),egui::TextureOptions::LINEAR))});
-                        if let Some(texture)=texture{ui.painter().image(texture.id(),egui::Rect::from_center_size(center,Vec2::splat(36.0)),egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(1.0,1.0)),WHITE);has_image=true;}
-                    }
-                    if !has_image{ui.painter().circle_filled(center,20.0,color.gamma_multiply(0.09));theme::symbol(ui.painter(),center,19.0,key.steps.first().map(step_kind).unwrap_or(8),color);}
-                    let mut job=egui::text::LayoutJob::default();job.wrap.max_width=width-16.0;job.wrap.max_rows=2;job.wrap.break_anywhere=true;job.halign=egui::Align::Center;
-                    job.append(if key.label.is_empty(){"Ajouter"}else{&key.label},0.0,egui::TextFormat{font_id:egui::FontId::proportional(if width<88.0{11.0}else{13.0}),color:if key.label.is_empty(){MUTED}else{INK},..Default::default()});
-                    let galley=ui.painter().layout_job(job);let pos=egui::pos2(r.center().x,r.top()+62.0);ui.painter().galley(pos,galley,INK);
-                    ui.painter().text(r.center_bottom()-Vec2::new(0.0,12.0),egui::Align2::CENTER_BOTTOM,format!("{:02}",i+1),egui::FontId::proportional(9.0),MUTED);
-                    if response.on_hover_text(format!("Touche {:02} · {}",i+1,key.label)).clicked(){self.selected=i;}
-                    if i%5==4{ui.end_row();}
-                }
+        let p = theme::palette(ctx);
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(p.bg).inner_margin(18)).show(ctx,|ui| {
+            theme::gradient(ui.painter(),ui.max_rect(),p.bg,if self.preferences.dark{Color32::from_rgb(29,34,49)}else{Color32::from_rgb(225,231,248)});
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("PROFIL").size(10.0).color(p.muted));
+                let mut active=self.config.active;
+                egui::ComboBox::from_id_salt("active_profile").width(175.0).selected_text(&self.config.profiles[active].name).show_ui(ui,|ui|{for(i,profile)in self.config.profiles.iter().enumerate(){ui.selectable_value(&mut active,i,&profile.name);}});
+                if active!=self.config.active{self.select_profile(active);}
+                ui.menu_button("•••",|ui| {
+                    if ui.add_enabled(self.config.profiles.len()<64,egui::Button::new("Nouveau profil")).clicked(){self.add_profile(false);ui.close_menu();}
+                    if ui.button("Renommer / dupliquer").clicked(){self.rename=true;ui.close_menu();}
+                });
+                if self.undo.is_some() && ui.button("Annuler l’affectation").clicked(){self.undo_assignment();}
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{ui.label(RichText::new("FIFINE D6 · 15 touches").size(11.0).color(p.muted));});
             });
-            ui.add_space(20.0);
-            let (title,description,color)=match self.gate.decision(){Decision::Execute=>("Prêt à jouer","Les appuis sur le D6 exécutent les actions enregistrées.",GREEN),Decision::Inspect=>("Mode diagnostic","Un appui sélectionne la touche. Aucune action ne s’exécute.",BLUE),Decision::Blocked(reason)=>{let description=if self.gate.dirty{"Les touches reprendront après la sauvegarde automatique."}else if !self.gate.enabled{"Réactive l’interrupteur en haut pour utiliser les touches."}else if !self.gate.connected{"Connecte le D6. Ferme l’application FIFINE si elle est ouverte."}else{"Les touches reprendront une fois les images envoyées au D6."};(reason,description,MUTED)}};
-            theme::card().show(ui,|ui|{ui.horizontal(|ui|{let(r,_)=ui.allocate_exact_size(Vec2::splat(10.0),egui::Sense::hover());ui.painter().circle_filled(r.center(),4.0,color);ui.label(RichText::new(title).strong().color(color));});ui.label(RichText::new(description).size(12.0).color(MUTED));});
-            ui.add_space(14.0);ui.label(RichText::new("Les modifications valides sont enregistrées automatiquement.\nLes touches restent disponibles quand cette fenêtre est minimisée.").size(11.0).color(MUTED));
-        });});
+            ui.add_space(7.0);
+            ui.horizontal(|ui| {
+                if !self.config.page.is_empty() && self.config.profiles[self.config.active].pages.iter().any(|p|p.id==self.config.page&&p.folder) {
+                    if ui.button("← Retour").clicked(){self.navigate(Step::Back);}
+                    ui.label(RichText::new("DOSSIER").small().color(p.muted));
+                    let name=self.config.profiles[self.config.active].pages.iter().find(|p|p.id==self.config.page).map(|p|p.name.as_str()).unwrap_or_default();ui.label(RichText::new(name).strong());
+                } else {
+                    if ui.small_button("‹").on_hover_text("Page précédente").clicked(){self.navigate(Step::PagePrevious);}
+                    let mut page=self.config.page.clone();
+                    egui::ComboBox::from_id_salt("active_page").width(150.0).selected_text(self.config.profiles[self.config.active].pages.iter().find(|p|p.id==page).map(|p|p.name.as_str()).unwrap_or("Page 1")).show_ui(ui,|ui| {
+                        ui.selectable_value(&mut page,String::new(),"Page 1");for p in self.config.profiles[self.config.active].pages.iter().filter(|p|!p.folder){ui.selectable_value(&mut page,p.id.clone(),&p.name);}
+                    });
+                    if page!=self.config.page{self.navigate(Step::Page{id:page});}
+                    if ui.small_button("›").on_hover_text("Page suivante").clicked(){self.navigate(Step::PageNext);}
+                }
+                ui.menu_button("+",|ui| {
+                    if ui.button("Nouvelle page").clicked(){self.create_page(false);ui.close_menu();}
+                    if ui.button("Gérer pages et dossiers…").clicked(){self.page_manager=true;ui.close_menu();}
+                    if ui.button("Dossier sur la touche sélectionnée").clicked(){self.create_page(true);ui.close_menu();}
+                });
+                if !self.config.page.is_empty(){ui.menu_button("Renommer",|ui| {
+                    if let Some(page)=self.config.profiles[self.config.active].pages.iter_mut().find(|p|p.id==self.config.page){if ui.text_edit_singleline(&mut page.name).changed(){self.edited();}}
+                });}
+            });
+            ui.add_space(7.0);
+            if ctx.screen_rect().width()>=1200.0 {ui.label(RichText::new("Glisse un bind sur une touche, puis personnalise ses actions dans l’inspecteur.").small().color(p.muted));}
+            egui::ScrollArea::vertical().id_salt("device_canvas").show(ui,|ui| {
+                let width=((ui.available_width()-96.0)/5.0).min((ui.available_height()-88.0)/3.0).clamp(56.0,112.0);
+                let total=width*5.0+48.0+36.0;
+                ui.horizontal(|ui| {
+                    ui.add_space(((ui.available_width()-total)/2.0).max(0.0));
+                    let body=egui::Rect::from_min_size(ui.cursor().min,Vec2::new(total,width*3.0+24.0+54.0));
+                    for offset in (1..=10).rev(){ui.painter().rect_filled(body.translate(Vec2::new(0.0,offset as f32)),20.0,Color32::from_rgb(14+offset,16+offset,21+offset));}
+                    let device=egui::Frame::new().fill(Color32::from_rgb(27,30,37)).stroke(egui::Stroke::new(1.0_f32,Color32::from_rgb(76,83,99))).shadow(egui::epaint::Shadow{offset:[0,12],blur:24,spread:0,color:Color32::from_black_alpha(75)}).corner_radius(20).inner_margin(egui::Margin{left:18,right:18,top:18,bottom:36}).show(ui,|ui| {
+                        egui::Grid::new("deck_grid_v3").spacing([12.0,12.0]).show(ui,|ui| {
+                            for i in 0..15 {
+                                let key=self.config.keys()[i].clone();let selected=i==self.selected;
+                                let flashing=self.last_key.is_some_and(|(idx,t)|idx==i&&t.elapsed()<Duration::from_millis(350));
+                                let(r,response)=ui.allocate_exact_size(Vec2::splat(width),egui::Sense::click_and_drag());
+                                let hovering=self.drag.moving() && self.drag.position.is_some_and(|pos|r.contains(pos));
+                                let color=Color32::from_rgb(key.color[0],key.color[1],key.color[2]);
+                                ui.painter().rect_filled(r.translate(Vec2::new(0.0,3.0)),10.0,Color32::from_black_alpha(150));
+                                ui.painter().rect_filled(r.expand(1.0),10.0,Color32::from_rgb(12,14,19));
+                                ui.painter().rect_filled(r,9.0,if selected||hovering{p.wash}else{p.tile});
+                                ui.painter().line_segment([r.left_top()+Vec2::new(11.0,2.0),r.right_top()+Vec2::new(-11.0,2.0)],egui::Stroke::new(1.0_f32,Color32::from_white_alpha(45)));
+                                ui.painter().rect_stroke(r,9.0,egui::Stroke::new(if selected||flashing||hovering{2.0_f32}else{1.0_f32},if selected||flashing||hovering{BLUE}else{p.line}),egui::StrokeKind::Inside);
+                                let center=r.center_top()+Vec2::new(0.0,width*0.36);
+                                let mut has_image=false;
+                                if !key.image.is_empty(){let texture=self.textures.entry(key.image.clone()).or_insert_with(||{
+                                    let mut reader=image::ImageReader::open(&key.image).ok()?.with_guessed_format().ok()?;let mut limits=image::Limits::default();limits.max_image_width=Some(8192);limits.max_image_height=Some(8192);limits.max_alloc=Some(64*1024*1024);reader.limits(limits);
+                                    let img=reader.decode().ok()?.thumbnail(112,112).into_rgba8();let size=[img.width()as usize,img.height()as usize];Some(ctx.load_texture(key.image.clone(),egui::ColorImage::from_rgba_unmultiplied(size,&img),egui::TextureOptions::LINEAR))});
+                                    if let Some(texture)=texture{ui.painter().image(texture.id(),egui::Rect::from_center_size(center,Vec2::splat(width*0.38)),egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(1.0,1.0)),Color32::WHITE);has_image=true;}
+                                }
+                                if !has_image{theme::symbol(ui.painter(),center,width*0.27,crate::icons::kind(&key),if key.steps.is_empty(){p.muted}else{theme::icon_color(color,self.preferences.dark)});}
+                                let mut job=egui::text::LayoutJob::default();job.wrap.max_width=width-12.0;job.wrap.max_rows=if width<90.0{1}else{2};job.wrap.break_anywhere=false;job.halign=egui::Align::Center;
+                                job.append(if key.label.is_empty(){""}else{&key.label},0.0,egui::TextFormat{font_id:egui::FontId::proportional(if width<90.0{10.0}else{12.0}),color:p.ink,..Default::default()});
+                                ui.painter().galley(egui::pos2(r.center().x,r.top()+width*0.59),ui.painter().layout_job(job),p.ink);
+                                if width>=70.0 {ui.painter().text(r.right_bottom()-Vec2::new(7.0,5.0),egui::Align2::RIGHT_BOTTOM,format!("{:02}",i+1),egui::FontId::proportional(8.0),p.muted);}
+                                self.drag_sources.push((r.intersect(ui.clip_rect()),DragItem::Position(self.config.active,self.config.page.clone(),i)));self.drop_targets.push((r.intersect(ui.clip_rect()),i));
+                                if response.clicked(){self.selected=i;} if response.double_clicked(){if let Some(step @ Step::Folder{..})=key.steps.first(){self.navigate(step.clone());}}
+
+                                response.on_hover_text(format!("Touche {:02} · {}\nGlisse depuis la bibliothèque pour affecter un bind. Glisse une touche sur une autre pour les échanger.",i+1,key.label));
+                                if i%5==4{ui.end_row();}
+                            }
+                        });
+                    });
+                    let edge=device.response.rect;ui.painter().line_segment([edge.left_top()+Vec2::new(24.0,2.0),edge.right_top()+Vec2::new(-24.0,2.0)],egui::Stroke::new(1.0_f32,Color32::from_white_alpha(35)));
+                    ui.painter().text(edge.center_bottom()-Vec2::new(0.0,13.0),egui::Align2::CENTER_CENTER,"F I F I N E   ·   D 6",egui::FontId::proportional(8.0),Color32::from_rgb(118,127,146));
+                });
+
+            });
+        });
     }
+
     fn windows(&mut self, ctx: &egui::Context) {
+        let p = theme::palette(ctx);
+        if let Some((_, _, _, _, enabled)) = self.recording.clone() {
+            let mut open = true;
+            let mut cancel = false;
+            egui::Window::new("Enregistrer un raccourci").open(&mut open).collapsible(false).resizable(false).default_width(410.0).show(ctx,|ui|{
+                ui.label(RichText::new("Appuie sur la combinaison souhaitée").size(20.0).strong());
+                ui.label("Exemple : maintiens Ctrl + Maj, puis appuie sur S.");
+                ui.label(RichText::new("Seules les touches reçues par cette fenêtre sont capturées. Aucun enregistrement en arrière-plan. Les raccourcis réservés à Windows peuvent quitter la fenêtre.").small().color(p.muted));
+                if !self.recording_error.is_empty(){ui.colored_label(Color32::LIGHT_RED,&self.recording_error);}
+                if ui.button("Annuler l’enregistrement").clicked(){cancel=true;}
+            });
+            if !open || cancel {
+                self.recording = None;
+                self.gate.enabled = enabled;
+            }
+        }
+        if self.page_manager {
+            let mut open = true;
+            let mut target = None;
+            let mut delete = None;
+            let mut changed = false;
+            egui::Window::new("Pages et dossiers")
+                .open(&mut open)
+                .default_width(480.0)
+                .show(ctx, |ui| {
+                    ui.label("Renomme ou ouvre les pages et dossiers de ce profil.");
+                    if ui.button("Page 1").clicked() {
+                        target = Some(Step::Page { id: String::new() });
+                    }
+                    egui::ScrollArea::vertical()
+                        .max_height(360.0)
+                        .show(ui, |ui| {
+                            for page in &mut self.config.profiles[self.config.active].pages {
+                                ui.push_id(&page.id, |ui| {
+                                    ui.horizontal(|ui| {
+                                        let (r, _) = ui.allocate_exact_size(
+                                            Vec2::splat(20.0),
+                                            egui::Sense::hover(),
+                                        );
+                                        theme::symbol(
+                                            ui.painter(),
+                                            r.center(),
+                                            17.0,
+                                            if page.folder { 15 } else { 17 },
+                                            BLUE,
+                                        );
+                                        changed |=
+                                            ui.text_edit_singleline(&mut page.name).changed();
+                                        if ui.small_button("Ouvrir").clicked() {
+                                            target = Some(if page.folder {
+                                                Step::Folder {
+                                                    id: page.id.clone(),
+                                                }
+                                            } else {
+                                                Step::Page {
+                                                    id: page.id.clone(),
+                                                }
+                                            });
+                                        }
+                                        if ui.small_button("Supprimer…").clicked() {
+                                            delete = Some(page.id.clone());
+                                        }
+                                    });
+                                });
+                            }
+                        });
+                });
+            self.page_manager = open;
+            if changed {
+                self.edited();
+            }
+            if let Some(step) = target {
+                self.page_manager = false;
+                self.navigate(step);
+            }
+            if let Some(id) = delete {
+                self.delete_page = Some(id);
+            }
+        }
+        if let Some(id) = self.delete_page.clone() {
+            let mut open = true;
+            let mut remove = false;
+            egui::Window::new("Supprimer cette page ?").open(&mut open).collapsible(false).resizable(false).default_width(380.0).show(ctx,|ui|{
+                ui.label("Son contenu et les touches qui ouvrent cette page seront retirés du profil. Les autres pages seront conservées.");
+                if ui.button(RichText::new("Supprimer la page").color(Color32::LIGHT_RED)).clicked(){remove=true;}
+            });
+            if remove {
+                self.remove_page(&id);
+                self.delete_page = None;
+            } else if !open {
+                self.delete_page = None;
+            }
+        }
+        if self.import_report.is_some() {
+            let mut open = true;
+            let mut install = false;
+            if let Some(report) = &self.import_report {
+                egui::Window::new("Import Stream Deck — aperçu").open(&mut open).collapsible(false).default_width(560.0).show(ctx,|ui| {
+                    ui.label(RichText::new(&report.profile.name).size(22.0).strong());
+                    ui.label(format!("{} actions converties · {} pages/dossiers · {} icônes",report.converted,report.profile.pages.len()+1,report.icons.len()));
+                    ui.label(RichText::new("Un nouveau profil sera ajouté. Les actions non reconnues restent vides ; aucun plugin Elgato n’est installé. Les touches restent en pause après l’import.").small().color(p.muted));
+                    egui::ScrollArea::vertical().max_height(340.0).show(ui,|ui| {
+                        for warning in &report.warnings{ui.colored_label(Color32::from_rgb(222,165,77),warning);}
+                        ui.separator();for key in report.profile.keys.iter().filter(|k|!k.label.is_empty()){ui.label(format!("{} · {} action(s)",key.label,key.steps.len()));}
+                    });
+                    if ui.add(theme::primary(RichText::new("Importer ce profil").color(Color32::WHITE))).clicked(){install=true;}
+                });
+            }
+            if install {
+                self.apply_elgato();
+            } else if !open {
+                self.import_report = None;
+            }
+        }
+        if self.save_bind {
+            let mut open = true;
+            let mut save = false;
+            egui::Window::new("Enregistrer dans Mes binds")
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .default_width(380.0)
+                .show(ctx, |ui| {
+                    ui.label("Conserve une copie de cette touche et de toutes ses actions.");
+                    ui.label(
+                        RichText::new("Tu pourras ensuite la glisser sur n’importe quelle touche.")
+                            .small()
+                            .color(p.muted),
+                    );
+                    ui.text_edit_singleline(&mut self.bind_name);
+                    let key = &self.config.keys()[self.selected];
+                    ui.label(format!(
+                        "{} action(s) · répétée(s) {} fois",
+                        key.steps.len(),
+                        key.repeat
+                    ));
+                    if ui
+                        .add_enabled(
+                            !key.steps.is_empty() && !self.bind_name.trim().is_empty(),
+                            theme::primary(
+                                RichText::new("Enregistrer le bind").color(Color32::WHITE),
+                            ),
+                        )
+                        .clicked()
+                    {
+                        save = true;
+                    }
+                });
+            if save {
+                let key = self.config.keys()[self.selected].clone();
+                let previous = self.preferences.library.clone();
+                match self
+                    .preferences
+                    .library
+                    .insert(&self.bind_name, key, &self.config)
+                {
+                    Ok(()) => {
+                        if self.save_preferences() {
+                            open = false;
+                            self.catalog_tab = 2;
+                            self.catalog_selection = Some(self.preferences.library.binds.len() - 1);
+                            self.catalog_search.clear();
+                            self.log("Bind enregistré dans Mes binds.".into());
+                        } else {
+                            self.preferences.library = previous;
+                        }
+                    }
+                    Err(e) => self.fail(format!("Bind non enregistré : {e}")),
+                }
+            }
+            self.save_bind = open;
+        }
         if self.settings {
             let mut open = true;
             egui::Window::new("Réglages du D6")
@@ -976,7 +1611,7 @@ impl App {
                     ui.label(
                         RichText::new("Le mode actif est indiqué dans la barre supérieure.")
                             .small()
-                            .color(MUTED),
+                            .color(p.muted),
                     );
                     ui.add_space(12.0);
                     egui::CollapsingHeader::new("Compatibilité avancée").show(ui, |ui| {
@@ -1006,7 +1641,7 @@ impl App {
                                 "Ton D6 a été validé en 126 px, sans inversion des appuis.",
                             )
                             .small()
-                            .color(MUTED),
+                            .color(p.muted),
                         );
                     });
                 });
@@ -1027,7 +1662,10 @@ impl App {
                     {
                         let new = self.config.profiles[self.config.active].name.clone();
                         for p in &mut self.config.profiles {
-                            for k in &mut p.keys {
+                            for k in std::iter::once(&mut p.keys)
+                                .chain(p.pages.iter_mut().map(|page| &mut page.keys))
+                                .flatten()
+                            {
                                 for s in &mut k.steps {
                                     if let Step::Profile { name } = s {
                                         if *name == old {
@@ -1052,19 +1690,59 @@ impl App {
             self.rename = open;
         }
     }
-}
-impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+    fn frame(&mut self, ctx: &egui::Context) {
+        self.record_events(ctx);
         self.events();
         self.assistant_events();
+        let modal = self.page_manager
+            || self.delete_page.is_some()
+            || self.recording.is_some()
+            || self.import_report.is_some()
+            || self.settings
+            || self.rename
+            || self.save_bind
+            || self.assistant_settings
+            || !self.proposals.pending.is_empty()
+            || ctx.memory(|m| m.any_popup_open());
+        if modal {
+            self.drag.cancel();
+        } else {
+            let events = ctx.input(|i| i.events.clone());
+            if let Some((item, target)) =
+                self.drag
+                    .update(&events, &self.drag_sources, &self.drop_targets)
+            {
+                self.assign(item, target);
+            }
+        }
+        self.drag_sources.clear();
+        self.drop_targets.clear();
         self.frames += 1;
         ctx.request_repaint_after(Duration::from_millis(60));
         self.screenshot(ctx);
         self.header(ctx);
-        self.sidebar(ctx);
         self.footer(ctx);
+        self.catalog(ctx);
         self.editor(ctx);
         self.deck(ctx);
+        if self.drag.moving() {
+            if let (Some((item, _)), Some(pos)) = (&self.drag.active, self.drag.position) {
+                let label = match item {
+                    DragItem::Bind(k) | DragItem::Action(k) => k.label.clone(),
+                    DragItem::Position(_, _, i) => format!("Touche {:02}", i + 1),
+                    DragItem::NewFolder => "Nouveau dossier".into(),
+                };
+                egui::Area::new(egui::Id::new("drag_preview"))
+                    .order(egui::Order::Tooltip)
+                    .interactable(false)
+                    .fixed_pos(pos + Vec2::new(14.0, 14.0))
+                    .show(ctx, |ui| {
+                        egui::Frame::popup(ui.style()).show(ui, |ui| {
+                            ui.label(label);
+                        });
+                    });
+            }
+        }
         self.windows(ctx);
         self.assistant_window(ctx);
         if self.gate.dirty
@@ -1075,6 +1753,11 @@ impl eframe::App for App {
             self.save();
         }
     }
+}
+impl eframe::App for App {
+    fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        self.frame(ctx);
+    }
     fn on_exit(&mut self, _: Option<&eframe::glow::Context>) {
         self.stop_http();
         if self.gate.dirty && !self.gate.invalid {
@@ -1084,28 +1767,13 @@ impl eframe::App for App {
         let _ = self.device.send(Command::Disconnect);
     }
 }
-fn step_kind(step: &Step) -> usize {
-    match step {
-        Step::Delay { .. } => 0,
-        Step::Hotkey { .. } => 1,
-        Step::Text { .. } => 2,
-        Step::Launch { .. } => 3,
-        Step::Url { .. } => 4,
-        Step::WaitWindow { .. } => 5,
-        Step::Media { command } => match command.as_str() {
-            "volume_up" => 9,
-            "volume_down" => 10,
-            "mute" => 11,
-            "next" => 12,
-            "previous" => 13,
-            "stop" => 14,
-            _ => 6,
-        },
-        Step::Profile { .. } => 7,
-    }
-}
-
-fn edit_step(ui: &mut egui::Ui, step: &mut Step, profiles: &[String]) -> bool {
+fn edit_step(
+    ui: &mut egui::Ui,
+    step: &mut Step,
+    profiles: &[String],
+    pages: &[crate::model::Page],
+    record: &mut bool,
+) -> bool {
     let mut changed = false;
     match step {
         Step::Delay { ms } => {
@@ -1117,7 +1785,12 @@ fn edit_step(ui: &mut egui::Ui, step: &mut Step, profiles: &[String]) -> bool {
             });
         }
         Step::Hotkey { keys } => {
-            changed |= ui.text_edit_singleline(keys).changed();
+            ui.horizontal(|ui| {
+                changed |= ui.text_edit_singleline(keys).changed();
+                if ui.button("Enregistrer…").clicked() {
+                    *record = true;
+                }
+            });
             ui.label(RichText::new("Ex. CTRL+SHIFT+S · ALT+TAB · F13").small());
         }
         Step::Text { text } => {
@@ -1208,6 +1881,34 @@ fn edit_step(ui: &mut egui::Ui, step: &mut Step, profiles: &[String]) -> bool {
                     }
                 });
         }
+        Step::Folder { .. } | Step::Page { .. } => {
+            let folder = matches!(step, Step::Folder { .. });
+            let id = match step {
+                Step::Folder { id } | Step::Page { id } => id,
+                _ => unreachable!(),
+            };
+            egui::ComboBox::from_id_salt("navigation_target")
+                .selected_text(
+                    pages
+                        .iter()
+                        .find(|p| p.id == *id)
+                        .map(|p| p.name.as_str())
+                        .unwrap_or("Page 1"),
+                )
+                .show_ui(ui, |ui| {
+                    if !folder {
+                        changed |= ui.selectable_value(id, String::new(), "Page 1").changed();
+                    }
+                    for page in pages.iter().filter(|p| p.folder == folder) {
+                        changed |= ui
+                            .selectable_value(id, page.id.clone(), &page.name)
+                            .changed();
+                    }
+                });
+        }
+        Step::Back | Step::PageNext | Step::PagePrevious => {
+            ui.label("Navigation dans ce profil, aussi disponible depuis les touches du D6.");
+        }
         Step::Profile { name } => {
             egui::ComboBox::from_id_salt("profile_action")
                 .selected_text(&*name)
@@ -1220,3 +1921,25 @@ fn edit_step(ui: &mut egui::Ui, step: &mut Step, profiles: &[String]) -> bool {
     }
     changed
 }
+
+fn step_summary(step: &Step) -> String {
+    match step {
+        Step::Hotkey { keys } => keys.clone(),
+        Step::Delay { ms } => format!("Pause {ms} ms"),
+        Step::Media { command } => format!("Média : {command}"),
+        Step::Url { url } => url.clone(),
+        Step::Text { .. } => "Texte".into(),
+        Step::Launch { program, .. } => format!("Lancer {program}"),
+        Step::WaitWindow { title, .. } => format!("Attendre {title}"),
+        Step::Profile { name } => format!("Profil {name}"),
+        Step::Folder { id } => format!("Dossier {id}"),
+        Step::Page { id } => format!("Page {id}"),
+        Step::Back => "Retour".into(),
+        Step::PageNext => "Page suivante".into(),
+        Step::PagePrevious => "Page précédente".into(),
+    }
+}
+
+#[cfg(test)]
+#[path = "ui_tests.rs"]
+mod tests;
