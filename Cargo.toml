@@ -1,0 +1,24 @@
+[package]
+name = "deckforge"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+description = "Independent Windows macro controller for FIFINE D6 3142:0060"
+
+[dependencies]
+anyhow = "1"
+eframe = { version = "=0.31.1", default-features = false, features = ["default_fonts", "glow"] }
+hidapi = { version = "2.6", default-features = false, features = ["windows-native"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+ab_glyph = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+getrandom = "0.4"
+rfd = "0.15"
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
+
+[profile.release]
+opt-level = 2
+strip = true
+

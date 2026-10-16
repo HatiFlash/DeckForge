@@ -1,0 +1,25 @@
+const fs=require('fs'),path=require('path'),os=require('os'),net=require('net'),cp=require('child_process'),assert=require('assert');
+const root=path.resolve(__dirname,'..');const binary=process.env.DECKFORGE_MCP_EXE||path.join(root,'target/release/deckforge-mcp.exe');const dir=fs.mkdtempSync(path.join(os.tmpdir(),'deckforge-http-test-'));const connection=path.join(dir,'connection.json');const checks=[];let calls=0,child;
+const bridge=net.createServer(socket=>{let text='';socket.on('data',b=>{text+=b;if(text.includes('\n')){const v=JSON.parse(text.split('\n')[0]);assert.equal(v.token,'local-test-capability');calls++;socket.end(JSON.stringify({ok:true,result:{connected:true,name:v.name,arguments:v.arguments}})+'\n');}});});
+(async()=>{await new Promise(r=>bridge.listen(0,'127.0.0.1',r));fs.writeFileSync(connection,JSON.stringify({address:`127.0.0.1:${bridge.address().port}`,token:'local-test-capability'}));
+const temporary=net.createServer();await new Promise(r=>temporary.listen(0,'127.0.0.1',r));const port=temporary.address().port;await new Promise(r=>temporary.close(r));
+child=cp.spawn(binary,['--http',`127.0.0.1:${port}`,connection],{windowsHide:true,stdio:['ignore','ignore','pipe']});
+await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('HTTP startup timeout')),5000);child.stderr.on('data',b=>{if(b.toString().includes('MCP HTTP')){clearTimeout(timer);resolve();}});child.on('exit',code=>{clearTimeout(timer);reject(new Error('HTTP exited '+code));});});
+const token=fs.readFileSync(path.join(dir,'mcp-http-token.txt'),'utf8').trim();assert.equal(token.length,64);
+const url=`http://127.0.0.1:${port}/mcp`;const base={'Content-Type':'application/json',Accept:'application/json, text/event-stream',Authorization:'Bearer '+token};
+const post=(v,headers={})=>fetch(url,{method:'POST',headers:{...base,...headers},body:JSON.stringify(v)});
+let r=await post({jsonrpc:'2.0',id:1,method:'initialize',params:{}},{Authorization:'Bearer wrong'});assert.equal(r.status,401);checks.push('HTTP Bearer authentication');
+r=await post({jsonrpc:'2.0',id:1,method:'initialize',params:{}},{Origin:'https://untrusted.example'});assert.equal(r.status,403);checks.push('HTTP Origin validation');
+r=await post({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'test',version:'1'}}});assert.equal(r.status,200);const session=r.headers.get('mcp-session-id');assert(session);assert.equal((await r.json()).result.protocolVersion,'2025-06-18');checks.push('HTTP initialization and session creation');
+const sessionHeaders={'Mcp-Session-Id':session,'MCP-Protocol-Version':'2025-06-18'};
+r=await post({jsonrpc:'2.0',id:2,method:'tools/list'},sessionHeaders);assert.equal((await r.json()).result.tools.length,8);checks.push('HTTP tools discovery');
+r=await post({jsonrpc:'2.0',method:'notifications/initialized'},sessionHeaders);assert.equal(r.status,202);assert.equal(await r.text(),'');checks.push('HTTP notifications use 202 without JSON body');
+const request={jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'deckforge_get_state',arguments:{}}};r=await post(request,sessionHeaders);assert.equal((await r.json()).result.structuredContent.connected,true);await post(request,sessionHeaders);assert.equal(calls,1);checks.push('HTTP -> local bridge and duplicate-write protection');
+r=await fetch(url,{headers:{...base,...sessionHeaders}});assert.equal(r.status,405);checks.push('GET correctly declines unsupported SSE');
+r=await post({jsonrpc:'2.0',id:4,method:'ping'},{...sessionHeaders,'MCP-Protocol-Version':'invalid'});assert.equal(r.status,400);checks.push('unsupported HTTP protocol versions rejected');
+r=await fetch(url,{method:'POST',headers:{...base,...sessionHeaders},body:'invalid json'});assert.equal(r.status,400);checks.push('malformed HTTP JSON rejected');
+r=await fetch(url,{method:'DELETE',headers:{...base,...sessionHeaders}});assert.equal(r.status,204);r=await post({jsonrpc:'2.0',id:5,method:'tools/list'},sessionHeaders);assert.equal(r.status,404);checks.push('HTTP session deletion');
+const invalid=cp.spawnSync(binary,['--http','192.0.2.1:9846',connection],{windowsHide:true,encoding:'utf8'});assert.notEqual(invalid.status,0);checks.push('non-loopback binding refused');
+child.kill();await new Promise(r=>child.on('exit',r));bridge.close();for(const f of ['connection.json','mcp-http-token.txt'])fs.unlinkSync(path.join(dir,f));fs.rmdirSync(dir);console.log(JSON.stringify({passed:true,checks}));
+})().catch(e=>{console.error(e);child?.kill();bridge.close();process.exit(1);});
+

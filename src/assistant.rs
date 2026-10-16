@@ -1,0 +1,259 @@
+use crate::model::{Config, Key, Profile, Step};
+use serde::Deserialize;
+use serde_json::{json, Value};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    time::{Duration, Instant},
+};
+#[derive(Clone)]
+pub enum Change {
+    Config(Config),
+    Run(Key),
+}
+pub struct Proposal {
+    pub id: String,
+    pub title: String,
+    pub details: String,
+    pub change: Change,
+    base: String,
+    created: Instant,
+}
+#[derive(Default)]
+pub struct Proposals {
+    pub pending: VecDeque<Proposal>,
+    history: BTreeMap<String, String>,
+    next: u64,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Create {
+    name: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Binding {
+    profile: String,
+    key: usize,
+    label: String,
+    #[serde(default)]
+    color: Option<[u8; 3]>,
+    #[serde(default)]
+    repeat: Option<u32>,
+    steps: Vec<Step>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Position {
+    pub profile: String,
+    pub key: usize,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Status {
+    id: String,
+}
+pub fn position(c: &Config, a: &Value) -> Result<(usize, usize), String> {
+    let p: Position = serde_json::from_value(a.clone()).map_err(|e| e.to_string())?;
+    locate(c, &p.profile, p.key)
+}
+fn locate(c: &Config, name: &str, key: usize) -> Result<(usize, usize), String> {
+    if !(1..=15).contains(&key) {
+        return Err("La touche doit être comprise entre 1 et 15".into());
+    }
+    let p = c
+        .profiles
+        .iter()
+        .position(|p| p.name == name)
+        .ok_or("Profil introuvable")?;
+    Ok((p, key - 1))
+}
+impl Proposals {
+    pub fn propose(&mut self, tool: &str, args: &Value, c: &Config) -> Result<Value, String> {
+        if self.pending.len() >= 10 {
+            return Err("Dix propositions attendent déjà une validation dans DeckForge".into());
+        }
+        let (title, details, change) = match tool {
+            "deckforge_create_profile" => {
+                let a: Create = serde_json::from_value(args.clone()).map_err(|e| e.to_string())?;
+                if a.name.trim().is_empty() || a.name.len() > 128 {
+                    return Err("Nom de profil invalide".into());
+                }
+                if c.profiles
+                    .iter()
+                    .any(|p| p.name.to_lowercase() == a.name.to_lowercase())
+                {
+                    return Err("Ce profil existe déjà".into());
+                }
+                let mut next = c.clone();
+                next.profiles.push(Profile::new(a.name.clone()));
+                next.active = next.profiles.len() - 1;
+                next.validate().map_err(|e| e.to_string())?;
+                (
+                    format!("Créer le profil « {} »", a.name),
+                    "Un nouveau profil vide de 15 touches sera créé et sélectionné.".into(),
+                    Change::Config(next),
+                )
+            }
+            "deckforge_configure_key" => {
+                let a: Binding = serde_json::from_value(args.clone()).map_err(|e| e.to_string())?;
+                if a.label.len() > 128 {
+                    return Err("Titre trop long".into());
+                }
+                let (p, k) = locate(c, &a.profile, a.key)?;
+                let mut next = c.clone();
+                let old = &c.profiles[p].keys[k];
+                next.profiles[p].keys[k] = Key {
+                    label: a.label.clone(),
+                    color: a.color.unwrap_or(old.color),
+                    image: old.image.clone(),
+                    repeat: a.repeat.unwrap_or(1),
+                    steps: a.steps,
+                };
+                next.validate().map_err(|e| e.to_string())?;
+                let details = describe(&next.profiles[p].keys[k]);
+                (
+                    format!(
+                        "Configurer {} · touche {:02} · {}",
+                        a.profile, a.key, a.label
+                    ),
+                    details,
+                    Change::Config(next),
+                )
+            }
+            "deckforge_request_run" => {
+                let (p, k) = position(c, args)?;
+                let key = c.profiles[p].keys[k].clone();
+                crate::model::validate_key(&key, c).map_err(|e| e.to_string())?;
+                if key.steps.is_empty() {
+                    return Err("Cette touche n’a aucune action".into());
+                }
+                let details = describe(&key);
+                (
+                    format!("Exécuter « {} » dans 3 secondes", key.label),
+                    details,
+                    Change::Run(key),
+                )
+            }
+            _ => return Err("Cet outil ne crée pas de proposition".into()),
+        };
+        self.next += 1;
+        let id = format!("proposal-{}", self.next);
+        self.pending.push_back(Proposal {
+            id: id.clone(),
+            title,
+            details,
+            change,
+            base: serde_json::to_string(c).unwrap(),
+            created: Instant::now(),
+        });
+        Ok(
+            json!({"id":id,"status":"pending","message":"Validation nécessaire dans DeckForge. Aucune modification ni exécution réelle n’a encore eu lieu."}),
+        )
+    }
+    pub fn status(&self, args: &Value) -> Result<Value, String> {
+        let a: Status = serde_json::from_value(args.clone()).map_err(|e| e.to_string())?;
+        let status = if self.pending.iter().any(|p| p.id == a.id) {
+            "pending"
+        } else {
+            self.history
+                .get(&a.id)
+                .map(String::as_str)
+                .ok_or("Proposition inconnue")?
+        };
+        Ok(json!({"id":a.id,"status":status}))
+    }
+    pub fn decide(&mut self, accept: bool, c: &Config) -> Result<Option<Change>, String> {
+        let p = self.pending.pop_front().ok_or("Aucune proposition")?;
+        let result = if !accept {
+            self.history.insert(p.id, "rejected".into());
+            Ok(None)
+        } else if p.created.elapsed() > Duration::from_secs(600)
+            || p.base != serde_json::to_string(c).unwrap()
+        {
+            self.history.insert(p.id, "stale".into());
+            Err("La configuration a changé depuis la proposition. Demande une nouvelle version à l’IA.".into())
+        } else {
+            self.history.insert(p.id, "approved".into());
+            Ok(Some(p.change))
+        };
+        while self.history.len() > 100 {
+            let first = self.history.keys().next().unwrap().clone();
+            self.history.remove(&first);
+        }
+        result
+    }
+    pub fn reject_all(&mut self) {
+        while let Some(p) = self.pending.pop_front() {
+            self.history.insert(p.id, "rejected".into());
+        }
+    }
+}
+fn describe(key: &Key) -> String {
+    let mut text = format!("{}\nRépétitions : {}\n\n", key.label, key.repeat);
+    for (i, step) in key.steps.iter().enumerate() {
+        let detail=match step{
+        Step::Delay{ms}=>format!("Attendre {ms} ms"),Step::Hotkey{keys}=>format!("Raccourci : {keys}"),Step::Text{text}=>format!("Saisir ce texte :\n{text}"),
+        Step::Launch{program,args}=>format!("Ouvrir : {program}\nArguments : {}",args.join(" | ")),Step::Url{url}=>format!("Ouvrir le site : {url}"),
+        Step::WaitWindow{title,timeout_ms,focus}=>format!("Attendre une fenêtre contenant « {title} » ({timeout_ms} ms maximum)\nMettre au premier plan : {}",if *focus{"oui"}else{"non"}),
+        Step::Media{command}=>format!("Média / volume : {command}"),Step::Profile{name}=>format!("Passer au profil : {name}")};
+        text.push_str(&format!("{:02}. {detail}\n\n", i + 1));
+    }
+    text
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn ai_changes_remain_drafts_until_user_approval() {
+        let c = Config::default();
+        let original = serde_json::to_string(&c).unwrap();
+        let mut queue = Proposals::default();
+        let r=queue.propose("deckforge_configure_key",&json!({"profile":"Bureau","key":2,"label":"Play","steps":[{"type":"media","command":"play_pause"}]}),&c).unwrap();
+        assert_eq!(r["status"], "pending");
+        assert_eq!(serde_json::to_string(&c).unwrap(), original);
+        assert!(matches!(
+            queue.decide(true, &c).unwrap(),
+            Some(Change::Config(_))
+        ));
+    }
+    #[test]
+    fn edits_invalidate_pending_ai_proposals() {
+        let mut c = Config::default();
+        let mut q = Proposals::default();
+        q.propose("deckforge_create_profile", &json!({"name":"OBS"}), &c)
+            .unwrap();
+        c.brightness = 20;
+        assert!(q.decide(true, &c).is_err());
+        assert_eq!(
+            q.status(&json!({"id":"proposal-1"})).unwrap()["status"],
+            "stale"
+        );
+    }
+    #[test]
+    fn invalid_macros_and_out_of_range_keys_never_enter_queue() {
+        let c = Config::default();
+        let mut q = Proposals::default();
+        assert!(q
+            .propose(
+                "deckforge_configure_key",
+                &json!({"profile":"Bureau","key":16,"label":"X","steps":[]}),
+                &c
+            )
+            .is_err());
+        assert!(q.propose("deckforge_configure_key",&json!({"profile":"Bureau","key":2,"label":"X","steps":[{"type":"hotkey","keys":"NOT_A_KEY"}]}),&c).is_err());
+        assert!(q.pending.is_empty());
+    }
+    #[test]
+    fn run_request_does_not_execute_and_can_be_rejected() {
+        let c = Config::default();
+        let mut q = Proposals::default();
+        q.propose(
+            "deckforge_request_run",
+            &json!({"profile":"Bureau","key":2}),
+            &c,
+        )
+        .unwrap();
+        assert!(matches!(q.pending[0].change, Change::Run(_)));
+        assert!(q.decide(false, &c).unwrap().is_none());
+    }
+}

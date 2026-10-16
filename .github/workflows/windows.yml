@@ -1,0 +1,29 @@
+name: Windows build and tests
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust tests
+        run: cargo test --locked
+      - name: Build native executables
+        run: cargo build --release --locked
+      - name: MCP stdio transport
+        run: node tests/mcp-transport.cjs
+      - name: MCP HTTP transport
+        run: node tests/mcp-http.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DeckForge-Windows
+          path: |
+            target/release/deckforge.exe
+            target/release/deckforge-mcp.exe
+            LICENSE
+            THIRD-PARTY-NOTICES.txt
+            README.md
+            docs/MCP.md

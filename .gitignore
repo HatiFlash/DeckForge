@@ -1,0 +1,10 @@
+/target/
+/config.json
+/config.json.bak
+/diagnostic.json
+/preview*.png
+/mcp-connection.json
+/mcp-http-token.txt
+/ui-smoke.json
+/hardware-test.json
+*.log
