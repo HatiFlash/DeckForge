@@ -31,6 +31,8 @@ pub enum Event {
     Log(String),
     Audio(audio::Snapshot),
     Block(Vec<usize>),
+    D6Brightness(String, u8),
+    D6Sleep,
     Open,
     TrayReady(bool),
     Toggle,

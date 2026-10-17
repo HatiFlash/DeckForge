@@ -77,6 +77,8 @@ pub enum Step {
     },
     PlaySound { path: String, volume: u8 },
     StopSounds,
+    D6Brightness { mode: String, value: u8 },
+    D6Sleep,
     CloseWindow,
     MouseClick { button: String, double: bool },
     MouseMove { x: i32, y: i32, relative: bool },
@@ -124,6 +126,8 @@ impl Step {
             Self::MouseScroll { .. } => "Défilement souris",
             Self::PlaySound { .. } => "Jouer un son",
             Self::StopSounds => "Arrêter les sons",
+            Self::D6Brightness { .. } => "Luminosité du D6",
+            Self::D6Sleep => "Mettre le D6 en veille",
             Self::CloseWindow => "Fermer la fenêtre active",
             Self::ObsScene { .. } => "OBS : scène",
             Self::ObsRecord { .. } => "OBS : enregistrement",
@@ -647,6 +651,8 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
             Step::MouseScroll { amount } if !(-100..=100).contains(amount) => bail!("Défilement souris hors limites"),
             Step::PlaySound { path, volume } if path.trim().is_empty() || path.len() > 1024 || path.contains('"') || path.chars().any(char::is_control) || !["wav", "mp3"].iter().any(|ext| std::path::Path::new(path).extension().is_some_and(|e| e.eq_ignore_ascii_case(ext))) || *volume > 100 => bail!("Son WAV/MP3 ou volume invalide"),
             Step::StopSounds => {},
+            Step::D6Brightness { mode, value } if !["set", "up", "down"].contains(&mode.as_str()) || *value > 100 => bail!("Mode ou luminosité du D6 invalide"),
+            Step::D6Sleep => {},
             Step::CloseWindow => {},
             Step::ObsScene { name } if name.trim().is_empty() || name.len() > 256 => bail!("Scène OBS invalide"),
             Step::ObsMute { input, mode } if input.trim().is_empty() || !obs_mode(mode, &["toggle", "mute", "unmute"]) => bail!("Entrée OBS ou mode invalide"),
@@ -739,6 +745,9 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
     }
     Ok(())
 }
+pub fn d6_brightness(current: u8, mode: &str, value: u8) -> u8 {
+    match mode { "set" => value, "up" => current.saturating_add(value).min(100), "down" => current.saturating_sub(value), _ => current }
+}
 fn obs_mode(mode: &str, valid: &[&str]) -> bool { valid.contains(&mode) }
 fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> {
     anyhow::ensure!(depth <= 8, "8 niveaux de blocs maximum");
@@ -783,6 +792,20 @@ fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn d6_lighting_steps_validate_and_calculate() {
+        assert_eq!(d6_brightness(95, "up", 20), 100);
+        assert_eq!(d6_brightness(4, "down", 20), 0);
+        assert_eq!(d6_brightness(90, "set", 30), 30);
+        let c=Config::default();
+        for step in [Step::D6Brightness { mode: "bad".into(), value: 10 }, Step::D6Brightness { mode: "set".into(), value: 101 }] {
+            assert!(validate_key(&Key { steps: vec![step], ..Key::default() }, &c).is_err());
+        }
+        for step in [Step::D6Sleep, Step::D6Brightness { mode: "up".into(), value: 10 }] {
+            let value = serde_json::to_value(&step).unwrap();
+            assert_eq!(serde_json::from_value::<Step>(value).unwrap(), step);
+        }
+    }
     #[test]
     fn browser_virtual_keys_are_distinct_and_validated() {
         for (name, vk) in [("BROWSER_BACK", 0xA6), ("BROWSER_FORWARD", 0xA7), ("BROWSER_REFRESH", 0xA8)] {

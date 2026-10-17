@@ -450,6 +450,17 @@ impl App {
             match event {
                 Event::Log(s) => self.log(s),
                 Event::Block(path) => self.running_block = path,
+                Event::D6Brightness(mode, value) => {
+                    self.config.brightness = crate::model::d6_brightness(self.config.brightness, &mode, value);
+                    if self.wanted && self.gate.connected && !self.sleep.sleeping {
+                        let _ = self.device.send(Command::Brightness(self.config.brightness));
+                    }
+                    self.edited();
+                }
+                Event::D6Sleep => {
+                    self.sleep.sleeping = true;
+                    if self.wanted && self.gate.connected { let _ = self.device.send(Command::Brightness(self.config.sleep_brightness)); }
+                }
                 Event::Foreground(exe) => { self.foreground = exe; self.update_auto_profile(); }
                 Event::Open => self.open_requested = true,
                 Event::TrayReady(ready) => {
@@ -2428,6 +2439,14 @@ fn edit_step(
         Step::MouseScroll { amount } => { ui.label("Défilement (crans)"); changed |= ui.add(egui::DragValue::new(amount).range(-100..=100)).changed(); }
         Step::PlaySound { path, volume } => { ui.label("Fichier WAV ou MP3"); changed |= ui.text_edit_singleline(path).changed(); ui.label("Volume"); changed |= ui.add(egui::Slider::new(volume, 0..=100)).changed(); }
         Step::StopSounds => { ui.label("Arrête tous les sons lancés par DeckForge."); }
+        Step::D6Brightness { mode, value } => {
+            ui.label("Luminosité du pavé D6");
+            egui::ComboBox::from_id_salt("d6_brightness_mode").selected_text(match mode.as_str() { "up" => "Augmenter", "down" => "Diminuer", _ => "Régler à" }).show_ui(ui, |ui| {
+                for (id, label) in [("set", "Régler à"), ("up", "Augmenter"), ("down", "Diminuer")] { changed |= ui.selectable_value(mode, id.into(), label).changed(); }
+            });
+            changed |= ui.add(egui::Slider::new(value, 0..=100).text("%" )).changed();
+        }
+        Step::D6Sleep => { ui.label("Met le D6 en veille maintenant. Un appui le réveille sans lancer la macro."); }
         Step::CloseWindow => { ui.label("Ferme la fenêtre active (jamais DeckForge)."); }
         Step::ObsScene { name } => { ui.label("Scène OBS"); changed |= obs_entry(ui, name, &crate::obs_monitor::snapshot().scenes); }
         Step::ObsMute { input, mode } => { ui.label("Entrée audio OBS"); changed |= obs_entry(ui, input, &crate::obs_monitor::snapshot().inputs); obs_choice(ui, mode, &["toggle", "mute", "unmute"], &mut changed); }
@@ -2637,6 +2656,8 @@ fn step_summary(step: &Step) -> String {
         Step::MouseScroll { amount } => format!("Défiler de {amount} crans"),
         Step::PlaySound { path, volume } => format!("Son : {path} ({volume} %)"),
         Step::StopSounds => "Arrêter les sons".into(),
+        Step::D6Brightness { mode, value } => format!("Luminosité D6 : {mode} {value} %"),
+        Step::D6Sleep => "Veille du D6".into(),
         Step::CloseWindow => "Fermer la fenêtre active".into(),
         Step::Media { command } => format!("Média : {command}"),
         Step::Url { url } => url.clone(),

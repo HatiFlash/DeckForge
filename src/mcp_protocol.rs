@@ -27,6 +27,10 @@ pub fn tools() -> Value {
         json!({"type":"object","properties":{"type":{"const":"play_sound"},"path":{"type":"string","minLength":1,"maxLength":1024},"volume":{"type":"integer","minimum":0,"maximum":100}},"required":["type","path","volume"],"additionalProperties":false}),
         json!({"type":"object","properties":{"type":{"const":"stop_sounds"}},"required":["type"],"additionalProperties":false}),
     ]);
+    step_schema["oneOf"].as_array_mut().unwrap().extend([
+        json!({"type":"object","properties":{"type":{"const":"d6_brightness"},"mode":{"enum":["set","up","down"]},"value":{"type":"integer","minimum":0,"maximum":100}},"required":["type","mode","value"],"additionalProperties":false}),
+        json!({"type":"object","properties":{"type":{"const":"d6_sleep"}},"required":["type"],"additionalProperties":false}),
+    ]);
     let nested = json!({"type":"array","items":{"$ref":"#/$defs/step"},"maxItems":256});
     step_schema["oneOf"].as_array_mut().unwrap().extend([
         json!({"type":"object","properties":{"type":{"const":"audio_switch"},"first":{"type":"string"},"second":{"type":"string"},"input":{"type":"boolean"},"first_label":{"type":"string"},"second_label":{"type":"string"},"first_icon":{"type":"string"},"second_icon":{"type":"string"}},"required":["type","first","second","input"],"additionalProperties":false}),

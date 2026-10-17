@@ -205,6 +205,8 @@ fn run_steps(
             Step::Disabled { .. } => {},
             Step::PlaySound { path, volume } => crate::soundboard::play(path, *volume)?,
             Step::StopSounds => crate::soundboard::stop(),
+            Step::D6Brightness { mode, value } => { let _ = tx.send(Event::D6Brightness(mode.clone(), *value)); },
+            Step::D6Sleep => { let _ = tx.send(Event::D6Sleep); },
             Step::CloseWindow => close_foreground_window()?,
             Step::MouseClick { button, double } => mouse_click(button, *double)?,
             Step::MouseMove { x, y, relative } => mouse_move(*x, *y, *relative)?,
