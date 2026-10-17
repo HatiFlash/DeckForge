@@ -70,8 +70,8 @@ const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
 ];
 fn block_help(kind: usize) -> &'static str {
     match kind {
-        0 => "Appuie sur une combinaison de touches.", 1 => "Écrit du texte dans la fenêtre active.",
-        2 => "Démarre un programme Windows.", 3 => "Ouvre une adresse web.",
+        0 => "Appuie sur une combinaison de touches.", 1 => "Écrit du texte dans la fenêtre active ; accepte {nom} et les variables spéciales.",
+        2 => "Démarre un programme Windows (arguments interpolés).", 3 => "Ouvre une adresse web (gabarit interpolé).",
         4 => "Commande la lecture et le volume.", 5 => "Attend avant le bloc suivant.",
         6 => "Attend et peut activer une fenêtre.", 13 => "Bascule entre deux appareils audio.", 37 => "Règle uniquement les sessions audio de l’application ciblée.", 38 => "Règle le volume du périphérique (sortie ou microphone), et non celui d’une application.",
         39 => "Évalue une condition en lecture seule ; exécute ALORS ou SINON.",

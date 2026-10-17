@@ -4,6 +4,10 @@
 
 Dans `deckforge_configure_key`, `state_display` est optionnel : `{"condition":{"kind":"device_muted","input":true},"on":{"label":"Micro coupé","color":[255,0,0]},"off":{"label":"Micro actif"},"poll_ms":1000}`. Chaque face peut préciser `label`, `image` (icône de la galerie) et `color` RGB ; les champs absents conservent l'apparence de la touche. Sondage 250–600000 ms, lecture seule et proposition validée localement avant application. Les anciennes touches sans ce champ restent inchangées.
 
+### Interpolation à l'exécution (B4)
+
+Les blocs `text` (texte saisi), `url`, `http_request` (`url` et `body`), `udp_send` (`text`) et `launch` (`args`) acceptent `{nom}` ; les gabarits restent inchangés dans la configuration et les propositions MCP. Variables spéciales en lecture : `{date}` (AAAA-MM-JJ locale), `{heure}` (HH:MM:SS locale), `{horodatage}` (secondes Unix), `{presse_papiers}` (texte Unicode du presse-papiers Windows). `{{` donne une accolade littérale. Les noms spéciaux sont réservés ; une variable ordinaire homonyme ne les remplace pas. L'adresse résolue est revalidée avant ouverture/requête. La simulation n'envoie ni texte, ni requête, ni lancement et ne lit pas le presse-papiers.
+
 ### Notification Windows (`notify`)
 
 `{"type":"notify","title":"DeckForge","message":"Bonjour {nom}"}` : titre facultatif, message obligatoire ; `{nom}` utilise la variable de macro, `{{` donne une accolade littérale. Si l’icône de notification manque, message dans le journal et bandeau DeckForge. La simulation n’envoie rien.

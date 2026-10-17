@@ -3871,8 +3871,8 @@ fn edit_step(
         Step::PlaySound { path, volume } => { ui.label("Fichier WAV ou MP3"); changed |= ui.text_edit_singleline(path).changed(); ui.label("Volume"); changed |= ui.add(egui::Slider::new(volume, 0..=100)).changed(); }
         Step::StopSounds => { ui.label("Arrête tous les sons lancés par DeckForge."); }
         Step::Toggle { .. } => { ui.label("Alterne les états 1 et 2 à chaque appui. Modifie leurs blocs dans l’Atelier."); }
-        Step::UdpSend { host, port, text } => { ui.label("Hôte UDP"); changed |= ui.text_edit_singleline(host).changed(); ui.label("Port"); changed |= ui.add(egui::DragValue::new(port).range(1..=65535)).changed(); ui.label("Message"); changed |= ui.text_edit_multiline(text).changed(); }
-        Step::HttpRequest { method, url, body, content_type } => { ui.label("Méthode"); egui::ComboBox::from_id_salt("http_method").selected_text(method.as_str()).show_ui(ui, |ui| { for choice in ["GET", "POST", "PUT"] { changed |= ui.selectable_value(method, choice.into(), choice).changed(); } }); ui.label("Adresse HTTP (sans HTTPS)"); changed |= ui.text_edit_singleline(url).changed(); ui.label("Corps"); changed |= ui.text_edit_multiline(body).changed(); ui.label("Type de contenu"); changed |= ui.text_edit_singleline(content_type).changed(); }
+        Step::UdpSend { host, port, text } => { ui.label("Message : accepte {nom}, {date}, {heure}, {horodatage}, {presse_papiers}."); ui.label("Hôte UDP"); changed |= ui.text_edit_singleline(host).changed(); ui.label("Port"); changed |= ui.add(egui::DragValue::new(port).range(1..=65535)).changed(); ui.label("Message"); changed |= ui.text_edit_multiline(text).changed(); }
+        Step::HttpRequest { method, url, body, content_type } => { ui.label("Adresse et corps : {nom}, {date}, {heure}, {horodatage}, {presse_papiers}."); ui.label("Méthode"); egui::ComboBox::from_id_salt("http_method").selected_text(method.as_str()).show_ui(ui, |ui| { for choice in ["GET", "POST", "PUT"] { changed |= ui.selectable_value(method, choice.into(), choice).changed(); } }); ui.label("Adresse HTTP (sans HTTPS)"); changed |= ui.text_edit_singleline(url).changed(); ui.label("Corps"); changed |= ui.text_edit_multiline(body).changed(); ui.label("Type de contenu"); changed |= ui.text_edit_singleline(content_type).changed(); }
         Step::D6Brightness { mode, value } => {
             ui.label("Luminosité du pavé D6");
             egui::ComboBox::from_id_salt("d6_brightness_mode").selected_text(match mode.as_str() { "up" => "Augmenter", "down" => "Diminuer", _ => "Régler à" }).show_ui(ui, |ui| {
@@ -3960,6 +3960,7 @@ fn edit_step(
             ui.label(RichText::new("Ex. CTRL+SHIFT+S · ALT+TAB · F13").small());
         }
         Step::Text { text } => {
+            ui.label("Gabarit : {nom}, {date}, {heure}, {horodatage}, {presse_papiers} ; {{ pour une accolade.");
             changed |= ui
                 .add(
                     egui::TextEdit::multiline(text)
@@ -3969,6 +3970,7 @@ fn edit_step(
                 .changed();
         }
         Step::Launch { program, args, focus_if_running } => {
+            ui.label("Arguments : {nom}, {date}, {heure}, {horodatage}, {presse_papiers}.");
             ui.horizontal(|ui| {
                 changed |= ui.text_edit_singleline(program).changed();
                 if ui.small_button("…").clicked() {
@@ -3995,6 +3997,7 @@ fn edit_step(
             }
         }
         Step::Url { url } => {
+            ui.label("Adresse : accepte {nom}, {date}, {heure}, {horodatage}, {presse_papiers}.");
             changed |= ui.text_edit_singleline(url).changed();
         }
         Step::WaitWindow {

@@ -919,8 +919,8 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
                 bail!("Application ou arguments invalides")
             }
             Step::Url { url }
-                if !(url.starts_with("https://") || url.starts_with("http://"))
-                    || url.chars().any(char::is_control) =>
+                if !(url.starts_with("https://") || url.starts_with("http://") || (url.starts_with('{') && url.contains('}')))
+                    || url.len() > 2048 || url.chars().any(char::is_control) =>
             {
                 bail!("Adresse HTTP/HTTPS requise")
             }
@@ -1021,10 +1021,15 @@ pub fn valid_udp_host(host: &str) -> bool {
 }
 pub fn validate_http(method: &str, url: &str, body: &str, content_type: &str) -> Result<()> {
     if url.starts_with("https://") { bail!("HTTPS non pris en charge sans bibliothèque TLS"); }
-    let rest = url.strip_prefix("http://").ok_or_else(|| anyhow::anyhow!("Adresse HTTP requise"))?;
+    let rest = if url.starts_with('{') && url.contains('}') {
+        "{gabarit}"
+    } else {
+        url.strip_prefix("http://").ok_or_else(|| anyhow::anyhow!("Adresse HTTP requise"))?
+    };
+    let template_host = rest.starts_with('{') && rest.contains('}');
     let authority = rest.split('/').next().unwrap_or("");
     let (host, port) = authority.rsplit_once(':').unwrap_or((authority, "80"));
-    anyhow::ensure!(valid_udp_host(host) && port.parse::<u16>().is_ok_and(|n| n != 0)
+    anyhow::ensure!((valid_udp_host(host) || template_host) && (template_host || port.parse::<u16>().is_ok_and(|n| n != 0))
         && url.len() <= 2048 && !url.chars().any(char::is_control)
         && ["GET", "POST", "PUT"].contains(&method) && body.len() <= 65536
         && content_type.len() <= 128 && !content_type.chars().any(|c| c.is_control() || c == '\r' || c == '\n'), "Requête HTTP invalide");
@@ -1458,5 +1463,27 @@ mod native_mouse_tests {
         key.plugin = Some(PluginBinding {plugin:"example.plugin".into(), action:"example.action".into(),settings:serde_json::json!({"mode":1}),state:2});
         let loaded: Key = serde_json::from_value(serde_json::to_value(&key).unwrap()).unwrap();
         assert_eq!(loaded.plugin.unwrap().settings["mode"],1);
+    }
+}
+
+#[cfg(test)]
+mod interpolation_template_tests {
+    use super::*;
+    #[test]
+    fn templates_survive_serialization_and_validate_without_execution() {
+        let steps: Vec<Step> = serde_json::from_value(serde_json::json!([
+            {"type":"text","text":"Bonjour {nom} {date}"},
+            {"type":"url","url":"{adresse}"},
+            {"type":"http_request","method":"POST","url":"{adresse}","body":"{presse_papiers}","content_type":"text/plain"},
+            {"type":"udp_send","host":"localhost","port":9999,"text":"{heure}"},
+            {"type":"launch","program":"notepad.exe","args":["{horodatage}"]}
+        ])).unwrap();
+        validate_key(&Key { steps: steps.clone(), ..Key::default() }, &Config::default()).unwrap();
+        let encoded = serde_json::to_string(&steps).unwrap();
+        assert!(encoded.contains("{presse_papiers}"));
+        assert_eq!(steps, serde_json::from_str::<Vec<Step>>(&encoded).unwrap());
+        assert!(serde_json::from_str::<Step>(r#"{"type":"text","text":"ok","extra":true}"#).is_err());
+        assert!(validate_http("POST", "https://example.org", "", "text/plain").is_err());
+        assert!(validate_http("POST", "http://", "", "text/plain").is_err());
     }
 }

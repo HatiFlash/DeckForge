@@ -24,6 +24,11 @@ Exécutables prêts sur le PC fixe : `Bureau\DeckForge-0.5-fusion\DeckForge.exe`
 - À tester avec Hatim : activation d’une application ouverte, refus Windows du premier plan, application élevée/inaccessible. Aucun test automatisé n’ouvre de fenêtre réelle.
 - Non livré dans ce sous-lot : maintien des touches, coordonnées et défilement avancés de la souris, opérations sur les fenêtres.
 
+## Lot B4 — interpolation des gabarits
+
+- Livré et testé automatiquement : `{nom}` et les variables spéciales `{date}`, `{heure}`, `{horodatage}`, `{presse_papiers}` dans la saisie `text`, l'adresse `url`, `http_request` (adresse et corps), `udp_send` (texte), `launch` (arguments). Configuration conservée sous forme de gabarit ; lecture presse-papiers Win32 Unicode avec réessais, sans écriture ; simulation sans effets. Les types JSON existants ne changent pas.
+- À tester avec Hatim : date/heure locale sur PC, presse-papiers texte occupé ou non textuel, URL réseau et arguments sur une macro réelle. Aucun test automatisé ne manipule les fenêtres, clavier ou presse-papiers du PC.
+
 ## Nouveautés 0.5
 
 | Domaine | Contenu | Vérifié |

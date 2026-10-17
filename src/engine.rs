@@ -168,6 +168,66 @@ fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>, obs: &crat
     let _ = tx.send(Event::Block(vec![]));
     Ok(())
 }
+// Les gabarits restent intacts dans la configuration. L'horloge et le presse-papiers
+// ne sont consultés qu'à l'exécution ; cette fonction est pure pour les tests.
+fn interpolate_special(text: &str, vars: &std::collections::BTreeMap<String, String>, date: &str, heure: &str, timestamp: u64, clipboard: &str) -> String {
+    let mut values = vars.clone();
+    values.insert("date".into(), date.into());
+    values.insert("heure".into(), heure.into());
+    values.insert("horodatage".into(), timestamp.to_string());
+    values.insert("presse_papiers".into(), clipboard.into());
+    interpolate(text, &values)
+}
+
+fn clipboard_text(cancel: &AtomicBool) -> Result<String> {
+    use windows_sys::Win32::System::{DataExchange::{CloseClipboard, GetClipboardData, OpenClipboard}, Memory::{GlobalLock, GlobalSize, GlobalUnlock}};
+    for attempt in 0..5 {
+        check(cancel)?;
+        if unsafe { OpenClipboard(std::ptr::null_mut()) } != 0 {
+            let result = (|| {
+                let handle = unsafe { GetClipboardData(13) /* CF_UNICODETEXT */ };
+                if handle.is_null() { return Err(anyhow::anyhow!("Presse-papiers : texte Unicode indisponible")); }
+                let bytes = unsafe { GlobalSize(handle) };
+                if bytes == 0 || bytes > 200_000 { bail!("Presse-papiers : texte vide ou trop long"); }
+                let pointer = unsafe { GlobalLock(handle) };
+                if pointer.is_null() { bail!("Presse-papiers : lecture impossible"); }
+                let words = unsafe { std::slice::from_raw_parts(pointer.cast::<u16>(), bytes / 2) };
+                let end = words.iter().position(|&w| w == 0).unwrap_or(words.len());
+                let text = String::from_utf16(&words[..end]).context("Presse-papiers : texte Unicode invalide");
+                unsafe { GlobalUnlock(handle); }
+                text
+            })();
+            unsafe { CloseClipboard(); }
+            return result;
+        }
+        if attempt < 4 { wait(20, cancel)?; }
+    }
+    bail!("Presse-papiers occupé : lecture impossible après plusieurs essais")
+}
+
+fn interpolate_runtime(text: &str, vars: &std::collections::BTreeMap<String, String>, cancel: &AtomicBool) -> Result<String> {
+    check(cancel)?;
+    let mut now = std::mem::MaybeUninit::uninit();
+    unsafe { windows_sys::Win32::System::SystemInformation::GetLocalTime(now.as_mut_ptr()); }
+    let now = unsafe { now.assume_init() };
+    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+        .context("Horloge système indisponible")?.as_secs();
+    let clipboard = if text.contains("{presse_papiers}") { clipboard_text(cancel)? } else { String::new() };
+    Ok(interpolate_special(text, vars, &format!("{:04}-{:02}-{:02}", now.wYear, now.wMonth, now.wDay),
+        &format!("{:02}:{:02}:{:02}", now.wHour, now.wMinute, now.wSecond), timestamp, &clipboard))
+}
+
+#[cfg(test)]
+mod interpolation_tests {
+    use super::*;
+    #[test]
+    fn specials_are_pure_and_escape_and_preserve_unknown_placeholders() {
+        let vars = std::collections::BTreeMap::from([("nom".into(), "Zoé".into()), ("date".into(), "faux".into())]);
+        assert_eq!(interpolate_special("{nom} {date} {heure} {horodatage} {presse_papiers} {{date} {inconnue}",
+            &vars, "2026-10-17", "09:08:07", 1792228087, "été"), "Zoé 2026-10-17 09:08:07 1792228087 été {date} {inconnue}");
+    }
+}
+
 pub(crate) fn interpolate(text: &str, vars: &std::collections::BTreeMap<String, String>) -> String {
     let mut out = String::new();
     let mut chars = text.chars().peekable();
@@ -370,8 +430,8 @@ fn run_steps(
             },
             Step::PlaySound { path, volume } => crate::soundboard::play(path, *volume)?,
             Step::StopSounds => crate::soundboard::stop(),
-            Step::UdpSend { host, port, text } => crate::network_actions::udp_send(host, *port, text)?,
-            Step::HttpRequest { method, url, body, content_type } => { let reply = crate::network_actions::http_request(method, url, body, content_type)?; let _ = tx.send(Event::Log(reply)); },
+            Step::UdpSend { host, port, text } => crate::network_actions::udp_send(host, *port, &interpolate_runtime(text, variables, cancel)?)?,
+            Step::HttpRequest { method, url, body, content_type } => { let url = interpolate_runtime(url, variables, cancel)?; let body = interpolate_runtime(body, variables, cancel)?; crate::model::validate_http(method, &url, &body, content_type)?; let reply = crate::network_actions::http_request(method, &url, &body, content_type)?; let _ = tx.send(Event::Log(reply)); },
             Step::D6Brightness { mode, value } => { let _ = tx.send(Event::D6Brightness(mode.clone(), *value)); },
             Step::D6Sleep => { let _ = tx.send(Event::D6Sleep); },
             Step::CloseWindow => close_foreground_window()?,
@@ -519,7 +579,7 @@ fn run_steps(
             Step::Delay { ms } => wait(*ms, cancel)?,
             Step::Hotkey { keys } => hotkey(&parse_hotkey(keys)?)?,
             Step::Text { text } => {
-                for unit in text.encode_utf16() {
+                for unit in interpolate_runtime(text, variables, cancel)?.encode_utf16() {
                     check(cancel)?;
                     input(0, unit, KEYEVENTF_UNICODE)?;
                     input(0, unit, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP)?;
@@ -533,14 +593,17 @@ fn run_steps(
                         continue;
                     }
                 }
-                let mut child = std::process::Command::new(program).args(args).spawn()?;
+                let args = args.iter().map(|arg| interpolate_runtime(arg, variables, cancel)).collect::<Result<Vec<_>>>()?;
+                let mut child = std::process::Command::new(program).args(&args).spawn()?;
                 std::thread::spawn(move || {
                     let _ = child.wait();
                 });
             }
             Step::Url { url } => {
+                let url = interpolate_runtime(url, variables, cancel)?;
+                anyhow::ensure!((url.starts_with("http://") || url.starts_with("https://")) && !url.chars().any(char::is_control), "Adresse HTTP/HTTPS interpolée invalide");
                 let mut child = std::process::Command::new("explorer.exe")
-                    .arg(url)
+                    .arg(&url)
                     .spawn()?;
                 std::thread::spawn(move || {
                     let _ = child.wait();
