@@ -21,7 +21,7 @@ pub const NAMES: &[&str] = &[
     "Si une variable correspond",
     "Script AutoHotkey",
     "OBS : scène", "OBS : enregistrement", "OBS : diffusion", "OBS : caméra",
-    "OBS : replay", "OBS : micro", "OBS : source",
+    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active",
 ];
 pub fn step(kind: usize) -> Step {
     match kind {
@@ -53,6 +53,7 @@ pub fn step(kind: usize) -> Step {
             then_steps: vec![Step::Delay { ms: 250 }],
             else_steps: vec![],
         },
+        26 => Step::CloseWindow,
         19 => Step::ObsScene { name: "Scène".into() },
         20 => Step::ObsRecord { mode: "toggle".into() },
         21 => Step::ObsStream { mode: "toggle".into() },
@@ -321,4 +322,13 @@ pub fn run_script(
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod native_close_tests {
+    #[test]
+    fn export_close_window_fails_atomically() {
+        let key = crate::model::Key { steps: vec![crate::model::Step::CloseWindow], ..Default::default() };
+        assert!(super::export(&key).is_err());
+    }
 }

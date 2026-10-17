@@ -24,6 +24,7 @@ pub fn presets() -> Vec<Preset> {
             },
         });
     };
+    add("Système", "Fermer la fenêtre", "Demande à Windows de fermer la fenêtre active, sauf DeckForge.", [73, 160, 217], vec![Step::CloseWindow]);
     for (label, command) in [
         ("Lecture / pause", "play_pause"),
         ("Piste suivante", "next"),
@@ -428,7 +429,7 @@ mod tests {    #[test]
     #[test]
     fn every_preset_and_action_is_executable_with_valid_configuration() {
         let c = Config::default();
-        assert_eq!(presets().len(), 49);
+        assert_eq!(presets().len(), 50);
         for p in presets() {
             validate_key(&p.key, &c).unwrap();
             assert!(!p.key.steps.is_empty());

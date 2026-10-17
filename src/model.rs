@@ -75,6 +75,7 @@ pub enum Step {
         script: String,
         args: Vec<String>,
     },
+    CloseWindow,
     ObsScene { name: String },
     ObsRecord { mode: String },
     ObsStream { mode: String },
@@ -113,6 +114,7 @@ impl Step {
             Self::SetVariable { .. } => "Définir une variable",
             Self::IfVariable { .. } => "Si une variable correspond",
             Self::AutoHotkey { .. } => "Script AutoHotkey",
+            Self::CloseWindow => "Fermer la fenêtre active",
             Self::ObsScene { .. } => "OBS : scène",
             Self::ObsRecord { .. } => "OBS : enregistrement",
             Self::ObsStream { .. } => "OBS : diffusion",
@@ -630,6 +632,7 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
     for s in &key.steps {
         if s.is_disabled() { continue; }
         match s {
+            Step::CloseWindow => {},
             Step::ObsScene { name } if name.trim().is_empty() || name.len() > 256 => bail!("Scène OBS invalide"),
             Step::ObsMute { input, mode } if input.trim().is_empty() || !obs_mode(mode, &["toggle", "mute", "unmute"]) => bail!("Entrée OBS ou mode invalide"),
             Step::ObsSourceVisibility { scene, source, mode } if scene.trim().is_empty() || source.trim().is_empty() || !obs_mode(mode, &["toggle", "show", "hide"]) => bail!("Source OBS ou mode invalide"),
@@ -924,5 +927,16 @@ mod tests {
             name: "absent".into(),
         });
         assert!(c.validate().is_err());
+    }
+}
+
+#[cfg(test)]
+mod native_close_tests {
+    use super::*;
+    #[test]
+    fn close_window_is_valid_and_serialized() {
+        let step = Step::CloseWindow;
+        assert_eq!(serde_json::to_string(&step).unwrap(), r#"{"type":"close_window"}"#);
+        validate_key(&Key { steps: vec![step], ..Key::default() }, &Config::default()).unwrap();
     }
 }

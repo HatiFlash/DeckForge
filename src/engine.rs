@@ -203,6 +203,7 @@ fn run_steps(
         }
         match step {
             Step::Disabled { .. } => {},
+            Step::CloseWindow => close_foreground_window()?,
             Step::ObsScene { .. } | Step::ObsRecord { .. } | Step::ObsStream { .. }
             | Step::ObsVirtualCam { .. } | Step::ObsReplay { .. } | Step::ObsMute { .. }
             | Step::ObsSourceVisibility { .. } => crate::obs::execute(step, obs)?,
@@ -347,6 +348,16 @@ fn run_steps(
 
         wait(10, cancel)?;
     }
+    Ok(())
+}
+fn close_foreground_window() -> Result<()> {
+    let window = unsafe { GetForegroundWindow() };
+    anyhow::ensure!(!window.is_null(), "Aucune fenêtre active à fermer");
+    let mut process_id = 0u32;
+    unsafe { GetWindowThreadProcessId(window, &mut process_id) };
+    anyhow::ensure!(process_id != std::process::id(), "DeckForge ne peut pas se fermer lui-même");
+    let posted = unsafe { PostMessageW(window, WM_CLOSE, 0, 0) };
+    anyhow::ensure!(posted != 0, "Windows a refusé de fermer la fenêtre");
     Ok(())
 }
 fn input(vk: u16, scan: u16, flags: u32) -> Result<()> {

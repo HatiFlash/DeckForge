@@ -2405,6 +2405,7 @@ fn edit_step(
     let mut changed = false;
     match step {
         Step::Disabled { .. } => unreachable!("atelier passe une étape active"),
+        Step::CloseWindow => { ui.label("Ferme la fenêtre active (jamais DeckForge)."); }
         Step::ObsScene { name } => { ui.label("Scène OBS"); changed |= obs_entry(ui, name, &crate::obs_monitor::snapshot().scenes); }
         Step::ObsMute { input, mode } => { ui.label("Entrée audio OBS"); changed |= obs_entry(ui, input, &crate::obs_monitor::snapshot().inputs); obs_choice(ui, mode, &["toggle", "mute", "unmute"], &mut changed); }
         Step::ObsSourceVisibility { scene, source, mode } => { ui.label("Scène puis source OBS"); changed |= obs_entry(ui, scene, &crate::obs_monitor::snapshot().scenes); changed |= obs_entry(ui, source, crate::obs_monitor::snapshot().scene_items.get(scene).map(Vec::as_slice).unwrap_or(&[])); obs_choice(ui, mode, &["toggle", "show", "hide"], &mut changed); }
@@ -2608,6 +2609,7 @@ fn step_summary(step: &Step) -> String {
     match step {
         Step::Hotkey { keys } => keys.clone(),
         Step::Delay { ms } => format!("Attendre {ms} ms"),
+        Step::CloseWindow => "Fermer la fenêtre active".into(),
         Step::Media { command } => format!("Média : {command}"),
         Step::Url { url } => url.clone(),
         Step::Text { .. } => "Texte".into(),
