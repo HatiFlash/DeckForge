@@ -1222,6 +1222,7 @@ impl App {
         if ctx.wants_keyboard_input() { return; }
         let pressed = |key| ctx.input(|i| i.modifiers.ctrl && !i.modifiers.alt && !i.modifiers.shift && i.key_pressed(key));
         if pressed(egui::Key::Z) { self.undo_edit(); } else if pressed(egui::Key::Y) { self.redo_edit(); }
+        else if self.show_workflow { return; }
         else if pressed(egui::Key::C) { self.copy_key(); } else if pressed(egui::Key::V) { self.paste_key(self.selected); }
         else if ctx.input(|i| !i.modifiers.ctrl && i.key_pressed(egui::Key::Delete)) { self.assign(DragItem::Bind(Key::default()), self.selected); }
     }

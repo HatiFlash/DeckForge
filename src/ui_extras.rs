@@ -116,6 +116,43 @@ fn template_menu(ui: &mut egui::Ui, choice: &mut Option<usize>) {
         }
     });
 }
+#[derive(Clone)]
+struct TraceLine { path: Vec<usize>, text: String }
+// Reflects engine::run_steps dry mode: both conditional branches and one loop
+// iteration are previewed; it does not evaluate the window or invoke actions.
+fn simulation_trace(steps: &[Step]) -> Vec<TraceLine> {
+    fn walk(steps: &[Step], parent: &[usize], out: &mut Vec<TraceLine>, limit: usize) {
+        for (i, step) in steps.iter().enumerate() {
+            if out.len() >= limit { return; }
+            let mut path = parent.to_vec(); path.push(i);
+            let prefix = path.iter().step_by(2).map(|n| (n + 1).to_string()).collect::<Vec<_>>().join(".");
+            if step.is_disabled() {
+                out.push(TraceLine { path, text: format!("{prefix} · {} — désactivé, sauté", block_summary(step)) });
+                continue;
+            }
+            let detail = match step {
+                Step::Delay { ms } => format!("{ms} ms simulées"),
+                Step::WaitWindow { timeout_ms, .. } => format!("jusqu'à {timeout_ms} ms (sans attendre)"),
+                Step::IfWindow { .. } => "ALORS et SINON explorés (fenêtre non évaluée)".into(),
+                Step::IfVariable { .. } => "ALORS et SINON explorés (valeur non évaluée)".into(),
+                Step::Repeat { count, .. } => format!("1 itération simulée sur {count} prévues"),
+                _ => "0 ms (action non exécutée)".into(),
+            };
+            out.push(TraceLine { path: path.clone(), text: format!("{prefix} · {} — {detail}", block_summary(step)) });
+            match step {
+                Step::IfWindow { then_steps, else_steps, .. } | Step::IfVariable { then_steps, else_steps, .. } => {
+                    let mut p = path.clone(); p.push(0); walk(then_steps, &p, out, limit);
+                    p.pop(); p.push(1); walk(else_steps, &p, out, limit);
+                }
+                Step::Repeat { steps, .. } => { let mut p = path; p.push(0); walk(steps, &p, out, limit); }
+                _ => {}
+            }
+        }
+    }
+    let mut result = vec![];
+    walk(steps, &[], &mut result, 1000);
+    result
+}
 fn new_block(kind: usize, profiles: &[String]) -> Step {
     catalog::action(kind, profiles.first().map(String::as_str).unwrap_or("Bureau")).steps.remove(0)
 }
@@ -413,6 +450,31 @@ impl App {
         let pending_id = egui::Id::new("workshop_template_pending");
         let mut template_choice = ctx.data(|d| d.get_temp::<usize>(pending_id));
         let mut template_action = None;
+        let selected_id = egui::Id::new("workshop_trace_selected");
+        let trace_id = egui::Id::new("workshop_trace");
+        // Text inputs must retain Delete, Alt+arrows and Ctrl+D.
+        if !ctx.wants_keyboard_input() {
+            let index = ctx.data(|d| d.get_temp::<usize>(egui::Id::new("workshop_selected")));
+            if let Some(i) = index {
+                let steps = &mut self.config.keys_mut()[self.selected].steps;
+                if i < steps.len() {
+                    let operation = ctx.input(|input| {
+                        if input.modifiers.ctrl && input.key_pressed(egui::Key::D) { Some(0) }
+                        else if !input.modifiers.ctrl && input.key_pressed(egui::Key::Delete) { Some(1) }
+                        else if input.modifiers.alt && input.key_pressed(egui::Key::ArrowUp) { Some(2) }
+                        else if input.modifiers.alt && input.key_pressed(egui::Key::ArrowDown) { Some(3) }
+                        else { None }
+                    });
+                    match operation {
+                        Some(0) if steps.len() < 256 => { steps.insert(i + 1, steps[i].clone()); changed = true; },
+                        Some(1) => { steps.remove(i); changed = true; },
+                        Some(2) if i > 0 => { steps.swap(i, i - 1); changed = true; },
+                        Some(3) if i + 1 < steps.len() => { steps.swap(i, i + 1); changed = true; },
+                        _ => {}
+                    }
+                }
+            }
+        }
         let title = format!(
             "Atelier · touche {:02} · {}",
             self.selected + 1,
@@ -444,13 +506,21 @@ impl App {
                     });
                 }
             }
-            ui.horizontal(|ui|{if ui.button("Créer avec mon IA").clicked(){self.assistant_settings=true;}if ui.add(egui::Button::new("Simuler les blocs").fill(BLUE)).clicked(){self.preview(true);}if ui.button("Tester dans 3 s").on_hover_text("Exécute réellement la macro sur le PC dans 3 secondes").clicked(){self.preview(false);}if self.preferences.workshop_advanced && ui.button("Exporter en AutoHotkey v2…").clicked(){export=true;}});
+            ui.horizontal(|ui|{if ui.button("Créer avec mon IA").clicked(){self.assistant_settings=true;}if ui.add(egui::Button::new("Simuler les blocs").fill(BLUE)).clicked(){
+                if validate_key(&self.config.keys()[self.selected], &self.config).is_ok() {
+                    let trace = simulation_trace(&self.config.keys()[self.selected].steps);
+                    ctx.data_mut(|d| d.insert_temp(trace_id, trace.iter().map(|line| (line.path.clone(), line.text.clone())).collect::<Vec<_>>()));
+                } else { ctx.data_mut(|d| d.remove::<Vec<(Vec<usize>, String)>>(trace_id)); }
+                self.preview(true);
+            }if ui.button("Tester dans 3 s").on_hover_text("Exécute réellement la macro sur le PC dans 3 secondes").clicked(){self.preview(false);}if self.preferences.workshop_advanced && ui.button("Exporter en AutoHotkey v2…").clicked(){export=true;}});
             if !self.engine.running.load(Ordering::SeqCst){self.running_block.clear();}
             let validation_config = self.config.clone();
             let profiles=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();let pages=self.config.profiles[self.config.active].pages.clone();let selected=self.selected;let target=(self.config.active,self.config.page.clone(),selected);let dialog_tx=self.dialog_tx.clone();
             let search_id = egui::Id::new("workshop_search");
             let mut search = ui.data(|d| d.get_temp::<String>(search_id)).unwrap_or_default();
             let mut add = None;
+            let selected_trace = ctx.data(|d| d.get_temp::<Vec<usize>>(selected_id)).unwrap_or_default();
+            let highlight = if selected_trace.is_empty() { &self.running_block } else { &selected_trace };
             ui.horizontal_top(|ui| {
                 ui.vertical(|ui| {
                     ui.set_width(205.0);
@@ -461,7 +531,7 @@ impl App {
                 });
                 ui.separator();
                 egui::ScrollArea::vertical().id_salt("workflow_scroll").show(ui,|ui|{ ui.vertical(|ui| {
-                    changed=block_editor(ui,&mut self.config.keys_mut()[selected].steps,&profiles,&pages,&self.audio,&[],&mut record,0,&self.running_block,&mut pick_audio,&dialog_tx,&target,&validation_config,self.preferences.workshop_advanced);
+                    changed=block_editor(ui,&mut self.config.keys_mut()[selected].steps,&profiles,&pages,&self.audio,&[],&mut record,0,highlight,&mut pick_audio,&dialog_tx,&target,&validation_config,self.preferences.workshop_advanced);
                 }); });
             });
             ui.data_mut(|d| d.insert_temp(search_id, search));
@@ -472,6 +542,18 @@ impl App {
                     steps.insert(position.map_or(steps.len(), |i| (i + 1).min(steps.len())), new_block(kind, &profiles));
                     changed = true;
                 }
+            }
+            if let Some(trace) = ctx.data(|d| d.get_temp::<Vec<(Vec<usize>, String)>>(trace_id)) {
+                ui.separator();
+                ui.label(RichText::new("Déroulé de la simulation").strong());
+                ui.label("Aucune action réelle. Les deux branches sont explorées et les répétitions parcourues une seule fois.");
+                egui::ScrollArea::vertical().max_height(165.0).show(ui, |ui| {
+                    for (path, label) in trace {
+                        if ui.selectable_label(selected_trace == path, label).clicked() {
+                            ctx.data_mut(|d| d.insert_temp(selected_id, path));
+                        }
+                    }
+                });
             }
             if let Err(e)=validate_key(&self.config.keys()[selected],&self.config){ui.colored_label(Color32::LIGHT_RED,format!("Brouillon : {e}"));}
         });
@@ -487,6 +569,7 @@ impl App {
             self.open_icon_gallery(Some(target));
         }
         if changed {
+            ctx.data_mut(|d| d.remove::<Vec<(Vec<usize>, String)>>(trace_id));
             self.edited();
         }
         if let Some(path) = record {
@@ -618,6 +701,20 @@ impl App {
 #[cfg(test)]
 mod workshop_tests {
     use super::*;
+    #[test]
+    fn trace_respects_disabled_branches_and_one_iteration_without_actions() {
+        let steps = vec![Step::SetVariable { name: "mode".into(), value: "travail".into() },
+            Step::IfVariable { name: "mode".into(), value: "travail".into(),
+                then_steps: vec![Step::Repeat { count: 4, steps: vec![Step::Delay { ms: 250 }] }],
+                else_steps: vec![Step::Disabled { step: Box::new(Step::Text { text: "secret".into() }) }] }];
+        let trace = simulation_trace(&steps);
+        assert_eq!(trace.len(), 5);
+        assert!(trace[1].text.contains("ALORS et SINON"));
+        assert!(trace[2].text.contains("1 itération simulée sur 4"));
+        assert!(trace[3].text.contains("250 ms simulées"));
+        assert!(trace[4].text.contains("désactivé, sauté"));
+        assert_eq!(trace[3].path, vec![1, 0, 0, 0, 0]);
+    }
     #[test]
     fn templates_use_existing_steps_and_become_valid_after_personalisation() {
         let c = crate::model::Config::default();
