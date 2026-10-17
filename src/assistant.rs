@@ -166,6 +166,7 @@ impl Proposals {
                     repeat: a.repeat.unwrap_or(1),
                     title_size: old.title_size,
                     icon_scale: a.icon_scale.unwrap_or(old.icon_scale),
+                    plugin: old.plugin.clone(),
                     steps: a.steps,
                     long_steps: a.long_steps.unwrap_or_else(|| old.long_steps.clone()),
                     display_kind: None,

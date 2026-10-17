@@ -16,6 +16,8 @@ mod key_render;
 mod mcp_protocol;
 mod mcp_server;
 mod model;
+#[allow(dead_code)]
+mod plugins;
 mod recorder;
 mod store;
 mod token_equal;

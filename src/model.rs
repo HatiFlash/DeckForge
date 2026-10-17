@@ -113,6 +113,13 @@ impl Step {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PluginBinding {
+    pub plugin: String,
+    pub action: String,
+    #[serde(default)] pub settings: serde_json::Value,
+    #[serde(default)] pub state: u8,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Key {
     pub label: String,
@@ -125,6 +132,8 @@ pub struct Key {
     pub title_size: u8,
     #[serde(default = "default_icon_scale", skip_serializing_if = "is_default_icon_scale")]
     pub icon_scale: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<PluginBinding>,
     pub steps: Vec<Step>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub long_steps: Vec<Step>,
@@ -141,6 +150,7 @@ impl Default for Key {
             repeat: 1,
             title_size: 14,
             icon_scale: 100,
+            plugin: None,
             steps: vec![],
             long_steps: vec![],
             display_kind: None,
