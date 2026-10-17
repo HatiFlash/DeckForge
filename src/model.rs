@@ -64,6 +64,11 @@ pub enum Step {
         #[serde(default = "default_background")]
         include_children: bool,
     },
+    Clipboard {
+        #[serde(default = "default_clipboard_op")] op: String,
+        #[serde(default)] value: String,
+        #[serde(default = "default_clipboard_name")] name: String,
+    },
     DeviceVolume {
         #[serde(default)] input: bool,
         #[serde(default = "default_device")] device: String,
@@ -150,6 +155,8 @@ pub enum Step {
 fn default_text_name() -> String { "texte".into() }
 fn default_text_op() -> String { "upper".into() }
 fn valid_text_op(op: &str) -> bool { ["set", "append", "prepend", "upper", "lower", "trim", "replace", "length"].contains(&op) }
+fn default_clipboard_op() -> String { "copy_text".into() }
+fn default_clipboard_name() -> String { "texte".into() }
 fn default_math_name() -> String { "compteur".into() }
 fn default_math_op() -> String { "add".into() }
 fn default_math_value() -> String { "1".into() }
@@ -222,6 +229,17 @@ impl Step {
         })
     }
 
+    pub fn clipboard_summary(&self) -> Option<String> {
+        let Self::Clipboard { op, value, name } = self else { return None };
+        Some(match op.as_str() {
+            "copy_text" => format!("Copier du texte : {}", value.chars().take(50).collect::<String>()),
+            "read_to_variable" => format!("Lire le presse-papiers dans {name}"),
+            "clear" => "Vider le presse-papiers".into(),
+            "save" => "Sauvegarder le texte du presse-papiers".into(),
+            "restore" => "Restaurer le texte sauvegardé du presse-papiers".into(),
+            _ => "Opération de presse-papiers inconnue".into(),
+        })
+    }
     pub fn is_disabled(&self) -> bool { matches!(self, Self::Disabled { .. }) }
     pub fn active(&self) -> &Self {
         match self { Self::Disabled { step } => step.active(), other => other }
@@ -244,6 +262,7 @@ impl Step {
             Self::Folder { .. } => "Ouvrir un dossier",
             Self::AudioSwitch { .. } => "Basculer le périphérique audio",
             Self::AppVolume { .. } => "Volume d’une application",
+            Self::Clipboard { .. } => "Presse-papiers",
             Self::DeviceVolume { .. } => "Volume d’un périphérique",
             Self::IfCondition { .. } => "Si… sinon",
             Self::WaitUntil { .. } => "Attendre que…",
@@ -939,6 +958,8 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
                 if (target != "foreground" && (target.len() > 260 || !target.to_ascii_lowercase().ends_with(".exe") || target.contains(['/', '\\']) || target.chars().any(char::is_control) || target.trim() != target))
                     || !["up", "down", "set", "mute", "unmute", "toggle_mute"].contains(&action.as_str())
                     || !(1..=100).contains(step) || *level > 100 => bail!("Cible, action ou niveau de volume d’application invalide"),
+            Step::Clipboard { op, value, name } if !["copy_text", "read_to_variable", "clear", "save", "restore"].contains(&op.as_str())
+                || value.len() > 100_000 || value.contains('\0') || !valid_math_name(name) => bail!("Presse-papiers : opération, texte ou nom de variable invalide"),
             Step::DeviceVolume { device, action, step, level, .. }
                 if device.trim().is_empty() || device.len() > 512 || device.chars().any(char::is_control)
                     || !["up", "down", "set", "mute", "unmute", "toggle_mute"].contains(&action.as_str())
@@ -1485,5 +1506,23 @@ mod interpolation_template_tests {
         assert!(serde_json::from_str::<Step>(r#"{"type":"text","text":"ok","extra":true}"#).is_err());
         assert!(validate_http("POST", "https://example.org", "", "text/plain").is_err());
         assert!(validate_http("POST", "http://", "", "text/plain").is_err());
+    }
+}
+
+#[cfg(test)]
+mod clipboard_tests {
+    use super::*;
+    #[test]
+    fn defaults_roundtrip_validation_and_unknown_field() {
+        let step: Step = serde_json::from_str(r#"{"type":"clipboard"}"#).unwrap();
+        assert_eq!(step, Step::Clipboard { op: "copy_text".into(), value: String::new(), name: "texte".into() });
+        assert_eq!(serde_json::from_str::<Step>(&serde_json::to_string(&step).unwrap()).unwrap(), step);
+        assert!(serde_json::from_str::<Step>(r#"{"type":"clipboard","unexpected":1}"#).is_err());
+        assert!(step.clipboard_summary().unwrap().contains("Copier"));
+        let config = Config::default();
+        for (op, value, name) in [("bad", "", "texte"), ("copy_text", "a\0b", "texte"), ("read_to_variable", "", "nom incorrect")] {
+            let key = Key { steps: vec![Step::Clipboard { op: op.into(), value: value.into(), name: name.into() }], ..Key::default() };
+            assert!(validate_key(&key, &config).is_err());
+        }
     }
 }

@@ -152,6 +152,7 @@ fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>, obs: &crat
     )));
     let mut variables = crate::persistent_variables::snapshot();
     let mut budget = 10_000usize;
+    let mut saved_clipboard = None;
     for _ in 0..if dry { 1 } else { key.repeat } {
         run_steps(
             &key.steps,
@@ -160,6 +161,7 @@ fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>, obs: &crat
             tx,
             &mut variables,
             &mut budget,
+            &mut saved_clipboard,
             &[],
             obs,
             foreground,
@@ -203,6 +205,41 @@ fn clipboard_text(cancel: &AtomicBool) -> Result<String> {
         if attempt < 4 { wait(20, cancel)?; }
     }
     bail!("Presse-papiers occupé : lecture impossible après plusieurs essais")
+}
+
+fn clipboard_set(text: &str, cancel: &AtomicBool) -> Result<()> {
+    use windows_sys::Win32::Foundation::GlobalFree;
+    use windows_sys::Win32::System::{DataExchange::{CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData}, Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE}};
+    let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    anyhow::ensure!(wide.len() <= 100_001, "Presse-papiers : texte trop long");
+    for attempt in 0..5 {
+        check(cancel)?;
+        if unsafe { OpenClipboard(std::ptr::null_mut()) } != 0 {
+            let result = (|| {
+                let handle = unsafe { GlobalAlloc(GMEM_MOVEABLE, wide.len() * 2) };
+                if handle.is_null() { bail!("Presse-papiers : allocation impossible"); }
+                let pointer = unsafe { GlobalLock(handle) };
+                if pointer.is_null() {
+                    unsafe { GlobalFree(handle); }
+                    bail!("Presse-papiers : verrouillage mémoire impossible");
+                }
+                unsafe { std::ptr::copy_nonoverlapping(wide.as_ptr(), pointer.cast::<u16>(), wide.len()); GlobalUnlock(handle); }
+                if unsafe { EmptyClipboard() } == 0 {
+                    unsafe { GlobalFree(handle); }
+                    bail!("Presse-papiers : vidage impossible");
+                }
+                if unsafe { SetClipboardData(13, handle) }.is_null() {
+                    unsafe { GlobalFree(handle); }
+                    bail!("Presse-papiers : écriture Unicode impossible");
+                }
+                Ok(())
+            })();
+            unsafe { CloseClipboard(); }
+            return result;
+        }
+        if attempt < 4 { wait(20, cancel)?; }
+    }
+    bail!("Presse-papiers occupé : écriture impossible après plusieurs essais")
 }
 
 fn interpolate_runtime(text: &str, vars: &std::collections::BTreeMap<String, String>, cancel: &AtomicBool) -> Result<String> {
@@ -326,6 +363,7 @@ fn run_steps(
     tx: &Sender<Event>,
     variables: &mut std::collections::BTreeMap<String, String>,
     budget: &mut usize,
+    saved_clipboard: &mut Option<String>,
     parent: &[usize],
     obs: &crate::model::ObsSettings,
     foreground: Option<&crate::app_audio::Target>,
@@ -350,6 +388,9 @@ fn run_steps(
             if let Step::Notify { title, message } = step { let _ = tx.send(Event::Log(format!("Simulation : notification « {} » — {} (non envoyée)", interpolate(title, variables), interpolate(message, variables)))); }
             if let Some(summary) = step.active().app_volume_summary().or_else(|| step.active().device_volume_summary()) { let _ = tx.send(Event::Log(format!("Simulation : {summary}"))); }
             match step {
+                Step::Clipboard { .. } => {
+                    let _ = tx.send(Event::Log(format!("Simulation : {} (presse-papiers non consulté ni modifié)", step.clipboard_summary().unwrap_or_default())));
+                }
                 Step::TextOp { .. } => {
                     let _ = tx.send(Event::Log(format!("Simulation : {} (aucune variable modifiée)", step.text_op_summary().unwrap_or_default())));
                 }
@@ -365,7 +406,7 @@ fn run_steps(
                     let result = condition.evaluate(variables)?;
                     let _ = tx.send(Event::Log(format!("Simulation : {} = {result} ; ALORS et SINON explorés sans effet", condition.summary())));
                     for (branch_id, branch) in [then_steps, else_steps].into_iter().enumerate() {
-                        run_steps(branch, true, cancel, tx, variables, budget, &[path.clone(), vec![branch_id]].concat(), obs, foreground)?;
+                        run_steps(branch, true, cancel, tx, variables, budget, saved_clipboard, &[path.clone(), vec![branch_id]].concat(), obs, foreground)?;
                     }
                 }
                 Step::IfWindow {
@@ -385,6 +426,7 @@ fn run_steps(
                         tx,
                         variables,
                         budget,
+                    saved_clipboard,
                         &[path.clone(), vec![0]].concat(),
                         obs,
                         foreground,
@@ -396,6 +438,7 @@ fn run_steps(
                         tx,
                         variables,
                         budget,
+                    saved_clipboard,
                         &[path.clone(), vec![1]].concat(),
                         obs,
                         foreground,
@@ -403,7 +446,7 @@ fn run_steps(
                 }
                 Step::Toggle { a, b } => {
                     for (branch, list) in [a, b].into_iter().enumerate() {
-                        run_steps(list, true, cancel, tx, variables, budget, &[path.clone(), vec![branch]].concat(), obs, foreground)?;
+                        run_steps(list, true, cancel, tx, variables, budget, saved_clipboard, &[path.clone(), vec![branch]].concat(), obs, foreground)?;
                     }
                 },
                 Step::Repeat { steps, .. } => run_steps(
@@ -413,6 +456,7 @@ fn run_steps(
                     tx,
                     variables,
                     budget,
+                    saved_clipboard,
                     &[path.clone(), vec![0]].concat(),
                     obs,
                     foreground,
@@ -426,7 +470,7 @@ fn run_steps(
             Step::Toggle { a, b } => {
                 let branch = next_branch(&path);
                 let _ = tx.send(Event::ToggleVisual);
-                run_steps(if branch == 0 { a } else { b }, dry, cancel, tx, variables, budget, &[path.clone(), vec![branch]].concat(), obs, foreground)?;
+                run_steps(if branch == 0 { a } else { b }, dry, cancel, tx, variables, budget, saved_clipboard, &[path.clone(), vec![branch]].concat(), obs, foreground)?;
             },
             Step::PlaySound { path, volume } => crate::soundboard::play(path, *volume)?,
             Step::StopSounds => crate::soundboard::stop(),
@@ -487,6 +531,17 @@ fn run_steps(
                 variables.insert(name.clone(), value.clone());
                 let _ = tx.send(Event::Log(format!("Calcul : {name} = {value}")));
             }
+            Step::Clipboard { op, value, name } => {
+                match op.as_str() {
+                    "copy_text" => clipboard_set(&interpolate(value, variables), cancel)?,
+                    "read_to_variable" => { variables.insert(name.clone(), clipboard_text(cancel)?); }
+                    "clear" => clipboard_set("", cancel)?,
+                    "save" => { *saved_clipboard = Some(clipboard_text(cancel)?); }
+                    "restore" => clipboard_set(saved_clipboard.as_deref().ok_or_else(|| anyhow::anyhow!("Presse-papiers : aucun texte sauvegardé dans cette macro"))?, cancel)?,
+                    _ => bail!("Presse-papiers : opération inconnue"),
+                }
+                let _ = tx.send(Event::Log(format!("Presse-papiers : {}", step.clipboard_summary().unwrap_or_default())));
+            }
             Step::SetVariable { name, value, persistent } => {
                 let value = interpolate(value, variables);
                 if *persistent { crate::persistent_variables::set(name, &value)?; }
@@ -509,7 +564,7 @@ fn run_steps(
                 let result = condition.evaluate(variables)?;
                 let _ = tx.send(Event::Log(format!("{} : {}", condition.summary(), if result { "ALORS" } else { "SINON" })));
                 let branch_id = usize::from(!result);
-                run_steps(if result { then_steps } else { else_steps }, false, cancel, tx, variables, budget, &[path.clone(), vec![branch_id]].concat(), obs, foreground)?;
+                run_steps(if result { then_steps } else { else_steps }, false, cancel, tx, variables, budget, saved_clipboard, &[path.clone(), vec![branch_id]].concat(), obs, foreground)?;
             }
             Step::IfWindow {
                 title,
@@ -528,6 +583,7 @@ fn run_steps(
                     tx,
                     variables,
                     budget,
+                    saved_clipboard,
                     &[path.clone(), vec![branch_id]].concat(),
                     obs,
                     foreground,
@@ -551,6 +607,7 @@ fn run_steps(
                     tx,
                     variables,
                     budget,
+                    saved_clipboard,
                     &[path.clone(), vec![branch_id]].concat(),
                     obs,
                     foreground,
@@ -565,6 +622,7 @@ fn run_steps(
                         tx,
                         variables,
                         budget,
+                    saved_clipboard,
                         &[path.clone(), vec![0]].concat(),
                         obs,
                         foreground,
@@ -853,7 +911,7 @@ mod tests {
                 Step::Disabled { step: Box::new(Step::SetVariable { name: "bad".into(), value: "yes".into(), persistent: false, }) },
                 Step::SetVariable { name: "good".into(), value: "yes".into(), persistent: false, },
             ] }];
-            run_steps(&steps, dry, &AtomicBool::new(false), &tx, &mut vars, &mut budget, &[], &crate::model::ObsSettings::default(), None).unwrap();
+            run_steps(&steps, dry, &AtomicBool::new(false), &tx, &mut vars, &mut budget, &mut None, &[], &crate::model::ObsSettings::default(), None).unwrap();
             assert!(!vars.contains_key("bad"));
             if !dry { assert_eq!(vars.get("good").map(String::as_str), Some("yes")); }
             assert_eq!(budget, 8);
@@ -896,6 +954,7 @@ mod tests {
             &tx,
             &mut variables,
             &mut budget,
+            &mut None,
             &[],
             &crate::model::ObsSettings::default(),
             None,
@@ -945,6 +1004,7 @@ mod tests {
             &tx,
             &mut variables,
             &mut budget,
+            &mut None,
             &[],
             &crate::model::ObsSettings::default(),
             None,
@@ -1018,5 +1078,23 @@ mod tests {
         assert!(wait(60_000, &cancel).is_err());
         thread.join().unwrap();
         assert!(start.elapsed() < Duration::from_secs(1));
+    }
+}
+
+#[cfg(test)]
+mod clipboard_pure_tests {
+    use super::*;
+    #[test]
+    fn clipboard_template_resolves_variables_without_windows_access() {
+        let vars = std::collections::BTreeMap::from([("texte_colle".into(), "é🙂".into())]);
+        assert_eq!(interpolate("{texte_colle}", &vars), "é🙂");
+        assert_eq!(interpolate("{{texte_colle}", &vars), "{texte_colle}");
+    }
+    #[test]
+    fn dry_clipboard_only_logs_and_never_reads_or_writes() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let key = Key { steps: vec![Step::Clipboard { op: "read_to_variable".into(), value: String::new(), name: "x".into() }, Step::Clipboard { op: "restore".into(), value: String::new(), name: "x".into() }], ..Key::default() };
+        run(&key, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default(), None).unwrap();
+        assert_eq!(rx.try_iter().filter(|event| matches!(event, Event::Log(s) if s.contains("non consulté ni modifié"))).count(), 2);
     }
 }

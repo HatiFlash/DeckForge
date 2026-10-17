@@ -3907,6 +3907,24 @@ fn edit_step(
                 changed |= ui.text_edit_singleline(device).changed();
             });
         }
+        Step::Clipboard { op, value, name } => {
+            ui.label("Action sur le presse-papiers");
+            egui::ComboBox::from_id_salt("clipboard_op").selected_text(match op.as_str() {
+                "copy_text" => "Copier du texte", "read_to_variable" => "Lire dans une variable",
+                "clear" => "Vider", "save" => "Sauvegarder le texte", _ => "Restaurer le texte",
+            }).show_ui(ui, |ui| {
+                for (id, label) in [("copy_text", "Copier du texte"), ("read_to_variable", "Lire dans une variable"), ("clear", "Vider"), ("save", "Sauvegarder le texte"), ("restore", "Restaurer le texte")] {
+                    changed |= ui.selectable_value(op, id.into(), label).changed();
+                }
+            });
+            if op == "copy_text" { ui.label("Texte (accepte {nom})"); changed |= ui.text_edit_multiline(value).changed(); }
+            if op == "read_to_variable" { ui.label("Nom de la variable"); changed |= ui.text_edit_singleline(name).changed(); }
+            egui::CollapsingHeader::new("Options avancées").id_salt("clipboard_advanced").show(ui, |ui| {
+                ui.label("Sauvegarder et restaurer conservent le texte uniquement pendant cette exécution ; les autres formats ne sont pas restaurés.");
+                if op != "copy_text" { ui.label("Valeur enregistrée (utilisée seulement par Copier du texte)"); changed |= ui.text_edit_multiline(value).changed(); }
+                if op != "read_to_variable" { ui.label("Nom de variable (utilisé seulement par Lire)"); changed |= ui.text_edit_singleline(name).changed(); }
+            });
+        }
         Step::AppVolume { target, action, step, level, include_children } => {
             ui.label("Cible");
             let mut foreground = target == "foreground";
@@ -4220,6 +4238,7 @@ fn step_summary(step: &Step) -> String {
         Step::Math { .. } => step.math_summary().unwrap_or_default(),
         Step::TextOp { .. } => step.text_op_summary().unwrap_or_default(),
         Step::SetVariable { name, persistent, .. } => format!("Définir {name}{}", if *persistent { " (enregistrée)" } else { "" }),
+        Step::Clipboard { .. } => step.clipboard_summary().unwrap_or_default(),
         Step::AppVolume { .. } => step.app_volume_summary().unwrap_or_default(),
         Step::DeviceVolume { .. } => step.device_volume_summary().unwrap_or_default(),
         Step::StopSounds => "Arrêter les sons".into(),

@@ -8,6 +8,10 @@ Dans `deckforge_configure_key`, `state_display` est optionnel : `{"condition":{"
 
 Les blocs `text` (texte saisi), `url`, `http_request` (`url` et `body`), `udp_send` (`text`) et `launch` (`args`) acceptent `{nom}` ; les gabarits restent inchangés dans la configuration et les propositions MCP. Variables spéciales en lecture : `{date}` (AAAA-MM-JJ locale), `{heure}` (HH:MM:SS locale), `{horodatage}` (secondes Unix), `{presse_papiers}` (texte Unicode du presse-papiers Windows). `{{` donne une accolade littérale. Les noms spéciaux sont réservés ; une variable ordinaire homonyme ne les remplace pas. L'adresse résolue est revalidée avant ouverture/requête. La simulation n'envoie ni texte, ni requête, ni lancement et ne lit pas le presse-papiers.
 
+### Presse-papiers (`clipboard`)
+
+`{"type":"clipboard","op":"copy_text","value":"Bonjour {nom}"}` copie du texte Unicode sans mise en forme. `op` accepte aussi `read_to_variable` (`name` : variable de macro, défaut `texte`), `clear`, `save` et `restore`. `save`/`restore` conservent le texte uniquement pendant une exécution de macro ; les autres formats ne sont pas restaurés. Le modèle « Coller sans mise en forme » lit dans `texte_colle`, copie `{texte_colle}`, puis envoie Ctrl+V. Une simulation n'accède jamais au presse-papiers et ne colle rien.
+
 ### Notification Windows (`notify`)
 
 `{"type":"notify","title":"DeckForge","message":"Bonjour {nom}"}` : titre facultatif, message obligatoire ; `{nom}` utilise la variable de macro, `{{` donne une accolade littérale. Si l’icône de notification manque, message dans le journal et bandeau DeckForge. La simulation n’envoie rien.

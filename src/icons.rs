@@ -20,7 +20,7 @@ pub fn step_kind(step: &Step) -> usize {
         Step::CloseWindow => 5,
         Step::Delay { .. } => 0,
         Step::Hotkey { .. } => 1,
-        Step::Text { .. } => 2,
+        Step::Text { .. } | Step::Clipboard { .. } => 2,
         Step::Launch { .. } => 3,
         Step::Url { .. } => 4,
         Step::WaitWindow { .. } | Step::WaitUntil { .. } => 5,

@@ -29,6 +29,11 @@ Exécutables prêts sur le PC fixe : `Bureau\DeckForge-0.5-fusion\DeckForge.exe`
 - Livré et testé automatiquement : `{nom}` et les variables spéciales `{date}`, `{heure}`, `{horodatage}`, `{presse_papiers}` dans la saisie `text`, l'adresse `url`, `http_request` (adresse et corps), `udp_send` (texte), `launch` (arguments). Configuration conservée sous forme de gabarit ; lecture presse-papiers Win32 Unicode avec réessais, sans écriture ; simulation sans effets. Les types JSON existants ne changent pas.
 - À tester avec Hatim : date/heure locale sur PC, presse-papiers texte occupé ou non textuel, URL réseau et arguments sur une macro réelle. Aucun test automatisé ne manipule les fenêtres, clavier ou presse-papiers du PC.
 
+## Lot B5 — presse-papiers
+
+- Livré et testé automatiquement : « Presse-papiers » (`clipboard`), copie Unicode, lecture dans une variable, vidage, sauvegarde/restauration du texte pendant une macro, simulation sans lecture ni écriture ; modèle « Coller sans mise en forme ». Tests purs seulement, sans accès au presse-papiers ni au clavier réel.
+- À tester avec Hatim : copier/coller Unicode dans une application, presse-papiers occupé ou non textuel, restauration après collage. Le modèle laisse le texte copié dans le presse-papiers après collage ; il ne restaure pas les formats non textuels.
+
 ## Nouveautés 0.5
 
 | Domaine | Contenu | Vérifié |

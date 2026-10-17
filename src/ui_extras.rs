@@ -63,7 +63,7 @@ pub(super) fn step_mut<'a>(steps: &'a mut [Step], path: &[usize]) -> Option<&'a 
 const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
     ("Clavier", &[0]),
     ("Streaming", &[19, 20, 21, 22, 23, 24, 25, 30, 31, 0, 4]), ("Système", &[0, 2, 4, 26, 27, 28, 29, 32, 33]),
-    ("Texte", &[1, 43]), ("Applications et sites", &[2, 3]),
+    ("Texte", &[1, 43, 44]), ("Applications et sites", &[2, 3]),
     ("Médias et audio", &[4, 13, 37, 38]), ("Fenêtres", &[6]), ("Attendre", &[5, 40]), ("Notifications", &[41]),
     ("Logique et répétitions", &[14, 15, 39]), ("Variables", &[16, 17, 42]),
     ("Navigation DeckForge", &[7, 8, 9, 10, 11]), ("Avancé / AutoHotkey", &[18]),
@@ -80,6 +80,7 @@ fn block_help(kind: usize) -> &'static str {
         14 => "Exécute des blocs si une fenêtre est ouverte.", 15 => "Rejoue plusieurs fois les blocs imbriqués.",
         42 => "Calcule une valeur numérique dans une variable de la macro.",
         43 => "Transforme une variable texte pendant cette macro, sans saisir au clavier.",
+        44 => "Copie, lit, vide, sauvegarde ou restaure le texte Unicode du presse-papiers.",
         16 => "Enregistre une valeur pour cette exécution.", 17 => "Choisit des blocs selon une valeur.",
         19..=25 => "Commande OBS Studio par WebSocket local (OBS 28 ou plus).",
         32 => "Règle ou ajuste la luminosité du D6 (0 à 100 %).",
@@ -126,6 +127,7 @@ fn simple_fields_visible(step: &Step, advanced: bool) -> bool {
 }
 fn block_summary(step: &Step) -> String {
     match step.active() {
+        Step::Clipboard { .. } => step.clipboard_summary().unwrap_or_default(),
         Step::AppVolume { .. } => step.app_volume_summary().unwrap_or_default(),
         Step::DeviceVolume { .. } => step.device_volume_summary().unwrap_or_default(),
         Step::ObsScene { name } => format!("OBS : scène {name}"),

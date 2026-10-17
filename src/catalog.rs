@@ -47,6 +47,11 @@ pub fn presets() -> Vec<Preset> {
             }],
         );
     }
+    add("Texte", "Coller sans mise en forme", "Lit le texte Unicode, le recopie sans formatage puis colle dans la fenêtre active.", [108, 135, 236], vec![
+        Step::Clipboard { op: "read_to_variable".into(), value: String::new(), name: "texte_colle".into() },
+        Step::Clipboard { op: "copy_text".into(), value: "{texte_colle}".into(), name: "texte".into() },
+        Step::Hotkey { keys: "CTRL+V".into() },
+    ]);
     add("Variables", "Mettre en majuscules", "Met en majuscules la variable texte pendant cette macro.", [108, 135, 236], vec![Step::TextOp {
         name: "texte".into(), op: "upper".into(), value: String::new(), find: String::new(),
    persistent: false, }]);
@@ -472,7 +477,7 @@ mod tests {    #[test]
     #[test]
     fn every_preset_and_action_is_executable_with_valid_configuration() {
         let c = Config::default();
-        assert_eq!(presets().len(), 77);
+        assert_eq!(presets().len(), 78);
         for p in presets() {
             validate_key(&p.key, &c).unwrap();
             assert!(!p.key.steps.is_empty());
@@ -540,5 +545,16 @@ mod tests {    #[test]
                 .unwrap()
                 .dark
         );
+    }
+}
+
+#[cfg(test)]
+mod clipboard_preset_tests {
+    use super::*;
+    #[test]
+    fn plain_paste_reads_copies_then_pastes() {
+        let preset = presets().into_iter().find(|p| p.key.label == "Coller sans mise en forme").unwrap();
+        assert!(matches!(&preset.key.steps[..], [Step::Clipboard { op: read, name, .. }, Step::Clipboard { op: copy, value, .. }, Step::Hotkey { keys }] if read == "read_to_variable" && name == "texte_colle" && copy == "copy_text" && value == "{texte_colle}" && keys == "CTRL+V"));
+        validate_key(&preset.key, &Config::default()).unwrap();
     }
 }
