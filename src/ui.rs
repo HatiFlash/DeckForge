@@ -2689,6 +2689,33 @@ fn edit_step(
             });
             changed |= ui.add(egui::Slider::new(value, 0..=100).text("%" )).changed();
         }
+        Step::AppVolume { target, action, step, level, include_children } => {
+            ui.label("Cible");
+            let mut foreground = target == "foreground";
+            egui::ComboBox::from_id_salt("app_volume_target").selected_text(if foreground { "Application au premier plan" } else { "Application précise" }).show_ui(ui, |ui| {
+                changed |= ui.selectable_value(&mut foreground, true, "Application au premier plan").changed();
+                changed |= ui.selectable_value(&mut foreground, false, "Application précise").changed();
+            });
+            if foreground { if target != "foreground" { *target = "foreground".into(); changed = true; } }
+            else {
+                if target == "foreground" { *target = "chrome.exe".into(); changed = true; }
+                ui.label("Nom du programme (ex. chrome.exe)");
+                changed |= ui.text_edit_singleline(target).changed();
+            }
+            ui.label("Action");
+            egui::ComboBox::from_id_salt("app_volume_action").selected_text(match action.as_str() {
+                "up" => "Augmenter", "down" => "Diminuer", "set" => "Régler à", "mute" => "Couper", "unmute" => "Rétablir", _ => "Basculer muet",
+            }).show_ui(ui, |ui| {
+                for (id, label) in [("up", "Augmenter"), ("down", "Diminuer"), ("set", "Régler à"), ("mute", "Couper"), ("unmute", "Rétablir"), ("toggle_mute", "Basculer muet")] {
+                    changed |= ui.selectable_value(action, id.into(), label).changed();
+                }
+            });
+            if action == "up" || action == "down" { changed |= ui.add(egui::Slider::new(step, 1..=100).text("Pas (points)")).changed(); }
+            if action == "set" { changed |= ui.add(egui::Slider::new(level, 0..=100).text("Niveau (%)")).changed(); }
+            egui::CollapsingHeader::new("Options avancées").id_salt("app_volume_advanced").show(ui, |ui| {
+                changed |= ui.checkbox(include_children, "Inclure les processus enfants").changed();
+            });
+        }
         Step::D6Sleep => { ui.label("Met le D6 en veille maintenant. Un appui le réveille sans lancer la macro."); }
         Step::CloseWindow => { ui.label("Ferme la fenêtre active (jamais DeckForge)."); }
         Step::ObsScene { name } => { ui.label("Scène OBS"); changed |= obs_entry(ui, name, &crate::obs_monitor::snapshot().scenes); }
@@ -2898,6 +2925,7 @@ fn step_summary(step: &Step) -> String {
         Step::MouseMove { x, y, relative } => format!("Souris {x}, {y} ({})", if *relative { "relatif" } else { "absolu" }),
         Step::MouseScroll { amount } => format!("Défiler de {amount} crans"),
         Step::PlaySound { path, volume } => format!("Son : {path} ({volume} %)"),
+        Step::AppVolume { .. } => step.app_volume_summary().unwrap_or_default(),
         Step::StopSounds => "Arrêter les sons".into(),
         Step::Toggle { a, b } => format!("Basculer 1 / 2 ({} / {} blocs)", a.len(), b.len()),
         Step::UdpSend { host, port, .. } => format!("UDP : {host}:{port}"),

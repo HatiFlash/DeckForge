@@ -47,6 +47,11 @@ pub fn presets() -> Vec<Preset> {
             }],
         );
     }
+    for (label, action, level) in [("App +5 %", "up", 0), ("App −5 %", "down", 0), ("App muette", "toggle_mute", 0), ("App à 50 %", "set", 50)] {
+        add("Audio", label, "Volume de l’application active, sans modifier le volume général.", [76, 166, 137], vec![Step::AppVolume {
+            target: "foreground".into(), action: action.into(), step: 5, level, include_children: true,
+        }]);
+    }
     for (label, keys, description) in [
         (
             "Copier",
@@ -437,7 +442,7 @@ mod tests {    #[test]
     #[test]
     fn every_preset_and_action_is_executable_with_valid_configuration() {
         let c = Config::default();
-        assert_eq!(presets().len(), 58);
+        assert_eq!(presets().len(), 62);
         for p in presets() {
             validate_key(&p.key, &c).unwrap();
             assert!(!p.key.steps.is_empty());

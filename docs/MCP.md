@@ -159,3 +159,11 @@ Soundboard : deckforge_configure_key accepte play_sound avec path (fichier WAV/M
 
 
 Actions réseau : configure_key accepte udp_send (host, port, text) et http_request (method GET/POST/PUT, url http://, body, content_type). HTTPS est refusé explicitement faute de TLS ; validation locale avant proposition, aucune requête en simulation. La réponse HTTP est journalisée sur une longueur bornée ; l’export AutoHotkey refuse ces blocs.
+
+## Bloc `app_volume` — volume d'une application
+
+`{"type":"app_volume","target":"foreground","action":"up","step":5,"level":0,"include_children":true}`
+
+- `target` : `foreground` (application au premier plan au moment de l'appui ; après le compte à rebours pour « Tester dans 3 s ») ou un nom d'exécutable (`chrome.exe`).
+- `action` : `up`, `down` (en points : 40 → 45 %), `set` (utilise `level` 0-100), `mute`, `unmute`, `toggle_mute`.
+- Agit seulement sur les sessions audio Windows des processus ciblés (toutes sorties actives), jamais sur le volume général ni une autre application. Même bloc que l'Atelier ; une proposition MCP reste soumise à la validation locale.

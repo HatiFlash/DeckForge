@@ -2,6 +2,7 @@
 mod assets;
 mod assistant;
 mod audio;
+mod app_audio;
 mod automation;
 mod network_actions;
 mod catalog;

@@ -21,10 +21,11 @@ pub const NAMES: &[&str] = &[
     "Si une variable correspond",
     "Script AutoHotkey",
     "OBS : scène", "OBS : enregistrement", "OBS : diffusion", "OBS : caméra",
-    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active", "Clic souris", "Déplacer la souris", "Défilement souris", "Jouer un son", "Arrêter les sons", "Luminosité du D6", "Veille du D6",
+    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active", "Clic souris", "Déplacer la souris", "Défilement souris", "Jouer un son", "Arrêter les sons", "Luminosité du D6", "Veille du D6", "Envoyer en UDP", "Requête HTTP", "Touche à deux états", "Volume d’une application",
 ];
 pub fn step(kind: usize) -> Step {
     match kind {
+        37 => Step::AppVolume { target: "foreground".into(), action: "up".into(), step: 5, level: 50, include_children: true },
         13 => Step::AudioSwitch {
             first: String::new(),
             second: String::new(),

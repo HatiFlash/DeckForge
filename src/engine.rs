@@ -2,7 +2,7 @@ use crate::{
     model::{media_vk, parse_hotkey, Key, Step},
     Event,
 };
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -80,13 +80,20 @@ impl Engine {
         let cancel = self.cancel.clone();
         let tx = self.tx.clone();
         let last_finished = self.last_finished.clone();
+        // Physical press: capture before spawning; delayed test: capture after countdown.
+        let captured = if !dry && initial_delay == 0 && has_app_volume(&key.steps) {
+            Some(crate::app_audio::capture("foreground", true))
+        } else { None };
         std::thread::spawn(move || {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if !dry {
                     wait(initial_delay, &cancel)?;
                 }
                 ACTIVE_KEY.with(|id| *id.borrow_mut() = key.runtime_id.clone().unwrap_or_else(|| serde_json::to_string(&key).unwrap_or_default()));
-                run(&key, dry, &cancel, &tx, &obs)
+                let foreground = if dry || !has_app_volume(&key.steps) { None }
+                    else if let Some(captured) = captured { Some(captured?) }
+                    else { Some(crate::app_audio::capture("foreground", true)?) };
+                run(&key, dry, &cancel, &tx, &obs, foreground.as_ref())
             }));
             let message = match result {
                 Ok(Ok(())) => "Macro terminée".into(),
@@ -127,7 +134,16 @@ fn wait(ms: u64, cancel: &AtomicBool) -> Result<()> {
         std::thread::sleep(remaining.min(Duration::from_millis(20)));
     }
 }
-fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>, obs: &crate::model::ObsSettings) -> Result<()> {
+fn has_app_volume(steps: &[Step]) -> bool {
+    steps.iter().any(|s| match s.active() {
+        Step::AppVolume { target, .. } => target == "foreground",
+        Step::Repeat { steps, .. } => has_app_volume(steps),
+        Step::Toggle { a, b } => has_app_volume(a) || has_app_volume(b),
+        Step::IfWindow { then_steps, else_steps, .. } | Step::IfVariable { then_steps, else_steps, .. } => has_app_volume(then_steps) || has_app_volume(else_steps),
+        _ => false,
+    })
+}
+fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>, obs: &crate::model::ObsSettings, foreground: Option<&crate::app_audio::Target>) -> Result<()> {
     let _ = tx.send(Event::Log(format!(
         "{} — {} ({} répétition(s))",
         if dry { "SIMULATION" } else { "EXÉCUTION" },
@@ -146,6 +162,7 @@ fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>, obs: &crat
             &mut budget,
             &[],
             obs,
+            foreground,
         )?;
     }
     let _ = tx.send(Event::Block(vec![]));
@@ -160,6 +177,7 @@ fn run_steps(
     budget: &mut usize,
     parent: &[usize],
     obs: &crate::model::ObsSettings,
+    foreground: Option<&crate::app_audio::Target>,
 ) -> Result<()> {
     for (idx, step) in steps.iter().enumerate() {
         if step.is_disabled() { continue; }
@@ -178,6 +196,7 @@ fn run_steps(
             step.name()
         )));
         if dry {
+            if let Some(summary) = step.active().app_volume_summary() { let _ = tx.send(Event::Log(summary)); }
             match step {
                 Step::IfWindow {
                     then_steps,
@@ -198,6 +217,7 @@ fn run_steps(
                         budget,
                         &[path.clone(), vec![0]].concat(),
                         obs,
+                        foreground,
                     )?;
                     run_steps(
                         else_steps,
@@ -208,11 +228,12 @@ fn run_steps(
                         budget,
                         &[path.clone(), vec![1]].concat(),
                         obs,
+                        foreground,
                     )?;
                 }
                 Step::Toggle { a, b } => {
                     for (branch, list) in [a, b].into_iter().enumerate() {
-                        run_steps(list, true, cancel, tx, variables, budget, &[path.clone(), vec![branch]].concat(), obs)?;
+                        run_steps(list, true, cancel, tx, variables, budget, &[path.clone(), vec![branch]].concat(), obs, foreground)?;
                     }
                 },
                 Step::Repeat { steps, .. } => run_steps(
@@ -224,6 +245,7 @@ fn run_steps(
                     budget,
                     &[path.clone(), vec![0]].concat(),
                     obs,
+                    foreground,
                 )?,
                 _ => {}
             }
@@ -234,7 +256,7 @@ fn run_steps(
             Step::Toggle { a, b } => {
                 let branch = next_branch(&path);
                 let _ = tx.send(Event::ToggleVisual);
-                run_steps(if branch == 0 { a } else { b }, dry, cancel, tx, variables, budget, &[path.clone(), vec![branch]].concat(), obs)?;
+                run_steps(if branch == 0 { a } else { b }, dry, cancel, tx, variables, budget, &[path.clone(), vec![branch]].concat(), obs, foreground)?;
             },
             Step::PlaySound { path, volume } => crate::soundboard::play(path, *volume)?,
             Step::StopSounds => crate::soundboard::stop(),
@@ -249,6 +271,13 @@ fn run_steps(
             Step::ObsScene { .. } | Step::ObsRecord { .. } | Step::ObsStream { .. }
             | Step::ObsVirtualCam { .. } | Step::ObsReplay { .. } | Step::ObsMute { .. }
             | Step::ObsSourceVisibility { .. } => crate::obs::execute(step, obs)?,
+            Step::AppVolume { target, action, step, level, include_children } => {
+                let selected = if target == "foreground" {
+                    foreground.context("Cible au premier plan non capturée")?.clone()
+                } else { crate::app_audio::capture(target, *include_children)? };
+                let message = crate::app_audio::apply(&selected, action, *step, *level)?;
+                let _ = tx.send(Event::Log(message));
+            }
             Step::AudioSwitch {
                 first,
                 second,
@@ -279,6 +308,7 @@ fn run_steps(
                     budget,
                     &[path.clone(), vec![branch_id]].concat(),
                     obs,
+                    foreground,
                 )?;
             }
             Step::IfVariable {
@@ -301,6 +331,7 @@ fn run_steps(
                     budget,
                     &[path.clone(), vec![branch_id]].concat(),
                     obs,
+                    foreground,
                 )?;
             }
             Step::Repeat { count, steps } => {
@@ -314,6 +345,7 @@ fn run_steps(
                         budget,
                         &[path.clone(), vec![0]].concat(),
                         obs,
+                        foreground,
                     )?;
                 }
             }
@@ -533,7 +565,7 @@ mod tests {
     fn sound_simulation_does_not_open_missing_files() {
         let (tx, rx) = std::sync::mpsc::channel();
         let key = Key { steps: vec![Step::PlaySound { path: "Z:\\missing.wav".into(), volume: 40 }, Step::StopSounds], ..Key::default() };
-        run(&key, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default()).unwrap();
+        run(&key, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default(), None).unwrap();
         assert!(rx.try_iter().any(|event| matches!(event, Event::Log(s) if s.contains("Jouer un son"))));
     }
     #[test]
@@ -547,7 +579,7 @@ mod tests {
                 Step::Disabled { step: Box::new(Step::SetVariable { name: "bad".into(), value: "yes".into() }) },
                 Step::SetVariable { name: "good".into(), value: "yes".into() },
             ] }];
-            run_steps(&steps, dry, &AtomicBool::new(false), &tx, &mut vars, &mut budget, &[], &crate::model::ObsSettings::default()).unwrap();
+            run_steps(&steps, dry, &AtomicBool::new(false), &tx, &mut vars, &mut budget, &[], &crate::model::ObsSettings::default(), None).unwrap();
             assert!(!vars.contains_key("bad"));
             if !dry { assert_eq!(vars.get("good").map(String::as_str), Some("yes")); }
             assert_eq!(budget, 8);
@@ -591,6 +623,7 @@ mod tests {
             &mut budget,
             &[],
             &crate::model::ObsSettings::default(),
+            None,
         )
         .unwrap();
         assert_eq!(variables["result"], "oui");
@@ -614,7 +647,7 @@ mod tests {
             }],
             ..Key::default()
         };
-        run(&key, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default()).unwrap();
+        run(&key, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default(), None).unwrap();
     }
     #[test]
     fn nested_execution_budget_stops_before_another_block_runs() {
@@ -639,6 +672,7 @@ mod tests {
             &mut budget,
             &[],
             &crate::model::ObsSettings::default(),
+            None,
         )
         .unwrap_err();
         assert!(err.to_string().contains("10 000"));
@@ -665,7 +699,7 @@ mod tests {
             ],
             ..Key::default()
         };
-        run(&k, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default()).unwrap();
+        run(&k, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default(), None).unwrap();
         assert_eq!(
             rx.try_iter()
                 .filter(|e| matches!(e, Event::Profile(_)))
@@ -684,7 +718,7 @@ mod tests {
             ],
             ..Key::default()
         };
-        run(&k, false, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default()).unwrap();
+        run(&k, false, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default(), None).unwrap();
         let names = rx
             .try_iter()
             .filter_map(|e| {

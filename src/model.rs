@@ -51,6 +51,18 @@ pub enum Step {
         #[serde(default)]
         second_icon: String,
     },
+    AppVolume {
+        #[serde(default = "default_app_target")]
+        target: String,
+        #[serde(default = "default_app_action")]
+        action: String,
+        #[serde(default = "default_app_step")]
+        step: u8,
+        #[serde(default)]
+        level: u8,
+        #[serde(default = "default_background")]
+        include_children: bool,
+    },
     IfWindow {
         title: String,
         then_steps: Vec<Step>,
@@ -97,7 +109,24 @@ pub enum Step {
     PageNext,
     PagePrevious,
 }
+fn default_app_target() -> String { "foreground".into() }
+fn default_app_action() -> String { "up".into() }
+fn default_app_step() -> u8 { 5 }
 impl Step {
+    pub fn app_volume_summary(&self) -> Option<String> {
+        let Self::AppVolume { target, action, step, level, .. } = self else { return None };
+        let who = if target == "foreground" { "l’application active".to_owned() } else { target.clone() };
+        Some(match action.as_str() {
+            "up" => format!("Augmenter le volume de {who} de {step} points"),
+            "down" => format!("Diminuer le volume de {who} de {step} points"),
+            "set" => format!("Régler le volume de {who} à {level} %"),
+            "mute" => format!("Couper le son de {who}"),
+            "unmute" => format!("Rétablir le son de {who}"),
+            "toggle_mute" => format!("Basculer le muet de {who}"),
+            _ => format!("Volume de {who} : action inconnue"),
+        })
+    }
+
     pub fn is_disabled(&self) -> bool { matches!(self, Self::Disabled { .. }) }
     pub fn active(&self) -> &Self {
         match self { Self::Disabled { step } => step.active(), other => other }
@@ -119,6 +148,7 @@ impl Step {
             Self::Page { .. } => "Aller à une page",
             Self::Folder { .. } => "Ouvrir un dossier",
             Self::AudioSwitch { .. } => "Basculer le périphérique audio",
+            Self::AppVolume { .. } => "Volume d’une application",
             Self::IfWindow { .. } => "Si une fenêtre est ouverte",
             Self::Repeat { .. } => "Répéter des blocs",
             Self::SetVariable { .. } => "Définir une variable",
@@ -707,6 +737,10 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
             Step::Profile { name } if !config.profiles.iter().any(|p| p.name == *name) => {
                 bail!("Profil introuvable : {name}")
             }
+            Step::AppVolume { target, action, step, level, .. }
+                if (target != "foreground" && (target.len() > 260 || !target.to_ascii_lowercase().ends_with(".exe") || target.contains(['/', '\\']) || target.chars().any(char::is_control) || target.trim() != target))
+                    || !["up", "down", "set", "mute", "unmute", "toggle_mute"].contains(&action.as_str())
+                    || !(1..=100).contains(step) || *level > 100 => bail!("Cible, action ou niveau de volume d’application invalide"),
             Step::AudioSwitch { first, second, .. }
                 if first.is_empty() || second.is_empty() || first == second =>
             {

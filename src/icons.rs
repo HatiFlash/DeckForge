@@ -34,6 +34,7 @@ pub fn step_kind(step: &Step) -> usize {
             "stop" => 14,
             _ => 6,
         },
+        Step::AppVolume { .. } => 9,
         Step::AudioSwitch { input, .. } => {
             if *input {
                 28
