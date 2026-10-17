@@ -1,6 +1,6 @@
 use crate::{
     catalog::{self, Library, Preferences},
-    control::{Decision, InputGate},
+    control::{Decision, InputGate, LongPress},
     device::{self, Command},
     engine::Engine,
     model::{validate_key, Config, Key, Profile, Step},
@@ -57,6 +57,8 @@ pub struct App {
     device: Sender<Command>,
     events: Receiver<Event>,
     gate: InputGate,
+    long_press: LongPress,
+    long_editor: bool,
     wanted: bool,
     status: String,
     logs: VecDeque<String>,
@@ -206,6 +208,8 @@ impl App {
             device,
             events,
             gate,
+            long_press: LongPress::default(),
+            long_editor: false,
             wanted: false,
             status: "D6 non connecté".into(),
             logs: VecDeque::new(),
@@ -299,11 +303,12 @@ impl App {
         self.error = true;
     }
     fn edited(&mut self) {
-
+        self.long_press.clear();
         self.gate.dirty = true;
         self.last_edit = Instant::now();
     }
     fn upload(&mut self, connect: bool) {
+        self.long_press.clear();
         let revision = self.gate.request_apply();
         let mut deployed = match self.config.deployment() {
             Ok(c) => c,
@@ -389,6 +394,13 @@ impl App {
         let c = self.config.clone();
         self.execute_key(key, dry, !dry, &c);
     }
+    fn execute_physical(&mut self, index: usize, long: bool) {
+        if self.gate.decision() != Decision::Execute { return; }
+        let c = self.applied.clone();
+        let mut key = c.keys()[index].clone();
+        if long { key.steps = std::mem::take(&mut key.long_steps); }
+        self.execute_key(key, false, false, &c);
+    }
     fn events(&mut self) {
         for _ in 0..1000 {
             let Ok(event) = self.events.try_recv() else {
@@ -441,6 +453,7 @@ impl App {
                     }
                     self.status = message;
                     if !connected {
+                        self.long_press.clear();
                         self.gate.disconnect();
                         self.engine.stop();
                     } else {
@@ -449,6 +462,7 @@ impl App {
                 }
                 Event::Applied(revision) => {
                     if self.gate.applied(revision) {
+                        self.long_press.clear();
                         if let Some((r, c)) = self.pending.take() {
                             if r == revision {
                                 self.applied = c;
@@ -477,9 +491,17 @@ impl App {
                             self.log(format!("Touche {:02} : {reason}", index + 1))
                         }
                         Decision::Execute => {
-                            let c = self.applied.clone();
-                            let key = c.keys()[index].clone();
-                            self.execute_key(key, false, false, &c);
+                            let has_long = !self.applied.keys()[index].long_steps.is_empty();
+                            if self.long_press.press(index, at, has_long) {
+                                self.execute_physical(index, false);
+                            }
+                        }
+                    }
+                }
+                Event::KeyRelease(index, at) => {
+                    if index < 15 {
+                        if let Some(long) = self.long_press.release(index, at, self.applied.long_press_ms) {
+                            self.execute_physical(index, long);
                         }
                     }
                 }
@@ -1514,7 +1536,8 @@ impl App {
         egui::TopBottomPanel::bottom("key_inspector").default_height(if ctx.screen_rect().height()<800.0 {240.0}else{260.0}).height_range(240.0..=420.0).resizable(true).frame(egui::Frame::new().fill(p.surface).inner_margin(16)).show(ctx,|ui| {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(format!("Touche {:02}",self.selected+1)).size(16.0).strong());
-                ui.label(RichText::new("· Personnalisation").color(p.muted).size(12.0));
+                ui.selectable_value(&mut self.long_editor, false, "Appui court");
+                ui.selectable_value(&mut self.long_editor, true, "Appui long");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| {
                     if ui.button("Atelier blocs").clicked(){self.show_workflow=true;}
                     if ui.button("Enregistrer dans Mes binds").on_hover_text("Conserver cette macro pour la réutiliser").clicked(){self.bind_name=self.config.keys()[self.selected].label.clone();self.save_bind=true;}
@@ -1524,6 +1547,7 @@ impl App {
                 });
             });
             ui.separator();
+            let long_editor = self.long_editor;
             let active=self.config.active; let names=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
             let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let key=&mut self.config.keys_mut()[selected];
             let mut removed_step=false; let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut pick_audio=None;
@@ -1533,6 +1557,11 @@ impl App {
                     egui::ScrollArea::vertical().id_salt("key_appearance").max_height(body_height).show(ui,|ui| {
                         ui.label(RichText::new("Titre sur le D6").small().color(p.muted));
                         changed|=ui.add(egui::TextEdit::singleline(&mut key.label).desired_width(200.0).hint_text("Nom de la touche")).changed();
+                        ui.horizontal(|ui| {
+                            ui.label("Taille du titre");
+                            changed |= ui.add(egui::Slider::new(&mut key.title_size, 10..=20).show_value(false)).changed();
+                            ui.label(format!("{} %", key.title_size));
+                        });
                         changed|=appearance::color(ui,key);
                         if crate::audio::single_switch(&key.steps).is_some(){if ui.button("Icônes par état →").on_hover_text("Choisir séparément les icônes des deux états audio").clicked(){open_icons=true;}}else{
                         let actions=appearance::icons(ui,!key.image.is_empty());
@@ -1559,32 +1588,38 @@ impl App {
                 });
                 ui.separator();
                 ui.allocate_ui_with_layout(Vec2::new((width-240.0).max(200.0),body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
-                    if key.steps.len()==1 && matches!(key.steps[0],Step::AudioSwitch{..}) {
+                    if !long_editor && key.steps.len()==1 && matches!(key.steps[0],Step::AudioSwitch{..}) {
                         egui::ScrollArea::vertical().id_salt("compact_audio").max_height(body_height).show(ui,|ui|{let mut state=None;changed|=icon_ui::audio_options(ui,&mut key.steps[0],&self.audio,&mut state,&dialog_tx,&(active,page_id.clone(),selected,vec![0]));if let Some(state)=state{pick_audio=Some((vec![0],state));}});
                         return;
                     }
+                    let steps = if long_editor { &mut key.long_steps } else { &mut key.steps };
+                    if long_editor { ui.label(RichText::new("L’atelier de blocs modifie uniquement l’appui court. Pour un fichier, renseigne son chemin dans l’action.").small().color(p.muted)); }
                     ui.horizontal(|ui|{
-                        ui.label(RichText::new(format!("Actions · {} étape(s)",key.steps.len())).strong());
-                        ui.menu_button("+ Ajouter",|ui|{for (i,label) in crate::automation::NAMES.iter().enumerate(){if ui.add_enabled(key.steps.len()<256,egui::Button::new(*label)).clicked(){add_kind=Some(i);ui.close_menu();}}});
+                        ui.label(RichText::new(format!("Actions · {} étape(s)",steps.len())).strong());
+                        ui.menu_button("+ Ajouter",|ui|{for (i,label) in crate::automation::NAMES.iter().enumerate(){if ui.add_enabled(steps.len()<256,egui::Button::new(*label)).clicked(){add_kind=Some(i);ui.close_menu();}}});
                     });
                     let mut remove=None;let mut movement=None;
                     egui::ScrollArea::vertical().id_salt("step_list").max_height((body_height-40.0).max(100.0)).show(ui,|ui| {
-                        if key.steps.is_empty(){ui.add_space(12.0);ui.label(RichText::new("Glisse une action ou un bind sur cette touche.").strong());ui.label(RichText::new("La bibliothèque à droite propose des raccourcis prêts à l’emploi. Tu peux ensuite combiner et modifier leurs actions ici.").color(p.muted));}
-                        let count=key.steps.len();
-                        for(i,step) in key.steps.iter_mut().enumerate(){ui.push_id(i,|ui|{
+                        if steps.is_empty(){ui.add_space(12.0);ui.label(RichText::new("Glisse une action ou un bind sur cette touche.").strong());ui.label(RichText::new("La bibliothèque à droite propose des raccourcis prêts à l’emploi. Tu peux ensuite combiner et modifier leurs actions ici.").color(p.muted));}
+                        let count=steps.len();
+                        for(i,step) in steps.iter_mut().enumerate(){ui.push_id(i,|ui|{
                             egui::Frame::new().fill(p.bg).corner_radius(6).inner_margin(10).show(ui,|ui| {
                                 ui.horizontal(|ui|{ui.label(RichText::new(format!("{:02}",i+1)).color(BLUE).size(11.0));ui.label(RichText::new(step.name()).strong().size(12.0));ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{if ui.small_button("×").on_hover_text("Supprimer cette étape").clicked(){remove=Some(i);}if ui.add_enabled(i+1<count,egui::Button::new("↓").small()).clicked(){movement=Some((i,i+1));}if ui.add_enabled(i>0,egui::Button::new("↑").small()).clicked(){movement=Some((i,i-1));}});});
-                                let mut record=false;let mut audio_icon=None;changed|=edit_step(ui,step,&names,&pages,&mut record,&self.audio,&mut audio_icon,&dialog_tx,&(active,page_id.clone(),selected,vec![i]));if let Some(state)=audio_icon{pick_audio=Some((vec![i],state));}if record{record_step=Some(i);}
+                                let mut record=false;let mut audio_icon=None;changed|=edit_step(ui,step,&names,&pages,&mut record,&self.audio,&mut audio_icon,&dialog_tx,&(active,page_id.clone(),selected,vec![i]));if let Some(state)=audio_icon{pick_audio=Some((vec![i],state));}if record && !long_editor {record_step=Some(i);}
                             });
                         });}
                     });
-                    if let Some(i)=remove{key.steps.remove(i);changed=true;removed_step=true;}if let Some((a,b))=movement{key.steps.swap(a,b);changed=true;}
+                    if let Some(i)=remove{steps.remove(i);changed=true;removed_step=true;}if let Some((a,b))=movement{steps.swap(a,b);changed=true;}
                 });
             });
             if let Some(step)=record_step {self.recording=Some((active,self.config.page.clone(),self.selected,vec![step],self.gate.enabled));self.recording_error.clear();self.gate.enabled=false;self.engine.stop();self.refresh_hotkeys();}
             if changed {self.edited(); if removed_step {self.log("Étape retirée — Ctrl+Z pour annuler".into());}}
             if open_icons{self.open_icon_gallery(None);}if let Some(target)=pick_audio{self.open_icon_gallery(Some(target));}
-            if let Some(i)=add_kind {if i==12{self.create_page(true);}else{self.assign(DragItem::Action(catalog::action(i,&names[active])),self.selected);}}
+            if let Some(i)=add_kind {if i==12{self.create_page(true);}else if long_editor {
+                let action = catalog::action(i,&names[active]);
+                self.config.keys_mut()[selected].long_steps.extend(action.steps);
+                self.edited();
+            }else{self.assign(DragItem::Action(catalog::action(i,&names[active])),self.selected);}}
 
         });
     }
@@ -1652,6 +1687,10 @@ impl App {
                                     Err(error)=>{ui.painter().text(lcd.center(),egui::Align2::CENTER_CENTER,"Aperçu indisponible",egui::FontId::proportional(9.0),p.muted); ui.painter().text(lcd.left_top(),egui::Align2::LEFT_TOP,"!",egui::FontId::proportional(12.0),Color32::LIGHT_RED);let _=error;}
                                 }
                                 // Editing hints never alter the image sent to the LCD.
+                                if !key.long_steps.is_empty() {
+                                    ui.painter().rect_filled(egui::Rect::from_min_size(lcd.right_top()-Vec2::new(17.0,0.0),Vec2::new(17.0,16.0)),3.0,p.surface);
+                                    ui.painter().text(lcd.right_top()+Vec2::new(-8.0,8.0),egui::Align2::CENTER_CENTER,"L",egui::FontId::proportional(11.0),p.ink);
+                                }
                                 if key.steps.is_empty()&&key.image.is_empty()&&key.label.is_empty(){theme::symbol(ui.painter(),r.center(),width*0.22,8,p.muted);}
                                 if crate::model::validate_key_in_profile(&self.config.keys()[i],&self.config,&self.config.profiles[self.config.active]).is_err() { ui.painter().circle_filled(r.left_top()+Vec2::new(10.0,10.0),4.0,Color32::from_rgb(242,126,106)); }
                                 if width>=70.0 {ui.painter().text(r.right_bottom()+Vec2::new(0.0,3.0),egui::Align2::RIGHT_TOP,format!("{:02}",i+1),egui::FontId::proportional(8.0),p.muted);}
@@ -1870,6 +1909,9 @@ impl App {
                     {
                         self.edited();
                     }
+                    ui.add_space(8.0);
+                    if ui.add(egui::Slider::new(&mut self.config.long_press_ms, 250..=2000).text("Appui long (ms)")).changed() { self.edited(); }
+                    ui.label(RichText::new("Une touche avec appui long attend ce délai ; sans relâchement détecté, elle lance l’action longue.").small().color(p.muted));
                     ui.add_space(16.0);
                     ui.label(RichText::new("Diagnostic des touches").strong());
                     if ui
@@ -2095,6 +2137,8 @@ impl Runner {
 impl App {
     fn background_tick(&mut self) {
         self.events();
+        let due = self.long_press.due(Instant::now(), self.applied.long_press_ms);
+        for index in due { self.execute_physical(index, true); }
         self.assistant_events();
         if self.gate.dirty
             && !self.gate.invalid
