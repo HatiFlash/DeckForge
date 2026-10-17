@@ -70,6 +70,9 @@ const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
 ];
 fn block_help(kind: usize) -> &'static str {
     match kind {
+        27 => "Clique à la position actuelle, ou à des coordonnées écran, zone client ou curseur.",
+        28 => "Déplace la souris dans l’écran, depuis le curseur ou dans la zone client capturée au déclenchement.",
+        29 => "Défile verticalement ou horizontalement ; simulation sans effet.",
         45 => "Maintient des touches ; 0 ms jusqu’au bloc Relâcher, fin ou annulation de la macro.",
         0 => "Appuie sur une combinaison de touches.", 1 => "Écrit du texte dans la fenêtre active ; accepte {nom} et les variables spéciales.",
         2 => "Démarre un programme Windows (arguments interpolés).", 3 => "Ouvre une adresse web (gabarit interpolé).",
@@ -128,6 +131,7 @@ fn simple_fields_visible(step: &Step, advanced: bool) -> bool {
 }
 fn block_summary(step: &Step) -> String {
     match step.active() {
+        Step::MouseClick { .. } | Step::MouseMove { .. } | Step::MouseScroll { .. } => super::step_summary(step),
         Step::Clipboard { .. } => step.clipboard_summary().unwrap_or_default(),
         Step::AppVolume { .. } => step.app_volume_summary().unwrap_or_default(),
         Step::DeviceVolume { .. } => step.device_volume_summary().unwrap_or_default(),

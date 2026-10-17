@@ -179,11 +179,15 @@ Le guide de connexion ChatGPT est décrit dans [la documentation officielle Open
 
 La proposition `deckforge_configure_key` accepte `icon_scale` (entier facultatif de 20 à 200 %, 100 % par défaut), validé localement avant application.
 
+## Souris avancée — lot C2
+
+`mouse_click` accepte `x` et `y` ensemble (facultatifs) et `relative_to` (`screen` par défaut, `window` pour la zone client de la fenêtre capturée au déclenchement, `cursor` pour la position actuelle). Sans coordonnées, clic à la position courante. `mouse_move` accepte la même origine ; l’ancien booléen `relative` reste lisible pour les macros existantes. Coordonnées finales bornées au bureau virtuel ; les coordonnées `window` hors de la zone client sont refusées. `mouse_scroll` accepte `horizontal: true` pour le défilement horizontal. La simulation n’envoie aucun événement souris.
+
 ## Actions natives supplémentaires
 
 Le bloc launch accepte focus_if_running (booléen, défaut false) : si une fenêtre visible du même exécutable est ouverte, elle est activée sans relancer le programme. Un refus Windows de mise au premier plan est signalé ; aucune fenêtre DeckForge n’est ciblée par défaut.
 
-deckforge_configure_key accepte close_window (sans paramètre), mouse_click (button : left/right/middle, double : booléen), mouse_move (x/y : coordonnées entières, relative : booléen) et mouse_scroll (amount : crans -100 à 100). Ces étapes sont validées localement, sans exécution lors de la proposition. La simulation n'agit pas sur Windows ; l'export AutoHotkey refuse explicitement ces étapes non prises en charge.
+deckforge_configure_key accepte close_window (sans paramètre), mouse_click (button : left/right/middle, double : booléen), mouse_move (x/y : entiers -32768 à 32767, relative_to : screen/window/cursor) et mouse_scroll (amount : crans -100 à 100, horizontal : booléen). Ces étapes sont validées localement, sans exécution lors de la proposition. La simulation n'agit pas sur Windows ; l'export AutoHotkey refuse explicitement ces étapes non prises en charge.
 
 
 Soundboard : deckforge_configure_key accepte play_sound avec path (fichier WAV/MP3 local) et olume (entier 0 à 100), ainsi que stop_sounds sans paramètre. Les fichiers ne sont ni lus ni transmis par MCP lors de la proposition : la validation reste locale et la lecture ne démarre que sur un appui après validation. deckforge_simulate_macro n'émet aucun son. L'export AutoHotkey refuse ces blocs plutôt que de les ignorer.

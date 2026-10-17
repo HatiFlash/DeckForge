@@ -3871,17 +3871,31 @@ fn edit_step(
                 });
             } else if *hold_ms != 0 { *hold_ms = 0; changed = true; }
         }
-        Step::MouseClick { button, double } => {
+        Step::MouseClick { button, double, x, y, relative_to } => {
             egui::ComboBox::from_id_salt("mouse_button").selected_text(match button.as_str() { "left" => "Gauche", "right" => "Droit", _ => "Milieu" }).show_ui(ui, |ui| {
                 for (id, label) in [("left", "Gauche"), ("right", "Droit"), ("middle", "Milieu")] { changed |= ui.selectable_value(button, id.into(), label).changed(); }
             });
             changed |= ui.checkbox(double, "Double clic").changed();
+            ui.collapsing("Options avancées", |ui| {
+                let mut positioned = x.is_some();
+                if ui.checkbox(&mut positioned, "Déplacer avant de cliquer").changed() { *x = positioned.then_some(0); *y = positioned.then_some(0); changed = true; }
+                if positioned {
+                    mouse_origin_editor(ui, relative_to, &mut changed);
+                    ui.horizontal(|ui| { ui.label("X"); changed |= ui.add(egui::DragValue::new(x.as_mut().unwrap()).range(-32768..=32767)).changed(); ui.label("Y"); changed |= ui.add(egui::DragValue::new(y.as_mut().unwrap()).range(-32768..=32767)).changed(); });
+                }
+            });
         }
-        Step::MouseMove { x, y, relative } => {
+        Step::MouseMove { x, y, relative, relative_to } => {
             ui.horizontal(|ui| { ui.label("X"); changed |= ui.add(egui::DragValue::new(x).range(-32768..=32767)).changed(); ui.label("Y"); changed |= ui.add(egui::DragValue::new(y).range(-32768..=32767)).changed(); });
-            changed |= ui.checkbox(relative, "Déplacement relatif").changed();
+            ui.collapsing("Options avancées", |ui| {
+                if *relative { *relative_to = "cursor".into(); *relative = false; changed = true; }
+                mouse_origin_editor(ui, relative_to, &mut changed);
+            });
         }
-        Step::MouseScroll { amount } => { ui.label("Défilement (crans)"); changed |= ui.add(egui::DragValue::new(amount).range(-100..=100)).changed(); }
+        Step::MouseScroll { amount, horizontal } => {
+            ui.label("Défilement (crans)"); changed |= ui.add(egui::DragValue::new(amount).range(-100..=100)).changed();
+            ui.collapsing("Options avancées", |ui| { changed |= ui.checkbox(horizontal, "Horizontal").changed(); });
+        }
         Step::PlaySound { path, volume } => { ui.label("Fichier WAV ou MP3"); changed |= ui.text_edit_singleline(path).changed(); ui.label("Volume"); changed |= ui.add(egui::Slider::new(volume, 0..=100)).changed(); }
         Step::StopSounds => { ui.label("Arrête tous les sons lancés par DeckForge."); }
         Step::Toggle { .. } => { ui.label("Alterne les états 1 et 2 à chaque appui. Modifie leurs blocs dans l’Atelier."); }
@@ -4238,14 +4252,19 @@ fn edit_step(
     changed
 }
 
+fn mouse_origin_editor(ui: &mut egui::Ui, origin: &mut String, changed: &mut bool) {
+    egui::ComboBox::from_id_salt("mouse_origin").selected_text(match origin.as_str() { "window" => "Fenêtre (zone client)", "cursor" => "Curseur", _ => "Écran" }).show_ui(ui, |ui| {
+        for (id, label) in [("screen", "Écran"), ("window", "Fenêtre (zone client)"), ("cursor", "Curseur")] { *changed |= ui.selectable_value(origin, id.into(), label).changed(); }
+    });
+}
 fn step_summary(step: &Step) -> String {
     match step {
         Step::Hotkey { keys } => keys.clone(),
         Step::KeyHold { .. } => step.key_hold_summary().unwrap_or_default(),
         Step::Delay { ms } => format!("Attendre {ms} ms"),
-        Step::MouseClick { button, double } => format!("Clic {button}{}", if *double { " double" } else { "" }),
-        Step::MouseMove { x, y, relative } => format!("Souris {x}, {y} ({})", if *relative { "relatif" } else { "absolu" }),
-        Step::MouseScroll { amount } => format!("Défiler de {amount} crans"),
+        Step::MouseClick { button, double, x, y, relative_to } => format!("Clic {button}{}{}", if *double { " double" } else { "" }, x.zip(*y).map(|(x, y)| format!(" à {x}, {y} ({relative_to})")).unwrap_or_default()),
+        Step::MouseMove { x, y, relative, relative_to } => format!("Souris {x}, {y} ({})", if *relative { "cursor" } else { relative_to }),
+        Step::MouseScroll { amount, horizontal } => format!("Défiler de {amount} crans {}", if *horizontal { "horizontalement" } else { "verticalement" }),
         Step::PlaySound { path, volume } => format!("Son : {path} ({volume} %)"),
         Step::IfCondition { condition, .. } => format!("Si {}", condition.summary()),
         Step::WaitUntil { condition, timeout_ms, .. } => format!("Attendre que {} ({} ms max)", condition.summary(), timeout_ms),

@@ -19,9 +19,9 @@ pub fn tools() -> Value {
     ]});
     step_schema["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"type":{"const":"close_window"}},"required":["type"],"additionalProperties":false}));
     step_schema["oneOf"].as_array_mut().unwrap().extend([
-        json!({"type":"object","properties":{"type":{"const":"mouse_click"},"button":{"enum":["left","right","middle"]},"double":{"type":"boolean"}},"required":["type","button","double"],"additionalProperties":false}),
-        json!({"type":"object","properties":{"type":{"const":"mouse_move"},"x":{"type":"integer","minimum":-32768,"maximum":32767},"y":{"type":"integer","minimum":-32768,"maximum":32767},"relative":{"type":"boolean"}},"required":["type","x","y","relative"],"additionalProperties":false}),
-        json!({"type":"object","properties":{"type":{"const":"mouse_scroll"},"amount":{"type":"integer","minimum":-100,"maximum":100}},"required":["type","amount"],"additionalProperties":false}),
+        json!({"type":"object","properties":{"type":{"const":"mouse_click"},"button":{"enum":["left","right","middle"]},"double":{"type":"boolean"},"x":{"type":"integer","minimum":-32768,"maximum":32767},"y":{"type":"integer","minimum":-32768,"maximum":32767},"relative_to":{"enum":["screen","window","cursor"]}},"required":["type"],"additionalProperties":false}),
+        json!({"type":"object","properties":{"type":{"const":"mouse_move"},"x":{"type":"integer","minimum":-32768,"maximum":32767},"y":{"type":"integer","minimum":-32768,"maximum":32767},"relative_to":{"enum":["screen","window","cursor"]},"relative":{"type":"boolean"}},"required":["type"],"additionalProperties":false}),
+        json!({"type":"object","properties":{"type":{"const":"mouse_scroll"},"amount":{"type":"integer","minimum":-100,"maximum":100},"horizontal":{"type":"boolean"}},"required":["type"],"additionalProperties":false}),
     ]);
     step_schema["oneOf"].as_array_mut().unwrap().extend([
         json!({"type":"object","properties":{"type":{"const":"play_sound"},"path":{"type":"string","minLength":1,"maxLength":1024},"volume":{"type":"integer","minimum":0,"maximum":100}},"required":["type","path","volume"],"additionalProperties":false}),

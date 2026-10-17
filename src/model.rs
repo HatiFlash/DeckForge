@@ -143,9 +143,15 @@ pub enum Step {
     D6Brightness { mode: String, value: u8 },
     D6Sleep,
     CloseWindow,
-    MouseClick { button: String, double: bool },
-    MouseMove { x: i32, y: i32, relative: bool },
-    MouseScroll { amount: i32 },
+    MouseClick { #[serde(default = "default_mouse_button")] button: String, #[serde(default)] double: bool,
+        #[serde(default)] x: Option<i32>, #[serde(default)] y: Option<i32>,
+        #[serde(default = "default_mouse_origin")] relative_to: String },
+    MouseMove { #[serde(default)] x: i32, #[serde(default)] y: i32,
+        #[serde(default = "default_mouse_origin")] relative_to: String,
+        // Anciennes configurations : relative=true signifiait déplacement depuis le curseur.
+        #[serde(default, skip_serializing_if = "is_false")] relative: bool },
+    MouseScroll { #[serde(default = "default_scroll_amount")] amount: i32,
+        #[serde(default)] horizontal: bool },
     ObsScene { name: String },
     ObsRecord { mode: String },
     ObsStream { mode: String },
@@ -157,6 +163,12 @@ pub enum Step {
     PageNext,
     PagePrevious,
 }
+fn default_mouse_button() -> String { "left".into() }
+fn default_mouse_origin() -> String { "screen".into() }
+fn default_scroll_amount() -> i32 { 1 }
+fn is_false(value: &bool) -> bool { !*value }
+fn valid_mouse_origin(value: &str) -> bool { ["screen", "window", "cursor"].contains(&value) }
+fn mouse_coordinate_valid(value: i32) -> bool { (-32768..=32767).contains(&value) }
 fn default_hold_keys() -> String { "CTRL".into() }
 fn default_hold_action() -> String { "down".into() }
 fn default_text_name() -> String { "texte".into() }
@@ -929,9 +941,9 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
             _ => {}
         }
         match s {
-            Step::MouseClick { button, .. } if !["left", "right", "middle"].contains(&button.as_str()) => bail!("Bouton souris invalide"),
-            Step::MouseMove { x, y, .. } if !(-32768..=32767).contains(x) || !(-32768..=32767).contains(y) => bail!("Position souris hors limites"),
-            Step::MouseScroll { amount } if !(-100..=100).contains(amount) => bail!("Défilement souris hors limites"),
+            Step::MouseClick { button, x, y, relative_to, .. } if !["left", "right", "middle"].contains(&button.as_str()) || !valid_mouse_origin(relative_to) || x.is_some() != y.is_some() || x.is_some_and(|v| !mouse_coordinate_valid(v)) || y.is_some_and(|v| !mouse_coordinate_valid(v)) => bail!("Bouton, origine ou coordonnées du clic souris invalides"),
+            Step::MouseMove { x, y, relative_to, .. } if !mouse_coordinate_valid(*x) || !mouse_coordinate_valid(*y) || !valid_mouse_origin(relative_to) => bail!("Position ou origine souris invalide"),
+            Step::MouseScroll { amount, .. } if !(-100..=100).contains(amount) => bail!("Défilement souris hors limites"),
             Step::PlaySound { path, volume } if path.trim().is_empty() || path.len() > 1024 || path.contains('"') || path.chars().any(char::is_control) || !["wav", "mp3"].iter().any(|ext| std::path::Path::new(path).extension().is_some_and(|e| e.eq_ignore_ascii_case(ext))) || *volume > 100 => bail!("Son WAV/MP3 ou volume invalide"),
             Step::StopSounds => {},
             Step::Toggle { a, b } => { for steps in [a, b] { validate_key(&Key { steps: steps.clone(), ..Key::default() }, config)?; } },
@@ -1502,14 +1514,18 @@ mod native_mouse_tests {
     #[test]
     fn mouse_actions_validate_and_roundtrip() {
         let c = Config::default();
-        for step in [Step::MouseClick { button: "left".into(), double: true }, Step::MouseMove { x: 14, y: -5, relative: true }, Step::MouseScroll { amount: -3 }] {
+        for step in [Step::MouseClick { button: "left".into(), double: true, x: Some(42), y: Some(-5), relative_to: "window".into() }, Step::MouseMove { x: 14, y: -5, relative: false, relative_to: "cursor".into() }, Step::MouseScroll { amount: -3, horizontal: true }] {
             let json = serde_json::to_string(&step).unwrap();
             assert_eq!(serde_json::from_str::<Step>(&json).unwrap(), step);
             validate_key(&Key { steps: vec![step], ..Key::default() }, &c).unwrap();
         }
-        for invalid in [Step::MouseClick { button: "other".into(), double: false }, Step::MouseScroll { amount: 101 }, Step::MouseMove { x: 99999, y: 0, relative: false }] {
+        for invalid in [Step::MouseClick { button: "other".into(), double: false, x: None, y: None, relative_to: "screen".into() }, Step::MouseClick { button: "left".into(), double: false, x: Some(1), y: None, relative_to: "window".into() }, Step::MouseScroll { amount: 101, horizontal: true }, Step::MouseMove { x: 99999, y: 0, relative: false, relative_to: "screen".into() }, Step::MouseMove { x: 0, y: 0, relative: false, relative_to: "invalid".into() }] {
             assert!(validate_key(&Key { steps: vec![invalid], ..Key::default() }, &c).is_err());
         }
+        let legacy: Step = serde_json::from_str(r#"{"type":"mouse_move","x":5,"y":-2,"relative":true}"#).unwrap();
+        assert!(matches!(legacy, Step::MouseMove { relative: true, relative_to, .. } if relative_to == "screen"));
+        assert!(matches!(serde_json::from_str::<Step>(r#"{"type":"mouse_click"}"#).unwrap(), Step::MouseClick { x: None, y: None, .. }));
+        assert!(serde_json::from_str::<Step>(r#"{"type":"mouse_scroll","extra":1}"#).is_err());
     }
 }
 

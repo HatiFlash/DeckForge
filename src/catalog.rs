@@ -24,9 +24,9 @@ pub fn presets() -> Vec<Preset> {
             },
         });
     };
-    add("Système", "Clic souris", "Clique sur le bouton gauche de la souris.", [73, 160, 217], vec![Step::MouseClick { button: "left".into(), double: false }]);
-    add("Système", "Déplacer la souris", "Déplace le curseur relativement à sa position.", [73, 160, 217], vec![Step::MouseMove { x: 10, y: 0, relative: true }]);
-    add("Système", "Défiler", "Fait défiler la fenêtre active d'un cran.", [73, 160, 217], vec![Step::MouseScroll { amount: 1 }]);
+    add("Système", "Clic souris", "Clique sur le bouton gauche de la souris.", [73, 160, 217], vec![Step::MouseClick { button: "left".into(), double: false, x: None, y: None, relative_to: "screen".into() }]);
+    add("Système", "Déplacer la souris", "Déplace le curseur relativement à sa position.", [73, 160, 217], vec![Step::MouseMove { x: 10, y: 0, relative: false, relative_to: "cursor".into() }]);
+    add("Système", "Défiler", "Fait défiler la fenêtre active d'un cran.", [73, 160, 217], vec![Step::MouseScroll { amount: 1, horizontal: false }]);
     add("Système", "Fermer la fenêtre", "Demande à Windows de fermer la fenêtre active, sauf DeckForge.", [73, 160, 217], vec![Step::CloseWindow]);
     for (label, command) in [
         ("Lecture / pause", "play_pause"),

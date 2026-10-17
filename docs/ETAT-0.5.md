@@ -18,6 +18,12 @@ Exécutables prêts sur le PC fixe : `Bureau\DeckForge-0.5-fusion\DeckForge.exe`
 - Livré et testé automatiquement : « Attendre que… » (`wait_until`), sondage annulable, délai borné et simulation en lecture seule.
 - À tester avec Hatim : attente d’une condition réelle, expiration et bouton Arrêter pendant une attente.
 
+## Lot C2 — souris avancée (17/10/2026)
+
+- Livré : « Clic souris » (`mouse_click`) avec coordonnées facultatives et « Déplacer la souris » (`mouse_move`) avec origine `screen`, `window` (zone client capturée au déclenchement) ou `cursor` ; « Défilement souris » (`mouse_scroll`) horizontal ou vertical. Coordonnées bornées aux écrans virtuels ; anciennes macros `relative` acceptées. Atelier et MCP inclus.
+- Testé automatiquement : sérialisation, validation et calculs purs des coordonnées ; build Windows complet. Aucun test ne clique, déplace la souris ou ne défile réellement.
+- À tester avec Hatim : disposition multi-écrans, zone client de la fenêtre ciblée, clic positionné et défilement horizontal dans une application choisie.
+
 ## Lot C1 — maintien de touche (17/10/2026)
 
 - Livré : « Maintenir une touche » (`key_hold`), touches au format Raccourci, maintien borné ou jusqu’au bloc Relâcher. Registre de touches dans le moteur ; libération à la fin, lors d’Arrêter / Ctrl+Alt+F12 et à la fermeture. Atelier, modèle et schéma MCP inclus ; simulation sans effet.

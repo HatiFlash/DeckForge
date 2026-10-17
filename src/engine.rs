@@ -11,11 +11,13 @@ use std::{
     },
     time::{Duration, Instant},
 };
+use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITOR_DEFAULTTONEAREST, MONITORINFO};
 use windows_sys::Win32::{
-    Foundation::{BOOL, HWND, LPARAM},
+    Foundation::{BOOL, HWND, LPARAM, RECT},
     UI::{Input::KeyboardAndMouse::*, WindowsAndMessaging::*},
 };
 
+thread_local! { static MOUSE_WINDOW: std::cell::Cell<Option<(i32, i32, i32, i32)>> = const { std::cell::Cell::new(None) }; }
 thread_local! { static ACTIVE_KEY: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) }; }
 static TOGGLE_STATES: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, bool>>> = std::sync::OnceLock::new();
 fn toggle_states() -> &'static std::sync::Mutex<std::collections::HashMap<String, bool>> {
@@ -117,6 +119,7 @@ impl Engine {
         let tx = self.tx.clone();
         let last_finished = self.last_finished.clone();
         // Physical press: capture before spawning; delayed test: capture after countdown.
+        let mouse_window = (!dry && initial_delay == 0).then(capture_mouse_window);
         let captured = if !dry && initial_delay == 0 && has_app_volume(&key.steps) {
             Some(crate::app_audio::capture("foreground", true))
         } else { None };
@@ -126,6 +129,7 @@ impl Engine {
                 if !dry {
                     wait(initial_delay, &cancel)?;
                 }
+                MOUSE_WINDOW.with(|area| area.set(if dry { None } else { mouse_window.unwrap_or_else(capture_mouse_window) }));
                 ACTIVE_KEY.with(|id| *id.borrow_mut() = key.runtime_id.clone().unwrap_or_else(|| serde_json::to_string(&key).unwrap_or_default()));
                 let foreground = if dry || !has_app_volume(&key.steps) { None }
                     else if let Some(captured) = captured { Some(captured?) }
@@ -539,9 +543,12 @@ fn run_steps(
             Step::D6Brightness { mode, value } => { let _ = tx.send(Event::D6Brightness(mode.clone(), *value)); },
             Step::D6Sleep => { let _ = tx.send(Event::D6Sleep); },
             Step::CloseWindow => close_foreground_window()?,
-            Step::MouseClick { button, double } => mouse_click(button, *double)?,
-            Step::MouseMove { x, y, relative } => mouse_move(*x, *y, *relative)?,
-            Step::MouseScroll { amount } => mouse_event(MOUSEEVENTF_WHEEL, amount.wrapping_mul(120) as u32, 0, 0)?,
+            Step::MouseClick { button, double, x, y, relative_to } => {
+                if let (Some(x), Some(y)) = (x, y) { mouse_move(*x, *y, relative_to)?; }
+                mouse_click(button, *double)?;
+            },
+            Step::MouseMove { x, y, relative, relative_to } => mouse_move(*x, *y, if *relative { "cursor" } else { relative_to })?,
+            Step::MouseScroll { amount, horizontal } => mouse_event(if *horizontal { MOUSEEVENTF_HWHEEL } else { MOUSEEVENTF_WHEEL }, amount.wrapping_mul(120) as u32, 0, 0)?,
             Step::ObsScene { .. } | Step::ObsRecord { .. } | Step::ObsStream { .. }
             | Step::ObsVirtualCam { .. } | Step::ObsReplay { .. } | Step::ObsMute { .. }
             | Step::ObsSourceVisibility { .. } => crate::obs::execute(step, obs)?,
@@ -802,17 +809,69 @@ fn mouse_click(button: &str, double: bool) -> Result<()> {
     }
     Ok(())
 }
-fn mouse_move(x: i32, y: i32, relative: bool) -> Result<()> {
-    if relative { mouse_event(MOUSEEVENTF_MOVE, 0, x, y) }
-    else {
-        let width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
-        let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
-        anyhow::ensure!(width > 1 && height > 1, "Écran introuvable");
-        let left = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
-        let top = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
-        mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, 0,
-            ((i64::from(x - left) * 65535) / i64::from(width - 1)).clamp(0, 65535) as i32,
-            ((i64::from(y - top) * 65535) / i64::from(height - 1)).clamp(0, 65535) as i32)
+// Capturée au déclenchement (ou après le compte à rebours du test), jamais à chaque étape.
+fn capture_mouse_window() -> Option<(i32, i32, i32, i32)> {
+    let hwnd = unsafe { GetForegroundWindow() };
+    if hwnd.is_null() { return None; }
+    let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    let mut origin = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+    if unsafe { GetClientRect(hwnd, &mut rect) } == 0 || unsafe { windows_sys::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut origin) } == 0 { return None; }
+    Some((origin.x, origin.y, rect.right - rect.left, rect.bottom - rect.top))
+}
+// Pure : borne aux pixels du bureau virtuel, puis convertit vers SendInput.
+fn mouse_target(x: i32, y: i32, origin: &str, cursor: (i32, i32), window: Option<(i32, i32, i32, i32)>, screen: (i32, i32, i32, i32)) -> Result<(i32, i32)> {
+    let (sx, sy, sw, sh) = screen;
+    anyhow::ensure!(sw > 1 && sh > 1, "Écran introuvable");
+    let (base_x, base_y) = match origin {
+        "screen" => (0, 0),
+        "cursor" => cursor,
+        "window" => {
+            let (wx, wy, w, h) = window.context("Fenêtre au premier plan non capturée au déclenchement")?;
+            anyhow::ensure!(w > 0 && h > 0 && x >= 0 && y >= 0 && x < w && y < h, "Position hors de la zone client de la fenêtre");
+            (wx, wy)
+        },
+        _ => bail!("Origine de souris inconnue"),
+    };
+    let px = (i64::from(base_x) + i64::from(x)).clamp(i64::from(sx), i64::from(sx) + i64::from(sw) - 1);
+    let py = (i64::from(base_y) + i64::from(y)).clamp(i64::from(sy), i64::from(sy) + i64::from(sh) - 1);
+    Ok((((px - i64::from(sx)) * 65535 / i64::from(sw - 1)) as i32,
+        ((py - i64::from(sy)) * 65535 / i64::from(sh - 1)) as i32))
+}
+fn mouse_move(x: i32, y: i32, relative_to: &str) -> Result<()> {
+    let mut cursor = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+    anyhow::ensure!(unsafe { GetCursorPos(&mut cursor) } != 0, "Position du curseur indisponible");
+    let screen = unsafe { (GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN), GetSystemMetrics(SM_CXVIRTUALSCREEN), GetSystemMetrics(SM_CYVIRTUALSCREEN)) };
+    let window = MOUSE_WINDOW.with(|area| area.get());
+    let (dx, dy) = mouse_target(x, y, relative_to, (cursor.x, cursor.y), window, screen)?;
+    // Les bornes du bureau virtuel peuvent inclure des trous entre écrans.
+    let (sx, sy, sw, sh) = screen;
+    let px = i64::from(sx) + i64::from(dx) * i64::from(sw - 1) / 65535;
+    let py = i64::from(sy) + i64::from(dy) * i64::from(sh - 1) / 65535;
+    let pt = windows_sys::Win32::Foundation::POINT { x: px as i32, y: py as i32 };
+    let monitor = unsafe { MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST) };
+    anyhow::ensure!(!monitor.is_null(), "Aucun écran réel disponible");
+    let mut info = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        rcMonitor: RECT { left: 0, top: 0, right: 0, bottom: 0 },
+        rcWork: RECT { left: 0, top: 0, right: 0, bottom: 0 }, dwFlags: 0 };
+    anyhow::ensure!(unsafe { GetMonitorInfoW(monitor, &mut info) } != 0, "Écran réel indisponible");
+    let rx = px.clamp(i64::from(info.rcMonitor.left), i64::from(info.rcMonitor.right - 1));
+    let ry = py.clamp(i64::from(info.rcMonitor.top), i64::from(info.rcMonitor.bottom - 1));
+    let dx = ((rx - i64::from(sx)) * 65535 / i64::from(sw - 1)) as i32;
+    let dy = ((ry - i64::from(sy)) * 65535 / i64::from(sh - 1)) as i32;
+    mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, 0, dx, dy)
+}
+#[cfg(test)] mod mouse_coordinate_tests {
+    use super::*;
+    #[test] fn desktop_window_cursor_and_bounds() {
+        let screen = (-100, -50, 200, 100);
+        let window = Some((-90, -40, 50, 30));
+        assert_eq!(mouse_target(0, 0, "window", (0, 0), window, screen).unwrap(), (10 * 65535 / 199, 10 * 65535 / 99));
+        assert_eq!(mouse_target(-100, -50, "screen", (0, 0), window, screen).unwrap(), (0, 0));
+        assert_eq!(mouse_target(100, 50, "screen", (0, 0), window, screen).unwrap(), (65535, 65535));
+        assert_eq!(mouse_target(20, -20, "cursor", (90, 40), window, screen).unwrap(), (65535, 70 * 65535 / 99));
+        assert!(mouse_target(50, 0, "window", (0, 0), window, screen).is_err());
+        assert!(mouse_target(1, 1, "window", (0, 0), None, screen).is_err());
+        assert!(mouse_target(0, 0, "other", (0, 0), window, screen).is_err());
     }
 }
 fn close_foreground_window() -> Result<()> {
