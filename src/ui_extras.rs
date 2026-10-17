@@ -51,7 +51,7 @@ fn palette(ui: &mut egui::Ui, search: &mut String, depth: usize, advanced: bool)
     for &(category, kinds) in BLOCK_CATEGORIES {
         let matches: Vec<_> = kinds.iter().copied().filter(|&kind| {
             (depth == 0 || !(7..=11).contains(&kind)) &&
-            (advanced || !matches!(kind, 5 | 16 | 17 | 18)) &&
+            (advanced || kind != 18) &&
             (search.is_empty() || format!("{} {}", category, crate::automation::NAMES[kind]).to_lowercase().contains(&search.to_lowercase()))
         }).collect();
         if matches.is_empty() { continue; }
@@ -64,6 +64,9 @@ fn palette(ui: &mut egui::Ui, search: &mut String, depth: usize, advanced: bool)
         ui.add_space(7.0);
     }
     selected
+}
+fn simple_fields_visible(step: &Step, advanced: bool) -> bool {
+    advanced || !matches!(step.active(), Step::AutoHotkey { .. })
 }
 fn block_summary(step: &Step) -> String {
     match step.active() {
@@ -189,7 +192,7 @@ pub(super) fn block_editor(
                     for &(category, kinds) in BLOCK_CATEGORIES {
                         ui.menu_button(category, |ui| {
                             for &kind in kinds {
-                                if depth > 0 && (7..=11).contains(&kind) || !advanced && matches!(kind, 5 | 16 | 17 | 18) { continue; }
+                                if depth > 0 && (7..=11).contains(&kind) || !advanced && kind == 18 { continue; }
                                 if ui.button(crate::automation::NAMES[kind]).on_hover_text(block_help(kind)).clicked() {
                                     insertion = Some((i, kind));
                                     ui.close_menu();
@@ -275,9 +278,21 @@ pub(super) fn block_editor(
                     ui.add_space(6.0);
                     let mut capture = false;
                     let mut icon = None;
-                    if advanced || !matches!(step.active(), Step::AutoHotkey { .. } | Step::SetVariable { .. } | Step::IfVariable { .. }) {
-                        changed |= edit_step(ui, step.active_mut(), profiles, pages, &mut capture, audio, &mut icon, tx, &(target.0,target.1.clone(),target.2,path.clone()));
-                    } else { ui.label("Passe en mode Avancé pour modifier les paramètres de ce bloc."); }
+                    if simple_fields_visible(step.active(), advanced) {
+                        match step.active_mut() {
+                            Step::Launch { program, .. } if !advanced => {
+                                ui.label("Programme");
+                                changed |= ui.text_edit_singleline(program).changed();
+                            }
+                            Step::WaitWindow { title, .. } if !advanced => {
+                                ui.label("Titre de la fenêtre");
+                                changed |= ui.text_edit_singleline(title).changed();
+                            }
+                            _ => {
+                                changed |= edit_step(ui, step.active_mut(), profiles, pages, &mut capture, audio, &mut icon, tx, &(target.0,target.1.clone(),target.2,path.clone()));
+                            }
+                        }
+                    } else { ui.label("Paramètres AutoHotkey disponibles en mode Avancé."); }
                     if let Some(state) = icon {
                         *pick_audio = Some((path.clone(), state));
                     }
@@ -379,7 +394,7 @@ pub(super) fn block_editor(
     if depth <= 8 && steps.len() < 256 {
         ui.menu_button("+ Ajouter un bloc", |ui| {
             for (i, label) in crate::automation::NAMES.iter().enumerate() {
-                if i == 12 || depth > 0 && (7..=11).contains(&i) || !advanced && matches!(i, 5 | 16 | 17 | 18) {
+                if i == 12 || depth > 0 && (7..=11).contains(&i) || !advanced && i == 18 {
                     continue;
                 }
                 if ui.button(*label).clicked() {
@@ -722,7 +737,9 @@ mod workshop_tests {
             let mut steps = template(i);
             assert!(!steps.is_empty());
             fn fill(steps: &mut [Step]) {
-                for s in steps { match s {
+                for s in steps {
+                    assert!(simple_fields_visible(s, false), "champ du modèle inaccessible en mode Simple: {}", s.name());
+                    match s {
                     Step::Launch { program, .. } => *program = "notepad.exe".into(),
                     Step::Url { url } => *url = "https://example.org".into(),
                     Step::Text { text } => *text = "Bonjour".into(),
