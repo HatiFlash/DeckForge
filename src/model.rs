@@ -75,6 +75,8 @@ pub enum Step {
         script: String,
         args: Vec<String>,
     },
+    PlaySound { path: String, volume: u8 },
+    StopSounds,
     CloseWindow,
     MouseClick { button: String, double: bool },
     MouseMove { x: i32, y: i32, relative: bool },
@@ -120,6 +122,8 @@ impl Step {
             Self::MouseClick { .. } => "Clic souris",
             Self::MouseMove { .. } => "Déplacer la souris",
             Self::MouseScroll { .. } => "Défilement souris",
+            Self::PlaySound { .. } => "Jouer un son",
+            Self::StopSounds => "Arrêter les sons",
             Self::CloseWindow => "Fermer la fenêtre active",
             Self::ObsScene { .. } => "OBS : scène",
             Self::ObsRecord { .. } => "OBS : enregistrement",
@@ -641,6 +645,8 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
             Step::MouseClick { button, .. } if !["left", "right", "middle"].contains(&button.as_str()) => bail!("Bouton souris invalide"),
             Step::MouseMove { x, y, .. } if !(-32768..=32767).contains(x) || !(-32768..=32767).contains(y) => bail!("Position souris hors limites"),
             Step::MouseScroll { amount } if !(-100..=100).contains(amount) => bail!("Défilement souris hors limites"),
+            Step::PlaySound { path, volume } if path.trim().is_empty() || path.len() > 1024 || path.contains('"') || path.chars().any(char::is_control) || !["wav", "mp3"].iter().any(|ext| std::path::Path::new(path).extension().is_some_and(|e| e.eq_ignore_ascii_case(ext))) || *volume > 100 => bail!("Son WAV/MP3 ou volume invalide"),
+            Step::StopSounds => {},
             Step::CloseWindow => {},
             Step::ObsScene { name } if name.trim().is_empty() || name.len() > 256 => bail!("Scène OBS invalide"),
             Step::ObsMute { input, mode } if input.trim().is_empty() || !obs_mode(mode, &["toggle", "mute", "unmute"]) => bail!("Entrée OBS ou mode invalide"),
@@ -939,6 +945,26 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod native_sound_tests {
+    use super::*;
+    #[test]
+    fn sound_json_validation_and_export_safety() {
+        let c = Config::default();
+        let good = Step::PlaySound { path: "C:\\sons\\été.mp3".into(), volume: 65 };
+        let json = serde_json::to_string(&good).unwrap();
+        assert_eq!(serde_json::from_str::<Step>(&json).unwrap(), good);
+        for step in [good, Step::StopSounds] {
+            let key = Key { steps: vec![step], ..Key::default() };
+            validate_key(&key, &c).unwrap();
+            assert!(crate::automation::export(&key).is_err());
+        }
+        for path in ["", "voice.exe", "x\"y.wav"] {
+            assert!(validate_key(&Key { steps: vec![Step::PlaySound { path: path.into(), volume: 50 }], ..Key::default() }, &c).is_err());
+        }
+        assert!(validate_key(&Key { steps: vec![Step::PlaySound { path: "ok.wav".into(), volume: 101 }], ..Key::default() }, &c).is_err());
+    }
+}
 #[cfg(test)]
 mod native_close_tests {
     use super::*;

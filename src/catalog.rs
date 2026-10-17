@@ -245,6 +245,8 @@ pub fn presets() -> Vec<Preset> {
         let category = if label.starts_with("Discord") { "Streaming" } else { "Système" };
         add(category, label, description, [108, 154, 218], vec![Step::Hotkey { keys: keys.into() }]);
     }
+    add("Streaming", "Jouer un son", "Lit un fichier WAV ou MP3 sans interrompre la macro (8 sons maximum).", [76, 166, 137], vec![Step::PlaySound { path: "choisir.wav".into(), volume: 100 }]);
+    add("Streaming", "Arrêter les sons", "Arrête les sons lancés par DeckForge.", [76, 166, 137], vec![Step::StopSounds]);
     items
 }
 
@@ -432,7 +434,7 @@ mod tests {    #[test]
     #[test]
     fn every_preset_and_action_is_executable_with_valid_configuration() {
         let c = Config::default();
-        assert_eq!(presets().len(), 53);
+        assert_eq!(presets().len(), 55);
         for p in presets() {
             validate_key(&p.key, &c).unwrap();
             assert!(!p.key.steps.is_empty());

@@ -2416,6 +2416,8 @@ fn edit_step(
             changed |= ui.checkbox(relative, "Déplacement relatif").changed();
         }
         Step::MouseScroll { amount } => { ui.label("Défilement (crans)"); changed |= ui.add(egui::DragValue::new(amount).range(-100..=100)).changed(); }
+        Step::PlaySound { path, volume } => { ui.label("Fichier WAV ou MP3"); changed |= ui.text_edit_singleline(path).changed(); ui.label("Volume"); changed |= ui.add(egui::Slider::new(volume, 0..=100)).changed(); }
+        Step::StopSounds => { ui.label("Arrête tous les sons lancés par DeckForge."); }
         Step::CloseWindow => { ui.label("Ferme la fenêtre active (jamais DeckForge)."); }
         Step::ObsScene { name } => { ui.label("Scène OBS"); changed |= obs_entry(ui, name, &crate::obs_monitor::snapshot().scenes); }
         Step::ObsMute { input, mode } => { ui.label("Entrée audio OBS"); changed |= obs_entry(ui, input, &crate::obs_monitor::snapshot().inputs); obs_choice(ui, mode, &["toggle", "mute", "unmute"], &mut changed); }
@@ -2623,6 +2625,8 @@ fn step_summary(step: &Step) -> String {
         Step::MouseClick { button, double } => format!("Clic {button}{}", if *double { " double" } else { "" }),
         Step::MouseMove { x, y, relative } => format!("Souris {x}, {y} ({})", if *relative { "relatif" } else { "absolu" }),
         Step::MouseScroll { amount } => format!("Défiler de {amount} crans"),
+        Step::PlaySound { path, volume } => format!("Son : {path} ({volume} %)"),
+        Step::StopSounds => "Arrêter les sons".into(),
         Step::CloseWindow => "Fermer la fenêtre active".into(),
         Step::Media { command } => format!("Média : {command}"),
         Step::Url { url } => url.clone(),

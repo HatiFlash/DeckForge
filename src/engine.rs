@@ -203,6 +203,8 @@ fn run_steps(
         }
         match step {
             Step::Disabled { .. } => {},
+            Step::PlaySound { path, volume } => crate::soundboard::play(path, *volume)?,
+            Step::StopSounds => crate::soundboard::stop(),
             Step::CloseWindow => close_foreground_window()?,
             Step::MouseClick { button, double } => mouse_click(button, *double)?,
             Step::MouseMove { x, y, relative } => mouse_move(*x, *y, *relative)?,
@@ -476,6 +478,13 @@ fn find_window(query: &str) -> Option<HWND> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn sound_simulation_does_not_open_missing_files() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let key = Key { steps: vec![Step::PlaySound { path: "Z:\\missing.wav".into(), volume: 40 }, Step::StopSounds], ..Key::default() };
+        run(&key, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default()).unwrap();
+        assert!(rx.try_iter().any(|event| matches!(event, Event::Log(s) if s.contains("Jouer un son"))));
+    }
     #[test]
     fn disabled_nested_blocks_are_skipped_during_execution_and_simulation() {
         for dry in [false, true] {

@@ -20,6 +20,7 @@ mod model;
 mod obs;
 mod obs_monitor;
 mod recorder;
+mod soundboard;
 mod store;
 mod token_equal;
 mod theme;
