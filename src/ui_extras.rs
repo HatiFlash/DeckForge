@@ -48,13 +48,13 @@ fn block_help(kind: usize) -> &'static str {
 }
 fn matches_palette(kind: usize, category: &str, search: &str) -> bool {
     let aliases = match kind {
-        0 => "hotkey super hotkeys hotkeyswitch discord browser back forward refresh quick control close window",
-        1 => "password text plain text",
+        0 => "hotkey super hotkeys discord browser back forward refresh quick control close window",
+        1 => "text plain text",
         2 => "open openapps quick tool calculator mail music",
         3 => "website home page",
         4 => "multimedia systemvolume mute quick control",
         7..=11 => "pages folders",
-        15 => "multi action toggle",
+        15 => "multi action",
         _ => "",
     };
     search.is_empty() || format!("{} {} {}", category, crate::automation::NAMES[kind], aliases).to_lowercase().contains(&search.to_lowercase())
@@ -102,7 +102,7 @@ mod workshop_summary_tests {
     use super::*;
     #[test]
     fn fifine_search_aliases_find_existing_actions() {
-        for (kind, query) in [(0, "Super Hotkeys"), (1, "Password"), (2, "OpenApps"), (3, "Website"), (4, "SystemVolume"), (15, "Multi Action")] {
+        for (kind, query) in [(0, "Super Hotkeys"), (2, "OpenApps"), (3, "Website"), (4, "SystemVolume"), (15, "Multi Action")] {
             assert!(matches_palette(kind, "Système", query));
         }
         assert!(!matches_palette(2, "Système", "OBS scene"));
