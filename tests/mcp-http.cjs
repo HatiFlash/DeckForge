@@ -20,9 +20,16 @@ r=await post({jsonrpc:'2.0',id:4,method:'ping'},{...sessionHeaders,'MCP-Protocol
 r=await fetch(url,{method:'POST',headers:{...base,...sessionHeaders},body:'invalid json'});assert.equal(r.status,400);checks.push('malformed HTTP JSON rejected');
 r=await fetch(url,{method:'DELETE',headers:{...base,...sessionHeaders}});assert.equal(r.status,204);r=await post({jsonrpc:'2.0',id:5,method:'tools/list'},sessionHeaders);assert.equal(r.status,404);checks.push('HTTP session deletion');
 // Eight incomplete requests must not block the accept loop; excess clients receive 503.
-const idle=await Promise.all(Array.from({length:8},()=>new Promise((resolve,reject)=>{
-  const socket=net.connect(port,'127.0.0.1',()=>resolve(socket));socket.on('error',reject);
-})));
+// A slot freed late by an earlier request would let one "idle" client be refused and the ninth
+// be accepted instead: keep only sockets the server really holds open, until eight are held.
+const idle=[];
+for(let attempt=0;idle.length<8;attempt++){
+  assert(attempt<40,'could not occupy eight HTTP slots');
+  const socket=await new Promise((resolve,reject)=>{const s=net.connect(port,'127.0.0.1',()=>resolve(s));s.on('error',reject);});
+  let closed=false;socket.on('data',()=>{closed=true;});socket.on('end',()=>{closed=true;});socket.on('close',()=>{closed=true;});
+  await new Promise(r=>setTimeout(r,60));
+  if(closed){socket.destroy();await new Promise(r=>setTimeout(r,100));}else idle.push(socket);
+}
 await new Promise(r=>setTimeout(r,150));
 const refused=await Promise.race([
   new Promise((resolve,reject)=>{const socket=net.connect(port,'127.0.0.1');let text='';
