@@ -1,4 +1,4 @@
-# DeckForge 0.5.0 — version de test Windows
+# DeckForge 0.5.1 — version de test Windows
 
 <img src="res/branding/deckforge-logo.png" width="96" align="right" alt="Logo DeckForge">
 
@@ -7,6 +7,17 @@ Application Rust indépendante pour le FIFINE AmpliGame D6 (USB 3142:0060) : mac
 ![Interface](docs/interface.png)
 
 Pour connecter Claude Desktop, Claude Code, Codex CLI ou Cursor sans éditer de fichier : bouton **IA** dans la barre → **Connecter une IA**. Voir [le guide MCP](docs/MCP.md).
+
+## Nouveautés 0.5.1
+
+- **Inspecteur complet** : onglets Action / Apparence / Avancé, grand aperçu de la touche, mise en page sûre à 125 % et 150 % (petits écrans compris).
+- **Touche selon l'état réel** : titre, icône et couleur suivent une condition (micro coupé = icône rouge, application muette, casque branché), même si l'état change hors de DeckForge.
+- **Variables** : blocs Calculer (compteurs, aléatoire) et Texte ; variables enregistrées entre les redémarrages (Réglages → Variables enregistrées) ; `{nom}`, `{date}`, `{heure}`, `{horodatage}`, `{presse_papiers}` dans les textes, liens, arguments et requêtes.
+- **Presse-papiers** : copier, lire, sauvegarder / restaurer, modèle « Coller sans mise en forme ».
+- **Clavier et souris** : maintenir une touche (relâchée automatiquement en fin de macro, à l'arrêt et à la fermeture), clic / déplacement relatifs à une fenêtre ou au curseur, défilement horizontal.
+- **Fenêtres** : activer, réduire, agrandir, déplacer, redimensionner, envoyer sur un autre écran, toujours au premier plan ; « Lancer une application » peut activer celle déjà ouverte.
+- **Déclencheurs automatiques** : ouverture / fermeture d'une application, heure fixe, minuteur, branchement d'un périphérique audio (Réglages → Windows et raccourcis).
+- **Contrôle d'exécution par touche** : ignorer, relancer ou mettre en file si la macro tourne déjà, anti-rebond.
 
 ## Nouveautés 0.5.0
 
