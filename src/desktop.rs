@@ -71,13 +71,11 @@ struct State {
 }
 impl State {
     fn send(&self, event: Event) {
+        // Restore a hidden/minimized native window only for explicit Open/Quit; never on ordinary events.
         if matches!(event, Event::Open | Event::Quit) {
             unsafe {
                 let window = self.main.get() as HWND;
-                if !window.is_null() {
-                    ShowWindowAsync(window, SW_RESTORE);
-                    SetForegroundWindow(window);
-                }
+                if !window.is_null() && (matches!(event, Event::Quit) || IsWindowVisible(window) == 0 || IsIconic(window) != 0) { ShowWindowAsync(window, SW_RESTORE); }
             }
         }
         let _ = self.tx.send(event);

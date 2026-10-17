@@ -444,9 +444,10 @@ impl App {
     pub(super) fn extras(&mut self, ctx: &egui::Context) {
         if self.open_requested {
             self.open_requested = false;
+            let viewport = ctx.input(|i| i.viewport().clone());
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            if viewport.minimized == Some(true) { ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false)); }
+            if viewport.focused != Some(true) { ctx.send_viewport_cmd(egui::ViewportCommand::Focus); }
         }
         if self.quitting {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);

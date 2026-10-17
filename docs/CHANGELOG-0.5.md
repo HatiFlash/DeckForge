@@ -78,3 +78,11 @@ Tests exécutés : Build-Windows.ps1 -Action All : 86 tests application, 5 tests
 - Test egui sans fenêtre : à 1380 × 1050, vérifie les unités et l’accès à la taille de l’icône par défilement si nécessaire.
 - Tests : cargo test --locked (103 application, 5 connecteur) ; Build-Windows.ps1 -Action All avec aperçus dans %TEMP%\df-fix1 : terminé sans avertissement de compilation, contrôles MCP stdio/HTTP OK ; clippy --locked --all-targets : code 0, 28 lignes warning (dont résumés), limite 30 respectée.
 - À vérifier sur matériel : défilement à la souris dans la fenêtre réelle et rendu sur le pavé D6.
+
+## Retours après essai D6 - inspecteur et atelier
+
+- Cartes d’étapes bornées par la largeur de l’inspecteur ; défilement vertical sans extension horizontale, éditeurs de texte ajustés à la place disponible. Boutons ↑ ↓ × accessibles dans le panneau central même avec un long script AutoHotkey.
+- Ouverture depuis la notification : restauration native seulement si la fenêtre est réellement cachée/réduite, et commandes viewport demandées seulement pour l’ouverture explicite, selon l’état connu (pas pour Applied, Device ni l’animation). Ancien doublon : SW_RESTORE + SetForegroundWindow natifs sur chaque événement Open, puis Visible + Minimized + Focus egui ; aucune commande répétée sur les frames inactives observée. Le rafraîchissement de dessin à 60 ms reste nécessaire au moteur/UI ; aucune preuve que le clignotement réel observé vient exclusivement de ce doublon.
+- Atelier de blocs rendu visible dans l’inspecteur, aide sans code dans l’étape AutoHotkey, et accès à l’atelier ou aux modèles quand la touche est vide.
+- Tests egui sans fenêtre : boutons de suppression visibles à 1380×900 et 1100×800 avec script long et média ; accès atelier/modèles et aucune commande viewport sur 8 frames stables. `Build-Windows.ps1 -Action All -PreviewDirectory %TEMP%\df-fix2` : 105 tests app et 5 tests MCP, transports stdio et HTTP validés, zéro warning de build. `cargo clippy --locked --all-targets` : 26 lignes warning (dont doublons et résumés), exit 0 ; 21 warnings binaires et 26 pour tests, dont 21 doublons.
+- À vérifier sur le PC et le D6 : absence de clignotement après redémarrage et ouverture/fermeture tray, lisibilité à l’échelle Windows réelle ; pas d’exécution de macros ou d’ouverture native pendant ces tests.

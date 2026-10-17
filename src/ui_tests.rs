@@ -1076,3 +1076,58 @@ fn icon_scale_drag_shares_one_undo_entry_for_focused_field() {
     h.app.undo_edit();
     assert_eq!(h.app.config.keys()[0].icon_scale, original);
 }
+
+#[test]
+fn inspector_step_remove_buttons_stay_inside_center_panel_at_both_sizes() {
+    for size in [vec2(1380.0, 900.0), vec2(1100.0, 800.0)] {
+        for script_first in [true, false] {
+            let mut h = Harness::new();
+            let script = Step::AutoHotkey {
+                executable: format!("C:\\very-long-folder\\{}\\AutoHotkey64.exe", "deep".repeat(40)),
+                script: "Send \"hello\"\n".repeat(70), args: vec![],
+            };
+            let media = Step::Media { command: "play_pause".into() };
+            h.app.config.keys_mut()[0].steps = if script_first { vec![script, media] } else { vec![media, script] };
+            h.app.selected = 0;
+            let output = h.warm(size);
+            let buttons: Vec<_> = output.shapes.iter().filter_map(|clipped| {
+                if let egui::Shape::Text(text) = &clipped.shape {
+                    if text.galley.job.text == "×" && clipped.clip_rect.contains(text.pos + text.galley.size() * 0.5) {
+                        return Some((text.pos.x, text.pos.x + text.galley.size().x, clipped.clip_rect.max.x));
+                    }
+                }
+                None
+            }).collect();
+            assert!(!buttons.is_empty(), "remove button missing at {size:?}, script_first={script_first}");
+            for (left, right, clip_right) in buttons {
+                assert!(left > 240.0 && right <= clip_right && right < size.x - 296.0,
+                    "remove button outside inspector: {left}..{right}, clip={clip_right}, size={size:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn workshop_entry_points_and_idle_viewport_commands() {
+    let size = vec2(1380.0, 900.0);
+    let mut h = Harness::new();
+    h.app.config.keys_mut()[0].steps = vec![Step::AutoHotkey {
+        executable: "AutoHotkey64.exe".into(), script: "Send \"test\"".into(), args: vec![],
+    }];
+    let output = h.warm(size);
+    assert!(text_position(&output.shapes, "Atelier de blocs").is_some());
+    assert!(text_position(&output.shapes, "Ouvrir l’Atelier de blocs").is_some());
+    for _ in 0..8 {
+        let output = h.frame(size, vec![]);
+        assert!(output.viewport_output.values().all(|v| v.commands.is_empty()), "idle frame sent a viewport command");
+    }
+    h.app.config.keys_mut()[0].steps.clear();
+    let output = h.warm(size);
+    assert!(text_position(&output.shapes, "Partir d’un modèle").is_some());
+    assert!(text_position(&output.shapes, "Ouvrir l’Atelier de blocs").is_some());
+    let pos = text_position(&output.shapes, "Partir d’un modèle").unwrap();
+    h.click(size, pos);
+    let output = h.warm(size);
+    assert!(text_position(&output.shapes, "Modèles").is_some(), "model button opens workshop templates");
+
+}

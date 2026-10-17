@@ -1604,7 +1604,7 @@ impl App {
                 ui.selectable_value(&mut self.long_editor, false, "Appui court");
                 ui.selectable_value(&mut self.long_editor, true, "Appui long");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| {
-                    if ui.button("Atelier blocs").clicked(){self.show_workflow=true;}
+                    if ui.add(theme::primary(RichText::new("Atelier de blocs").color(Color32::WHITE))).on_hover_text("Composer l’automatisation avec des blocs visuels").clicked(){self.show_workflow=true;}
                     if ui.button("Enregistrer dans Mes binds").on_hover_text("Conserver cette macro pour la réutiliser").clicked(){self.bind_name=self.config.keys()[self.selected].label.clone();self.save_bind=true;}
                     if ui.add_enabled(!self.config.keys()[self.selected].steps.is_empty(),egui::Button::new("Vider")).clicked(){self.assign(DragItem::Bind(Key::default()),self.selected);}
                     if ui.add_enabled(!running,egui::Button::new("Tester dans 3 s")).on_hover_text("Exécute la macro sur ton PC après 3 secondes, dans la fenêtre active.").clicked(){self.preview(false);}
@@ -1615,7 +1615,7 @@ impl App {
             let long_editor = self.long_editor;
             let active=self.config.active; let names=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
             let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let image_size=self.config.image_size;let key=&mut self.config.keys_mut()[selected];
-            let mut removed_step=false; let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut pick_audio=None;
+            let mut removed_step=false; let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut pick_audio=None; let mut open_workflow=false; let mut open_model=false;
             let width=ui.available_width(); let body_height=ui.available_height();
             ui.horizontal_top(|ui| {
                 ui.allocate_ui_with_layout(Vec2::new(215.0,body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
@@ -1672,7 +1672,7 @@ impl App {
                     });
                 });
                 ui.separator();
-                ui.allocate_ui_with_layout(Vec2::new((width-240.0).max(200.0),body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
+                ui.allocate_ui_with_layout(Vec2::new((width-240.0).max(100.0),body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
                     if !long_editor && key.steps.len()==1 && matches!(key.steps[0],Step::AudioSwitch{..}) {
                         egui::ScrollArea::vertical().id_salt("compact_audio").max_height(body_height).show(ui,|ui|{let mut state=None;changed|=icon_ui::audio_options(ui,&mut key.steps[0],&self.audio,&mut state,&dialog_tx,&(active,page_id.clone(),selected,vec![0]));if let Some(state)=state{pick_audio=Some((vec![0],state));}});
                         return;
@@ -1684,12 +1684,23 @@ impl App {
                         ui.menu_button("+ Ajouter",|ui|{for (i,label) in crate::automation::NAMES.iter().enumerate(){if ui.add_enabled(steps.len()<256,egui::Button::new(*label)).clicked(){add_kind=Some(i);ui.close_menu();}}});
                     });
                     let mut remove=None;let mut movement=None;
-                    egui::ScrollArea::vertical().id_salt("step_list").max_height((body_height-40.0).max(100.0)).show(ui,|ui| {
+                    egui::ScrollArea::vertical().id_salt("step_list").auto_shrink([false, false]).max_height((body_height-40.0).max(100.0)).show(ui,|ui| {
                         if steps.is_empty(){ui.add_space(12.0);ui.label(RichText::new("Glisse une action ou un bind sur cette touche.").strong());ui.label(RichText::new("La bibliothèque à droite propose des raccourcis prêts à l’emploi. Tu peux ensuite combiner et modifier leurs actions ici.").color(p.muted));}
+                        if steps.is_empty(){ui.horizontal(|ui| {if ui.button("Ouvrir l’Atelier de blocs").clicked(){open_workflow=true;}if ui.button("Partir d’un modèle").clicked(){open_model=true;}});}
                         let count=steps.len();
                         for(i,step) in steps.iter_mut().enumerate(){ui.push_id(i,|ui|{
                             egui::Frame::new().fill(p.bg).corner_radius(6).inner_margin(10).show(ui,|ui| {
-                                ui.horizontal(|ui|{ui.label(RichText::new(format!("{:02}",i+1)).color(BLUE).size(11.0));ui.label(RichText::new(step.name()).strong().size(12.0));ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{if ui.small_button("×").on_hover_text("Supprimer cette étape").clicked(){remove=Some(i);}if ui.add_enabled(i+1<count,egui::Button::new("↓").small()).clicked(){movement=Some((i,i+1));}if ui.add_enabled(i>0,egui::Button::new("↑").small()).clicked(){movement=Some((i,i-1));}});});
+                                ui.set_max_width(ui.available_width());
+                                ui.horizontal(|ui|{
+                                    ui.label(RichText::new(format!("{:02}",i+1)).color(BLUE).size(11.0));
+                                    ui.label(RichText::new(step.name()).strong().size(12.0));
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{
+                                        if ui.small_button("×").on_hover_text("Supprimer cette étape").clicked(){remove=Some(i);}
+                                        if ui.add_enabled(i+1<count,egui::Button::new("↓").small()).clicked(){movement=Some((i,i+1));}
+                                        if ui.add_enabled(i>0,egui::Button::new("↑").small()).clicked(){movement=Some((i,i-1));}
+                                    });
+                                });
+                                if matches!(step,Step::AutoHotkey{..}) {ui.label(RichText::new("Pas besoin d’écrire du code : compose tes actions dans l’Atelier de blocs").small().color(p.muted));if ui.button("Ouvrir l’Atelier de blocs").clicked(){open_workflow=true;}}
                                 let mut record=false;let mut audio_icon=None;changed|=edit_step(ui,step,&names,&pages,&mut record,&self.audio,&mut audio_icon,&dialog_tx,&(active,page_id.clone(),selected,vec![i]));if let Some(state)=audio_icon{pick_audio=Some((vec![i],state));}if record && !long_editor {record_step=Some(i);}
                             });
                         });}
@@ -1697,6 +1708,7 @@ impl App {
                     if let Some(i)=remove{steps.remove(i);changed=true;removed_step=true;}if let Some((a,b))=movement{steps.swap(a,b);changed=true;}
                 });
             });
+            if open_workflow {self.show_workflow=true;}if open_model {self.show_workflow=true;}
             if let Some(step)=record_step {self.recording=Some((active,self.config.page.clone(),self.selected,vec![step],self.gate.enabled));self.recording_error.clear();self.gate.enabled=false;self.engine.stop();self.refresh_hotkeys();}
             if changed {self.edited(); if removed_step {self.log("Étape retirée — Ctrl+Z pour annuler".into());}}
             if open_icons{self.open_icon_gallery(None);}if let Some(target)=pick_audio{self.open_icon_gallery(Some(target));}
@@ -2330,7 +2342,7 @@ fn edit_step(
                 .add(
                     egui::TextEdit::multiline(text)
                         .desired_rows(2)
-                        .desired_width(f32::INFINITY),
+                        .desired_width(ui.available_width()),
                 )
                 .changed();
         }
@@ -2474,7 +2486,7 @@ fn edit_step(
                     egui::TextEdit::multiline(script)
                         .code_editor()
                         .desired_rows(8)
-                        .desired_width(f32::INFINITY),
+                        .desired_width(ui.available_width()),
                 )
                 .changed();
             let mut text = args.join("\n");
