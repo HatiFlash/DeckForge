@@ -82,3 +82,6 @@ Checkpoint instrumentation : capture locale opt-in câblée dans Réglages, cach
 - À tester avec Hatim : deux applications qui jouent du son (seule celle au premier plan change), navigateur, changement de sortie audio, jeu, appuis rapides, application fermée.
 - Étape suivante : migration des 4 binds « Audio · App active » qui appellent `FocusAudio.exe` (reconnaître chemin + arguments, conserver titre/icône, sauvegarder avant), seulement après l'essai réel.
 - Pavé de l'aperçu : il suit la taille de la fenêtre, sans barre de défilement (commit e1c284c).
+## Lot A terminé (17/10/2026)
+- `device_volume` (e22a7ff), `if_condition` + 14 conditions (79eb430), `wait_until` (4dc1cd8), `notify` avec {variable} (f71fe8a), conversion FocusAudio.exe -> `app_volume` (Réglages > À propos, sauvegardes `*.avant-migration-<horodatage>.json`). Build : 180 tests + 6 MCP.
+- Le worker Sol est en limite d'usage (~110 h) : lots suivants (B variables/presse-papiers, C fenêtres/clavier/souris, D affichage d'état, E déclencheurs) à reprendre par Opus ou un autre worker.

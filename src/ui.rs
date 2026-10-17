@@ -1433,6 +1433,26 @@ impl App {
         if !grouped { self.history.push(before); if self.history.len() > 50 { self.history.remove(0); } }
         self.future.clear(); self.last_field = field; self.history_at = Instant::now();
     }
+    fn migrate_focus_audio_now(&mut self) {
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
+        for name in ["config", "preferences"] {
+            let source = self.path.with_file_name(format!("{name}.json"));
+            if source.exists() {
+                if let Err(e) = std::fs::copy(&source, self.path.with_file_name(format!("{name}.avant-migration-{stamp}.json"))) {
+                    self.fail(format!("Conversion annulée : sauvegarde de {name}.json impossible ({e})."));
+                    return;
+                }
+            }
+        }
+        self.history.push(self.config.clone());
+        self.future.clear();
+        let keys = self.config.migrate_focus_audio();
+        let binds: usize = self.preferences.library.binds.iter_mut().map(|b| crate::model::migrate_focus_audio_key(&mut b.key)).sum();
+        self.edited();
+        self.save();
+        if binds > 0 { self.save_preferences(); }
+        self.log(format!("{keys} action(s) de touches et {binds} de Mes binds converties en blocs natifs. Sauvegardes : *.avant-migration-{stamp}.json (Ctrl+Z annule côté touches)."));
+    }
     fn undo_edit(&mut self) {
         if let Some(previous) = self.history.pop() { self.future.push(self.config.clone()); self.config = previous; self.replaying = true; self.edited(); self.log("Modification annulée.".into()); }
     }
@@ -2174,6 +2194,18 @@ impl App {
                 .open(&mut open).collapsible(false).resizable(false).default_width(370.0)
                 .show(ctx, |ui| {
                     ui.label(RichText::new("DeckForge").size(20.0).strong());
+                    let legacy_audio = {
+                        let mut config = self.config.clone();
+                        let mut binds = self.preferences.library.binds.clone();
+                        config.migrate_focus_audio() + binds.iter_mut().map(|b| crate::model::migrate_focus_audio_key(&mut b.key)).sum::<usize>()
+                    };
+                    if legacy_audio > 0 {
+                        ui.colored_label(egui::Color32::from_rgb(240, 180, 60), format!("{legacy_audio} action(s) utilisent l’ancien module FocusAudio.exe."));
+                        if ui.button("Convertir en blocs natifs « Volume d’une application »").on_hover_text("Sauvegarde config.json et preferences.json à côté avant la conversion. Titres, icônes et couleurs restent inchangés.").clicked() {
+                            self.migrate_focus_audio_now();
+                        }
+                        ui.separator();
+                    }
                     ui.label(format!("Version : {}", env!("CARGO_PKG_VERSION")));
                     ui.label(format!("Compilation : {} ({})", about::HASH, about::DATE));
                     if ui.button("Copier ces informations").clicked() {

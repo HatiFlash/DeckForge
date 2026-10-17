@@ -617,6 +617,45 @@ impl Config {
         Ok(())
     }
 }
+/// Converts a legacy `FocusAudio.exe` launch (Codex module) into the equivalent native
+/// application-volume block. Only exact, well-formed calls are recognised.
+pub fn focus_audio_step(step: &Step) -> Option<Step> {
+    let Step::Launch { program, args } = step else { return None };
+    if !program.trim().to_ascii_lowercase().ends_with("focusaudio.exe") { return None; }
+    let number = |i: usize| args.get(i).and_then(|a| a.trim().parse::<u8>().ok());
+    let (action, step, level) = match (args.first().map(|a| a.trim()), args.len()) {
+        (Some("up"), 2) => ("up", number(1)?, 0),
+        (Some("down"), 2) => ("down", number(1)?, 0),
+        (Some("mute"), 1) => ("toggle_mute", 5, 0),
+        (Some("set"), 2) => ("set", 5, number(1).filter(|v| *v <= 100)?),
+        _ => return None,
+    };
+    if step == 0 || step > 100 { return None; }
+    Some(Step::AppVolume { target: "foreground".into(), action: action.into(), step, level, include_children: true })
+}
+/// Replaces every legacy FocusAudio step, including inside conditions, repeats and toggles.
+pub fn migrate_focus_audio(steps: &mut [Step]) -> usize {
+    let mut count = 0;
+    for step in steps.iter_mut() {
+        if let Some(native) = focus_audio_step(step) { *step = native; count += 1; continue; }
+        match step {
+            Step::IfCondition { then_steps, else_steps, .. }
+            | Step::IfWindow { then_steps, else_steps, .. }
+            | Step::IfVariable { then_steps, else_steps, .. } => count += migrate_focus_audio(then_steps) + migrate_focus_audio(else_steps),
+            Step::Repeat { steps, .. } => count += migrate_focus_audio(steps),
+            Step::Toggle { a, b } => count += migrate_focus_audio(a) + migrate_focus_audio(b),
+            _ => {}
+        }
+    }
+    count
+}
+pub fn migrate_focus_audio_key(key: &mut Key) -> usize { migrate_focus_audio(&mut key.steps) + migrate_focus_audio(&mut key.long_steps) }
+impl Config {
+    pub fn migrate_focus_audio(&mut self) -> usize {
+        self.profiles.iter_mut().map(|p| p.keys.iter_mut().chain(p.pages.iter_mut().flat_map(|g| g.keys.iter_mut())).map(migrate_focus_audio_key).sum::<usize>()).sum()
+    }
+}
+
 pub fn validate_key_in_profile(key: &Key, c: &Config, p: &Profile) -> Result<()> {
     validate_key(key, c)?;
     for step in key.steps.iter().chain(&key.long_steps) {
@@ -941,6 +980,22 @@ mod condition_step_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn focus_audio_launches_become_native_app_volume() {
+        let legacy = |args: &[&str]| Step::Launch { program: "C:\\Users\\hatif\\Desktop\\DeckForge-0.5-diagnostic\\assets\\automations-codex\\module\\FocusAudio.exe".into(), args: args.iter().map(|a| a.to_string()).collect() };
+        let app = |action: &str, step: u8, level: u8| Step::AppVolume { target: "foreground".into(), action: action.into(), step, level, include_children: true };
+        assert_eq!(focus_audio_step(&legacy(&["up", "5"])), Some(app("up", 5, 0)));
+        assert_eq!(focus_audio_step(&legacy(&["down", "5"])), Some(app("down", 5, 0)));
+        assert_eq!(focus_audio_step(&legacy(&["mute"])), Some(app("toggle_mute", 5, 0)));
+        assert_eq!(focus_audio_step(&legacy(&["set", "50"])), Some(app("set", 5, 50)));
+        for bad in [&["set", "150"][..], &["up"], &["mute", "1"], &["louder", "5"], &["up", "0"]] { assert_eq!(focus_audio_step(&legacy(bad)), None, "{bad:?}"); }
+        assert_eq!(focus_audio_step(&Step::Launch { program: "notepad.exe".into(), args: vec!["up".into(), "5".into()] }), None);
+        let mut key = Key { label: "Audio".into(), steps: vec![Step::Repeat { count: 2, steps: vec![legacy(&["up", "5"])] }], long_steps: vec![legacy(&["mute"])], ..Key::default() };
+        assert_eq!(migrate_focus_audio_key(&mut key), 2);
+        assert_eq!(key.label, "Audio");
+        assert_eq!(key.long_steps, vec![app("toggle_mute", 5, 0)]);
+        assert_eq!(migrate_focus_audio_key(&mut key), 0);
+    }
     #[test]
     fn notify_defaults_roundtrip_and_validation() {
         let s: Step = serde_json::from_str(r#"{"type":"notify","message":"Bonjour {nom}"}"#).unwrap();
