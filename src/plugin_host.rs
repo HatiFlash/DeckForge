@@ -34,6 +34,7 @@ impl Host {
   });
   Ok(Self{incoming,outgoing,child,worker:Some(worker),stop})
  }
+ pub fn exited(&mut self)->bool{self.child.try_wait().ok().flatten().is_some()}
  pub fn send(&self,message:Value)->Result<(),mpsc::SendError<Value>>{self.outgoing.send(message)}
 }
 impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);

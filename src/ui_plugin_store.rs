@@ -17,7 +17,7 @@ impl App {
    if let Some(root)=&root{for plugin in plugin_import::inventory(root){
     if !format!("{} {}",plugin.display_name(),plugin.uuid).to_lowercase().contains(search) && !plugin.actions.iter().any(|a|a.name.to_lowercase().contains(search)){continue;}
     let ty=match plugin.runtime{Runtime::Exe(_)|Runtime::Node(_)=>"programme",Runtime::Html(_)=>"web",Runtime::Protected=>"protégé",Runtime::Unsupported=>"indisponible"};
-    ui.group(|ui|{ui.label(RichText::new(format!("{} · v{}",plugin.display_name(),plugin.version)).strong());ui.label(format!("{} actions · {} · arrêté",plugin.actions.len(),ty));
+    ui.group(|ui|{ui.label(RichText::new(format!("{} · v{}",plugin.display_name(),plugin.version)).strong());ui.label(format!("{} actions · {} · {}",plugin.actions.len(),ty,self.plugin_errors.get(&plugin.uuid).map(String::as_str).unwrap_or("arrêté")));
      for action in &plugin.actions{
       let name=plugin_import::action_name(&plugin,action);
       let mut key=Key{label:name.clone(),..Key::default()};

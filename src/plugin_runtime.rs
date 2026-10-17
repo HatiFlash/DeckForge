@@ -50,6 +50,7 @@ impl Drop for Manager {fn drop(&mut self){let _=self.tx.send(Request::Stop);}}
 fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
     let mut hosts:HashMap<String,Host>=HashMap::new();let mut current=HashMap::new();
     let mut idle:HashMap<String,Instant>=HashMap::new();
+    let mut restarts:HashMap<String,Vec<Instant>>=HashMap::new();
     loop {
         match requests.recv_timeout(Duration::from_millis(50)) {
             Ok(Request::Stop)|Err(mpsc::RecvTimeoutError::Disconnected)=>break,
@@ -69,6 +70,28 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
             Err(mpsc::RecvTimeoutError::Timeout)=>{}
         }
         for (plugin,host) in &hosts {while let Ok(value)=host.incoming.try_recv(){let _=reply.send(Reply::Message(plugin.clone(),value));}}
+        let exited=hosts.iter_mut().filter_map(|(id,host)|{
+            if current.values().any(|v|v.plugin==*id) && host.exited() {Some(id.clone())}else{None}
+        }).collect::<Vec<_>>();
+        for id in exited {
+            hosts.remove(&id); // Drop kills any remaining descendants before restart.
+            let attempts=restarts.entry(id.clone()).or_default();
+            attempts.retain(|when|when.elapsed()<Duration::from_secs(300));
+            if attempts.len()>=3 {
+                let _=reply.send(Reply::Error(id.clone(),"Erreur : plugin arrêté après 3 redémarrages en 5 minutes".into()));
+                continue;
+            }
+            attempts.push(Instant::now());
+            if let Some(p)=plugins.iter().find(|p|p.uuid==id) {
+                match Host::start(p) {
+                    Ok(host)=>{
+                        for v in current.values().filter(|v|v.plugin==id) {let _=host.send(event("willAppear",v));}
+                        hosts.insert(id.clone(),host);
+                    },
+                    Err(e)=>{let _=reply.send(Reply::Error(id.clone(),format!("Erreur : redémarrage impossible : {e}")));}
+                }
+            }
+        }
         hosts.retain(|id,_|!idle.get(id).is_some_and(|t|t.elapsed()>=Duration::from_secs(30)));
         idle.retain(|id,_|hosts.contains_key(id));
     }
