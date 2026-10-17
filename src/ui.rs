@@ -1222,7 +1222,7 @@ impl App {
     }
     fn record_history(&mut self, before: Config, ctx: &egui::Context) {
         if self.replaying || serde_json::to_value(&before).ok() == serde_json::to_value(&self.config).ok() { return; }
-        let field = if ctx.wants_keyboard_input() { ctx.memory(|m| m.focused()) } else { None };
+        let field = ctx.memory(|m| m.focused());
         let grouped = field.is_some() && field == self.last_field && self.history_at.elapsed() < Duration::from_millis(800) && self.future.is_empty();
         if !grouped { self.history.push(before); if self.history.len() > 50 { self.history.remove(0); } }
         self.future.clear(); self.last_field = field; self.history_at = Instant::now();

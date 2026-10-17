@@ -11,6 +11,18 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Pure decision: no upload during apply, one frame per turn, fair round-robin.
+fn next_animation_frame(now: Instant, applying: bool, enabled: bool, fps: u8,
+    lengths: &[usize; 15], due: &[Instant; 15], last_per_key: &[Instant; 15],
+    last_global: Instant, cursor: usize) -> Option<usize> {
+    if applying || !enabled || now.saturating_duration_since(last_global) < Duration::from_millis(34) {
+        return None;
+    }
+    let interval = Duration::from_millis(1000 / fps.max(1) as u64);
+    (0..15).map(|n| (cursor + n) % 15).find(|&i| lengths[i] > 1
+        && now >= due[i] && now.saturating_duration_since(last_per_key[i]) >= interval)
+}
+
 pub enum Command {
     Connect(Config, u64),
     Update(Config, u64),
@@ -35,6 +47,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
     let mut next_frame = [1usize; 15];
     let mut due = [Instant::now(); 15];
     let mut last_frame = Instant::now() - Duration::from_secs(1);
+    let mut last_per_key = [Instant::now() - Duration::from_secs(1); 15];
     let mut cursor = 0usize;
     loop {
         let mut update = false;
@@ -152,26 +165,23 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
                 }
             }
             // Read HID before every animation frame; uploads never preempt a full apply.
-            if failed.is_none() && config.d6_animations &&
-                last_frame.elapsed() >= Duration::from_millis(1000 / 30) {
-                for n in 0..15 {
-                    let index = (cursor + n) % 15;
-                    if let Some(frames) = animations.get(index) {
-                        if frames.len() > 1 && Instant::now() >= due[index] &&
-                            last_frame.elapsed() >= Duration::from_millis(1000 / config.animation_fps.max(1) as u64) {
-                            let frame = &frames[next_frame[index] % frames.len()];
-                            match d.send_frame(index, &frame.jpeg, frame_end()) {
-                                Ok(()) => {
-                                    due[index] = Instant::now() + frame.delay.max(Duration::from_millis(1000 / config.animation_fps.max(1) as u64));
-                                    next_frame[index] += 1;
-                                    cursor = (index + 1) % 15;
-                                    last_frame = Instant::now();
-                                }
-                                Err(e) => failed = Some(e.to_string()),
-                            }
-                            break;
-                        }
+            let now = Instant::now();
+            let lengths = std::array::from_fn(|i| animations.get(i).map_or(0, Vec::len));
+            if let Some(index) = next_animation_frame(now, update || failed.is_some(),
+                config.d6_animations, config.animation_fps, &lengths, &due,
+                &last_per_key, last_frame, cursor) {
+                let frames = &animations[index];
+                let frame = &frames[next_frame[index] % frames.len()];
+                match d.send_frame(index, &frame.jpeg, frame_end()) {
+                    Ok(()) => {
+                        let sent = Instant::now();
+                        due[index] = sent + frame.delay.max(Duration::from_millis(1000 / config.animation_fps.max(1) as u64));
+                        last_per_key[index] = sent;
+                        next_frame[index] += 1;
+                        cursor = (index + 1) % 15;
+                        last_frame = sent;
                     }
+                    Err(e) => failed = Some(e.to_string()),
                 }
             }
         } else {
@@ -582,5 +592,30 @@ mod tests {
             (1024, 1)
         );
         assert!(output_report(&[0x75]).is_err());
+    }
+}
+
+#[cfg(test)]
+mod animation_scheduler_tests {
+    use super::*;
+    #[test]
+    fn rate_limits_fairness_and_apply_barrier() {
+        let now = Instant::now();
+        let mut due = [now; 15];
+        let mut per_key = [now - Duration::from_secs(1); 15];
+        let mut lengths = [0; 15];
+        lengths[0] = 3; lengths[1] = 2;
+        let old = now - Duration::from_secs(1);
+        let choose = |time, apply, enabled, due: &[Instant;15], per: &[Instant;15], global, cursor|
+            next_animation_frame(time, apply, enabled, 12, &lengths, due, per, global, cursor);
+        assert_eq!(choose(now, false, true, &due, &per_key, old, 0), Some(0));
+        per_key[0] = now; due[0] = now + Duration::from_millis(84);
+        assert_eq!(choose(now + Duration::from_millis(33), false, true, &due, &per_key, now, 1), None);
+        assert_eq!(choose(now + Duration::from_millis(34), false, true, &due, &per_key, now, 1), Some(1));
+        assert_eq!(choose(now + Duration::from_millis(84), false, true, &due, &per_key, now, 0), Some(0));
+        assert_eq!(choose(now + Duration::from_millis(84), true, true, &due, &per_key, old, 0), None);
+        assert_eq!(choose(now + Duration::from_millis(84), false, false, &due, &per_key, old, 0), None);
+        due[1] = now; per_key[1] = now;
+        assert_eq!(choose(now + Duration::from_millis(84), false, true, &due, &per_key, old, 1), Some(1));
     }
 }
