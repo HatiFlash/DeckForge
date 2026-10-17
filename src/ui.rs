@@ -25,6 +25,9 @@ mod key_preview;
 #[path = "ui_appearance.rs"]
 mod appearance;
 
+#[path = "ui_plugin_store.rs"]
+mod plugin_store_ui;
+
 type DialogEffect = Box<dyn FnOnce(&mut App) + Send>;
 type StepTarget = (usize, String, usize, Vec<usize>);
 fn choose_step_file(tx: Sender<Option<DialogEffect>>, target: StepTarget, executable: bool) {
@@ -1442,17 +1445,19 @@ impl App {
         egui::SidePanel::right("action_catalog").exact_width(296.0).resizable(false).frame(egui::Frame::new().fill(p.surface).inner_margin(16)).show(ctx,|ui| {
             ui.horizontal(|ui| { ui.label(RichText::new("Bibliothèque").size(19.0).strong()); ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| { theme::pill(ui,"40 binds",BLUE); }); });
             ui.add_space(5.0);
-            ui.horizontal(|ui| { for (i,label) in ["Actions","Magasin","Mes binds"].iter().enumerate() {
-                let(r,response)=ui.allocate_exact_size(Vec2::new(80.0,51.0),egui::Sense::click());let selected=i==self.catalog_tab;
+            ui.horizontal(|ui| { for (i,label) in ["Actions","Magasin","Mes binds","Plugins"].iter().enumerate() {
+                let(r,response)=ui.allocate_exact_size(Vec2::new(66.0,51.0),egui::Sense::click());let selected=i==self.catalog_tab;
                 ui.painter().rect_filled(r,10.0,if selected{p.wash}else{p.surface});
-                theme::symbol(ui.painter(),r.center_top()+Vec2::new(0.0,16.0),18.0,[21,20,15][i],if selected{BLUE}else{p.muted});
+                theme::symbol(ui.painter(),r.center_top()+Vec2::new(0.0,16.0),18.0,[21,20,15,15][i],if selected{BLUE}else{p.muted});
                 ui.painter().text(r.center_bottom()-Vec2::new(0.0,7.0),egui::Align2::CENTER_BOTTOM,*label,egui::FontId::proportional(11.0),if selected{p.ink}else{p.muted});
                 if response.clicked(){self.catalog_tab=i;self.catalog_selection=None;self.catalog_search.clear();}
             }});
             ui.add_space(6.0);
             ui.add(egui::TextEdit::singleline(&mut self.catalog_search).desired_width(f32::INFINITY).hint_text("Rechercher une action…"));
             let search=self.catalog_search.to_lowercase();
-            if self.catalog_tab==0 {
+            if self.catalog_tab==3 {
+                self.plugin_store(ui,&search);
+            } else if self.catalog_tab==0 {
                 ui.label(RichText::new("Glisse une action sur une touche. Elle s’ajoute à la fin de sa macro.").small().color(p.muted));
                 let actions=crate::automation::NAMES;
                 egui::ScrollArea::vertical().id_salt("action_browser").show(ui,|ui| {
