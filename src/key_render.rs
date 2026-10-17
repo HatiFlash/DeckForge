@@ -100,18 +100,26 @@ pub fn for_device(
 }
 pub fn jpeg(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8>> {
     anyhow::ensure!((32..=512).contains(&size), "Taille LCD invalide");
-    let mut image = if k.image.is_empty() {
-        RgbImage::from_pixel(size, size, Rgb(k.color))
-    } else {
+    let background = if k.background { k.color } else { [0, 0, 0] };
+    let mut image = RgbImage::from_pixel(size, size, Rgb(background));
+    if !k.image.is_empty() {
         anyhow::ensure!(
             std::fs::metadata(&k.image)?.len() <= 8_000_000,
             "Image supérieure à 8 Mo"
         );
-        crate::assets::decode_image(&std::fs::read(&k.image)?, 512)
+        let icon = crate::assets::decode_image(&std::fs::read(&k.image)?, 512)
             .with_context(|| format!("Image invalide pour {}", k.label))?
             .resize_to_fill(size, size, image::imageops::FilterType::Lanczos3)
-            .into_rgb8()
-    };
+            .into_rgba8();
+        for (target, source) in image.pixels_mut().zip(icon.pixels()) {
+            let alpha = source[3] as u32;
+            for ch in 0..3 {
+                target[ch] =
+                    ((source[ch] as u32 * alpha + background[ch] as u32 * (255 - alpha) + 127)
+                        / 255) as u8;
+            }
+        }
+    }
     let has_icon = k.image.is_empty() && !k.steps.is_empty();
     if has_icon {
         crate::icons::draw(&mut image, crate::icons::kind(k));
@@ -185,6 +193,43 @@ pub fn jpeg(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8>>
 mod tests {
     use super::*;
     use crate::model::{Key, Step};
+    #[test]
+    fn black_background_and_transparent_images_use_the_saved_background_choice() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut key = Key {
+            color: [160, 80, 40],
+            background: false,
+            ..Key::default()
+        };
+        let black = preview(&key, 126).unwrap();
+        assert!(black.pixels().all(|p| p.0 == [0, 0, 0]));
+        key.background = true;
+        let colored = preview(&key, 126).unwrap();
+        for (actual, expected) in colored.get_pixel(0, 0).0.into_iter().zip(key.color) {
+            assert!(actual.abs_diff(expected) <= 3);
+        }
+        let image = dir.path().join("transparent.png");
+        image::RgbaImage::from_pixel(32, 32, image::Rgba([240, 0, 0, 0]))
+            .save(&image)
+            .unwrap();
+        key.image = image.to_string_lossy().into_owned();
+        let colored = preview(&key, 126).unwrap();
+        for (actual, expected) in colored.get_pixel(0, 0).0.into_iter().zip(key.color) {
+            assert!(actual.abs_diff(expected) <= 3);
+        }
+        key.background = false;
+        assert!(preview(&key, 126)
+            .unwrap()
+            .pixels()
+            .all(|p| p.0 == [0, 0, 0]));
+        image::RgbaImage::from_pixel(32, 32, image::Rgba([240, 50, 10, 128]))
+            .save(&image)
+            .unwrap();
+        let blended = preview(&key, 126).unwrap();
+        for (actual, expected) in blended.get_pixel(0, 0).0.into_iter().zip([120u8, 25, 5]) {
+            assert!(actual.abs_diff(expected) <= 3);
+        }
+    }
 
     #[test]
     fn preview_is_the_exact_upright_device_jpeg_for_every_builtin_icon() {

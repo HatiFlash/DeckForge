@@ -325,6 +325,7 @@ fn all_fifteen_keys_remain_visible_in_both_themes_and_window_sizes() {
     ] {
         let mut h = Harness::new();
         h.app.preferences.dark = dark;
+        h.app.selected = 1;
         theme::apply(&h.ctx, dark);
         let output = h.warm(size);
         assert_eq!(h.app.drop_targets.len(), 15);
@@ -485,6 +486,14 @@ fn lcd_preview_cache_refreshes_labels_colors_icons_and_changed_image_files() {
         .unwrap()
         .id();
     assert_ne!(label, color);
+    changed.background = false;
+    let black = h
+        .app
+        .key_previews
+        .texture(&h.ctx, 5, &changed, 126)
+        .unwrap()
+        .id();
+    assert_ne!(color, black);
     changed.image.clear();
     changed.steps = vec![Step::Media {
         command: "play_pause".into(),
@@ -495,7 +504,7 @@ fn lcd_preview_cache_refreshes_labels_colors_icons_and_changed_image_files() {
         .texture(&h.ctx, 5, &changed, 126)
         .unwrap()
         .id();
-    assert_ne!(color, play);
+    assert_ne!(black, play);
     changed.steps = vec![Step::Media {
         command: "mute".into(),
     }];

@@ -1,8 +1,12 @@
-# DeckForge 0.4.2 — version de test Windows
+# DeckForge 0.4.3 — version de test Windows
 
 Application Rust indépendante pour le FIFINE AmpliGame D6 (USB 3142:0060), avec macros, pages, dossiers et connecteur MCP optionnel. Le logiciel FIFINE doit être fermé pour laisser DeckForge accéder au D6.
 
 ![Interface](docs/interface.png)
+
+## Nouveautés 0.4.3
+
+**Galerie** est maintenant le grand bouton principal ; le carré **image +** importe un fichier du PC. Le **seau barré** à côté de Couleur active un fond noir sans perdre la couleur choisie. Les transparences PNG/SVG respectent ce choix. Voir [les essais 0.4.3](docs/TEST-0.4.3.md) et [le guide de reprise pour Claude](docs/HANDOFF-CLAUDE.md).
 
 ## Correction du rendu 0.4.2
 
@@ -31,7 +35,7 @@ Les profils restent dans `config.json`, les préférences dans `preferences.json
 
 ## Validation et limites
 
-Version de test : voir [les contrôles réalisés](docs/VALIDATION.md) et [les essais manuels](docs/TEST-0.4.2.md). Cette correction a été développée et vérifiée sans ouvrir d’application sur l’écran de l’utilisateur et sans modifier ses périphériques audio.
+Version de test : voir [les contrôles réalisés](docs/VALIDATION.md) et [les essais manuels](docs/TEST-0.4.3.md). Cette correction a été développée et vérifiée sans ouvrir d’application sur l’écran de l’utilisateur et sans modifier ses périphériques audio.
 
 Les plugins tiers Elgato/FIFINE sont inventoriés, mais leur moteur d’exécution n’est pas encore implémenté. L’import de profils ne convertit que les actions reconnues ; voir [compatibilité Elgato](docs/ELGATO.md).
 

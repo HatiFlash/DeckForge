@@ -4,6 +4,7 @@ use super::*;
 struct Signature {
     label: String,
     color: [u8; 3],
+    background: bool,
     image: String,
     kind: usize,
     has_actions: bool,
@@ -15,6 +16,7 @@ impl Signature {
         Self {
             label: key.label.clone(),
             color: key.color,
+            background: key.background,
             image: key.image.clone(),
             kind: crate::icons::kind(key),
             has_actions: !key.steps.is_empty(),

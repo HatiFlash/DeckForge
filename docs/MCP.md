@@ -133,3 +133,8 @@ Pour chaque état audio, `first_icon` et `second_icon` acceptent un chemin PNG/J
 Exemple de demande : « Crée sur cette touche un bouton qui bascule entre mon casque et mes enceintes, avec une icône et un titre pour chaque état. Utilise les identifiants audio réels retournés par DeckForge. Ne lance pas la macro. »
 
 Le guide de connexion ChatGPT est décrit dans [la documentation officielle OpenAI](https://developers.openai.com/plugins/deploy/connect-chatgpt). Pour un serveur privé local, voir [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels). La disponibilité et les autorisations dépendent du compte ; aucun compte ni tunnel n’est configuré automatiquement par DeckForge.
+
+
+## Fond de touche en 0.4.3
+
+`deckforge_configure_key` accepte `background: false` pour un écran noir ou `background: true` pour rétablir la couleur RGB mémorisée. Si ce champ est absent, le réglage actuel est conservé. Le connecteur 0.4.3 doit être rechargé dans le client IA pour exposer ce nouveau champ ; les connecteurs plus anciens peuvent continuer les opérations existantes.

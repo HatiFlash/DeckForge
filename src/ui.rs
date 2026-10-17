@@ -22,6 +22,9 @@ use std::{
 #[path = "ui_key_preview.rs"]
 mod key_preview;
 
+#[path = "ui_appearance.rs"]
+mod appearance;
+
 pub struct App {
     config: Config,
     applied: Config,
@@ -1460,13 +1463,13 @@ impl App {
                     egui::ScrollArea::vertical().id_salt("key_appearance").max_height(body_height).show(ui,|ui| {
                         ui.label(RichText::new("Titre sur le D6").small().color(p.muted));
                         changed|=ui.add(egui::TextEdit::singleline(&mut key.label).desired_width(200.0).hint_text("Nom de la touche")).changed();
-                        ui.horizontal(|ui|{ui.label("Couleur");changed|=ui.color_edit_button_srgb(&mut key.color).changed();});
+                        changed|=appearance::color(ui,key);
                         if crate::audio::single_switch(&key.steps).is_some(){if ui.button("Icônes par état →").on_hover_text("Choisir séparément les icônes des deux états audio").clicked(){open_icons=true;}}else{
-                        ui.horizontal(|ui| {
-                            if ui.button(if key.image.is_empty(){"Choisir une icône…"}else{"Changer l’icône…"}).clicked(){if let Some(path)=rfd::FileDialog::new().add_filter("Image",&["png","jpg","jpeg"]).pick_file(){key.image=path.to_string_lossy().into_owned();changed=true;}}
-                            if ui.small_button("Galerie").on_hover_text("Packs FIFINE et Elgato installés").clicked(){open_icons=true;}
-                            if !key.image.is_empty()&&ui.small_button("×").on_hover_text("Retirer l’image").clicked(){key.image.clear();changed=true;}
-                        });
+                        let actions=appearance::icons(ui,!key.image.is_empty());
+                        open_icons|=actions.gallery;
+                        if actions.pick_file { if let Some(path)=rfd::FileDialog::new().add_filter("Image",&["png","jpg","jpeg","svg"]).pick_file(){key.image=path.to_string_lossy().into_owned();changed=true;} }
+                        if actions.clear {key.image.clear();changed=true;}
+
                         }
                         ui.horizontal(|ui|{ui.label("Répéter");changed|=ui.add(egui::DragValue::new(&mut key.repeat).range(1..=1000)).changed();ui.label("fois");});
                         ui.add_space(6.0);

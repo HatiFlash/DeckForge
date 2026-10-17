@@ -1,6 +1,10 @@
 # DeckForge — état du projet au 17 octobre 2026
 
-Version 0.4.2 de test. Dépôt privé : https://github.com/HatiFlash/DeckForge.
+Version 0.4.3 de test. Dépôt privé : https://github.com/HatiFlash/DeckForge.
+
+## Ajouts 0.4.3
+
+Galerie devient l’action principale, avec un carré image + pour importer depuis le PC. Le seau barré supprime le fond coloré au profit d’un écran noir et conserve la couleur pour la rétablir. Les PNG/SVG transparents se composent sur le fond choisi. Le nouveau booléen background vaut true pour les profils anciens ; les propositions MCP conservent le réglage quand ce champ est absent. Un dossier de reprise avec sources, binaires, tests et documentation technique est préparé pour Claude, sans clés ni jetons.
 
 ## Correction 0.4.2 — aperçu fidèle au LCD
 

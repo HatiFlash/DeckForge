@@ -40,6 +40,8 @@ struct Binding {
     #[serde(default)]
     color: Option<[u8; 3]>,
     #[serde(default)]
+    background: Option<bool>,
+    #[serde(default)]
     repeat: Option<u32>,
     steps: Vec<Step>,
 }
@@ -156,6 +158,7 @@ impl Proposals {
                 next.profiles[p].keys_at_mut(&a.page).unwrap()[k] = Key {
                     label: a.label.clone(),
                     color: a.color.unwrap_or(old.color),
+                    background: a.background.unwrap_or(old.background),
                     image: old.image.clone(),
                     repeat: a.repeat.unwrap_or(1),
                     steps: a.steps,
@@ -262,7 +265,18 @@ impl Proposals {
     }
 }
 fn describe(key: &Key) -> String {
-    let mut text = format!("{}\nRépétitions : {}\n\n", key.label, key.repeat);
+    let background = if key.background {
+        format!(
+            "couleur #{:02X}{:02X}{:02X}",
+            key.color[0], key.color[1], key.color[2]
+        )
+    } else {
+        "sans couleur (noir)".to_string()
+    };
+    let mut text = format!(
+        "{}\nRépétitions : {}\nFond : {}\n\n",
+        key.label, key.repeat, background
+    );
     for (i, step) in key.steps.iter().enumerate() {
         let detail=match step{
         Step::Delay{ms}=>format!("Attendre {ms} ms"),Step::Hotkey{keys}=>format!("Raccourci : {keys}"),Step::Text{text}=>format!("Saisir ce texte :\n{text}"),
@@ -276,6 +290,27 @@ fn describe(key: &Key) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn mcp_background_choice_is_reviewed_and_omission_keeps_the_existing_setting() {
+        let mut c = Config::default();
+        let original = c.keys()[1].color;
+        let mut q = Proposals::default();
+        q.propose("deckforge_configure_key", &json!({"profile":"Bureau","key":2,"label":"Lecture","background":false,"steps":[{"type":"media","command":"play_pause"}]}), &c).unwrap();
+        assert!(q.pending[0].details.contains("Fond : sans couleur (noir)"));
+        assert!(c.keys()[1].background);
+        let Some(Change::Config(next)) = q.decide(true, &c).unwrap() else {
+            panic!()
+        };
+        c = next;
+        assert!(!c.keys()[1].background);
+        assert_eq!(c.keys()[1].color, original);
+        q.propose("deckforge_configure_key", &json!({"profile":"Bureau","key":2,"label":"Lecture modifiée","steps":[{"type":"media","command":"play_pause"}]}), &c).unwrap();
+        let Some(Change::Config(next)) = q.decide(true, &c).unwrap() else {
+            panic!()
+        };
+        assert!(!next.keys()[1].background);
+        assert_eq!(next.keys()[1].color, original);
+    }
     #[test]
     fn ai_can_propose_pages_and_nested_blocks_without_applying_them() {
         let mut c = Config::default();

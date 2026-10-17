@@ -1,4 +1,15 @@
-# Validation — DeckForge 0.4.2
+# Validation — DeckForge 0.4.3
+
+## Ajouts 0.4.3
+
+- 74 tests applicatifs et 3 tests du connecteur : succès ; 18 contrôles MCP stdio/HTTP : succès.
+- Chargement des anciens profils, sauvegarde du fond désactivé et conservation de la couleur RGB.
+- Image noire, transparence PNG et composition alpha partielle vérifiées dans le rendu canonique.
+- Le cache se renouvelle après changement du mode de fond.
+- La proposition MCP expose le fond à la validation et conserve le réglage quand le champ est omis.
+- Galerie et import image + vérifiés par rendu logiciel en clair/sombre, grand format et format compact. Aucun matériel ni fenêtre native utilisé pour ces modifications.
+
+Les essais physiques du nouveau fond restent manuels : [TEST-0.4.3.md](TEST-0.4.3.md).
 
 ## Correction du rendu 0.4.2
 

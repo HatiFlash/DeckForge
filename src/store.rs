@@ -31,6 +31,25 @@ pub fn save(path: &Path, c: &Config) -> Result<()> {
 mod tests {
     use super::*;
     #[test]
+    fn old_keys_keep_their_background_and_no_fill_preserves_the_saved_color() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let mut legacy = serde_json::to_value(Config::default()).unwrap();
+        for key in legacy["profiles"][0]["keys"].as_array_mut().unwrap() {
+            key.as_object_mut().unwrap().remove("background");
+        }
+        std::fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+        let mut config = load(&path).unwrap();
+        assert!(config.keys().iter().all(|k| k.background));
+        let original = config.keys()[1].color;
+        config.keys_mut()[1].background = false;
+        save(&path, &config).unwrap();
+        let saved = load(&path).unwrap();
+        assert!(!saved.keys()[1].background);
+        assert_eq!(saved.keys()[1].color, original);
+        assert!(saved.keys()[0].background);
+    }
+    #[test]
     fn old_configuration_migrates_without_losing_keys_or_images() {
         let mut old = serde_json::to_value(Config::default()).unwrap();
         old["schema"] = 1.into();

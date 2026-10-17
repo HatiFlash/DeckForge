@@ -108,6 +108,8 @@ impl Step {
 pub struct Key {
     pub label: String,
     pub color: [u8; 3],
+    #[serde(default = "default_background")]
+    pub background: bool,
     pub image: String,
     pub repeat: u32,
     pub steps: Vec<Step>,
@@ -119,12 +121,16 @@ impl Default for Key {
         Self {
             label: String::new(),
             color: [35, 44, 60],
+            background: true,
             image: String::new(),
             repeat: 1,
             steps: vec![],
             display_kind: None,
         }
     }
+}
+fn default_background() -> bool {
+    true
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Profile {
