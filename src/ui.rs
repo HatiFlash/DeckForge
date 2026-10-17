@@ -1181,6 +1181,258 @@ impl App {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
+    fn sidebar(&mut self, ctx: &egui::Context) {
+        let p = theme::palette(ctx);
+        let compact = ctx.screen_rect().width() < 1150.0;
+        let width = if compact { 100.0 } else { 200.0 };
+        egui::SidePanel::left("navigation")
+            .exact_width(width)
+            .resizable(false)
+            .frame(
+                egui::Frame::new()
+                    .fill(p.sidebar)
+                    .inner_margin(egui::Margin::symmetric(if compact { 6 } else { 12 }, 12)),
+            )
+            .show(ctx, |ui| {
+                let footer_h = if compact { 54.0 } else { 64.0 };
+                let scroll_max = (ui.available_height() - footer_h - 8.0).max(80.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("sidebar_scroll")
+                    .max_height(scroll_max)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            if !compact {
+                                theme::section_title(ui, "PROFILS");
+                            }
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.menu_button("•••", |ui| {
+                                        if ui
+                                            .add_enabled(
+                                                self.config.profiles.len() < 64,
+                                                egui::Button::new("Nouveau profil"),
+                                            )
+                                            .clicked()
+                                        {
+                                            self.add_profile(false);
+                                            ui.close_menu();
+                                        }
+                                        if ui.button("Renommer / dupliquer").clicked() {
+                                            self.rename = true;
+                                            ui.close_menu();
+                                        }
+                                        if ui.button("Applications associées").clicked() {
+                                            self.show_apps = true;
+                                            ui.close_menu();
+                                        }
+                                    });
+                                    if ui
+                                        .add_enabled(
+                                            self.config.profiles.len() < 64,
+                                            egui::Button::new("+").small(),
+                                        )
+                                        .on_hover_text("Nouveau profil")
+                                        .clicked()
+                                    {
+                                        self.add_profile(false);
+                                    }
+                                },
+                            );
+                        });
+                        ui.add_space(4.0);
+                        let mut next_profile = None;
+                        for (i, profile) in self.config.profiles.iter().enumerate() {
+                            let selected = i == self.config.active;
+                            let (r, response) = ui.allocate_exact_size(
+                                Vec2::new(ui.available_width(), 34.0),
+                                egui::Sense::click(),
+                            );
+                            if selected || response.hovered() {
+                                ui.painter().rect_filled(
+                                    r,
+                                    10.0,
+                                    if selected { p.wash } else { p.hover },
+                                );
+                            }
+                            let icon_color = if selected { BLUE } else { p.muted };
+                            let text_color = if selected { p.ink } else { p.muted };
+                            let icon_pos = if compact {
+                                r.center()
+                            } else {
+                                r.left_center() + Vec2::new(16.0, 0.0)
+                            };
+                            theme::symbol(ui.painter(), icon_pos, 15.0, 15, icon_color);
+                            if !compact {
+                                let mut job = egui::text::LayoutJob::simple_singleline(
+                                    profile.name.clone(),
+                                    egui::FontId::proportional(13.0),
+                                    text_color,
+                                );
+                                job.wrap.max_width = (r.width() - 36.0).max(20.0);
+                                job.wrap.max_rows = 1;
+                                let galley = ui.painter().layout_job(job);
+                                ui.painter().galley(
+                                    egui::pos2(
+                                        r.min.x + 32.0,
+                                        r.center().y - galley.size().y * 0.5,
+                                    ),
+                                    galley,
+                                    text_color,
+                                );
+                            }
+                            let response = response.on_hover_text(&profile.name);
+                            if response.clicked() && !selected {
+                                next_profile = Some(i);
+                            }
+                        }
+                        if let Some(i) = next_profile {
+                            self.select_profile(i);
+                        }
+
+                        ui.add_space(14.0);
+                        ui.horizontal(|ui| {
+                            if !compact {
+                                theme::section_title(ui, "PAGES");
+                            }
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.menu_button("+", |ui| {
+                                        if ui.button("Nouvelle page").clicked() {
+                                            self.create_page(false);
+                                            ui.close_menu();
+                                        }
+                                        if ui.button("Gérer pages et dossiers…").clicked() {
+                                            self.page_manager = true;
+                                            ui.close_menu();
+                                        }
+                                        if ui
+                                            .button("Dossier sur la touche sélectionnée")
+                                            .clicked()
+                                        {
+                                            self.create_page(true);
+                                            ui.close_menu();
+                                        }
+                                    });
+                                },
+                            );
+                        });
+                        ui.add_space(4.0);
+                        let mut pages: Vec<(String, String)> =
+                            vec![(String::new(), "Page 1".into())];
+                        for page in self.config.profiles[self.config.active]
+                            .pages
+                            .iter()
+                            .filter(|p| !p.folder)
+                        {
+                            pages.push((page.id.clone(), page.name.clone()));
+                        }
+                        let mut next_page = None;
+                        for (idx, (id, name)) in pages.iter().enumerate() {
+                            let selected = *id == self.config.page;
+                            let (r, response) = ui.allocate_exact_size(
+                                Vec2::new(ui.available_width(), 32.0),
+                                egui::Sense::click(),
+                            );
+                            if selected || response.hovered() {
+                                ui.painter().rect_filled(
+                                    r,
+                                    10.0,
+                                    if selected { p.wash } else { p.hover },
+                                );
+                            }
+                            let dot_color = if selected { BLUE } else { p.muted };
+                            let text_color = if selected { p.ink } else { p.muted };
+                            if compact {
+                                ui.painter().text(
+                                    r.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    format!("{}", idx + 1),
+                                    egui::FontId::proportional(12.0),
+                                    text_color,
+                                );
+                            } else {
+                                ui.painter().circle_filled(
+                                    r.left_center() + Vec2::new(16.0, 0.0),
+                                    3.0,
+                                    dot_color,
+                                );
+                                let mut job = egui::text::LayoutJob::simple_singleline(
+                                    name.clone(),
+                                    egui::FontId::proportional(12.5),
+                                    text_color,
+                                );
+                                job.wrap.max_width = (r.width() - 34.0).max(20.0);
+                                job.wrap.max_rows = 1;
+                                let galley = ui.painter().layout_job(job);
+                                ui.painter().galley(
+                                    egui::pos2(
+                                        r.min.x + 28.0,
+                                        r.center().y - galley.size().y * 0.5,
+                                    ),
+                                    galley,
+                                    text_color,
+                                );
+                            }
+                            let response = response.on_hover_text(name);
+                            if response.clicked() && !selected {
+                                next_page = Some(id.clone());
+                            }
+                        }
+                        if let Some(id) = next_page {
+                            self.navigate(Step::Page { id });
+                        }
+                    });
+
+                let spacer = (ui.available_height() - footer_h).max(0.0);
+                ui.add_space(spacer);
+                let (status_label, status_color) = if self.gate.connected {
+                    ("Connecté", GREEN)
+                } else if self.wanted {
+                    ("En attente", theme::WARNING)
+                } else {
+                    ("Déconnecté", theme::DANGER)
+                };
+                let (card_r, card_resp) = ui.allocate_exact_size(
+                    Vec2::new(ui.available_width(), footer_h - 4.0),
+                    egui::Sense::hover(),
+                );
+                ui.painter().rect_filled(card_r, 10.0, p.card);
+                if compact {
+                    ui.painter().circle_filled(
+                        card_r.center() - Vec2::new(0.0, 7.0),
+                        4.0,
+                        status_color,
+                    );
+                    ui.painter().text(
+                        card_r.center() + Vec2::new(0.0, 8.0),
+                        egui::Align2::CENTER_CENTER,
+                        "D6",
+                        egui::FontId::proportional(10.0),
+                        p.ink,
+                    );
+                    card_resp.on_hover_text(format!("FIFINE D6 · 15 touches · {status_label}"));
+                } else {
+                    ui.painter().text(
+                        card_r.min + Vec2::new(12.0, 10.0),
+                        egui::Align2::LEFT_TOP,
+                        "FIFINE D6 · 15 touches",
+                        egui::FontId::proportional(11.0),
+                        p.ink,
+                    );
+                    let dot_center = card_r.min + Vec2::new(16.0, 36.0);
+                    ui.painter().circle_filled(dot_center, 4.0, status_color);
+                    ui.painter().text(
+                        egui::pos2(dot_center.x + 8.0, dot_center.y),
+                        egui::Align2::LEFT_CENTER,
+                        status_label,
+                        egui::FontId::proportional(10.5),
+                        p.muted,
+                    );
+                }
+            });
+    }
     fn header(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
         egui::TopBottomPanel::top("header")
@@ -1191,20 +1443,24 @@ impl App {
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    let (r, _) = ui.allocate_exact_size(Vec2::splat(27.0), egui::Sense::hover());
-                    ui.painter().rect_filled(r, 6.0, BLUE);
+                    let (r, _) = ui.allocate_exact_size(Vec2::splat(28.0), egui::Sense::hover());
+                    ui.painter().rect_filled(r, 7.0, BLUE);
                     for y in 0..2 {
                         for x in 0..3 {
                             ui.painter().circle_filled(
-                                r.min + Vec2::new(7.0 + x as f32 * 6.5, 9.0 + y as f32 * 8.0),
+                                r.min + Vec2::new(7.5 + x as f32 * 6.5, 9.5 + y as f32 * 8.0),
                                 1.8,
                                 Color32::WHITE,
                             );
                         }
                     }
-                    ui.label(RichText::new("DeckForge").size(20.0).strong());
+                    ui.vertical(|ui| {
+                        ui.spacing_mut().item_spacing.y = 0.0;
+                        ui.label(RichText::new("DeckForge").size(18.0).strong());
+                        ui.label(RichText::new("FIFINE D6").size(10.0).color(p.muted));
+                    });
                     ui.add_space(8.0);
-                    theme::pill(
+                    theme::status_badge(
                         ui,
                         if self.gate.connected {
                             "D6 connecté"
@@ -1213,11 +1469,29 @@ impl App {
                         } else {
                             "D6 déconnecté"
                         },
-                        if self.gate.connected { GREEN } else if self.wanted { Color32::from_rgb(235, 165, 69) } else { Color32::from_rgb(231, 94, 102) },
+                        if self.gate.connected {
+                            GREEN
+                        } else if self.wanted {
+                            theme::WARNING
+                        } else {
+                            theme::DANGER
+                        },
                     );
-
-                    if ui.add_enabled(!self.history.is_empty(), egui::Button::new("Annuler")).on_hover_text("Annuler — Ctrl+Z").clicked() { self.undo_edit(); }
-                    if ui.add_enabled(!self.future.is_empty(), egui::Button::new("Rétablir")).on_hover_text("Rétablir — Ctrl+Y").clicked() { self.redo_edit(); }
+                    ui.add_space(4.0);
+                    if ui
+                        .add_enabled(!self.history.is_empty(), theme::secondary_button(if ctx.screen_rect().width() < 1320.0 { "↺" } else { "Annuler" }))
+                        .on_hover_text("Annuler — Ctrl+Z")
+                        .clicked()
+                    {
+                        self.undo_edit();
+                    }
+                    if ui
+                        .add_enabled(!self.future.is_empty(), theme::secondary_button(if ctx.screen_rect().width() < 1320.0 { "↻" } else { "Rétablir" }))
+                        .on_hover_text("Rétablir — Ctrl+Y")
+                        .clicked()
+                    {
+                        self.redo_edit();
+                    }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.menu_button("Réglages", |ui| {
                             if ui.button("Windows et raccourcis…").clicked() {
@@ -1279,18 +1553,34 @@ impl App {
                                 ui.close_menu();
                             }
                         });
-                        let ai_on=self.assistant.as_ref().is_some_and(|s|s.enabled());
-                        let ai_label=if ai_on {"IA : connectée"} else if self.preferences.allow_connected_ai {"IA : en attente"} else {"IA : désactivée"};
-                        if ui.button("Connecter une IA").clicked() { self.connect_window=true; }
-                        if ui.button(ai_label).on_hover_text("Connecter une IA ou désactiver le pont local").clicked() {
-                            if ai_on { self.set_ai_enabled(false); } else { self.assistant_settings=true; }
+                        let ai_on = self.assistant.as_ref().is_some_and(|s| s.enabled());
+                        let ai_label = if ai_on {
+                            "IA : connectée"
+                        } else if self.preferences.allow_connected_ai {
+                            "IA : en attente"
+                        } else {
+                            "IA : désactivée"
+                        };
+                        if ui.add(theme::secondary_button("Connecter une IA")).clicked() {
+                            self.connect_window = true;
                         }
                         if ui
-                            .button(if self.preferences.dark {
+                            .add(theme::secondary_button(ai_label))
+                            .on_hover_text("Connecter une IA ou désactiver le pont local")
+                            .clicked()
+                        {
+                            if ai_on {
+                                self.set_ai_enabled(false);
+                            } else {
+                                self.assistant_settings = true;
+                            }
+                        }
+                        if ui
+                            .add(theme::secondary_button(if self.preferences.dark {
                                 "Thème clair"
                             } else {
                                 "Thème sombre"
-                            })
+                            }))
                             .on_hover_text("Changer le thème de toute l’interface")
                             .clicked()
                         {
@@ -1299,9 +1589,13 @@ impl App {
                             self.save_preferences();
                         }
                         if ui
-                            .button(
-                                RichText::new("Arrêter les macros en cours")
-                                    .color(Color32::from_rgb(238, 106, 115)),
+                            .add(
+                                theme::danger_button(
+                                    RichText::new("Arrêter les macros en cours")
+                                        .color(theme::DANGER),
+                                )
+                                .fill(Color32::TRANSPARENT)
+                                .stroke(egui::Stroke::new(1.0_f32, theme::DANGER)),
                             )
                             .on_hover_text("Arrête les macros en cours et met les touches en pause. Les applications déjà ouvertes restent ouvertes.")
                             .clicked()
@@ -1323,20 +1617,16 @@ impl App {
                             Decision::Blocked(_) => (
                                 if !self.gate.enabled {
                                     "En pause"
-                                } else {
-                                    if !self.gate.connected {
-                                        if self.wanted {
-                                            "D6 en attente"
-                                        } else {
-                                            "Déconnecté"
-                                        }
+                                } else if !self.gate.connected {
+                                    if self.wanted {
+                                        "D6 en attente"
                                     } else {
-                                        if self.gate.dirty {
-                                            "Modifications…"
-                                        } else {
-                                            "Synchronisation…"
-                                        }
+                                        "Déconnecté"
                                     }
+                                } else if self.gate.dirty {
+                                    "Modifications…"
+                                } else {
+                                    "Synchronisation…"
                                 },
                                 p.muted,
                             ),
@@ -1346,7 +1636,6 @@ impl App {
                 });
             });
     }
-
     fn save_preferences(&mut self) -> bool {
         if !self.preferences_valid {
             self.fail("Le fichier preferences.json est illisible et reste préservé. Restaure sa sauvegarde avant d’enregistrer.".into());
@@ -1600,92 +1889,421 @@ impl App {
     }
     fn catalog(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
-        egui::SidePanel::right("action_catalog").exact_width(296.0).resizable(false).frame(egui::Frame::new().fill(p.surface).inner_margin(16)).show(ctx,|ui| {
-            ui.horizontal(|ui| { ui.label(RichText::new("Bibliothèque").size(19.0).strong()); ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| { theme::pill(ui,"40 binds",BLUE); }); });
-            ui.add_space(5.0);
-            ui.horizontal(|ui| { for (i,label) in ["Actions","Magasin","Mes binds","Plugins"].iter().enumerate() {
-                let(r,response)=ui.allocate_exact_size(Vec2::new(66.0,51.0),egui::Sense::click());let selected=i==self.catalog_tab;
-                ui.painter().rect_filled(r,10.0,if selected{p.wash}else{p.surface});
-                theme::symbol(ui.painter(),r.center_top()+Vec2::new(0.0,16.0),18.0,[21,20,15,15][i],if selected{BLUE}else{p.muted});
-                ui.painter().text(r.center_bottom()-Vec2::new(0.0,7.0),egui::Align2::CENTER_BOTTOM,*label,egui::FontId::proportional(11.0),if selected{p.ink}else{p.muted});
-                if response.clicked(){self.catalog_tab=i;self.catalog_selection=None;self.catalog_search.clear();}
-            }});
-            ui.add_space(6.0);
-            ui.add(egui::TextEdit::singleline(&mut self.catalog_search).desired_width(f32::INFINITY).hint_text("Rechercher une action…"));
-            let search=self.catalog_search.to_lowercase();
-            if self.catalog_tab==3 {
-                self.plugin_store(ui,&search);
-            } else if self.catalog_tab==0 {
-                ui.label(RichText::new("Glisse une action sur une touche. Elle s’ajoute à la fin de sa macro.").small().color(p.muted));
-                let actions=crate::automation::NAMES;
-                egui::ScrollArea::vertical().id_salt("action_browser").show(ui,|ui| {
-                    for (i,label) in actions.iter().enumerate() {
-                        if !label.to_lowercase().contains(&search) { continue; }
-                        let item=if i==12{DragItem::NewFolder}else{DragItem::Action(catalog::action(i,&self.config.profiles[self.config.active].name))};
-                        ui.push_id(i,|ui| {
-                            let(r,response)=ui.allocate_exact_size(Vec2::new(ui.available_width(),44.0),egui::Sense::click_and_drag());
-                            ui.painter().rect_filled(r,8.0,if response.hovered(){p.wash}else{p.bg});
-                            let kind=match &item{DragItem::Action(key)=>crate::icons::kind(key),_=>15};
-                            theme::symbol(ui.painter(),r.left_center()+Vec2::new(21.0,0.0),20.0,kind,BLUE);
-                            ui.painter().text(r.left_center()+Vec2::new(43.0,0.0),egui::Align2::LEFT_CENTER,*label,egui::FontId::proportional(12.0),p.ink);
-                            self.drag_sources.push((response.rect.intersect(ui.clip_rect()),item.clone()));
-                            if response.clicked() { self.assign(item,self.selected); }
-                            response.on_hover_text("Glisser sur une touche, ou cliquer pour ajouter à la touche sélectionnée");
+        egui::SidePanel::right("action_catalog")
+            .exact_width(296.0)
+            .resizable(false)
+            .frame(egui::Frame::new().fill(p.surface).inner_margin(16))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Bibliothèque d'actions").size(17.0).strong());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        theme::pill(ui, "40 binds", BLUE);
+                    });
+                });
+                ui.add_space(6.0);
+                egui::Frame::new()
+                    .fill(p.card)
+                    .corner_radius(8)
+                    .inner_margin(egui::Margin::symmetric(8, 5))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let (icon_r, _) =
+                                ui.allocate_exact_size(Vec2::splat(16.0), egui::Sense::hover());
+                            let c = icon_r.center() - Vec2::new(1.5, 1.5);
+                            ui.painter()
+                                .circle_stroke(c, 4.5, egui::Stroke::new(1.5_f32, p.muted));
+                            ui.painter().line_segment(
+                                [c + Vec2::new(3.2, 3.2), c + Vec2::new(6.5, 6.5)],
+                                egui::Stroke::new(1.5_f32, p.muted),
+                            );
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.catalog_search)
+                                    .frame(false)
+                                    .desired_width(f32::INFINITY)
+                                    .hint_text("Rechercher une action…"),
+                            );
+                        });
+                    });
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    for (i, label) in ["Actions", "Magasin", "Mes binds", "Plugins"]
+                        .iter()
+                        .enumerate()
+                    {
+                        let (r, response) =
+                            ui.allocate_exact_size(Vec2::new(62.0, 48.0), egui::Sense::click());
+                        let selected = i == self.catalog_tab;
+                        ui.painter().rect_filled(
+                            r,
+                            10.0,
+                            if selected {
+                                p.wash
+                            } else if response.hovered() {
+                                p.hover
+                            } else {
+                                p.surface
+                            },
+                        );
+                        theme::symbol(
+                            ui.painter(),
+                            r.center_top() + Vec2::new(0.0, 15.0),
+                            17.0,
+                            [21, 20, 15, 15][i],
+                            if selected { BLUE } else { p.muted },
+                        );
+                        ui.painter().text(
+                            r.center_bottom() - Vec2::new(0.0, 6.0),
+                            egui::Align2::CENTER_BOTTOM,
+                            *label,
+                            egui::FontId::proportional(11.0),
+                            if selected { p.ink } else { p.muted },
+                        );
+                        if response.clicked() {
+                            self.catalog_tab = i;
+                            self.catalog_selection = None;
+                            self.catalog_search.clear();
+                        }
+                    }
+                });
+                ui.add_space(6.0);
+                let search = self.catalog_search.to_lowercase();
+                if self.catalog_tab == 3 {
+                    self.plugin_store(ui, &search);
+                } else if self.catalog_tab == 0 {
+                    ui.label(
+                        RichText::new(
+                            "Glisse une action sur une touche. Elle s’ajoute à la fin de sa macro.",
+                        )
+                        .small()
+                        .color(p.muted),
+                    );
+                    let actions = crate::automation::NAMES;
+                    egui::ScrollArea::vertical()
+                        .id_salt("action_browser")
+                        .show(ui, |ui| {
+                            for (i, label) in actions.iter().enumerate() {
+                                if !label.to_lowercase().contains(&search) {
+                                    continue;
+                                }
+                                let item = if i == 12 {
+                                    DragItem::NewFolder
+                                } else {
+                                    DragItem::Action(catalog::action(
+                                        i,
+                                        &self.config.profiles[self.config.active].name,
+                                    ))
+                                };
+                                ui.push_id(i, |ui| {
+                                    let (r, response) = ui.allocate_exact_size(
+                                        Vec2::new(ui.available_width(), 50.0),
+                                        egui::Sense::click_and_drag(),
+                                    );
+                                    ui.painter().rect_filled(
+                                        r,
+                                        12.0,
+                                        if response.hovered() { p.hover } else { p.card },
+                                    );
+                                    let accent = match i % 5 {
+                                        0 => BLUE,
+                                        1 => theme::PURPLE,
+                                        2 => GREEN,
+                                        3 => theme::CYAN,
+                                        _ => theme::WARNING,
+                                    };
+                                    let badge = egui::Rect::from_center_size(
+                                        r.left_center() + Vec2::new(23.0, 0.0),
+                                        Vec2::splat(32.0),
+                                    );
+                                    ui.painter()
+                                        .rect_filled(badge, 8.0, accent.gamma_multiply(0.18));
+                                    let kind = match &item {
+                                        DragItem::Action(key) => crate::icons::kind(key),
+                                        _ => 15,
+                                    };
+                                    theme::symbol(ui.painter(), badge.center(), 18.0, kind, accent);
+                                    ui.painter().text(
+                                        r.min + Vec2::new(47.0, 9.0),
+                                        egui::Align2::LEFT_TOP,
+                                        *label,
+                                        egui::FontId::proportional(12.5),
+                                        p.ink,
+                                    );
+                                    ui.painter().text(
+                                        r.min + Vec2::new(47.0, 28.0),
+                                        egui::Align2::LEFT_TOP,
+                                        "Action · Glisser ou cliquer",
+                                        egui::FontId::proportional(10.0),
+                                        p.muted,
+                                    );
+                                    ui.painter().text(
+                                        r.right_center() - Vec2::new(12.0, 0.0),
+                                        egui::Align2::RIGHT_CENTER,
+                                        "›",
+                                        egui::FontId::proportional(16.0),
+                                        p.muted,
+                                    );
+                                    self.drag_sources
+                                        .push((response.rect.intersect(ui.clip_rect()), item.clone()));
+                                    if response.clicked() {
+                                        self.assign(item, self.selected);
+                                    }
+                                    response.on_hover_text(
+                                        "Glisser sur une touche, ou cliquer pour ajouter à la touche sélectionnée",
+                                    );
+                                });
+                            }
+                            ui.add_space(14.0);
+                            ui.label(RichText::new("Macro personnalisée").strong());
+                            ui.label(
+                                RichText::new("Combine plusieurs actions dans l’inspecteur du bas, puis enregistre le résultat dans Mes binds.")
+                                    .small()
+                                    .color(p.muted),
+                            );
+                        });
+                } else {
+                    if self.catalog_tab == 1 {
+                        egui::ComboBox::from_id_salt("catalog_category")
+                            .width(ui.available_width() - 8.0)
+                            .selected_text(&self.catalog_category)
+                            .show_ui(ui, |ui| {
+                                for category in [
+                                    "Tout",
+                                    "Média",
+                                    "Windows",
+                                    "Édition",
+                                    "Navigateur",
+                                    "Sites",
+                                    "Workflows",
+                                ] {
+                                    ui.selectable_value(
+                                        &mut self.catalog_category,
+                                        category.into(),
+                                        category,
+                                    );
+                                }
+                            });
+                        ui.label(
+                            RichText::new("Gratuit · hors ligne · modifiable")
+                                .small()
+                                .color(p.muted),
+                        );
+                    } else {
+                        ui.horizontal(|ui| {
+                            if ui.button("Enregistrer la touche").clicked() {
+                                self.bind_name = self.config.keys()[self.selected].label.clone();
+                                self.save_bind = true;
+                            }
+                            ui.menu_button("•••", |ui| {
+                                if ui.button("Importer un pack…").clicked() {
+                                    self.import_binds();
+                                    ui.close_menu();
+                                }
+                                if ui.button("Exporter Mes binds…").clicked() {
+                                    self.export_binds();
+                                    ui.close_menu();
+                                }
+                            });
                         });
                     }
-                    ui.add_space(14.0); ui.label(RichText::new("Macro personnalisée").strong());
-                    ui.label(RichText::new("Combine plusieurs actions dans l’inspecteur du bas, puis enregistre le résultat dans Mes binds.").small().color(p.muted));
-                });
-            } else {
-                if self.catalog_tab==1 {
-                    egui::ComboBox::from_id_salt("catalog_category").width(ui.available_width()-8.0).selected_text(&self.catalog_category).show_ui(ui,|ui| { for category in ["Tout","Média","Windows","Édition","Navigateur","Sites","Workflows"] { ui.selectable_value(&mut self.catalog_category,category.into(),category); } });
-                    ui.label(RichText::new("Gratuit · hors ligne · modifiable").small().color(p.muted));
-                } else {
-                    ui.horizontal(|ui| { if ui.button("Enregistrer la touche").clicked() { self.bind_name=self.config.keys()[self.selected].label.clone(); self.save_bind=true; } ui.menu_button("•••",|ui| { if ui.button("Importer un pack…").clicked() { self.import_binds(); ui.close_menu(); } if ui.button("Exporter Mes binds…").clicked() { self.export_binds(); ui.close_menu(); } }); });
-                }
-                let items:Vec<(String,String,Key)>=if self.catalog_tab==1 { catalog::presets().into_iter().map(|v|(v.category.into(),v.description.into(),v.key)).collect() } else { self.preferences.library.binds.iter().map(|b|("Personnel".into(),format!("{} · {} étape(s). Les images restent liées à leur fichier local.",b.name,b.key.steps.len()),{let mut k=b.key.clone();k.label=b.name.clone();k})).collect() };
-                let selected=self.catalog_selection.filter(|i|*i<items.len());
-                let detail_height=if selected.is_some(){212.0}else{40.0};
-                let mut found=0;
-                egui::ScrollArea::vertical().id_salt("preset_list").max_height((ui.available_height()-detail_height).max(90.0)).show(ui,|ui| {
-                    for (i,(category,description,key)) in items.iter().enumerate() {
-                        if self.catalog_tab==1 && self.catalog_category!="Tout" && self.catalog_category!=*category {continue;}
-                        if !format!("{} {} {}",key.label,category,description).to_lowercase().contains(&search) {continue;}
-                        found+=1;
-                        let response=ui.push_id(i,|ui| {
-                            let (r,response)=ui.allocate_exact_size(Vec2::new(ui.available_width(),51.0),egui::Sense::click_and_drag());
-                            ui.painter().rect_filled(r,6.0,if selected==Some(i){p.wash}else if response.hovered(){p.bg}else{p.surface});
-                            let color=Color32::from_rgb(key.color[0],key.color[1],key.color[2]);
-                            theme::symbol(ui.painter(),r.left_center()+Vec2::new(21.0,0.0),20.0,crate::icons::kind(&key),color);
-                            let title=egui::text::LayoutJob::simple_singleline(key.label.clone(),egui::FontId::proportional(13.0),p.ink);
-                            let mut title=title;title.wrap.max_width=r.width()-56.0;title.wrap.max_rows=1;
-                            ui.painter().galley(r.min+Vec2::new(45.0,7.0),ui.painter().layout_job(title),p.ink);
-                            ui.painter().text(r.min+Vec2::new(45.0,29.0),egui::Align2::LEFT_TOP,format!("{} · {} action(s)",category,key.steps.len()),egui::FontId::proportional(10.0),p.muted);
-                            response
-                        }).inner;
-                        self.drag_sources.push((response.rect.intersect(ui.clip_rect()),DragItem::Bind(key.clone())));
-                        if response.clicked() {self.catalog_selection=Some(i);}
-                        response.on_hover_text(description);
+                    let items: Vec<(String, String, Key)> = if self.catalog_tab == 1 {
+                        catalog::presets()
+                            .into_iter()
+                            .map(|v| (v.category.into(), v.description.into(), v.key))
+                            .collect()
+                    } else {
+                        self.preferences
+                            .library
+                            .binds
+                            .iter()
+                            .map(|b| {
+                                (
+                                    "Personnel".into(),
+                                    format!(
+                                        "{} · {} étape(s). Les images restent liées à leur fichier local.",
+                                        b.name,
+                                        b.key.steps.len()
+                                    ),
+                                    {
+                                        let mut k = b.key.clone();
+                                        k.label = b.name.clone();
+                                        k
+                                    },
+                                )
+                            })
+                            .collect()
+                    };
+                    let selected = self.catalog_selection.filter(|i| *i < items.len());
+                    let detail_height = if selected.is_some() { 212.0 } else { 40.0 };
+                    let mut found = 0;
+                    egui::ScrollArea::vertical()
+                        .id_salt("preset_list")
+                        .max_height((ui.available_height() - detail_height).max(90.0))
+                        .show(ui, |ui| {
+                            for (i, (category, description, key)) in items.iter().enumerate() {
+                                if self.catalog_tab == 1
+                                    && self.catalog_category != "Tout"
+                                    && self.catalog_category != *category
+                                {
+                                    continue;
+                                }
+                                if !format!("{} {} {}", key.label, category, description)
+                                    .to_lowercase()
+                                    .contains(&search)
+                                {
+                                    continue;
+                                }
+                                found += 1;
+                                let response = ui
+                                    .push_id(i, |ui| {
+                                        let (r, response) = ui.allocate_exact_size(
+                                            Vec2::new(ui.available_width(), 54.0),
+                                            egui::Sense::click_and_drag(),
+                                        );
+                                        let fill = if selected == Some(i) {
+                                            p.wash
+                                        } else if response.hovered() {
+                                            p.hover
+                                        } else {
+                                            p.card
+                                        };
+                                        ui.painter().rect_filled(r, 12.0, fill);
+                                        if selected == Some(i) {
+                                            ui.painter().rect_stroke(
+                                                r,
+                                                12.0,
+                                                egui::Stroke::new(1.5_f32, BLUE),
+                                                egui::StrokeKind::Inside,
+                                            );
+                                        }
+                                        let color = Color32::from_rgb(
+                                            key.color[0],
+                                            key.color[1],
+                                            key.color[2],
+                                        );
+                                        let badge = egui::Rect::from_center_size(
+                                            r.left_center() + Vec2::new(24.0, 0.0),
+                                            Vec2::splat(34.0),
+                                        );
+                                        ui.painter().rect_filled(
+                                            badge,
+                                            9.0,
+                                            color.gamma_multiply(0.20),
+                                        );
+                                        theme::symbol(
+                                            ui.painter(),
+                                            badge.center(),
+                                            18.0,
+                                            crate::icons::kind(key),
+                                            color,
+                                        );
+                                        let mut title =
+                                            egui::text::LayoutJob::simple_singleline(
+                                                key.label.clone(),
+                                                egui::FontId::proportional(13.0),
+                                                p.ink,
+                                            );
+                                        title.wrap.max_width = (r.width() - 72.0).max(20.0);
+                                        title.wrap.max_rows = 1;
+                                        ui.painter().galley(
+                                            r.min + Vec2::new(49.0, 8.0),
+                                            ui.painter().layout_job(title),
+                                            p.ink,
+                                        );
+                                        ui.painter().text(
+                                            r.min + Vec2::new(49.0, 30.0),
+                                            egui::Align2::LEFT_TOP,
+                                            format!(
+                                                "{} · {} action(s)",
+                                                category,
+                                                key.steps.len()
+                                            ),
+                                            egui::FontId::proportional(10.0),
+                                            p.muted,
+                                        );
+                                        ui.painter().text(
+                                            r.right_center() - Vec2::new(12.0, 0.0),
+                                            egui::Align2::RIGHT_CENTER,
+                                            "›",
+                                            egui::FontId::proportional(16.0),
+                                            if selected == Some(i) { BLUE } else { p.muted },
+                                        );
+                                        response
+                                    })
+                                    .inner;
+                                self.drag_sources.push((
+                                    response.rect.intersect(ui.clip_rect()),
+                                    DragItem::Bind(key.clone()),
+                                ));
+                                if response.clicked() {
+                                    self.catalog_selection = Some(i);
+                                }
+                                response.on_hover_text(description);
+                            }
+                            if found == 0 {
+                                ui.add_space(14.0);
+                                ui.label(if self.catalog_tab == 2 && items.is_empty() {
+                                    "Tes binds enregistrés apparaîtront ici."
+                                } else {
+                                    "Aucun résultat. Essaie un autre mot."
+                                });
+                            }
+                        });
+                    ui.separator();
+                    if let Some(i) = self.catalog_selection.filter(|i| *i < items.len()) {
+                        let (_, description, key) = &items[i];
+                        egui::ScrollArea::vertical()
+                            .id_salt("preset_details")
+                            .max_height(195.0)
+                            .show(ui, |ui| {
+                                ui.label(RichText::new(&key.label).strong());
+                                ui.label(RichText::new(description).small().color(p.muted));
+                                ui.label(
+                                    RichText::new(
+                                        key.steps
+                                            .iter()
+                                            .map(step_summary)
+                                            .collect::<Vec<_>>()
+                                            .join(" → "),
+                                    )
+                                    .size(10.0)
+                                    .color(p.muted),
+                                );
+                                if ui
+                                    .add(theme::primary(
+                                        RichText::new(format!(
+                                            "Utiliser sur la touche {:02}",
+                                            self.selected + 1
+                                        ))
+                                        .color(Color32::WHITE),
+                                    ))
+                                    .clicked()
+                                {
+                                    self.assign(DragItem::Bind(key.clone()), self.selected);
+                                }
+                                if self.catalog_tab == 2
+                                    && ui.small_button("Supprimer de Mes binds").clicked()
+                                {
+                                    let previous = self.preferences.library.clone();
+                                    self.preferences.library.binds.remove(i);
+                                    if self.save_preferences() {
+                                        self.catalog_selection = None;
+                                    } else {
+                                        self.preferences.library = previous;
+                                    }
+                                }
+                            });
+                    } else {
+                        ui.label(
+                            RichText::new(
+                                "Glisse un bind sur une touche, ou clique pour voir ses actions.",
+                            )
+                            .small()
+                            .color(p.muted),
+                        );
                     }
-                    if found==0 {ui.add_space(14.0);ui.label(if self.catalog_tab==2 && items.is_empty(){"Tes binds enregistrés apparaîtront ici."}else{"Aucun résultat. Essaie un autre mot."});}
-                });
-                ui.separator();
-                if let Some(i)=self.catalog_selection.filter(|i|*i<items.len()) {
-                    let (_,description,key)=&items[i];
-                    egui::ScrollArea::vertical().id_salt("preset_details").max_height(195.0).show(ui,|ui| {
-                        ui.label(RichText::new(&key.label).strong()); ui.label(RichText::new(description).small().color(p.muted));
-                        ui.label(RichText::new(key.steps.iter().map(step_summary).collect::<Vec<_>>().join(" → ")).size(10.0).color(p.muted));
-                        if ui.add(theme::primary(RichText::new(format!("Utiliser sur la touche {:02}",self.selected+1)).color(Color32::WHITE))).clicked() {self.assign(DragItem::Bind(key.clone()),self.selected);}
-                        if self.catalog_tab==2 && ui.small_button("Supprimer de Mes binds").clicked() {
-                            let previous=self.preferences.library.clone(); self.preferences.library.binds.remove(i);
-                            if self.save_preferences(){self.catalog_selection=None;}else{self.preferences.library=previous;}
-                        }
-                    });
-                } else {ui.label(RichText::new("Glisse un bind sur une touche, ou clique pour voir ses actions.").small().color(p.muted));}
-            }
-        });
+                }
+            });
     }
-
     fn footer(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
         let validation = if !self.gate.invalid {
@@ -1912,102 +2530,372 @@ impl App {
 
     fn deck(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(p.bg).inner_margin(18)).show(ctx,|ui| {
-            if self.flicker.as_ref().is_some_and(|session| session.active()) { self.diagnostic_deck=Some(ui.max_rect()); }
-            theme::gradient(ui.painter(),ui.max_rect(),p.bg,if self.preferences.dark{Color32::from_rgb(29,34,49)}else{Color32::from_rgb(225,231,248)});
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("PROFIL").size(10.0).color(p.muted));
-                let mut active=self.config.active;
-                egui::ComboBox::from_id_salt("active_profile").width(175.0).selected_text(&self.config.profiles[active].name).show_ui(ui,|ui|{for(i,profile)in self.config.profiles.iter().enumerate(){ui.selectable_value(&mut active,i,&profile.name);}});
-                if active!=self.config.active{self.select_profile(active);}
-                if self.auto_active { ui.label(RichText::new(format!("Auto : {}", self.config.profiles[self.config.active].name)).small().color(p.muted)); }
-                ui.menu_button("•••",|ui| {
-                    if ui.add_enabled(self.config.profiles.len()<64,egui::Button::new("Nouveau profil")).clicked(){self.add_profile(false);ui.close_menu();}
-                    if ui.button("Renommer / dupliquer").clicked(){self.rename=true;ui.close_menu();}
-                    if ui.button("Applications associées").clicked(){self.show_apps=true;ui.close_menu();}
-                });
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{ui.label(RichText::new("FIFINE D6 · 15 touches").size(11.0).color(p.muted));});
-            });
-            ui.add_space(7.0);
-            ui.horizontal(|ui| {
-                if !self.config.page.is_empty() && self.config.profiles[self.config.active].pages.iter().any(|p|p.id==self.config.page&&p.folder) {
-                    if ui.button("← Retour").clicked(){self.navigate(Step::Back);}
-                    ui.label(RichText::new("DOSSIER").small().color(p.muted));
-                    let name=self.config.profiles[self.config.active].pages.iter().find(|p|p.id==self.config.page).map(|p|p.name.as_str()).unwrap_or_default();ui.label(RichText::new(name).strong());
-                } else {
-                    if ui.small_button("‹").on_hover_text("Page précédente").clicked(){self.navigate(Step::PagePrevious);}
-                    let mut page=self.config.page.clone();
-                    egui::ComboBox::from_id_salt("active_page").width(150.0).selected_text(self.config.profiles[self.config.active].pages.iter().find(|p|p.id==page).map(|p|p.name.as_str()).unwrap_or("Page 1")).show_ui(ui,|ui| {
-                        ui.selectable_value(&mut page,String::new(),"Page 1");for p in self.config.profiles[self.config.active].pages.iter().filter(|p|!p.folder){ui.selectable_value(&mut page,p.id.clone(),&p.name);}
-                    });
-                    if page!=self.config.page{self.navigate(Step::Page{id:page});}
-                    if ui.small_button("›").on_hover_text("Page suivante").clicked(){self.navigate(Step::PageNext);}
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().fill(p.bg).inner_margin(18))
+            .show(ctx, |ui| {
+                if self.flicker.as_ref().is_some_and(|session| session.active()) {
+                    self.diagnostic_deck = Some(ui.max_rect());
                 }
-                ui.menu_button("+",|ui| {
-                    if ui.button("Nouvelle page").clicked(){self.create_page(false);ui.close_menu();}
-                    if ui.button("Gérer pages et dossiers…").clicked(){self.page_manager=true;ui.close_menu();}
-                    if ui.button("Dossier sur la touche sélectionnée").clicked(){self.create_page(true);ui.close_menu();}
-                });
-                if !self.config.page.is_empty(){ui.menu_button("Renommer",|ui| {
-                    if let Some(page)=self.config.profiles[self.config.active].pages.iter_mut().find(|p|p.id==self.config.page){if ui.text_edit_singleline(&mut page.name).changed(){self.edited();}}
-                });}
-            });
-            if !self.config.trail.is_empty(){let profile=&self.config.profiles[self.config.active];let path=self.config.trail.iter().chain(std::iter::once(&self.config.page)).map(|id|profile.pages.iter().find(|p|&p.id==id).map(|p|p.name.as_str()).unwrap_or("Page 1")).collect::<Vec<_>>().join("  ›  ");ui.label(RichText::new(path).small().color(p.muted));}
-            ui.add_space(7.0);
-            if ctx.screen_rect().width()>=1200.0 {ui.label(RichText::new("Glisse un bind sur une touche, puis personnalise ses actions dans l’inspecteur.").small().color(p.muted));}
-            {
-                // Le pavé suit la taille de la fenêtre : il occupe tout l'espace disponible, sans barre de défilement.
-                // Largeur : 5 touches + 4 espacements (56) + marges (48). Hauteur : 3 touches + 2 espacements (28) + marges (68) + 4 px de sécurité.
-                let width=((ui.available_width()-104.0)/5.0).min((ui.available_height()-100.0)/3.0).floor().clamp(40.0,320.0);
-                if self.flicker.as_ref().is_some_and(|session| session.active()) {self.diagnostic_key_width=width;}
-                let total=width*5.0+56.0+48.0;
+                theme::gradient(
+                    ui.painter(),
+                    ui.max_rect(),
+                    p.bg,
+                    if self.preferences.dark {
+                        Color32::from_rgb(29, 34, 49)
+                    } else {
+                        Color32::from_rgb(225, 231, 248)
+                    },
+                );
+                let in_folder = !self.config.page.is_empty()
+                    && self.config.profiles[self.config.active]
+                        .pages
+                        .iter()
+                        .any(|page| page.id == self.config.page && page.folder);
+                let non_folder_pages: Vec<_> = self.config.profiles[self.config.active]
+                    .pages
+                    .iter()
+                    .filter(|page| !page.folder)
+                    .collect();
+                let total_pages = 1 + non_folder_pages.len();
+                let current_page_num = if self.config.page.is_empty() {
+                    1
+                } else {
+                    non_folder_pages
+                        .iter()
+                        .position(|page| page.id == self.config.page)
+                        .map(|idx| idx + 2)
+                        .unwrap_or(1)
+                };
                 ui.horizontal(|ui| {
-                    ui.add_space(((ui.available_width()-total)/2.0).max(0.0));
-                    let body=egui::Rect::from_min_size(ui.cursor().min,Vec2::new(total,width*3.0+28.0+68.0));
-                    theme::device_shell(ui.painter(),body);
-                    let device=egui::Frame::new().fill(Color32::TRANSPARENT).stroke(egui::Stroke::NONE).shadow(egui::epaint::Shadow{offset:[0,12],blur:24,spread:0,color:Color32::from_black_alpha(75)}).corner_radius(20).inner_margin(egui::Margin{left:24,right:24,top:24,bottom:44}).show(ui,|ui| {
-                        egui::Grid::new("deck_grid_v3").spacing([14.0,14.0]).show(ui,|ui| {
-                            for i in 0..15 {
-                                let mut key=self.presented_key(i);let face=self.plugin_face(i).cloned();if let Some(face)=&face {key=self.plugin_render_key(i,key,face);}let selected=i==self.selected;
-                                let flashing=self.last_key.is_some_and(|(idx,t)|idx==i&&t.elapsed()<Duration::from_millis(350));
-                                let(r,response)=ui.allocate_exact_size(Vec2::splat(width),egui::Sense::click_and_drag());
-                                let hovering=self.drag.moving() && self.drag.position.is_some_and(|pos|r.contains(pos));
-                                theme::key_face(ui.painter(),r,selected||hovering,flashing);
-                                let lcd=r.shrink(5.0);
-                                match self.key_previews.texture(ctx,i,&key,self.config.image_size,face.as_ref()) {
-                                    Ok(texture)=>{ui.painter().image(texture.id(),lcd,egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(1.0,1.0)),Color32::WHITE);}
-                                    Err(error)=>{ui.painter().text(lcd.center(),egui::Align2::CENTER_CENTER,"Aperçu indisponible",egui::FontId::proportional(9.0),p.muted); ui.painter().text(lcd.left_top(),egui::Align2::LEFT_TOP,"!",egui::FontId::proportional(12.0),Color32::LIGHT_RED);let _=error;}
+                    ui.label(
+                        RichText::new(&self.config.profiles[self.config.active].name)
+                            .size(18.0)
+                            .strong(),
+                    );
+                    if self.auto_active {
+                        ui.label(
+                            RichText::new(format!(
+                                "Auto : {}",
+                                self.config.profiles[self.config.active].name
+                            ))
+                            .small()
+                            .color(p.muted),
+                        );
+                    }
+                    let center_x = ui.max_rect().center().x;
+                    let pad = (center_x - 80.0 - ui.cursor().min.x).max(12.0);
+                    ui.add_space(pad);
+                    if in_folder {
+                        if ui.button("← Retour").clicked() {
+                            self.navigate(Step::Back);
+                        }
+                        ui.label(RichText::new("DOSSIER").small().color(p.muted));
+                        let name = self.config.profiles[self.config.active]
+                            .pages
+                            .iter()
+                            .find(|page| page.id == self.config.page)
+                            .map(|page| page.name.as_str())
+                            .unwrap_or_default();
+                        ui.label(RichText::new(name).strong());
+                    } else {
+                        if ui
+                            .small_button("‹")
+                            .on_hover_text("Page précédente")
+                            .clicked()
+                        {
+                            self.navigate(Step::PagePrevious);
+                        }
+                        ui.label(
+                            RichText::new(format!(
+                                "Page {} / {}",
+                                current_page_num, total_pages
+                            ))
+                            .size(13.0)
+                            .strong(),
+                        );
+                        if ui
+                            .small_button("›")
+                            .on_hover_text("Page suivante")
+                            .clicked()
+                        {
+                            self.navigate(Step::PageNext);
+                        }
+                    }
+                    if !self.config.page.is_empty() {
+                        ui.menu_button("Renommer", |ui| {
+                            if let Some(page) = self.config.profiles[self.config.active]
+                                .pages
+                                .iter_mut()
+                                .find(|page| page.id == self.config.page)
+                            {
+                                if ui.text_edit_singleline(&mut page.name).changed() {
+                                    self.edited();
                                 }
-                                // Editing hints never alter the image sent to the LCD.
-                                if !key.long_steps.is_empty() {
-                                    ui.painter().rect_filled(egui::Rect::from_min_size(lcd.right_top()-Vec2::new(17.0,0.0),Vec2::new(17.0,16.0)),3.0,p.surface);
-                                    ui.painter().text(lcd.right_top()+Vec2::new(-8.0,8.0),egui::Align2::CENTER_CENTER,"L",egui::FontId::proportional(11.0),p.ink);
-                                }
-                                if key.steps.is_empty()&&key.image.is_empty()&&key.label.is_empty(){theme::symbol(ui.painter(),r.center(),width*0.22,8,p.muted);}
-                                if crate::model::validate_key_in_profile(&self.config.keys()[i],&self.config,&self.config.profiles[self.config.active]).is_err() { ui.painter().circle_filled(r.left_top()+Vec2::new(10.0,10.0),4.0,Color32::from_rgb(242,126,106)); }
-                                if width>=70.0 {ui.painter().text(r.right_bottom()+Vec2::new(0.0,3.0),egui::Align2::RIGHT_TOP,format!("{:02}",i+1),egui::FontId::proportional(8.0),p.muted);}
-                                self.drag_sources.push((r.intersect(ui.clip_rect()),DragItem::Position(self.config.active,self.config.page.clone(),i)));self.drop_targets.push((r.intersect(ui.clip_rect()),i));
-                                if response.clicked(){self.selected=i;self.retarget_gallery();}
-                                response.context_menu(|ui| {
-                                    if ui.button("Copier").clicked(){self.selected=i;self.copy_key();ui.close_menu();}
-                                    if ui.add_enabled(self.clipboard.is_some(),egui::Button::new("Coller")).clicked(){self.paste_key(i);ui.close_menu();}
-                                    if ui.button("Dupliquer vers la prochaine touche vide").clicked(){self.duplicate_key(i);ui.close_menu();}
-                                    if ui.button("Vider").clicked(){self.assign(DragItem::Bind(Key::default()),i);ui.close_menu();}
-                                }); if response.double_clicked(){if let Some(step @ Step::Folder{..})=key.steps.first(){self.navigate(step.clone());}}
-
-                                response.on_hover_text(format!("Touche {:02} · {}\nGlisse depuis la bibliothèque pour affecter un bind. Glisse une touche sur une autre pour les échanger.",i+1,key.label));
-                                if i%5==4{ui.end_row();}
                             }
                         });
-                    });
-                    let edge=device.response.rect;ui.painter().line_segment([edge.left_top()+Vec2::new(24.0,2.0),edge.right_top()+Vec2::new(-24.0,2.0)],egui::Stroke::new(1.0_f32,Color32::from_white_alpha(35)));
-                    ui.painter().text(edge.center_bottom()-Vec2::new(0.0,13.0),egui::Align2::CENTER_CENTER,"D E C K F O R G E    /    D 6",egui::FontId::proportional(8.0),Color32::from_rgb(118,127,146));
+                    }
                 });
+                if !self.config.trail.is_empty() {
+                    let profile = &self.config.profiles[self.config.active];
+                    let path = self
+                        .config
+                        .trail
+                        .iter()
+                        .chain(std::iter::once(&self.config.page))
+                        .map(|id| {
+                            profile
+                                .pages
+                                .iter()
+                                .find(|p| &p.id == id)
+                                .map(|p| p.name.as_str())
+                                .unwrap_or("Page 1")
+                        })
+                        .collect::<Vec<_>>()
+                        .join("  ›  ");
+                    ui.label(RichText::new(path).small().color(p.muted));
+                }
+                ui.add_space(7.0);
+                if ctx.screen_rect().width() >= 1200.0 {
+                    ui.label(
+                        RichText::new(
+                            "Glisse un bind sur une touche, puis personnalise ses actions dans l’inspecteur.",
+                        )
+                        .small()
+                        .color(p.muted),
+                    );
+                }
+                {
+                    // Le pavé suit la taille de la fenêtre : il occupe tout l'espace disponible, sans barre de défilement.
+                    // Largeur : 5 touches + 4 espacements (56) + marges (48). Hauteur : 3 touches + 2 espacements (28) + marges (68) + 4 px de sécurité.
+                    let width = ((ui.available_width() - 104.0) / 5.0)
+                        .min((ui.available_height() - 100.0) / 3.0)
+                        .floor()
+                        .clamp(40.0, 320.0);
+                    if self.flicker.as_ref().is_some_and(|session| session.active()) {
+                        self.diagnostic_key_width = width;
+                    }
+                    let total = width * 5.0 + 56.0 + 48.0;
+                    ui.horizontal(|ui| {
+                        ui.add_space(((ui.available_width() - total) / 2.0).max(0.0));
+                        let body = egui::Rect::from_min_size(
+                            ui.cursor().min,
+                            Vec2::new(total, width * 3.0 + 28.0 + 68.0),
+                        );
+                        theme::device_shell(ui.painter(), body);
+                        let device = egui::Frame::new()
+                            .fill(Color32::TRANSPARENT)
+                            .stroke(egui::Stroke::NONE)
+                            .shadow(egui::epaint::Shadow {
+                                offset: [0, 12],
+                                blur: 24,
+                                spread: 0,
+                                color: Color32::from_black_alpha(75),
+                            })
+                            .corner_radius(20)
+                            .inner_margin(egui::Margin {
+                                left: 24,
+                                right: 24,
+                                top: 24,
+                                bottom: 44,
+                            })
+                            .show(ui, |ui| {
+                                egui::Grid::new("deck_grid_v3")
+                                    .spacing([14.0, 14.0])
+                                    .show(ui, |ui| {
+                                        for i in 0..15 {
+                                            let mut key = self.presented_key(i);
+                                            let face = self.plugin_face(i).cloned();
+                                            if let Some(face) = &face {
+                                                key = self.plugin_render_key(i, key, face);
+                                            }
+                                            let selected = i == self.selected;
+                                            let flashing = self.last_key.is_some_and(|(idx, t)| {
+                                                idx == i && t.elapsed() < Duration::from_millis(350)
+                                            });
+                                            let (r, response) = ui.allocate_exact_size(
+                                                Vec2::splat(width),
+                                                egui::Sense::click_and_drag(),
+                                            );
+                                            let hovering = self.drag.moving()
+                                                && self
+                                                    .drag
+                                                    .position
+                                                    .is_some_and(|pos| r.contains(pos));
+                                            theme::key_face(
+                                                ui.painter(),
+                                                r,
+                                                selected || hovering,
+                                                flashing,
+                                            );
+                                            let lcd = r.shrink(5.0);
+                                            match self.key_previews.texture(
+                                                ctx,
+                                                i,
+                                                &key,
+                                                self.config.image_size,
+                                                face.as_ref(),
+                                            ) {
+                                                Ok(texture) => {
+                                                    ui.painter().image(
+                                                        texture.id(),
+                                                        lcd,
+                                                        egui::Rect::from_min_max(
+                                                            egui::Pos2::ZERO,
+                                                            egui::pos2(1.0, 1.0),
+                                                        ),
+                                                        Color32::WHITE,
+                                                    );
+                                                }
+                                                Err(error) => {
+                                                    ui.painter().text(
+                                                        lcd.center(),
+                                                        egui::Align2::CENTER_CENTER,
+                                                        "Aperçu indisponible",
+                                                        egui::FontId::proportional(9.0),
+                                                        p.muted,
+                                                    );
+                                                    ui.painter().text(
+                                                        lcd.left_top(),
+                                                        egui::Align2::LEFT_TOP,
+                                                        "!",
+                                                        egui::FontId::proportional(12.0),
+                                                        Color32::LIGHT_RED,
+                                                    );
+                                                    let _ = error;
+                                                }
+                                            }
+                                            // Editing hints never alter the image sent to the LCD.
+                                            if !key.long_steps.is_empty() {
+                                                ui.painter().rect_filled(
+                                                    egui::Rect::from_min_size(
+                                                        lcd.right_top() - Vec2::new(17.0, 0.0),
+                                                        Vec2::new(17.0, 16.0),
+                                                    ),
+                                                    3.0,
+                                                    p.surface,
+                                                );
+                                                ui.painter().text(
+                                                    lcd.right_top() + Vec2::new(-8.0, 8.0),
+                                                    egui::Align2::CENTER_CENTER,
+                                                    "L",
+                                                    egui::FontId::proportional(11.0),
+                                                    p.ink,
+                                                );
+                                            }
+                                            if key.steps.is_empty()
+                                                && key.image.is_empty()
+                                                && key.label.is_empty()
+                                            {
+                                                theme::symbol(
+                                                    ui.painter(),
+                                                    r.center(),
+                                                    width * 0.22,
+                                                    8,
+                                                    p.muted,
+                                                );
+                                            }
+                                            if crate::model::validate_key_in_profile(
+                                                &self.config.keys()[i],
+                                                &self.config,
+                                                &self.config.profiles[self.config.active],
+                                            )
+                                            .is_err()
+                                            {
+                                                ui.painter().circle_filled(
+                                                    r.left_top() + Vec2::new(10.0, 10.0),
+                                                    4.0,
+                                                    Color32::from_rgb(242, 126, 106),
+                                                );
+                                            }
+                                            if width >= 70.0 {
+                                                ui.painter().text(
+                                                    r.right_bottom() + Vec2::new(0.0, 3.0),
+                                                    egui::Align2::RIGHT_TOP,
+                                                    format!("{:02}", i + 1),
+                                                    egui::FontId::proportional(8.0),
+                                                    p.muted,
+                                                );
+                                            }
+                                            self.drag_sources.push((
+                                                r.intersect(ui.clip_rect()),
+                                                DragItem::Position(
+                                                    self.config.active,
+                                                    self.config.page.clone(),
+                                                    i,
+                                                ),
+                                            ));
+                                            self.drop_targets
+                                                .push((r.intersect(ui.clip_rect()), i));
+                                            if response.clicked() {
+                                                self.selected = i;
+                                                self.retarget_gallery();
+                                            }
+                                            response.context_menu(|ui| {
+                                                if ui.button("Copier").clicked() {
+                                                    self.selected = i;
+                                                    self.copy_key();
+                                                    ui.close_menu();
+                                                }
+                                                if ui
+                                                    .add_enabled(
+                                                        self.clipboard.is_some(),
+                                                        egui::Button::new("Coller"),
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    self.paste_key(i);
+                                                    ui.close_menu();
+                                                }
+                                                if ui
+                                                    .button("Dupliquer vers la prochaine touche vide")
+                                                    .clicked()
+                                                {
+                                                    self.duplicate_key(i);
+                                                    ui.close_menu();
+                                                }
+                                                if ui.button("Vider").clicked() {
+                                                    self.assign(DragItem::Bind(Key::default()), i);
+                                                    ui.close_menu();
+                                                }
+                                            });
+                                            if response.double_clicked() {
+                                                if let Some(step @ Step::Folder { .. }) =
+                                                    key.steps.first()
+                                                {
+                                                    self.navigate(step.clone());
+                                                }
+                                            }
 
-            }
-        });
+                                            response.on_hover_text(format!(
+                                                "Touche {:02} · {}\nGlisse depuis la bibliothèque pour affecter un bind. Glisse une touche sur une autre pour les échanger.",
+                                                i + 1,
+                                                key.label
+                                            ));
+                                            if i % 5 == 4 {
+                                                ui.end_row();
+                                            }
+                                        }
+                                    });
+                            });
+                        let edge = device.response.rect;
+                        ui.painter().line_segment(
+                            [
+                                edge.left_top() + Vec2::new(24.0, 2.0),
+                                edge.right_top() + Vec2::new(-24.0, 2.0),
+                            ],
+                            egui::Stroke::new(1.0_f32, Color32::from_white_alpha(35)),
+                        );
+                        ui.painter().text(
+                            edge.center_bottom() - Vec2::new(0.0, 13.0),
+                            egui::Align2::CENTER_CENTER,
+                            "D E C K F O R G E    /    D 6",
+                            egui::FontId::proportional(8.0),
+                            Color32::from_rgb(118, 127, 146),
+                        );
+                    });
+                }
+            });
     }
-
     fn windows(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
         if let Some((_, _, _, _, enabled)) = self.recording.clone() {
@@ -2443,7 +3331,9 @@ impl App {
         self.footer(ctx);
         if !self.show_workflow {
             self.catalog(ctx);
+            // Inspector first for now: full width under the navigation until its tabbed redesign.
             self.editor(ctx);
+            self.sidebar(ctx);
             self.deck(ctx);
         } else {
             self.workflow(ctx);
@@ -2479,8 +3369,6 @@ impl App {
             self.save();
         }
     }
-}
-impl App {
     fn diagnostic_sample(&mut self, ctx:&egui::Context, start:Instant) {
         if self.flicker.as_ref().is_some_and(|s|s.active()) {
             let screen=ctx.screen_rect();
