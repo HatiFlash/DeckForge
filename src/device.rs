@@ -1,8 +1,11 @@
+use crate::key_render::for_device as render_key_or_default;
+#[cfg(test)]
+use crate::key_render::jpeg as render_key;
 use crate::{model::Config, Event};
-use ab_glyph::{Font, FontArc, PxScale, ScaleFont};
+#[cfg(test)]
+use ab_glyph::FontArc;
 use anyhow::{Context, Result};
 use hidapi::{HidApi, HidDevice};
-use image::{Rgb, RgbImage};
 use std::{
     sync::mpsc::{self, Receiver, Sender, TryRecvError},
     time::{Duration, Instant},
@@ -273,12 +276,7 @@ impl Deck {
     fn apply(&self, c: &Config) -> Result<Vec<String>> {
         c.validate()?;
         // Prepare all images first; one broken file falls back to its built-in icon.
-        let fontpath = std::path::PathBuf::from(
-            std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into()),
-        )
-        .join("Fonts/segoeui.ttf");
-        let font = FontArc::try_from_vec(std::fs::read(fontpath)?)
-            .map_err(|_| anyhow::anyhow!("Police Windows illisible"))?;
+        let font = crate::key_render::font()?;
         let rendered = c
             .keys()
             .iter()
@@ -309,107 +307,6 @@ impl Deck {
         self.command(b"STP")?;
         Ok(warnings.into_iter().flatten().collect())
     }
-}
-fn render_key_or_default(
-    k: &crate::model::Key,
-    size: u32,
-    font: &FontArc,
-) -> Result<(Vec<u8>, Option<String>)> {
-    match render_key(k, size, font) {
-        Ok(data) => Ok((data, None)),
-        Err(e) => {
-            let mut fallback = k.clone();
-            fallback.image.clear();
-            Ok((
-                render_key(&fallback, size, font)?,
-                Some(format!(
-                    "Icône de « {} » indisponible : {e}. Icône intégrée utilisée.",
-                    k.label
-                )),
-            ))
-        }
-    }
-}
-fn render_key(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8>> {
-    let mut image = if k.image.is_empty() {
-        RgbImage::from_pixel(size, size, Rgb(k.color))
-    } else {
-        anyhow::ensure!(
-            std::fs::metadata(&k.image)?.len() <= 8_000_000,
-            "Image supérieure à 8 Mo"
-        );
-        crate::assets::decode_image(&std::fs::read(&k.image)?, 512)
-            .with_context(|| format!("Image invalide pour {}", k.label))?
-            .resize_to_fill(size, size, image::imageops::FilterType::Lanczos3)
-            .into_rgb8()
-    };
-    let has_icon = k.image.is_empty() && !k.steps.is_empty();
-    if has_icon {
-        crate::icons::draw(&mut image, crate::icons::kind(k));
-    }
-    if !k.label.is_empty() {
-        let chars = k.label.chars().take(48).collect::<Vec<_>>();
-        let lines = chars
-            .chunks(12)
-            .take(if has_icon { 2 } else { 3 })
-            .map(|chunk| chunk.iter().collect::<String>())
-            .collect::<Vec<_>>();
-        let scaled = font.as_scaled(PxScale::from(size as f32 * 0.14));
-        let height = scaled.height();
-        let y0 = if has_icon {
-            size as f32 * 0.59
-        } else if k.image.is_empty() {
-            (size as f32 - height * lines.len() as f32) / 2.0
-        } else {
-            size as f32 - height * lines.len() as f32 - 4.0
-        };
-        if !k.image.is_empty() {
-            for y in (y0.max(0.0) as u32)..size {
-                for x in 0..size {
-                    let pixel = image.get_pixel_mut(x, y);
-                    for ch in &mut pixel.0 {
-                        *ch = (*ch as f32 * 0.25) as u8;
-                    }
-                }
-            }
-        }
-        for (line_idx, line) in lines.iter().enumerate() {
-            let width: f32 = line
-                .chars()
-                .map(|c| scaled.h_advance(scaled.glyph_id(c)))
-                .sum();
-            let mut x = (size as f32 - width) / 2.0;
-            let y = y0 + line_idx as f32 * height + scaled.ascent();
-            for c in line.chars() {
-                let id = scaled.glyph_id(c);
-                let glyph = id.with_scale_and_position(scaled.scale(), ab_glyph::point(x, y));
-                if let Some(outline) = font.outline_glyph(glyph) {
-                    let bounds = outline.px_bounds();
-                    outline.draw(|gx, gy, coverage| {
-                        let px = bounds.min.x as i32 + gx as i32;
-                        let py = bounds.min.y as i32 + gy as i32;
-                        if px >= 0 && py >= 0 && px < size as i32 && py < size as i32 {
-                            let p = image.get_pixel_mut(px as u32, py as u32);
-                            for channel in &mut p.0 {
-                                *channel =
-                                    (*channel as f32 * (1.0 - coverage) + 255.0 * coverage) as u8;
-                            }
-                        }
-                    });
-                }
-                x += scaled.h_advance(id);
-            }
-        }
-    }
-    let image = image::imageops::rotate180(&image);
-    let mut bytes = Vec::new();
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, 88).encode(
-        &image,
-        size,
-        size,
-        image::ExtendedColorType::Rgb8,
-    )?;
-    Ok(bytes)
 }
 pub fn diagnostic() {
     let result = (|| -> Result<serde_json::Value> {

@@ -343,6 +343,171 @@ fn all_fifteen_keys_remain_visible_in_both_themes_and_window_sizes() {
         }
     }
 }
+
+#[test]
+fn editor_textures_match_usb_images_with_custom_files_audio_states_and_fallbacks() {
+    let mut h = Harness::new();
+    let size = vec2(1380.0, 900.0);
+    let custom = h.dir.path().join("asymmetric.png");
+    let mut image = image::RgbImage::from_pixel(90, 55, image::Rgb([184, 65, 22]));
+    for y in 0..20 {
+        for x in 0..45 {
+            image.put_pixel(x, y, image::Rgb([22, 182, 233]));
+        }
+    }
+    image.save(&custom).unwrap();
+    let svg = h.dir.path().join("custom.svg");
+    std::fs::write(&svg, "<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect x='10' y='5' width='50' height='30' fill='#22bb77'/></svg>").unwrap();
+    h.app.config.keys_mut()[5] = Key {
+        label: "Mon image".into(),
+        image: custom.to_string_lossy().into_owned(),
+        steps: vec![Step::Delay { ms: 1 }],
+        ..Key::default()
+    };
+    h.app.config.keys_mut()[6] = Key {
+        label: "SVG".into(),
+        image: svg.to_string_lossy().into_owned(),
+        steps: vec![Step::Delay { ms: 1 }],
+        ..Key::default()
+    };
+    h.app.config.keys_mut()[7] = crate::audio::tests::key();
+    h.app.config.keys_mut()[8] = Key {
+        label: "Fichier absent".into(),
+        image: h
+            .dir
+            .path()
+            .join("missing.png")
+            .to_string_lossy()
+            .into_owned(),
+        steps: vec![Step::Media {
+            command: "mute".into(),
+        }],
+        ..Key::default()
+    };
+    h.app.config.keys_mut()[13] = Key {
+        label: "Page précédente".into(),
+        steps: vec![Step::PagePrevious],
+        ..Key::default()
+    };
+    h.app.config.keys_mut()[14] = Key {
+        label: "Page suivante".into(),
+        steps: vec![Step::PageNext],
+        ..Key::default()
+    };
+    for (dark, endpoint, name) in [
+        (true, "headset", "shared-preview-dark.png"),
+        (false, "speakers", "shared-preview-light.png"),
+    ] {
+        h.app.preferences.dark = dark;
+        theme::apply(&h.ctx, dark);
+        h.app.audio.output = endpoint.into();
+        let output = h.warm(size);
+        for index in 0..15 {
+            let key = h.app.presented_key(index);
+            let texture = h
+                .app
+                .key_previews
+                .texture(&h.ctx, index, &key, h.app.config.image_size)
+                .unwrap();
+            let gui = &h.textures[&texture.id()];
+            let (bytes, _) = crate::key_render::for_device(
+                &key,
+                h.app.config.image_size,
+                &crate::key_render::font().unwrap(),
+            )
+            .unwrap();
+            let lcd =
+                image::imageops::rotate180(&image::load_from_memory(&bytes).unwrap().into_rgb8());
+            assert_eq!(gui.size, [lcd.width() as usize, lcd.height() as usize]);
+            for (pixel, expected) in gui.pixels.iter().zip(lcd.pixels()) {
+                assert_eq!(
+                    pixel.to_array(),
+                    [expected[0], expected[1], expected[2], 255]
+                );
+            }
+        }
+        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+            std::fs::create_dir_all(&dir).unwrap();
+            h.png(size, output, &PathBuf::from(dir).join(name));
+        }
+    }
+}
+
+#[test]
+fn lcd_preview_cache_refreshes_labels_colors_icons_and_changed_image_files() {
+    let mut h = Harness::new();
+    let size = vec2(1380.0, 900.0);
+    let file = h.dir.path().join("mutable.png");
+    image::RgbImage::from_pixel(10, 10, image::Rgb([220, 30, 50]))
+        .save(&file)
+        .unwrap();
+    h.app.config.keys_mut()[5].image = file.to_string_lossy().into_owned();
+    h.warm(size);
+    let key = h.app.presented_key(5);
+    let old = h
+        .app
+        .key_previews
+        .texture(&h.ctx, 5, &key, 126)
+        .unwrap()
+        .id();
+    image::RgbImage::from_pixel(49, 23, image::Rgb([12, 220, 80]))
+        .save(&file)
+        .unwrap();
+    let new = h
+        .app
+        .key_previews
+        .texture(&h.ctx, 5, &key, 126)
+        .unwrap()
+        .id();
+    assert_ne!(old, new);
+    assert_eq!(
+        new,
+        h.app
+            .key_previews
+            .texture(&h.ctx, 5, &key, 126)
+            .unwrap()
+            .id()
+    );
+    let mut changed = key.clone();
+    changed.label = "Nouveau titre".into();
+    let label = h
+        .app
+        .key_previews
+        .texture(&h.ctx, 5, &changed, 126)
+        .unwrap()
+        .id();
+    assert_ne!(new, label);
+    changed.color = [12, 34, 56];
+    let color = h
+        .app
+        .key_previews
+        .texture(&h.ctx, 5, &changed, 126)
+        .unwrap()
+        .id();
+    assert_ne!(label, color);
+    changed.image.clear();
+    changed.steps = vec![Step::Media {
+        command: "play_pause".into(),
+    }];
+    let play = h
+        .app
+        .key_previews
+        .texture(&h.ctx, 5, &changed, 126)
+        .unwrap()
+        .id();
+    assert_ne!(color, play);
+    changed.steps = vec![Step::Media {
+        command: "mute".into(),
+    }];
+    assert_ne!(
+        play,
+        h.app
+            .key_previews
+            .texture(&h.ctx, 5, &changed, 126)
+            .unwrap()
+            .id()
+    );
+}
 #[test]
 fn imports_real_export_when_reference_is_provided() {
     if let Some(path) = std::env::var_os("DECKFORGE_ELGATO_REFERENCE") {

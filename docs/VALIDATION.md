@@ -1,4 +1,19 @@
-# Validation — DeckForge 0.4.1
+# Validation — DeckForge 0.4.2
+
+## Correction du rendu 0.4.2
+
+- 71 tests applicatifs et 3 tests du connecteur : succès. Le vrai connecteur stdio est activé pour le scénario sans fenêtre.
+- 7 contrôles MCP stdio et 11 contrôles HTTP : succès.
+- Chaque aperçu est comparé au JPEG USB décodé et remis à l’endroit, pour 31 cas d’icônes et deux dimensions.
+- Les textures utilisées par les vrais widgets sont comparées pixel par pixel : défauts, audio casque/enceintes, PNG asymétrique, SVG, fichier manquant et navigation.
+- Le cache se renouvelle après modification d’une image, d’un titre, d’une couleur ou d’une action.
+- Retours à la ligne entre mots et ellipse pour les titres longs ; aucun changement du protocole USB.
+- Aperçus logiciels vérifiés en clair/sombre à 1 060 × 720 et 1 380 × 900. Aucun essai sur USB réel ni modification de la sortie audio pendant ce correctif.
+- Le connecteur 0.4.1 est compatible avec l’application 0.4.2 ; la mise à jour d’affichage permet de le conserver pendant que Codex est ouvert.
+
+La comparaison sur l’appareil physique reste à effectuer par l’utilisateur après installation : voir [TEST-0.4.2.md](TEST-0.4.2.md).
+
+## Historique 0.4.1
 
 ## Vérifications de cette correction
 

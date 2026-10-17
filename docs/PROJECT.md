@@ -1,6 +1,12 @@
 # DeckForge — état du projet au 17 octobre 2026
 
-Version 0.4.1 de test. Dépôt privé : https://github.com/HatiFlash/DeckForge.
+Version 0.4.2 de test. Dépôt privé : https://github.com/HatiFlash/DeckForge.
+
+## Correction 0.4.2 — aperçu fidèle au LCD
+
+Le retour utilisateur montre que l’ancien aperçu utilisait d’autres symboles et un autre fond que les images LCD. Les deux sorties utilisent désormais le même moteur : l’éditeur affiche le JPEG qui est préparé pour le D6, sans sa rotation de transport. Les images importées occupent la même surface et portent le même titre aux deux endroits. Le cache se renouvelle quand le contenu ou le fichier d’icône change. Les mots des titres ne sont plus coupés tous les douze caractères.
+
+Les 71 tests applicatifs et 3 tests du connecteur passent, avec 18 contrôles de transport MCP. Une comparaison pixel par pixel couvre les 31 cas d’icônes, les dimensions 112/126, les textures réellement utilisées par les widgets, les deux états audio, PNG, SVG et le repli en cas de fichier absent. Le rendu a été vérifié dans les deux thèmes et les deux tailles de fenêtre sans fenêtre native, USB ni changement audio. L’application en cours n’a pas été remplacée.
 
 ## Origine et base
 

@@ -11,6 +11,7 @@ mod elgato;
 mod engine;
 mod gesture;
 mod icons;
+mod key_render;
 #[allow(dead_code)]
 mod mcp_protocol;
 mod mcp_server;

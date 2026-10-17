@@ -19,6 +19,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "ui_key_preview.rs"]
+mod key_preview;
+
 pub struct App {
     config: Config,
     applied: Config,
@@ -43,7 +46,7 @@ pub struct App {
     frames: usize,
     capturing: bool,
     last_key: Option<(usize, Instant)>,
-    textures: HashMap<String, Option<egui::TextureHandle>>,
+    key_previews: key_preview::Cache,
     assistant: Option<crate::mcp_server::Server>,
     proposals: crate::assistant::Proposals,
     assistant_cache: HashMap<String, Result<serde_json::Value, String>>,
@@ -183,7 +186,7 @@ impl App {
             frames: 0,
             capturing: false,
             last_key: None,
-            textures: HashMap::new(),
+            key_previews: key_preview::Cache::default(),
             assistant,
             proposals: Default::default(),
             assistant_cache: HashMap::new(),
@@ -1559,20 +1562,16 @@ impl App {
                                 let flashing=self.last_key.is_some_and(|(idx,t)|idx==i&&t.elapsed()<Duration::from_millis(350));
                                 let(r,response)=ui.allocate_exact_size(Vec2::splat(width),egui::Sense::click_and_drag());
                                 let hovering=self.drag.moving() && self.drag.position.is_some_and(|pos|r.contains(pos));
-                                let color=Color32::from_rgb(key.color[0],key.color[1],key.color[2]);
                                 theme::key_face(ui.painter(),r,selected||hovering,flashing);
-                                if crate::model::validate_key_in_profile(&self.config.keys()[i],&self.config,&self.config.profiles[self.config.active]).is_err() { ui.painter().circle_filled(r.left_top()+Vec2::new(10.0,10.0),4.0,Color32::from_rgb(242,126,106)); }
-                                let center=r.center_top()+Vec2::new(0.0,width*0.36);
-                                let mut has_image=false;
-                                if !key.image.is_empty(){let texture=self.textures.entry(key.image.clone()).or_insert_with(||{
-                                    if std::fs::metadata(&key.image).ok()?.len()>8_000_000{return None;}let bytes=std::fs::read(&key.image).ok()?;let img=crate::assets::decode_image(&bytes,112).ok()?.into_rgba8();let size=[img.width()as usize,img.height()as usize];Some(ctx.load_texture(key.image.clone(),egui::ColorImage::from_rgba_unmultiplied(size,&img),egui::TextureOptions::LINEAR))});
-                                    if let Some(texture)=texture{ui.painter().image(texture.id(),egui::Rect::from_center_size(center,Vec2::splat(width*0.38)),egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(1.0,1.0)),Color32::WHITE);has_image=true;}
+                                let lcd=r.shrink(5.0);
+                                match self.key_previews.texture(ctx,i,&key,self.config.image_size) {
+                                    Ok(texture)=>{ui.painter().image(texture.id(),lcd,egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(1.0,1.0)),Color32::WHITE);}
+                                    Err(error)=>{ui.painter().text(lcd.center(),egui::Align2::CENTER_CENTER,"Aperçu indisponible",egui::FontId::proportional(9.0),p.muted); ui.painter().text(lcd.left_top(),egui::Align2::LEFT_TOP,"!",egui::FontId::proportional(12.0),Color32::LIGHT_RED);let _=error;}
                                 }
-                                if !has_image{theme::symbol(ui.painter(),center,width*0.27,crate::icons::kind(&key),if key.steps.is_empty(){p.muted}else{theme::icon_color(color,true)});}
-                                let mut job=egui::text::LayoutJob::default();job.wrap.max_width=width-12.0;job.wrap.max_rows=if width<90.0{1}else{2};job.wrap.break_anywhere=false;job.halign=egui::Align::Center;
-                                job.append(if key.label.is_empty(){""}else{&key.label},0.0,egui::TextFormat{font_id:egui::FontId::proportional(if width<90.0{10.0}else{12.0}),color:Color32::from_rgb(228,232,239),..Default::default()});
-                                ui.painter().galley(egui::pos2(r.center().x,r.top()+width*0.59),ui.painter().layout_job(job),p.ink);
-                                if width>=70.0 {ui.painter().text(r.right_bottom()-Vec2::new(7.0,5.0),egui::Align2::RIGHT_BOTTOM,format!("{:02}",i+1),egui::FontId::proportional(8.0),p.muted);}
+                                // Editing hints never alter the image sent to the LCD.
+                                if key.steps.is_empty()&&key.image.is_empty()&&key.label.is_empty(){theme::symbol(ui.painter(),r.center(),width*0.22,8,p.muted);}
+                                if crate::model::validate_key_in_profile(&self.config.keys()[i],&self.config,&self.config.profiles[self.config.active]).is_err() { ui.painter().circle_filled(r.left_top()+Vec2::new(10.0,10.0),4.0,Color32::from_rgb(242,126,106)); }
+                                if width>=70.0 {ui.painter().text(r.right_bottom()+Vec2::new(0.0,3.0),egui::Align2::RIGHT_TOP,format!("{:02}",i+1),egui::FontId::proportional(8.0),p.muted);}
                                 self.drag_sources.push((r.intersect(ui.clip_rect()),DragItem::Position(self.config.active,self.config.page.clone(),i)));self.drop_targets.push((r.intersect(ui.clip_rect()),i));
                                 if response.clicked(){self.selected=i;} if response.double_clicked(){if let Some(step @ Step::Folder{..})=key.steps.first(){self.navigate(step.clone());}}
 

@@ -1,4 +1,4 @@
-DeckForge 0.4.1 — third-party notices
+DeckForge 0.4.2 — third-party notices
 
 Application code: MIT, see LICENSE.
 The following notices include the dependencies selected for Windows, including build dependencies.

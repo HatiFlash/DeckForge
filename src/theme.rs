@@ -173,20 +173,6 @@ pub fn gradient(p: &egui::Painter, r: egui::Rect, top: Color32, bottom: Color32)
     mesh.add_triangle(0, 2, 3);
     p.add(egui::Shape::mesh(mesh));
 }
-pub fn icon_color(color: Color32, dark: bool) -> Color32 {
-    let luminance =
-        0.2126 * color.r() as f32 + 0.7152 * color.g() as f32 + 0.0722 * color.b() as f32;
-    if dark && luminance < 130.0 {
-        let lift = (150.0 - luminance) as u8;
-        Color32::from_rgb(
-            color.r().saturating_add(lift),
-            color.g().saturating_add(lift),
-            color.b().saturating_add(lift),
-        )
-    } else {
-        color
-    }
-}
 pub struct Palette {
     pub bg: Color32,
     pub surface: Color32,
