@@ -5,7 +5,7 @@ use serde_json::Value;
 #[derive(Clone,Debug)] pub struct Action { pub uuid:String, pub name:String, pub icon:Option<PathBuf>, pub states:Vec<Option<PathBuf>>, pub titles:Vec<Option<String>>, pub multi_action:bool }
 #[derive(Clone,Debug)] pub struct Plugin { pub uuid:String, pub name:String, pub version:String, pub author:String, pub icon:Option<PathBuf>, pub folder:PathBuf, pub runtime:Runtime, pub actions:Vec<Action> }
 fn safe(folder:&Path,name:&str)->Option<PathBuf>{ let p=Path::new(name); if name.is_empty() || p.is_absolute() || p.components().any(|c| !matches!(c,std::path::Component::Normal(_))) { None } else { Some(folder.join(p)) } }
-fn icon(folder:&Path,name:&str)->Option<PathBuf>{ let p=safe(folder,name)?; ["", "@2x.png", ".png", "@2x.svg", ".svg"].iter().map(|suffix|PathBuf::from(format!("{}{}",p.display(),suffix))).find(|p|p.is_file()) }
+fn icon(folder:&Path,name:&str)->Option<PathBuf>{ let p=safe(folder,name)?; ["", "@2x.png", ".png", "@2x.svg", ".svg"].iter().map(|suffix|PathBuf::from(format!("{}{}",p.display(),suffix))).find(|p|p.is_file() && p.canonicalize().ok().is_some_and(|real|real.starts_with(folder.canonicalize().unwrap_or_else(|_|folder.to_path_buf())))) }
 pub fn parse(folder:&Path,bytes:&[u8])->anyhow::Result<Plugin>{
  anyhow::ensure!(bytes.len()<=2_000_000,"Manifeste trop volumineux");
  if bytes.starts_with(b"ELGATO\x01") {return Ok(Plugin{uuid:folder.file_name().unwrap_or_default().to_string_lossy().into_owned(),name:"Protégé par Elgato, non pris en charge".into(),version:String::new(),author:String::new(),icon:None,folder:folder.into(),runtime:Runtime::Protected,actions:vec![]});}

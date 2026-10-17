@@ -2200,8 +2200,6 @@ impl App {
         self.dialog_results();
         self.record_trigger(ctx);
         self.record_events(ctx);
-        let initial=self.plugins.as_ref().map(|m|m.visible().values().filter(|v| !self.plugin_faces.contains_key(&v.context)).map(|v|(v.context.clone(),v.index,v.state)).collect::<Vec<_>>()).unwrap_or_default();
-        for (context,index,state) in initial { self.plugin_faces.insert(context,PluginFace{state,..Default::default()}); self.send_plugin_face(index); }
         self.events();
         self.plugin_events();
         self.housekeeping();
