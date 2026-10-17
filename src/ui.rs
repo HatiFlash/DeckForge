@@ -223,6 +223,9 @@ impl App {
         } else {
             crate::mcp_server::Server::new(path.with_file_name("mcp-connection.json")).ok()
         };
+        if preferences_valid && !isolated && preferences.allow_connected_ai {
+            if let Some(server) = &assistant { server.set_enabled(true); }
+        }
         let (dialog_tx, dialog_rx) = mpsc::channel();
         let mut app = Self {
             applied: config.clone(),
@@ -947,6 +950,12 @@ impl App {
             let _ = child.wait();
         }
     }
+    fn set_ai_enabled(&mut self, enabled: bool) {
+        if let Some(server)=&self.assistant { server.set_enabled(enabled); }
+        if !enabled { self.stop_http(); self.proposals.reject_all(); self.assistant_cache.clear(); }
+        self.preferences.allow_connected_ai=enabled;
+        self.save_preferences();
+    }
     fn assistant_window(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
         if self.assistant_settings {
@@ -954,7 +963,7 @@ impl App {
             egui::Window::new("Assistant IA").open(&mut open).collapsible(false).resizable(true).default_width(510.0).vscroll(true).max_height((ctx.screen_rect().height()-100.0).max(400.0)).show(ctx,|ui|{
             ui.label(RichText::new("Prépare tes macros avec ton IA.").size(20.0).strong());ui.add_space(10.0);
             let mut enabled=self.assistant.as_ref().is_some_and(|s|s.enabled());
-            ui.horizontal(|ui|{if theme::toggle(ui,&mut enabled).changed(){if let Some(server)=&self.assistant{server.set_enabled(enabled);}if !enabled{self.stop_http();self.proposals.reject_all();self.assistant_cache.clear();}self.log(if enabled{"Connecteur MCP activé."}else{"Connecteur MCP désactivé."}.into());}ui.label(RichText::new(if enabled{"Assistant IA activé"}else{"Assistant IA désactivé"}).strong());});
+            ui.horizontal(|ui|{if theme::toggle(ui,&mut enabled).changed(){if let Some(server)=&self.assistant{server.set_enabled(enabled);}if !enabled{self.stop_http();self.proposals.reject_all();self.assistant_cache.clear();}self.preferences.allow_connected_ai=enabled;self.save_preferences();self.log(if enabled{"Connecteur MCP activé."}else{"Connecteur MCP désactivé."}.into());}ui.label(RichText::new(if enabled{"Assistant IA activé"}else{"Assistant IA désactivé"}).strong());});
             ui.add_space(10.0);ui.label("Ton assistant peut lire les profils et proposer des actions. Les changements et les exécutions réelles attendent toujours ta validation ici.");ui.add_space(8.0);
             ui.separator();ui.label(RichText::new("Décris l’automatisation souhaitée").strong());
             ui.add(egui::TextEdit::multiline(&mut self.assistant_request).desired_rows(3).desired_width(f32::INFINITY).hint_text("Ex. : basculer entre mon casque et mes enceintes, avec une icône pour chaque état."));
@@ -1144,11 +1153,16 @@ impl App {
                                 ui.close_menu();
                             }
                         });
+                        let ai_on=self.assistant.as_ref().is_some_and(|s|s.enabled());
+                        let ai_label=if ai_on {"IA : connectée"} else if self.preferences.allow_connected_ai {"IA : en attente"} else {"IA : désactivée"};
+                        if ui.button(ai_label).on_hover_text("Connecter une IA ou désactiver le pont local").clicked() {
+                            if ai_on { self.set_ai_enabled(false); } else { self.assistant_settings=true; }
+                        }
                         if ui
                             .button(if self.preferences.dark {
-                                "☀ Thème clair"
+                                "? Thème clair"
                             } else {
-                                "☾ Thème sombre"
+                                "? Thème sombre"
                             })
                             .on_hover_text("Changer le thème de toute l’interface")
                             .clicked()

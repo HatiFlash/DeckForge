@@ -354,6 +354,8 @@ pub struct Preferences {
     pub triggers: Vec<crate::desktop::Trigger>,
     #[serde(default)]
     pub workshop_advanced: bool,
+    #[serde(default)]
+    pub allow_connected_ai: bool,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -364,6 +366,7 @@ impl Default for Preferences {
             start_with_windows: false,
             triggers: vec![],
             workshop_advanced: false,
+            allow_connected_ai: false,
         }
     }
 }
@@ -396,7 +399,17 @@ impl Preferences {
 }
 
 #[cfg(test)]
-mod tests {
+mod tests {    #[test]
+    fn connected_ai_is_opt_in_and_roundtrips_preferences() {
+        let mut value = serde_json::to_value(Preferences::default()).unwrap();
+        value.as_object_mut().unwrap().remove("allow_connected_ai");
+        let legacy: Preferences = serde_json::from_value(value).unwrap();
+        assert!(!legacy.allow_connected_ai);
+        let mut enabled = legacy;
+        enabled.allow_connected_ai = true;
+        let loaded: Preferences = serde_json::from_str(&serde_json::to_string(&enabled).unwrap()).unwrap();
+        assert!(loaded.allow_connected_ai);
+    }
     use super::*;
     #[test]
     fn every_preset_and_action_is_executable_with_valid_configuration() {
