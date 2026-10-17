@@ -753,6 +753,15 @@ mod workshop_tests {
         }
     }
     #[test]
+    fn simple_mode_excludes_only_autohotkey_script_fields() {
+        for kind in 0..crate::automation::NAMES.len() {
+            if kind == 12 { continue; }
+            let step = catalog::action(kind, "Bureau").steps.remove(0);
+            assert_eq!(simple_fields_visible(&step, false), kind != 18, "{}", step.name());
+            assert!(simple_fields_visible(&step, true));
+        }
+    }
+    #[test]
     fn summaries_are_readable() {
         assert_eq!(block_summary(&Step::Delay { ms: 500 }), "Attendre 500 ms");
         assert_eq!(block_summary(&Step::Repeat { count: 3, steps: vec![Step::Back, Step::Back] }), "Répéter 3 fois (2 blocs)");
