@@ -1929,8 +1929,10 @@ impl App {
             if !self.config.trail.is_empty(){let profile=&self.config.profiles[self.config.active];let path=self.config.trail.iter().chain(std::iter::once(&self.config.page)).map(|id|profile.pages.iter().find(|p|&p.id==id).map(|p|p.name.as_str()).unwrap_or("Page 1")).collect::<Vec<_>>().join("  ›  ");ui.label(RichText::new(path).small().color(p.muted));}
             ui.add_space(7.0);
             if ctx.screen_rect().width()>=1200.0 {ui.label(RichText::new("Glisse un bind sur une touche, puis personnalise ses actions dans l’inspecteur.").small().color(p.muted));}
-            egui::ScrollArea::vertical().id_salt("device_canvas").show(ui,|ui| {
-                let width=((ui.available_width()-112.0)/5.0).min((ui.available_height()-92.0)/3.0).clamp(56.0,160.0);
+            {
+                // Le pavé suit la taille de la fenêtre : il occupe tout l'espace disponible, sans barre de défilement.
+                // Largeur : 5 touches + 4 espacements (56) + marges (48). Hauteur : 3 touches + 2 espacements (28) + marges (68) + 4 px de sécurité.
+                let width=((ui.available_width()-104.0)/5.0).min((ui.available_height()-100.0)/3.0).floor().clamp(40.0,320.0);
                 if self.flicker.as_ref().is_some_and(|session| session.active()) {self.diagnostic_key_width=width;}
                 let total=width*5.0+56.0+48.0;
                 ui.horizontal(|ui| {
@@ -1976,7 +1978,7 @@ impl App {
                     ui.painter().text(edge.center_bottom()-Vec2::new(0.0,13.0),egui::Align2::CENTER_CENTER,"D E C K F O R G E    /    D 6",egui::FontId::proportional(8.0),Color32::from_rgb(118,127,146));
                 });
 
-            });
+            }
         });
     }
 

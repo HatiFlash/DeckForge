@@ -316,6 +316,19 @@ fn page_management_preserves_other_pages_and_removes_dangling_folder_keys() {
     assert!(h.app.config.page.is_empty());
 }
 #[test]
+fn deck_scales_with_window_without_scrolling() {
+    let mut widths = Vec::new();
+    for size in [vec2(1060.0, 720.0), vec2(1380.0, 900.0), vec2(1920.0, 1200.0)] {
+        let mut h = Harness::new();
+        h.warm(size);
+        assert_eq!(h.app.drop_targets.len(), 15);
+        let last = h.app.drop_targets[14].0;
+        assert!((last.width() - last.height()).abs() < 0.5 && last.max.y <= size.y, "{size:?}: {last:?}");
+        widths.push(h.app.drop_targets[0].0.width());
+    }
+    assert!(widths[0] < widths[1] && widths[1] < widths[2], "{widths:?}");
+}
+#[test]
 fn all_fifteen_keys_remain_visible_in_both_themes_and_window_sizes() {
     for (size, label, dark) in [
         (vec2(1380.0, 900.0), "preview-dark.png", true),
@@ -331,7 +344,7 @@ fn all_fifteen_keys_remain_visible_in_both_themes_and_window_sizes() {
         assert_eq!(h.app.drop_targets.len(), 15);
         for (r, i) in &h.app.drop_targets {
             assert!(
-                r.width() > 55.0 && (r.width() - r.height()).abs() < 0.5,
+                r.width() > 47.0 && (r.width() - r.height()).abs() < 0.5,
                 "Key {} clipped in {}: {:?}",
                 i + 1,
                 label,
