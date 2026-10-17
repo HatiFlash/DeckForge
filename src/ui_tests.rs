@@ -31,7 +31,7 @@ impl Harness {
             focused: true,
             ..Default::default()
         };
-        let output = self.ctx.run(input, |ctx| self.app.frame(ctx));
+        let output = self.ctx.run(input, |ctx| { let start=Instant::now(); self.app.frame(ctx); self.app.diagnostic_sample(ctx,start); });
         for (id, delta) in &output.textures_delta.set {
             let image = match &delta.image {
                 egui::ImageData::Color(c) => (**c).clone(),
@@ -1167,4 +1167,35 @@ fn plugin_store_is_rendered_without_a_window() {
     if let Some(dir)=std::env::var_os("DECKFORGE_UI_OUTPUT") {
         h.png(size,output,&PathBuf::from(dir).join("plugins-store.png"));
     }
+}
+
+#[test]
+fn flicker_ui_start_mouse_transition_stop_writes_real_trace() {
+    let mut h = Harness::new();
+    let size = vec2(1380.0, 900.0);
+    h.app.settings = true;
+    let open = h.warm(size);
+    let button = text_position(&open.shapes, "Démarrer le diagnostic (90 s max)").expect("diagnostic button visible in settings");
+    h.click(size, button);
+    let path = h.app.flicker_path.clone().expect("button starts trace");
+    h.app.settings = false;
+    h.frame(size, vec![]);
+    let preview = h.app.diagnostic_deck.expect("preview measured").center();
+    let inspector = h.app.diagnostic_inspector.expect("inspector measured").center();
+    h.frame(size, vec![Input::PointerMoved(preview)]);
+    h.frame(size, vec![Input::PointerMoved(inspector)]);
+    h.app.flicker.as_ref().unwrap().stop();
+    let deadline=Instant::now()+Duration::from_secs(4);
+    let text=loop {
+        let text=std::fs::read_to_string(&path).unwrap();
+        if text.lines().any(|s|s.contains("\"kind\":\"stop\"")) {break text;}
+        assert!(Instant::now()<deadline,"trace not flushed");
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let entries:Vec<serde_json::Value>=text.lines().map(|s|serde_json::from_str(s).unwrap()).collect();
+    assert!(entries.iter().any(|v|v["zone"]=="preview"));
+    assert!(entries.iter().any(|v|v["zone"]=="inspector"));
+    assert!(entries.iter().any(|v|v["metrics"]["preview_rect"].is_array() && v["metrics"]["inspector_rect"].is_array()));
+    assert!(text.len()<6*1024*1024);
+    if let Some(out)=std::env::var_os("DECKFORGE_FLICKER_TEST_OUTPUT") {std::fs::copy(path,out).unwrap();}
 }

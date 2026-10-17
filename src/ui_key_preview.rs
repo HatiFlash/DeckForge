@@ -45,11 +45,12 @@ pub(super) struct Cache {
     tx: Sender<(usize, Signature, Frames)>,
     rx: Receiver<(usize, Signature, Frames)>,
     next_repaint: Option<Duration>,
+    diagnostic: (u32,u32,u32,u32),
 }
 impl Default for Cache {
     fn default() -> Self {
         let (tx, rx) = mpsc::channel();
-        Self { entries: HashMap::new(), tx, rx, next_repaint: None }
+        Self { entries: HashMap::new(), tx, rx, next_repaint: None, diagnostic: (0,0,0,0) }
     }
 }
 fn selected_frame(frames: &Frames, elapsed: Duration) -> (usize, Duration) {
@@ -65,6 +66,7 @@ fn selected_frame(frames: &Frames, elapsed: Duration) -> (usize, Duration) {
 impl Cache {
     pub(super) fn begin_frame(&mut self) {
         self.next_repaint = None;
+        self.diagnostic = (0,0,0,0);
         while let Ok((index, signature, frames)) = self.rx.try_recv() {
             if let Some(cached) = self.entries.get_mut(&index) {
                 if cached.signature == signature {
@@ -75,6 +77,7 @@ impl Cache {
             }
         }
     }
+    pub(super) fn diagnostic_stats(&self) -> (u32,u32,u32,u32,Option<u64>) {let (a,b,c,d)=self.diagnostic;(a,b,c,d,self.next_repaint.map(|x|x.max(Duration::from_millis(40)).as_millis() as u64))}
     pub(super) fn end_frame(&self, ctx: &egui::Context) {
         if let Some(delay) = self.next_repaint { ctx.request_repaint_after(delay.max(Duration::from_millis(40))); }
     }
@@ -83,6 +86,8 @@ impl Cache {
     ) -> Result<egui::TextureHandle, String> {
         let signature = Signature::new(key, size, face);
         if self.entries.get(&index).is_none_or(|c| c.signature != signature) {
+            self.diagnostic.1 += 1;
+            self.diagnostic.2 += 1; // first load or signature change (no asset path recorded)
             let texture = (|| -> anyhow::Result<image::RgbImage> {
                 if let Some(face)=face {
                     let jpeg=crate::key_render::for_plugin(key,size,&crate::key_render::font()?,face.image_bytes.as_deref(),face.flash.filter(|(_,when)|when.elapsed()<Duration::from_secs(1)).map(|(ok,_)|ok))?;
@@ -117,6 +122,7 @@ impl Cache {
                 });
             }
         }
+        else {self.diagnostic.0 += 1;}
         let cached = self.entries.get_mut(&index).expect("inserted above");
         if !cached.animation.is_empty() {
             let (selected, remaining) = selected_frame(&cached.animation, cached.started.elapsed());
@@ -126,6 +132,7 @@ impl Cache {
                     texture.set(cached.animation[selected].0.clone(), egui::TextureOptions::LINEAR);
                     cached.selected = Some(selected);
                     cached.changed = Instant::now();
+                    self.diagnostic.3 += 1;
                 }
             }
             let delay = if until_change.is_zero() { remaining } else { remaining.max(until_change) };

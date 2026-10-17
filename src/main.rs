@@ -10,6 +10,7 @@ mod desktop;
 mod device;
 mod elgato;
 mod engine;
+mod flicker_diagnostic;
 mod gesture;
 mod icons;
 mod key_render;

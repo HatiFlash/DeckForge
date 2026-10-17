@@ -183,6 +183,11 @@ pub struct App {
     icon_selected: Option<PathBuf>,
     icon_notice: String,
     assistant_request: String,
+    flicker: Option<crate::flicker_diagnostic::Session>,
+    flicker_path: Option<PathBuf>,
+    diagnostic_deck: Option<egui::Rect>,
+    diagnostic_inspector: Option<egui::Rect>,
+    diagnostic_key_width: f32,
 }
 #[derive(Clone)]
 enum DragItem {
@@ -347,6 +352,7 @@ impl App {
             icon_selected: None,
             icon_notice: String::new(),
             assistant_request: String::new(),
+            flicker: None, flicker_path: None, diagnostic_deck: None, diagnostic_inspector: None, diagnostic_key_width: 0.0,
         };
         if let Some(e) = load_error {
             app.fail(e);
@@ -1753,6 +1759,7 @@ impl App {
                     if ui.button("Retirer le plugin").clicked(){key.plugin=None;changed=true;}
                 });
             }
+            if self.flicker.as_ref().is_some_and(|session| session.active()) {self.diagnostic_inspector=Some(ui.max_rect());}
             let width=ui.available_width(); let body_height=ui.available_height();
             ui.horizontal_top(|ui| {
                 ui.allocate_ui_with_layout(Vec2::new(215.0,body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
@@ -1867,6 +1874,7 @@ impl App {
     fn deck(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
         egui::CentralPanel::default().frame(egui::Frame::new().fill(p.bg).inner_margin(18)).show(ctx,|ui| {
+            if self.flicker.as_ref().is_some_and(|session| session.active()) { self.diagnostic_deck=Some(ui.max_rect()); }
             theme::gradient(ui.painter(),ui.max_rect(),p.bg,if self.preferences.dark{Color32::from_rgb(29,34,49)}else{Color32::from_rgb(225,231,248)});
             ui.horizontal(|ui| {
                 ui.label(RichText::new("PROFIL").size(10.0).color(p.muted));
@@ -1910,6 +1918,7 @@ impl App {
             if ctx.screen_rect().width()>=1200.0 {ui.label(RichText::new("Glisse un bind sur une touche, puis personnalise ses actions dans l’inspecteur.").small().color(p.muted));}
             egui::ScrollArea::vertical().id_salt("device_canvas").show(ui,|ui| {
                 let width=((ui.available_width()-112.0)/5.0).min((ui.available_height()-92.0)/3.0).clamp(56.0,160.0);
+                if self.flicker.as_ref().is_some_and(|session| session.active()) {self.diagnostic_key_width=width;}
                 let total=width*5.0+56.0+48.0;
                 ui.horizontal(|ui| {
                     ui.add_space(((ui.available_width()-total)/2.0).max(0.0));
@@ -2192,6 +2201,24 @@ impl App {
                     if ui.add(egui::Slider::new(&mut self.config.animation_fps, 1..=15).text("Images/s max")).changed() { self.edited(); }
                     ui.label(RichText::new("Animation des GIF : protocole à vérifier sur le matériel D6.").small().color(p.muted));
                     ui.add_space(16.0);
+                    ui.separator();
+                    ui.label(RichText::new("Diagnostic du clignotement").strong());
+                    let running=self.flicker.as_ref().is_some_and(|session|session.active());
+                    if ui.button(if running {"Arrêter le diagnostic"} else {"Démarrer le diagnostic (90 s max)"}).clicked() {
+                        if running { if let Some(session)=&self.flicker {session.stop();} }
+                        else { match crate::flicker_diagnostic::Session::start(&self.path) {
+                            Ok(session)=> {self.flicker_path=Some(session.path.clone()); self.flicker=Some(session);}
+                            Err(e)=> self.fail(format!("Diagnostic indisponible : {e}")),
+                        }}
+                    }
+                    ui.label("Capture locale sans réseau, limitée à 90 s et 6 Mo. Survole l'aperçu puis les réglages avant d'arrêter.");
+                    if let Some(path)=&self.flicker_path {
+                        let display=path.to_string_lossy().into_owned();
+                        ui.label(format!("Fichier : {display}"));
+                        if ui.button("Copier le chemin du diagnostic").clicked() {ui.ctx().copy_text(display);}
+                    }
+                    if let Some(session)=&self.flicker { ui.label(format!("{} · pertes : {}",if session.active(){"En cours"}else{"Arrêté"},session.dropped())); }
+                    ui.add_space(12.0);
                     ui.label(RichText::new("Diagnostic des touches").strong());
                     if ui
                         .checkbox(
@@ -2365,6 +2392,19 @@ impl App {
         }
     }
 }
+impl App {
+    fn diagnostic_sample(&mut self, ctx:&egui::Context, start:Instant) {
+        if self.flicker.as_ref().is_some_and(|s|s.active()) {
+            let screen=ctx.screen_rect();
+            let (pointer,focused,ppp)=ctx.input(|i|(i.pointer.hover_pos(),i.viewport().focused.unwrap_or(false),i.pixels_per_point()));
+            let zone=match pointer {Some(pos) if self.diagnostic_inspector.is_some_and(|r|r.contains(pos))=>"inspector",Some(pos) if self.diagnostic_deck.is_some_and(|r|r.contains(pos))=>"preview",Some(_)=>"other",None=>"outside"};
+            let rect=|r:Option<egui::Rect>|r.map(|r|[r.min.x,r.min.y,r.width(),r.height()]);
+            let stats=self.key_previews.diagnostic_stats();
+            let details=serde_json::json!({"mouse":pointer.map(|p|[p.x-screen.min.x,p.y-screen.min.y]),"viewport":[screen.width(),screen.height()],"pixels_per_point":ppp,"focused":focused,"preview_rect":rect(self.diagnostic_deck),"inspector_rect":rect(self.diagnostic_inspector),"key_width":self.diagnostic_key_width,"cache_hits":stats.0,"cache_misses":stats.1,"texture_recreates":stats.2,"animation_frames":stats.3,"repaint_animation_ms":stats.4});
+            if let Some(session)=&mut self.flicker {session.frame(zone,details,start.elapsed().as_secs_f64()*1000.0);}
+        }
+    }
+}
 impl eframe::App for App {
     fn clear_color(&self, _: &egui::Visuals) -> [f32; 4] {
         clear_background(self.preferences.dark)
@@ -2379,9 +2419,12 @@ impl eframe::App for App {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
+        let start=Instant::now();
         self.frame(ctx);
+        self.diagnostic_sample(ctx,start);
     }
     fn on_exit(&mut self, _: Option<&eframe::glow::Context>) {
+        if let Some(session)=&self.flicker {session.stop();}
         self.stop_http();
         self.plugins.take();
         if self.gate.dirty && !self.gate.invalid {
