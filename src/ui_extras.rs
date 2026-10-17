@@ -45,12 +45,13 @@ fn block_help(kind: usize) -> &'static str {
         18 => "Exécute un script AutoHotkey v2.", _ => "Change la page, le dossier ou le profil affiché.",
     }
 }
-fn palette(ui: &mut egui::Ui, search: &mut String, depth: usize) -> Option<usize> {
+fn palette(ui: &mut egui::Ui, search: &mut String, depth: usize, advanced: bool) -> Option<usize> {
     let mut selected = None;
     ui.add(egui::TextEdit::singleline(search).hint_text("Rechercher un bloc"));
     for &(category, kinds) in BLOCK_CATEGORIES {
         let matches: Vec<_> = kinds.iter().copied().filter(|&kind| {
             (depth == 0 || !(7..=11).contains(&kind)) &&
+            (advanced || !matches!(kind, 5 | 16 | 17 | 18)) &&
             (search.is_empty() || format!("{} {}", category, crate::automation::NAMES[kind]).to_lowercase().contains(&search.to_lowercase()))
         }).collect();
         if matches.is_empty() { continue; }
@@ -133,6 +134,7 @@ pub(super) fn block_editor(
     tx: &Sender<Option<DialogEffect>>,
     target: &(usize,String,usize),
     config: &crate::model::Config,
+    advanced: bool,
 ) -> bool {
     let p = theme::palette(ui.ctx());
     let mut changed = false;
@@ -150,7 +152,7 @@ pub(super) fn block_editor(
                     for &(category, kinds) in BLOCK_CATEGORIES {
                         ui.menu_button(category, |ui| {
                             for &kind in kinds {
-                                if depth > 0 && (7..=11).contains(&kind) { continue; }
+                                if depth > 0 && (7..=11).contains(&kind) || !advanced && matches!(kind, 5 | 16 | 17 | 18) { continue; }
                                 if ui.button(crate::automation::NAMES[kind]).on_hover_text(block_help(kind)).clicked() {
                                     insertion = Some((i, kind));
                                     ui.close_menu();
@@ -222,13 +224,23 @@ pub(super) fn block_editor(
                         });
                     });
                     if let Some(e) = &error { if !disabled { ui.colored_label(Color32::from_rgb(255, 170, 70), format!("À compléter : {e}")); } }
+                    if !advanced { ui.label(RichText::new(block_help(match step.active() {
+                        Step::Hotkey { .. } => 0, Step::Text { .. } => 1, Step::Launch { .. } => 2,
+                        Step::Url { .. } => 3, Step::Media { .. } => 4, Step::Delay { .. } => 5,
+                        Step::WaitWindow { .. } => 6, Step::AudioSwitch { .. } => 13,
+                        Step::IfWindow { .. } => 14, Step::Repeat { .. } => 15,
+                        Step::SetVariable { .. } => 16, Step::IfVariable { .. } => 17,
+                        Step::AutoHotkey { .. } => 18, _ => 7,
+                    })).small()); }
                     if ui.data(|d| d.get_temp::<bool>(egui::Id::new("block_fold").with(&path))).unwrap_or(false) {
                         return;
                     }
                     ui.add_space(6.0);
                     let mut capture = false;
                     let mut icon = None;
-                    changed |= edit_step(ui, step.active_mut(), profiles, pages, &mut capture, audio, &mut icon, tx, &(target.0,target.1.clone(),target.2,path.clone()));
+                    if advanced || !matches!(step.active(), Step::AutoHotkey { .. } | Step::SetVariable { .. } | Step::IfVariable { .. }) {
+                        changed |= edit_step(ui, step.active_mut(), profiles, pages, &mut capture, audio, &mut icon, tx, &(target.0,target.1.clone(),target.2,path.clone()));
+                    } else { ui.label("Passe en mode Avancé pour modifier les paramètres de ce bloc."); }
                     if let Some(state) = icon {
                         *pick_audio = Some((path.clone(), state));
                     }
@@ -268,6 +280,7 @@ pub(super) fn block_editor(
                                         tx,
                                         target,
                                         config,
+                                        advanced,
                                     );
                                 });
                             }
@@ -290,6 +303,7 @@ pub(super) fn block_editor(
                                     tx,
                                     target,
                                     config,
+                                    advanced,
                                 );
                             });
                         }
@@ -328,7 +342,7 @@ pub(super) fn block_editor(
     if depth <= 8 && steps.len() < 256 {
         ui.menu_button("+ Ajouter un bloc", |ui| {
             for (i, label) in crate::automation::NAMES.iter().enumerate() {
-                if i == 12 || depth > 0 && (7..=11).contains(&i) {
+                if i == 12 || depth > 0 && (7..=11).contains(&i) || !advanced && matches!(i, 5 | 16 | 17 | 18) {
                     continue;
                 }
                 if ui.button(*label).clicked() {
@@ -410,6 +424,11 @@ impl App {
             }
             ui.label(RichText::new("Construis ton automatisation").size(23.0).strong());
             ui.label("Assemble les blocs de haut en bas. Les variables sont propres à chaque exécution.");
+            ui.horizontal(|ui| {
+                ui.label("Mode de l'atelier :");
+                if ui.selectable_value(&mut self.preferences.workshop_advanced, false, "Simple").changed() { self.save_preferences(); }
+                if ui.selectable_value(&mut self.preferences.workshop_advanced, true, "Avancé").changed() { self.save_preferences(); }
+            });
             if self.config.keys()[self.selected].steps.is_empty() {
                 template_menu(ui, &mut template_choice);
             } else {
@@ -425,7 +444,7 @@ impl App {
                     });
                 }
             }
-            ui.horizontal(|ui|{if ui.button("Créer avec mon IA").clicked(){self.assistant_settings=true;}if ui.add(egui::Button::new("Simuler les blocs").fill(BLUE)).clicked(){self.preview(true);}if ui.button("Tester dans 3 s").on_hover_text("Exécute réellement la macro sur le PC dans 3 secondes").clicked(){self.preview(false);}if ui.button("Exporter en AutoHotkey v2…").clicked(){export=true;}});
+            ui.horizontal(|ui|{if ui.button("Créer avec mon IA").clicked(){self.assistant_settings=true;}if ui.add(egui::Button::new("Simuler les blocs").fill(BLUE)).clicked(){self.preview(true);}if ui.button("Tester dans 3 s").on_hover_text("Exécute réellement la macro sur le PC dans 3 secondes").clicked(){self.preview(false);}if self.preferences.workshop_advanced && ui.button("Exporter en AutoHotkey v2…").clicked(){export=true;}});
             if !self.engine.running.load(Ordering::SeqCst){self.running_block.clear();}
             let validation_config = self.config.clone();
             let profiles=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();let pages=self.config.profiles[self.config.active].pages.clone();let selected=self.selected;let target=(self.config.active,self.config.page.clone(),selected);let dialog_tx=self.dialog_tx.clone();
@@ -437,12 +456,12 @@ impl App {
                     ui.set_width(205.0);
                     ui.label(RichText::new("BIBLIOTHÈQUE DE BLOCS").strong());
                     egui::ScrollArea::vertical().id_salt("block_palette").show(ui, |ui| {
-                        add = palette(ui, &mut search, 0);
+                        add = palette(ui, &mut search, 0, self.preferences.workshop_advanced);
                     });
                 });
                 ui.separator();
                 egui::ScrollArea::vertical().id_salt("workflow_scroll").show(ui,|ui|{ ui.vertical(|ui| {
-                    changed=block_editor(ui,&mut self.config.keys_mut()[selected].steps,&profiles,&pages,&self.audio,&[],&mut record,0,&self.running_block,&mut pick_audio,&dialog_tx,&target,&validation_config);
+                    changed=block_editor(ui,&mut self.config.keys_mut()[selected].steps,&profiles,&pages,&self.audio,&[],&mut record,0,&self.running_block,&mut pick_audio,&dialog_tx,&target,&validation_config,self.preferences.workshop_advanced);
                 }); });
             });
             ui.data_mut(|d| d.insert_temp(search_id, search));

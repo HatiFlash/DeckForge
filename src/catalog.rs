@@ -352,6 +352,8 @@ pub struct Preferences {
     pub close_to_tray: bool,
     pub start_with_windows: bool,
     pub triggers: Vec<crate::desktop::Trigger>,
+    #[serde(default)]
+    pub workshop_advanced: bool,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -361,6 +363,7 @@ impl Default for Preferences {
             close_to_tray: true,
             start_with_windows: false,
             triggers: vec![],
+            workshop_advanced: false,
         }
     }
 }
@@ -423,6 +426,19 @@ mod tests {
         }];
         assert!(l.insert("Invalide", bad, &c).is_err());
         assert_eq!(l.binds.len(), 1);
+    }
+    #[test]
+    fn workshop_mode_is_backward_compatible_and_does_not_change_the_key() {
+        let old = serde_json::to_value(Preferences::default()).unwrap();
+        let mut old = old.as_object().unwrap().clone(); old.remove("workshop_advanced");
+        let mut prefs: Preferences = serde_json::from_value(old.into()).unwrap();
+        assert!(!prefs.workshop_advanced);
+        let key = action(4, "Bureau");
+        prefs.workshop_advanced = true;
+        let saved = serde_json::to_string(&prefs).unwrap();
+        let loaded: Preferences = serde_json::from_str(&saved).unwrap();
+        assert!(loaded.workshop_advanced);
+        assert_eq!(key.steps, action(4, "Bureau").steps);
     }
     #[test]
     fn theme_and_personal_binds_survive_restart_with_backup() {
