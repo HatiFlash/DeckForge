@@ -29,6 +29,7 @@ pub(super) fn step_mut<'a>(steps: &'a mut [Step], path: &[usize]) -> Option<&'a 
     step_mut(children, &path[2..])
 }
 const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
+    ("Streaming", &[0, 4]), ("Système", &[0, 2, 4]),
     ("Clavier", &[0]), ("Texte", &[1]), ("Applications et sites", &[2, 3]),
     ("Médias et audio", &[4, 13]), ("Fenêtres", &[6]), ("Attendre", &[5]),
     ("Logique et répétitions", &[14, 15]), ("Variables", &[16, 17]),
@@ -45,6 +46,19 @@ fn block_help(kind: usize) -> &'static str {
         18 => "Exécute un script AutoHotkey v2.", _ => "Change la page, le dossier ou le profil affiché.",
     }
 }
+fn matches_palette(kind: usize, category: &str, search: &str) -> bool {
+    let aliases = match kind {
+        0 => "hotkey super hotkeys hotkeyswitch discord browser back forward refresh quick control close window",
+        1 => "password text plain text",
+        2 => "open openapps quick tool calculator mail music",
+        3 => "website home page",
+        4 => "multimedia systemvolume mute quick control",
+        7..=11 => "pages folders",
+        15 => "multi action toggle",
+        _ => "",
+    };
+    search.is_empty() || format!("{} {} {}", category, crate::automation::NAMES[kind], aliases).to_lowercase().contains(&search.to_lowercase())
+}
 fn palette(ui: &mut egui::Ui, search: &mut String, depth: usize, advanced: bool) -> Option<usize> {
     let mut selected = None;
     ui.add(egui::TextEdit::singleline(search).hint_text("Rechercher un bloc"));
@@ -52,7 +66,7 @@ fn palette(ui: &mut egui::Ui, search: &mut String, depth: usize, advanced: bool)
         let matches: Vec<_> = kinds.iter().copied().filter(|&kind| {
             (depth == 0 || !(7..=11).contains(&kind)) &&
             (advanced || kind != 18) &&
-            (search.is_empty() || format!("{} {}", category, crate::automation::NAMES[kind]).to_lowercase().contains(&search.to_lowercase()))
+            matches_palette(kind, category, search)
         }).collect();
         if matches.is_empty() { continue; }
         ui.label(RichText::new(category).strong().color(BLUE));
@@ -86,6 +100,13 @@ fn block_summary(step: &Step) -> String {
 #[cfg(test)]
 mod workshop_summary_tests {
     use super::*;
+    #[test]
+    fn fifine_search_aliases_find_existing_actions() {
+        for (kind, query) in [(0, "Super Hotkeys"), (1, "Password"), (2, "OpenApps"), (3, "Website"), (4, "SystemVolume"), (15, "Multi Action")] {
+            assert!(matches_palette(kind, "Système", query));
+        }
+        assert!(!matches_palette(2, "Système", "OBS scene"));
+    }
     #[test]
     fn summaries_do_not_repeat_the_block_name_and_wrappers_keep_the_summary() {
         let step = Step::Delay { ms: 250 };
