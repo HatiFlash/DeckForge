@@ -4,11 +4,17 @@ use std::{fs,io::{Read,Write},net::{TcpListener,TcpStream},path::{Path,PathBuf},
 pub type Inspectors=Arc<Mutex<std::collections::HashMap<String,String>>>;
 pub struct HtmlServer { pub port:u16, pub inspectors:Inspectors, stop:Arc<AtomicBool>, worker:Option<thread::JoinHandle<()>> }
 
+/// Décode %XX (UTF-8 strict) : les chemins de manifeste contiennent souvent des espaces (« property inspector/… »).
+fn percent_decode(s:&str)->Option<String>{
+    let b=s.as_bytes();let mut out=Vec::with_capacity(b.len());let mut i=0;
+    while i<b.len(){ if b[i]==b'%' { let h=std::str::from_utf8(b.get(i+1..i+3)?).ok()?; out.push(u8::from_str_radix(h,16).ok()?); i+=3; } else { out.push(b[i]); i+=1; } }
+    String::from_utf8(out).ok()
+}
 fn safe_file(root:&Path,request:&str,uuid:&str)->Option<PathBuf>{
     let url=request.split('?').next()?;
-    let rel=url.strip_prefix('/')?.strip_prefix(uuid)?.strip_prefix('/')?;
-    if rel.is_empty() || rel.contains('%') || rel.contains(std::path::MAIN_SEPARATOR) {return None;}
-    let path=Path::new(rel);
+    let rel=percent_decode(url.strip_prefix('/')?.strip_prefix(uuid)?.strip_prefix('/')?)?;
+    if rel.is_empty() || rel.contains('\\') || rel.contains(':') || rel.contains('\0') {return None;}
+    let path=Path::new(&rel);
     if !path.components().all(|p| matches!(p,std::path::Component::Normal(_))) {return None;}
     let real=root.join(path).canonicalize().ok()?;
     if real.is_file() && real.starts_with(root.canonicalize().ok()?) {Some(real)} else {None}
@@ -62,5 +68,6 @@ impl Drop for HtmlServer {fn drop(&mut self){self.stop.store(true,Ordering::Rela
  assert_eq!(response(tmp.path(),"p",123,"{}",&inspectors,"/p/style.css").1,"text/css; charset=utf-8");
  for url in ["/p/../index.html","/p/%2e%2e/index.html","/p/","/another/index.html","/p/..\\index.html"] {assert_eq!(response(tmp.path(),"p",123,"{}",&inspectors,url).0,"404 Not Found", "{url}");}
  }
- #[test] fn http_serves_without_listing(){let tmp=tempfile::tempdir().unwrap();fs::write(tmp.path().join("index.html"),"hello").unwrap();let server=HtmlServer::start(tmp.path().to_owned(),"p".into(),"{}".into(),123).unwrap();let mut stream=TcpStream::connect(("127.0.0.1",server.port)).unwrap();stream.write_all(b"GET /p/index.html HTTP/1.1\r\nHost: localhost\r\n\r\n").unwrap();let mut bytes=Vec::new();stream.read_to_end(&mut bytes).unwrap();assert!(String::from_utf8(bytes).unwrap().contains("HTTP/1.1 200 OK"));}
+ #[test] fn spaces_in_path_are_decoded(){let tmp=tempfile::tempdir().unwrap();fs::create_dir(tmp.path().join("property inspector")).unwrap();fs::write(tmp.path().join("property inspector").join("pi.html"),"<body>x</body>").unwrap();let inspectors=Inspectors::default();assert_eq!(response(tmp.path(),"p",1,"{}",&inspectors,"/p/property%20inspector/pi.html").0,"200 OK");for bad in ["/p/property%20inspector/..%2fpi.html","/p/%2e%2e%2fx","/p/a%5cb","/p/%zz"]{assert_eq!(response(tmp.path(),"p",1,"{}",&inspectors,bad).0,"404 Not Found","{bad}");}}
+#[test] fn http_serves_without_listing(){let tmp=tempfile::tempdir().unwrap();fs::write(tmp.path().join("index.html"),"hello").unwrap();let server=HtmlServer::start(tmp.path().to_owned(),"p".into(),"{}".into(),123).unwrap();let mut stream=TcpStream::connect(("127.0.0.1",server.port)).unwrap();stream.write_all(b"GET /p/index.html HTTP/1.1\r\nHost: localhost\r\n\r\n").unwrap();let mut bytes=Vec::new();stream.read_to_end(&mut bytes).unwrap();assert!(String::from_utf8(bytes).unwrap().contains("HTTP/1.1 200 OK"));}
 }
