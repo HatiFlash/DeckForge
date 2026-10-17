@@ -1660,6 +1660,8 @@ impl App {
                 ui.horizontal(|ui|{
                     ui.label(format!("Plugin : {} · {}",binding.plugin,binding.action));
                     ui.label(self.plugin_errors.get(&binding.plugin).map(String::as_str).unwrap_or("Actif"));
+                    if self.plugins.as_ref().is_some_and(|m|m.inspector_path(selected).is_some())
+                        && ui.button("Réglages du plugin").clicked(){if let Some(m)=&self.plugins {m.open_inspector(selected);}}
                     if ui.button("Retirer le plugin").clicked(){key.plugin=None;changed=true;}
                 });
             }
@@ -2372,6 +2374,7 @@ impl App {
         let name=message["event"].as_str().unwrap_or("");
         let context=message["context"].as_str().unwrap_or("");
         let visible=self.plugins.as_ref().and_then(|m|m.visible().get(context)).filter(|v|v.plugin==plugin).cloned();
+        let pi=message["__pi"].as_str();
         match name {
             "registerPlugin"=>{},
             "logMessage"=>{if let Some(text)=message["payload"]["message"].as_str(){self.log(format!("Plugin {plugin} : {}",text.chars().take(500).collect::<String>()));}},
@@ -2400,12 +2403,13 @@ impl App {
                         if let Some(binding)=self.config.keys_mut()[v.index].plugin.as_mut(){binding.settings=json!(settings);}
                         if let Some(binding)=self.applied.keys_mut()[v.index].plugin.as_mut(){binding.settings=json!(settings);}
                         if let Err(e)=store::save(&self.path,&self.config){self.fail(format!("Réglages du plugin non sauvegardés : {e}"));}
+                        else if let Some(manager)=&mut self.plugins {manager.sync(&self.applied);manager.send(plugin,json!({"event":"didReceiveSettings","action":v.action,"context":v.context,"device":"deckforge-d6","payload":{"settings":settings}}));}
                     }
                 }
             },
-            "getSettings"=>{if let (Some(v),Some(manager))=(visible,&self.plugins){manager.send(plugin,json!({"event":"didReceiveSettings","action":v.action,"context":v.context,"device":"deckforge-d6","payload":{"settings":v.settings}}));}},
+            "getSettings"=>{if let (Some(v),Some(manager))=(visible,&self.plugins){manager.send(plugin,json!({"event":"didReceiveSettings","action":v.action,"context":v.context,"device":"deckforge-d6","payload":{"settings":v.settings},"__pi":pi}));}},
             "setGlobalSettings"=>{let settings=&message["payload"]["settings"];if settings.is_object(){let path=self.path.with_file_name("plugin-settings.json");let mut all=std::fs::read(&path).ok().and_then(|b|serde_json::from_slice::<serde_json::Value>(&b).ok()).filter(|v|v.is_object()).unwrap_or_else(||json!({}));all[plugin]=settings.clone();if let Err(e)=std::fs::write(path,serde_json::to_vec_pretty(&all).unwrap_or_default()){self.fail(format!("Réglages globaux non sauvegardés : {e}"));}}},
-            "getGlobalSettings"=>{let all=std::fs::read(self.path.with_file_name("plugin-settings.json")).ok().and_then(|b|serde_json::from_slice::<serde_json::Value>(&b).ok()).unwrap_or_else(||json!({}));if let Some(manager)=&self.plugins {manager.send(plugin,json!({"event":"didReceiveGlobalSettings","payload":{"settings":all.get(plugin).cloned().unwrap_or_else(||json!({}))}}));}},
+            "getGlobalSettings"=>{let all=std::fs::read(self.path.with_file_name("plugin-settings.json")).ok().and_then(|b|serde_json::from_slice::<serde_json::Value>(&b).ok()).unwrap_or_else(||json!({}));if let Some(manager)=&self.plugins {manager.send(plugin,json!({"event":"didReceiveGlobalSettings","payload":{"settings":all.get(plugin).cloned().unwrap_or_else(||json!({}))},"__pi":pi}));}},
             "openUrl"=>{if let Some(url)=message["payload"]["url"].as_str().filter(|u|u.starts_with("https://")||u.starts_with("http://")){let _=std::process::Command::new("rundll32.exe").arg("url.dll,FileProtocolHandler").arg(url).spawn();}},
             _=>{}
         }

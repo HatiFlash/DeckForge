@@ -1,5 +1,5 @@
 //! Hôte local WebSocket pour les plugins Stream Deck classiques (exécutables et Node).
-use std::{net::TcpListener, process::{Child,Command,Stdio}, sync::{mpsc::{self,Receiver,Sender},Arc,atomic::{AtomicBool,Ordering}}, thread, time::Duration};
+use std::{collections::HashMap, net::TcpListener, process::{Child,Command,Stdio}, sync::{mpsc::{self,Receiver,Sender},Arc,atomic::{AtomicBool,Ordering}}, thread, time::Duration};
 use serde_json::{json,Value};
 use crate::plugins::{Plugin,Runtime};
 
@@ -10,7 +10,7 @@ fn node_executable()->Option<std::path::PathBuf>{
  if let Some(p)=std::env::var_os("APPDATA"){if let Ok(entries)=std::fs::read_dir(std::path::PathBuf::from(p).join("Elgato/StreamDeck/NodeJS")){for entry in entries.flatten().take(32){candidates.push(entry.path().join("node.exe"));}}}
  candidates.into_iter().find(|p|p.is_file())
 }
-pub struct Host { pub incoming:Receiver<Value>, outgoing:Sender<Value>, child:Child, worker:Option<thread::JoinHandle<()>>, stop:Arc<AtomicBool>, _http:Option<crate::plugin_http::HtmlServer> }
+pub struct Host { pub incoming:Receiver<Value>, outgoing:Sender<Value>, pub ws_port:u16, pub http_port:Option<u16>, pub inspectors:Option<crate::plugin_http::Inspectors>, pub folder:std::path::PathBuf, pub uuid:String, child:Child, worker:Option<thread::JoinHandle<()>>, stop:Arc<AtomicBool>, _http:Option<crate::plugin_http::HtmlServer> }
 impl Host {
  pub fn start(plugin:&Plugin)->anyhow::Result<Self>{
   let listener=TcpListener::bind("127.0.0.1:0")?;
@@ -28,18 +28,63 @@ impl Host {
   let child=process.current_dir(&plugin.folder).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).creation_flags(0x08000000).spawn()?;
   let (outgoing,commands)=mpsc::channel::<Value>();let (messages,incoming)=mpsc::channel();
   let stop=Arc::new(AtomicBool::new(false));let stopped=stop.clone();
-  let worker=thread::spawn(move||{
-   listener.set_nonblocking(true).ok();
-   let mut socket=loop {if stopped.load(Ordering::Relaxed){return;} match listener.accept(){Ok((stream,_))=>{let _=stream.set_read_timeout(Some(Duration::from_millis(50)));let _=stream.set_write_timeout(Some(Duration::from_secs(1)));match tungstenite::accept(stream){Ok(ws)=>break ws,Err(_)=>return}},Err(_)=>{thread::sleep(Duration::from_millis(25));}}};
-   loop {if stopped.load(Ordering::Relaxed){return;}
-    while let Ok(cmd)=commands.try_recv(){if socket.send(tungstenite::Message::Text(cmd.to_string().into())).is_err(){return}}
-    match socket.read(){Ok(tungstenite::Message::Text(text))=>{if let Ok(v)=serde_json::from_str::<Value>(&text){if messages.send(v).is_err(){return}}},Ok(tungstenite::Message::Close(_))=>return,Err(tungstenite::Error::Io(ref e)) if e.kind()==std::io::ErrorKind::WouldBlock || e.kind()==std::io::ErrorKind::TimedOut=>{},Err(_)=>return,_=>{}}
-   }
-  });
-  Ok(Self{incoming,outgoing,child,worker:Some(worker),stop,_http:http})
+  let registry=http.as_ref().map(|server|server.inspectors.clone());
+  let worker=thread::spawn(move||socket_loop(listener,commands,messages,stopped,registry));
+  Ok(Self{incoming,outgoing,ws_port:port,http_port:http.as_ref().map(|h|h.port),inspectors:http.as_ref().map(|h|h.inspectors.clone()),folder:plugin.folder.clone(),uuid:plugin.uuid.clone(),child,worker:Some(worker),stop,_http:http})
+ }
+ pub fn open_inspector(&self,path:&str,action_info:Value)->anyhow::Result<String> {
+  let server=self.http_port.ok_or_else(||anyhow::anyhow!("Serveur HTML indisponible"))?;
+  let registry=self.inspectors.as_ref().ok_or_else(||anyhow::anyhow!("Inspecteur indisponible"))?;
+  let file=self.folder.join(path).canonicalize()?;
+  anyhow::ensure!(file.is_file() && file.starts_with(self.folder.canonicalize()?),"Chemin d'inspecteur invalide");
+  let mut random=[0u8;16];getrandom::fill(&mut random)?;
+  let id=random.iter().map(|b|format!("{b:02x}")).collect::<String>();
+  let data=format!("JSON.stringify({})",action_info);
+  registry.lock().unwrap().insert(id.clone(),data);
+  let edge=std::path::Path::new(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe");
+  anyhow::ensure!(edge.is_file(),"Microsoft Edge introuvable");
+  let profile=std::env::current_exe()?.parent().ok_or_else(||anyhow::anyhow!("Dossier exécutable absent"))?.join("plugin-browser/pi");
+  let path=path.replace(std::path::MAIN_SEPARATOR,"/");
+  let result=Command::new(edge).arg(format!("--app=http://127.0.0.1:{server}/{}/{path}?pi={id}",self.uuid))
+    .arg("--window-size=440,680").arg("--no-first-run").arg(format!("--user-data-dir={}",profile.display()))
+    .creation_flags(0x08000000).spawn();
+  if result.is_err(){registry.lock().unwrap().remove(&id);}
+  result?;
+  Ok(id)
  }
  pub fn exited(&mut self)->bool{self.child.try_wait().ok().flatten().is_some()}
  pub fn send(&self,message:Value)->Result<(),mpsc::SendError<Value>>{self.outgoing.send(message)}
+}
+fn socket_loop(listener:TcpListener,commands:Receiver<Value>,messages:Sender<Value>,stop:Arc<AtomicBool>,registry:Option<crate::plugin_http::Inspectors>){
+    let _=listener.set_nonblocking(true);
+    let mut plugin:Option<tungstenite::WebSocket<std::net::TcpStream>>=None;
+    let mut pending=Vec::new();
+    let mut inspectors:HashMap<String,tungstenite::WebSocket<std::net::TcpStream>>=HashMap::new();
+    while !stop.load(Ordering::Relaxed){
+        match listener.accept(){Ok((stream,_))=>{let _=stream.set_read_timeout(Some(Duration::from_secs(2)));let _=stream.set_write_timeout(Some(Duration::from_secs(1)));if let Ok(ws)=tungstenite::accept(stream){let _=ws.get_ref().set_read_timeout(Some(Duration::from_millis(50)));pending.push(ws);}},Err(e) if e.kind()==std::io::ErrorKind::WouldBlock=>{},Err(_)=>break}
+        for i in (0..pending.len()).rev(){
+            if let Ok(tungstenite::Message::Text(text))=pending[i].read(){
+                if let Ok(value)=serde_json::from_str::<Value>(&text){
+                    match value["event"].as_str(){
+                        Some("registerPlugin") if plugin.is_none()=>{plugin=Some(pending.swap_remove(i));let _=messages.send(value);},
+                        Some("registerPropertyInspector")=>{if let Some(id)=value["uuid"].as_str().filter(|id|registry.as_ref().is_some_and(|r|r.lock().unwrap().contains_key(*id))){let id=id.to_owned();inspectors.insert(id.clone(),pending.swap_remove(i));let _=messages.send(json!({"event":"propertyInspectorDidAppear","__pi":id}));}},
+                        _=>{}
+                    }
+                }
+            }
+        }
+        while let Ok(mut cmd)=commands.try_recv(){
+            let target=cmd.get("__pi").and_then(Value::as_str).map(str::to_owned);
+            if let Some(obj)=cmd.as_object_mut(){obj.remove("__pi");}
+            if let Some(id)=target{if let Some(ws)=inspectors.get_mut(&id){let _=ws.send(tungstenite::Message::Text(cmd.to_string().into()));}}
+            else if let Some(ws)=plugin.as_mut(){let _=ws.send(tungstenite::Message::Text(cmd.to_string().into()));}
+        }
+        if let Some(ws)=plugin.as_mut(){match ws.read(){Ok(tungstenite::Message::Text(text))=>{if let Ok(value)=serde_json::from_str::<Value>(&text){let _=messages.send(value);}},Ok(tungstenite::Message::Close(_))=>{plugin=None;},Err(tungstenite::Error::Io(ref e)) if matches!(e.kind(),std::io::ErrorKind::WouldBlock|std::io::ErrorKind::TimedOut)=>{},Err(_)=>{plugin=None;},_=>{}}}
+        let mut gone=Vec::new();
+        for (id,ws) in &mut inspectors {match ws.read(){Ok(tungstenite::Message::Text(text))=>{if let Ok(mut value)=serde_json::from_str::<Value>(&text){if let Some(obj)=value.as_object_mut(){obj.insert("__pi".into(),json!(id));let _=messages.send(value);}}},Ok(tungstenite::Message::Close(_))=>gone.push(id.clone()),Err(tungstenite::Error::Io(ref e)) if matches!(e.kind(),std::io::ErrorKind::WouldBlock|std::io::ErrorKind::TimedOut)=>{},Err(_)=>gone.push(id.clone()),_=>{}}}
+        for id in gone {inspectors.remove(&id);if let Some(r)=&registry{r.lock().unwrap().remove(&id);}let _=messages.send(json!({"event":"propertyInspectorDidDisappear","__pi":id}));}
+        thread::sleep(Duration::from_millis(10));
+    }
 }
 impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
  #[cfg(windows)] {let _=Command::new("taskkill").args(["/F","/T","/PID",&self.child.id().to_string()]).creation_flags(0x08000000).output();}
