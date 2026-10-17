@@ -1,6 +1,6 @@
 //! Vue de la bibliothèque consacrée aux plugins (aucun plugin externe n'est lancé ici).
 use super::{App,DragItem};
-use crate::{model::{Key,PluginBinding},plugins::{Plugin,Runtime},plugin_import::{self,Category}};
+use crate::{model::{Key,Step,PluginBinding},plugins::{Plugin,Runtime},plugin_import::{self,Category}};
 use eframe::egui::{self,RichText};
 impl App {
  pub(super) fn plugin_store(&mut self,ui:&mut egui::Ui,search:&str){
@@ -32,6 +32,32 @@ impl App {
    }}
    ui.separator();
    ui.label(RichText::new("Disponibles depuis FIFINE / StreamDock").strong());
+  if search.is_empty() || "volumecontroller audio volume muet peripherique".contains(&search.to_lowercase()) {
+   ui.group(|ui| {
+    ui.label(RichText::new("Audio natif DeckForge — sans plugin ni fenêtre externe").strong());
+    ui.label("Volume + / - et muet contrôlent le volume Windows par touches multimédias. Le basculement utilise les périphériques Core Audio détectés ci-dessous.");
+    ui.horizontal_wrapped(|ui| {
+     for (label,command) in [("+ Volume +","volume_up"),("+ Volume -","volume_down"),("+ Muet / rétablir","mute")] {
+      let key=Key{label:label.trim_start_matches("+ ").into(),steps:vec![Step::Media{command:command.into()}],..Key::default()};
+      let response=ui.button(label);
+      self.drag_sources.push((response.rect.intersect(ui.clip_rect()),DragItem::Bind(key.clone())));
+      if response.clicked(){self.assign(DragItem::Bind(key),self.selected);}
+     }
+    });
+    if !self.audio.error.is_empty(){ui.label(format!("Audio : {}",self.audio.error));}
+    for (input,label) in [(false,"Sorties"),(true,"Entrées / micros")] {
+     let endpoints:Vec<_>=self.audio.devices.iter().filter(|d|d.input==input).collect();
+     ui.label(format!("{} : {}",label,if endpoints.is_empty(){"aucun périphérique actif".into()}else{endpoints.iter().map(|d|d.name.as_str()).collect::<Vec<_>>().join(" ; ")}));
+     let key=native_audio_switch(&self.audio,input);
+     let response=ui.add_enabled(key.is_some(),egui::Button::new(format!("+ Basculer deux {}",label.to_lowercase())));
+     if let Some(key)=key {
+      self.drag_sources.push((response.rect.intersect(ui.clip_rect()),DragItem::Bind(key.clone())));
+      if response.clicked(){self.assign(DragItem::Bind(key),self.selected);}
+     }
+    }
+    ui.label(RichText::new("La liste est actualisée automatiquement par Core Audio. Choisis ensuite les deux périphériques dans l’inspecteur ; aucune configuration de plugin existante n’est convertie.").small());
+   });
+  }
    let mut available=Vec::new();let mut built_in=Vec::new();let mut protected=Vec::new();let mut unavailable=Vec::new();
    for source in plugin_import::sources(){for plugin in plugin_import::inventory(&source){
     if !format!("{} {}",plugin.display_name(),plugin.uuid).to_lowercase().contains(search){continue;}
@@ -74,6 +100,11 @@ impl App {
   Some(Box::new(move |app:&mut App|match result{Ok(copied)=>{app.notice=if copied{"Plugin importé"}else{"Plugin déjà présent"}.into();},Err(e)=>app.fail(format!("Import plugin impossible : {e}"))}))
  });}
 }
+fn native_audio_switch(audio:&crate::audio::Snapshot,input:bool)->Option<Key>{
+ let mut endpoints=audio.devices.iter().filter(|d|d.input==input);
+ let first=endpoints.next()?;let second=endpoints.next()?;
+ Some(Key{label:if input{"Basculer les micros"}else{"Basculer les sorties"}.into(),steps:vec![Step::AudioSwitch{first:first.id.clone(),second:second.id.clone(),input,first_label:first.name.clone(),second_label:second.name.clone(),first_icon:String::new(),second_icon:String::new()}],..Key::default()})
+}
 fn plugin_type(runtime:&Runtime)->&'static str{match runtime{Runtime::Exe(_)|Runtime::Node(_)=>"Programme",Runtime::Html(_)=>"Web",_=>"Non exécutable"}}
 fn plugin_icon(ui:&mut egui::Ui,plugin:&Plugin){
  if let Some(texture)=plugin.icon.as_ref().and_then(|p|super::icon_ui::texture(ui.ctx(),&p.to_string_lossy())){
@@ -82,5 +113,18 @@ fn plugin_icon(ui:&mut egui::Ui,plugin:&Plugin){
 }
 fn egui_file_dialog_archive()->Option<std::path::PathBuf>{rfd::FileDialog::new().add_filter("Plugin Stream Deck", &["streamDeckPlugin","zip"]).pick_file()}
 #[cfg(test)] mod tests {use super::*;
+ #[test] fn native_audio_requires_two_real_endpoints_per_direction(){
+  let mut audio=crate::audio::Snapshot::default();
+  assert!(native_audio_switch(&audio,false).is_none());
+  audio.devices.push(crate::audio::Endpoint{id:"real-output-a".into(),name:"Sortie A".into(),input:false});
+  audio.devices.push(crate::audio::Endpoint{id:"real-input".into(),name:"Micro".into(),input:true});
+  assert!(native_audio_switch(&audio,false).is_none());
+  assert!(native_audio_switch(&audio,true).is_none());
+  audio.devices.push(crate::audio::Endpoint{id:"real-output-b".into(),name:"Sortie B".into(),input:false});
+  let key=native_audio_switch(&audio,false).unwrap();
+  assert!(key.plugin.is_none());
+  assert!(matches!(&key.steps[0],Step::AudioSwitch{first,second,input:false,..} if first=="real-output-a" && second=="real-output-b"));
+  assert!(native_audio_switch(&audio,true).is_none());
+ }
  #[test] fn binding_for_imported_action_roundtrips(){let k=Key{plugin:Some(PluginBinding{plugin:"fixture.plugin".into(),action:"fixture.action".into(),settings:serde_json::json!({}),state:0}),..Key::default()};let value=serde_json::to_value(&k).unwrap();assert_eq!(serde_json::from_value::<Key>(value).unwrap().plugin.unwrap().action,"fixture.action");}
 }
