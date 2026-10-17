@@ -103,6 +103,7 @@ pub struct App {
     capturing: bool,
     last_key: Option<(usize, Instant)>,
     key_previews: key_preview::Cache,
+    plugins: Option<crate::plugin_runtime::Manager>,
     assistant: Option<crate::mcp_server::Server>,
     proposals: crate::assistant::Proposals,
     assistant_cache: HashMap<String, Result<serde_json::Value, String>>,
@@ -259,6 +260,7 @@ impl App {
             capturing: false,
             last_key: None,
             key_previews: key_preview::Cache::default(),
+            plugins: if isolated || smoke { None } else { Some(crate::plugin_runtime::Manager::new(crate::plugin_import::installed_root().map(|root|crate::plugin_import::inventory(&root)).unwrap_or_default())) },
             assistant,
             proposals: Default::default(),
             assistant_cache: HashMap::new(),
@@ -504,6 +506,7 @@ impl App {
                         if let Some((r, c)) = self.pending.take() {
                             if r == revision {
                                 self.applied = c;
+                                if let Some(plugins)=&mut self.plugins { plugins.sync(&self.applied); }
                                 if self.sleep.sleeping {
                                     let _ = self.device.send(Command::Brightness(self.config.sleep_brightness));
                                 }
@@ -534,6 +537,7 @@ impl App {
                             self.log(format!("Touche {:02} : {reason}", index + 1))
                         }
                         Decision::Execute => {
+                            if index < 15 && self.applied.keys()[index].plugin.is_some() { if let Some(plugins)=&self.plugins { plugins.key(index,true); } }
                             let has_long = !self.applied.keys()[index].long_steps.is_empty();
                             if self.long_press.press(index, at, has_long) {
                                 self.execute_physical(index, false);
@@ -543,6 +547,7 @@ impl App {
                 }
                 Event::KeyRelease(index, at) => {
                     if index < 15 {
+                        if self.gate.decision()==Decision::Execute && self.applied.keys()[index].plugin.is_some() { if let Some(plugins)=&self.plugins { plugins.key(index,false); } }
                         if let Some(long) = self.long_press.release(index, at, self.applied.long_press_ms) {
                             self.execute_physical(index, long);
                         }
@@ -2257,6 +2262,7 @@ impl eframe::App for App {
     }
     fn on_exit(&mut self, _: Option<&eframe::glow::Context>) {
         self.stop_http();
+        self.plugins.take();
         if self.gate.dirty && !self.gate.invalid {
             if let Err(e) = store::save(&self.path, &self.config) {
                 let message = format!("Échec de sauvegarde à la fermeture : {e}\n");
@@ -2295,6 +2301,7 @@ impl Runner {
 }
 impl App {
     fn background_tick(&mut self) {
+        if let Some(plugins)=&mut self.plugins { if !self.gate.dirty && self.pending.is_none() { plugins.sync(&self.applied); } }
         self.events();
         self.housekeeping();
         let due = self.long_press.due(Instant::now(), self.applied.long_press_ms);
