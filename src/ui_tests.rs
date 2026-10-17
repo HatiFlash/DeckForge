@@ -808,6 +808,7 @@ fn appearance_inspector_sizes_have_correct_units_and_icon_slider_can_scroll_into
     let mut h = Harness::new();
     h.app.config.keys_mut()[0].title_size = 14;
     h.app.config.keys_mut()[0].icon_scale = 100;
+    h.ctx.data_mut(|d| d.insert_persisted(egui::Id::new("inspector_tab"), 1u8));
     let output = h.warm(size);
     assert!(text_position(&output.shapes, "14 px").is_some(), "title size is measured in pixels");
     assert!(text_position(&output.shapes, "Taille du titre").is_some());
@@ -849,6 +850,7 @@ fn both_audio_state_previews_are_visible_in_the_compact_inspector() {
             ],
             ..Default::default()
         };
+        h.ctx.data_mut(|d| d.insert_persisted(egui::Id::new("inspector_tab"), 1u8));
         let output = h.warm(size);
         assert!(text_position(&output.shapes, "État 1 · Actif").is_some());
         assert!(text_position(&output.shapes, "État 2").is_some());
@@ -1223,4 +1225,34 @@ fn about_dialog_shows_cargo_version_without_network() {
     assert!(text_position(&output.shapes, &format!("Version : {}", env!("CARGO_PKG_VERSION"))).is_some());
     assert!(text_position(&output.shapes, "Vérifier les mises à jour").is_some());
     assert!(h.app.update_rx.is_none());
+}
+
+#[test]
+fn inspector_dpi_keeps_keys_and_primary_actions_visible_without_button_overlap() {
+    for physical in [vec2(1920.0, 1080.0), vec2(1366.0, 768.0)] {
+        for scale in [1.25_f32, 1.5] {
+            let size = physical / scale;
+            let mut h = Harness::new();
+            h.ctx.set_pixels_per_point(scale);
+            let output = h.warm(size);
+            assert_eq!(h.app.drop_targets.len(), 15, "{physical:?} @ {scale}");
+            eprintln!("physical={physical:?} scale={scale} logical={size:?} screen={:?} last={:?} insp={:?} first={:?}", h.ctx.screen_rect(), h.app.drop_targets[14].0, egui::containers::panel::PanelState::load(&h.ctx, egui::Id::new("key_inspector")).map(|s| s.rect), h.app.drop_targets[0].0);
+            for (r, index) in &h.app.drop_targets {
+                assert!(r.min.x >= 0.0 && r.min.y >= 0.0 && r.max.x <= size.x && r.max.y <= size.y,
+                    "Key {} clipped at {physical:?} @ {scale}: {r:?}", index + 1);
+                assert!(r.width() >= 40.0 && r.height() >= 40.0, "{physical:?} @ {scale}: key {index} {r:?}");
+            }
+            for name in ["Simuler", "Tester", "Atelier de blocs"] {
+                assert!(text_position(&output.shapes, name).is_some(), "{name} hidden at {physical:?} @ {scale}");
+            }
+            let buttons: Vec<Rect> = h.ctx.data(|d| d.get_temp(egui::Id::new("inspector_button_rects"))).unwrap();
+            assert_eq!(buttons.len(), 3);
+            for (i, a) in buttons.iter().enumerate() {
+                assert!(a.min.x >= 0.0 && a.max.x <= size.x && a.min.y >= 0.0 && a.max.y <= size.y, "button clipped: {a:?}");
+                for b in buttons.iter().skip(i + 1) {
+                    assert!(!a.intersects(*b), "inspector buttons overlap at {physical:?} @ {scale}: {a:?} {b:?}");
+                }
+            }
+        }
+    }
 }

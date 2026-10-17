@@ -65,7 +65,7 @@ const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
     ("Streaming", &[19, 20, 21, 22, 23, 24, 25, 30, 31, 0, 4]), ("Système", &[0, 2, 4, 26, 27, 28, 29, 32, 33]),
     ("Texte", &[1]), ("Applications et sites", &[2, 3]),
     ("Médias et audio", &[4, 13, 37, 38]), ("Fenêtres", &[6]), ("Attendre", &[5, 40]), ("Notifications", &[41]),
-    ("Logique et répétitions", &[14, 15, 39]), ("Variables", &[16, 17]),
+    ("Logique et répétitions", &[14, 15, 39]), ("Variables", &[16, 17, 42]),
     ("Navigation DeckForge", &[7, 8, 9, 10, 11]), ("Avancé / AutoHotkey", &[18]),
 ];
 fn block_help(kind: usize) -> &'static str {
@@ -78,6 +78,7 @@ fn block_help(kind: usize) -> &'static str {
         40 => "Attend une condition Windows en lecture seule, avec délai et bouton Arrêter.",
         41 => "Affiche un message Windows sans voler le focus ; accepte les variables de macro." ,
         14 => "Exécute des blocs si une fenêtre est ouverte.", 15 => "Rejoue plusieurs fois les blocs imbriqués.",
+        42 => "Calcule une valeur numérique dans une variable de la macro.",
         16 => "Enregistre une valeur pour cette exécution.", 17 => "Choisit des blocs selon une valeur.",
         19..=25 => "Commande OBS Studio par WebSocket local (OBS 28 ou plus).",
         32 => "Règle ou ajuste la luminosité du D6 (0 à 100 %).",
@@ -145,6 +146,7 @@ fn block_summary(step: &Step) -> String {
         Step::Notify { title, message } => format!("Notification « {title} » : {}", message.chars().take(50).collect::<String>()),
         Step::IfWindow { title, .. } => format!("Si la fenêtre {title} est ouverte"),
         Step::IfVariable { name, value, .. } => format!("Si {name} vaut {value}"),
+        Step::Math { .. } => step.math_summary().unwrap_or_default(),
         Step::SetVariable { name, value } => format!("Mémoriser {name} = {value}"),
         Step::WaitWindow { title, .. } => format!("Attendre la fenêtre {title}"),
         _ => step.name().to_owned(),
@@ -348,7 +350,7 @@ pub(super) fn block_editor(
                         Step::WaitWindow { .. } => 6, Step::AudioSwitch { .. } => 13, Step::DeviceVolume { .. } => 38,
                         Step::IfWindow { .. } => 14, Step::IfCondition { .. } => 39, Step::WaitUntil { .. } => 40, Step::Notify { .. } => 41, Step::Repeat { .. } => 15,
                         Step::Toggle { .. } => 36,
-                        Step::SetVariable { .. } => 16, Step::IfVariable { .. } => 17,
+                        Step::SetVariable { .. } => 16, Step::IfVariable { .. } => 17, Step::Math { .. } => 42,
                         Step::AutoHotkey { .. } => 18, _ => 7,
                     })).small()); }
                     if ui.data(|d| d.get_temp::<bool>(egui::Id::new("block_fold").with(&path))).unwrap_or(false) {
@@ -509,7 +511,7 @@ impl App {
         format!("Utilise le connecteur MCP DeckForge pour proposer cette automatisation :\n{}\n\nDestination exacte : {destination}\nLis d’abord deckforge_get_state et deckforge_get_profile. Si la demande concerne l’audio, utilise deckforge_get_audio_devices pour récupérer les identifiants réels. Tu peux utiliser deckforge_get_icons ; pour audio_switch, first_icon/second_icon acceptent builtin:headphones, builtin:speakers et builtin:microphone. Crée les étapes avec deckforge_configure_key (conditions, répétitions et variables possibles). Si une information manque, demande-la-moi au lieu d’inventer un périphérique, un programme ou un script. N’exécute aucune macro. Attends la validation de la proposition dans DeckForge ; les blocs resteront ensuite modifiables dans l’Atelier.",self.assistant_request.trim())
     }
     pub(super) fn presented_key(&self, index: usize) -> Key {
-        crate::obs_monitor::present_key(&crate::audio::present_key(&self.config.keys()[index], &self.audio), &self.obs_state)
+        self.state_key(index, crate::obs_monitor::present_key(&crate::audio::present_key(&self.config.keys()[index], &self.audio), &self.obs_state))
     }
     pub(super) fn refresh_hotkeys(&self) {
         if let Some(desktop) = &self.desktop {

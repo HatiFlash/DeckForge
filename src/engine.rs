@@ -186,6 +186,38 @@ pub(crate) fn interpolate(text: &str, vars: &std::collections::BTreeMap<String, 
     out
 }
 
+#[cfg(test)]
+mod math_tests {
+    use super::*;
+    #[test]
+    fn arithmetic_and_errors_are_pure() {
+        assert_eq!(calculate(2.0, "add", 1.0, 0.0, 10.0, 0.0).unwrap(), 3.0);
+        assert_eq!(calculate(2.0, "subtract", 1.0, 0.0, 10.0, 0.0).unwrap(), 1.0);
+        assert_eq!(calculate(8.0, "divide", 2.0, 0.0, 10.0, 0.0).unwrap(), 4.0);
+        assert_eq!(calculate(9.0, "modulo", 4.0, 0.0, 10.0, 0.0).unwrap(), 1.0);
+        assert_eq!(calculate(4.0, "min", 2.0, 0.0, 10.0, 0.0).unwrap(), 2.0);
+        assert_eq!(calculate(4.0, "max", 8.0, 0.0, 10.0, 0.0).unwrap(), 8.0);
+        assert_eq!(calculate(0.0, "random", 0.0, 2.0, 6.0, 0.5).unwrap(), 4.0);
+        assert!(calculate(1.0, "divide", 0.0, 0.0, 10.0, 0.0).unwrap_err().to_string().contains("zéro"));
+        assert!(calculate(f64::MAX, "multiply", 2.0, 0.0, 10.0, 0.0).is_err());
+    }
+}
+
+fn calculate(current: f64, op: &str, operand: f64, min: f64, max: f64, random_unit: f64) -> Result<f64> {
+    anyhow::ensure!(current.is_finite() && operand.is_finite() && min.is_finite() && max.is_finite(), "Calcul : nombre non fini");
+    let result = match op {
+        "set" => operand, "add" => current + operand, "subtract" => current - operand,
+        "multiply" => current * operand,
+        "divide" => { anyhow::ensure!(operand != 0.0, "Calcul : division par zéro"); current / operand },
+        "modulo" => { anyhow::ensure!(operand != 0.0, "Calcul : modulo par zéro"); current % operand },
+        "min" => current.min(operand), "max" => current.max(operand),
+        "random" => { anyhow::ensure!(min <= max && (0.0..1.0).contains(&random_unit), "Calcul : intervalle aléatoire invalide"); min + (max - min) * random_unit },
+        _ => bail!("Calcul : opération inconnue"),
+    };
+    anyhow::ensure!(result.is_finite(), "Calcul : résultat hors limites");
+    Ok(result)
+}
+
 fn run_steps(
     steps: &[Step],
     dry: bool,
@@ -217,6 +249,10 @@ fn run_steps(
             if let Step::Notify { title, message } = step { let _ = tx.send(Event::Log(format!("Simulation : notification « {} » — {} (non envoyée)", interpolate(title, variables), interpolate(message, variables)))); }
             if let Some(summary) = step.active().app_volume_summary().or_else(|| step.active().device_volume_summary()) { let _ = tx.send(Event::Log(format!("Simulation : {summary}"))); }
             match step {
+                Step::Math { name, op, value, min, max } => {
+                    let _ = tx.send(Event::Log(format!("Simulation : {} (aucune variable modifiée)", step.math_summary().unwrap_or_default())));
+                    let _ = (name, op, value, min, max);
+                }
                 Step::WaitUntil { condition, .. } => {
                     let result = condition.evaluate(variables)?;
                     let _ = tx.send(Event::Log(format!("Simulation : {} = {result} ; aucune attente ni action", condition.summary())));
@@ -324,6 +360,18 @@ fn run_steps(
                 let title = interpolate(title, variables);
                 let message = interpolate(message, variables);
                 let _ = tx.send(Event::Notification(title, message));
+            }
+            Step::Math { name, op, value, min, max } => {
+                let current = variables.get(name).map(|s| s.parse::<f64>()).transpose()
+                    .map_err(|_| anyhow::anyhow!("Calcul : variable « {name} » non numérique"))?.unwrap_or(0.0);
+                let operand = if op == "random" { 0.0 } else { interpolate(value, variables).trim().parse::<f64>()
+                    .map_err(|_| anyhow::anyhow!("Calcul : valeur numérique invalide pour « {name} »"))? };
+                let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                    .map_err(|_| anyhow::anyhow!("Horloge système indisponible"))?.subsec_nanos();
+                let result = calculate(current, op, operand, *min, *max, f64::from(nanos) / 1_000_000_000.0)?;
+                let value = result.to_string();
+                variables.insert(name.clone(), value.clone());
+                let _ = tx.send(Event::Log(format!("Calcul : {name} = {value}")));
             }
             Step::SetVariable { name, value } => {
                 variables.insert(name.clone(), value.clone());

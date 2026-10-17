@@ -85,3 +85,14 @@ Checkpoint instrumentation : capture locale opt-in câblée dans Réglages, cach
 ## Lot A terminé (17/10/2026)
 - `device_volume` (e22a7ff), `if_condition` + 14 conditions (79eb430), `wait_until` (4dc1cd8), `notify` avec {variable} (f71fe8a), conversion FocusAudio.exe -> `app_volume` (Réglages > À propos, sauvegardes `*.avant-migration-<horodatage>.json`). Build : 180 tests + 6 MCP.
 - Le worker Sol est en limite d'usage (~110 h) : lots suivants (B variables/presse-papiers, C fenêtres/clavier/souris, D affichage d'état, E déclencheurs) à reprendre par Opus ou un autre worker.
+## Lot D — affichage suivant l'état réel (17/10/2026)
+
+- Livré dans la branche : champ optionnel `state_display` sur une touche (condition réutilisée, faces « vrai »/« sinon », titre, couleur et icône), surveillance groupée hors verrou et rendu ciblé par `KeyImage`, sans nouvelle action Windows ; ancienne configuration inchangée.
+- Tests automatiques : sérialisation et refus de paramètres invalides, changement d'état sans notification si état inchangé, schéma MCP et bibliothèque de trois modèles. Le build complet est à consigner après exécution ; aucun changement de son réel dans les tests.
+- À tester avec Hatim : basculer le muet du micro et d'une application depuis Windows, brancher/débrancher un casque, choisir deux icônes dans la galerie, veille/réveil et changement de page sur le D6. Ne pas considérer ces scénarios matériels comme validés automatiquement.
+
+## Lot B — variables et texte
+
+Implémenté mais non livré : Calculer (`math`). Le build complet échoue sur `ui::tests::inspector_dpi_keeps_keys_and_primary_actions_visible_without_button_overlap` (182 tests réussis, 1 échec ; fichier `src/ui_tests.rs` déjà modifié avant ce lot). Aucun commit tant que le build complet ne passe pas.
+À tester avec Hatim : ergonomie de l’inspecteur et calculs dans une macro réelle ; aucun test automatique ne touche au clavier ni au presse-papiers.
+Non livré : opérations texte, persistance des variables, interpolation élargie et presse-papiers.

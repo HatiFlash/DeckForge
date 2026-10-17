@@ -45,6 +45,8 @@ struct Binding {
     repeat: Option<u32>,
     icon_scale: Option<u8>,
     #[serde(default)]
+    state_display: Option<crate::model::StateDisplay>,
+    #[serde(default)]
     plugin: Option<crate::model::PluginBinding>,
     steps: Vec<Step>,
     #[serde(default)]
@@ -170,6 +172,7 @@ impl Proposals {
                     icon_scale: a.icon_scale.unwrap_or(old.icon_scale),
                     plugin: a.plugin.or_else(|| old.plugin.clone()),
                     steps: a.steps,
+                    state_display: a.state_display.or_else(|| old.state_display.clone()),
                     long_steps: a.long_steps.unwrap_or_else(|| old.long_steps.clone()),
                     display_kind: None,
                     runtime_badge: None, runtime_id: None,

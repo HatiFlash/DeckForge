@@ -1,5 +1,9 @@
 # Connecter une IA à DeckForge
 
+### Affichage selon l'état (`state_display`)
+
+Dans `deckforge_configure_key`, `state_display` est optionnel : `{"condition":{"kind":"device_muted","input":true},"on":{"label":"Micro coupé","color":[255,0,0]},"off":{"label":"Micro actif"},"poll_ms":1000}`. Chaque face peut préciser `label`, `image` (icône de la galerie) et `color` RGB ; les champs absents conservent l'apparence de la touche. Sondage 250–600000 ms, lecture seule et proposition validée localement avant application. Les anciennes touches sans ce champ restent inchangées.
+
 ### Notification Windows (`notify`)
 
 `{"type":"notify","title":"DeckForge","message":"Bonjour {nom}"}` : titre facultatif, message obligatoire ; `{nom}` utilise la variable de macro, `{{` donne une accolade littérale. Si l’icône de notification manque, message dans le journal et bandeau DeckForge. La simulation n’envoie rien.
@@ -186,3 +190,7 @@ Actions réseau : configure_key accepte udp_send (host, port, text) et http_requ
 - `target` : `foreground` (application au premier plan au moment de l'appui ; après le compte à rebours pour « Tester dans 3 s ») ou un nom d'exécutable (`chrome.exe`).
 - `action` : `up`, `down` (en points : 40 → 45 %), `set` (utilise `level` 0-100), `mute`, `unmute`, `toggle_mute`.
 - Agit seulement sur les sessions audio Windows des processus ciblés (toutes sorties actives), jamais sur le volume général ni une autre application. Même bloc que l'Atelier ; une proposition MCP reste soumise à la validation locale.
+
+## Bloc Calculer (`math`)
+
+Le bloc `math` accepte `name`, `op` (`set`, `add`, `subtract`, `multiply`, `divide`, `modulo`, `min`, `max`, `random`), `value` (nombre ou `{variable}`), `min` et `max` pour le tirage aléatoire. Les champs sont facultatifs avec leurs valeurs par défaut ; les champs inconnus sont refusés. La simulation ne modifie aucune variable.

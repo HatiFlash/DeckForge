@@ -3,6 +3,7 @@ use super::*;
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Destination {
     Key,
+    State(bool),
     Audio { path: Vec<usize>, state: usize },
 }
 #[derive(Clone, Debug, PartialEq)]
@@ -24,6 +25,7 @@ impl Target {
         let key = self.binding(c)?;
         match &self.destination {
             Destination::Key => Ok(&key.image),
+            Destination::State(active) => Ok(key.state_display.as_ref().and_then(|s| (if *active { &s.on.image } else { &s.off.image }).as_deref()).unwrap_or("")),
             Destination::Audio { path, state } => match step_at(&key.steps, path) {
                 Some(Step::AudioSwitch {
                     first_icon,
@@ -38,6 +40,8 @@ impl Target {
         let base = format!("Touche {:02}", self.key + 1);
         match &self.destination {
             Destination::Key => base,
+            Destination::State(true) => format!("{base} · Quand c'est vrai"),
+            Destination::State(false) => format!("{base} · Sinon"),
             Destination::Audio { path, state } => {
                 let label = self
                     .binding(c)
@@ -84,6 +88,10 @@ impl Target {
             .ok_or("La touche n’existe plus. Rouvre la galerie.")?;
         match &self.destination {
             Destination::Key => key.image = image,
+            Destination::State(active) => {
+                let display = key.state_display.as_mut().ok_or("Affichage selon l'état désactivé")?;
+                (if *active { &mut display.on } else { &mut display.off }).image = Some(image);
+            },
             Destination::Audio { path, state } => match extras::step_mut(&mut key.steps, path) {
                 Some(Step::AudioSwitch {
                     first_icon,
@@ -216,6 +224,13 @@ impl App {
         self.asset_tab = 0;
         self.reload_icons();
         self.show_assets = true;
+    }
+    pub(super) fn open_state_icon_gallery(&mut self, active: bool) {
+        self.open_icon_gallery(None);
+        let target = Target { profile: self.config.active, page: self.config.page.clone(),
+            key: self.selected, destination: Destination::State(active) };
+        self.icon_selected = target.image(&self.config).ok().filter(|s| !s.is_empty()).map(PathBuf::from);
+        self.icon_target = Some(target);
     }
     pub(super) fn retarget_gallery(&mut self) {
         if !self.show_assets { return; }

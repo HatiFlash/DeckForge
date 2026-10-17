@@ -93,6 +93,13 @@ pub enum Step {
         count: u32,
         steps: Vec<Step>,
     },
+    Math {
+        #[serde(default = "default_math_name")] name: String,
+        #[serde(default = "default_math_op")] op: String,
+        #[serde(default = "default_math_value")] value: String,
+        #[serde(default)] min: f64,
+        #[serde(default = "default_math_max")] max: f64,
+    },
     SetVariable {
         name: String,
         value: String,
@@ -130,6 +137,11 @@ pub enum Step {
     PageNext,
     PagePrevious,
 }
+fn default_math_name() -> String { "compteur".into() }
+fn default_math_op() -> String { "add".into() }
+fn default_math_value() -> String { "1".into() }
+fn default_math_max() -> f64 { 100.0 }
+fn valid_math_name(name: &str) -> bool { !name.is_empty() && name.len() <= 64 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') }
 fn default_notify_title() -> String { "DeckForge".into() }
 fn default_wait_timeout() -> u64 { 5000 }
 fn default_wait_poll() -> u64 { 200 }
@@ -139,6 +151,21 @@ fn default_app_target() -> String { "foreground".into() }
 fn default_app_action() -> String { "up".into() }
 fn default_app_step() -> u8 { 5 }
 impl Step {
+    pub fn math_summary(&self) -> Option<String> {
+        let Self::Math { name, op, value, min, max } = self else { return None };
+        Some(match op.as_str() {
+            "set" => format!("Définir {name} à {value}"),
+            "add" => format!("Ajouter {value} à {name}"),
+            "subtract" => format!("Soustraire {value} de {name}"),
+            "multiply" => format!("Multiplier {name} par {value}"),
+            "divide" => format!("Diviser {name} par {value}"),
+            "modulo" => format!("Reste de {name} divisé par {value}"),
+            "min" => format!("Minimum de {name} et {value}"),
+            "max" => format!("Maximum de {name} et {value}"),
+            "random" => format!("Tirer {name} entre {min} et {max}"),
+            _ => "Calcul inconnu".into(),
+        })
+    }
     pub fn device_volume_summary(&self) -> Option<String> {
         let Self::DeviceVolume { input, device, action, step, level } = self else { return None };
         let who = if *input { "microphone" } else { "sortie audio" };
@@ -196,6 +223,7 @@ impl Step {
             Self::IfWindow { .. } => "Si une fenêtre est ouverte",
             Self::Repeat { .. } => "Répéter des blocs",
             Self::SetVariable { .. } => "Définir une variable",
+            Self::Math { .. } => "Calculer",
             Self::IfVariable { .. } => "Si une variable correspond",
             Self::AutoHotkey { .. } => "Script AutoHotkey",
             Self::MouseClick { .. } => "Clic souris",
@@ -245,6 +273,8 @@ pub struct Key {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plugin: Option<PluginBinding>,
     pub steps: Vec<Step>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_display: Option<StateDisplay>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub long_steps: Vec<Step>,
     #[serde(skip)]
@@ -266,11 +296,55 @@ impl Default for Key {
             icon_scale: 100,
             plugin: None,
             steps: vec![],
+            state_display: None,
             long_steps: vec![],
             display_kind: None,
             runtime_badge: None,
             runtime_id: None,
         }
+    }
+}
+/// Overrides each individual face field only when it is explicitly provided.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct StateFace {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<[u8; 3]>,
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct StateDisplay {
+    pub condition: crate::conditions::Condition,
+    pub on: StateFace,
+    pub off: StateFace,
+    #[serde(default = "default_state_poll_ms")]
+    pub poll_ms: u64,
+}
+fn default_state_poll_ms() -> u64 { 1000 }
+impl Default for StateDisplay {
+    fn default() -> Self { Self { condition: Default::default(), on: Default::default(), off: Default::default(), poll_ms: default_state_poll_ms() } }
+}
+impl StateDisplay {
+    pub fn validate(&self) -> Result<()> {
+        self.condition.validate()?;
+        anyhow::ensure!((250..=600_000).contains(&self.poll_ms), "Sondage de l'affichage : 250 à 600000 ms requis");
+        for face in [&self.on, &self.off] {
+            if let Some(label) = &face.label { anyhow::ensure!(label.len() <= 128 && !label.chars().any(char::is_control), "Titre d'état invalide"); }
+            if let Some(image) = &face.image { anyhow::ensure!(image.len() <= 1024 && !image.chars().any(char::is_control), "Icône d'état invalide"); }
+        }
+        Ok(())
+    }
+    pub fn apply(&self, key: &Key, active: bool) -> Key {
+        let mut result = key.clone();
+        let face = if active { &self.on } else { &self.off };
+        if let Some(label) = &face.label { result.label.clone_from(label); }
+        if let Some(image) = &face.image { result.image.clone_from(image); }
+        if let Some(color) = face.color { result.color = color; result.background = true; }
+        result
     }
 }
 fn default_long_press_ms() -> u64 { 500 }
@@ -750,6 +824,7 @@ pub fn parse_hotkey(text: &str) -> Result<Vec<u16>> {
     Ok(keys)
 }
 pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
+    if let Some(display) = &key.state_display { display.validate()?; }
     if !key.long_steps.is_empty() {
         let mut long = key.clone();
         long.steps = std::mem::take(&mut long.long_steps);
@@ -846,6 +921,10 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
             }
             Step::IfWindow { title, .. } if title.trim().is_empty() => {
                 bail!("Titre de fenêtre vide")
+            }
+            Step::Math { name, op, value, min, max } => {
+                anyhow::ensure!(valid_math_name(name) && value.len() <= 4096 && min.is_finite() && max.is_finite() && min <= max
+                    && ["set", "add", "subtract", "multiply", "divide", "modulo", "min", "max", "random"].contains(&op.as_str()), "Bloc Calculer : nom, opération ou bornes invalides");
             }
             Step::SetVariable { name, value } | Step::IfVariable { name, value, .. }
                 if name.is_empty()
@@ -959,6 +1038,50 @@ fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> 
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod state_display_tests {
+    use super::*;
+    #[test]
+    fn legacy_configs_and_state_faces_roundtrip_and_validate() {
+        let legacy = serde_json::to_value(Key::default()).unwrap();
+        assert!(legacy.get("state_display").is_none());
+        let parsed: Key = serde_json::from_value(legacy).unwrap();
+        assert!(parsed.state_display.is_none());
+        let display: StateDisplay = serde_json::from_str(r#"{"condition":{"kind":"device_muted","input":true},"on":{"label":"Muet","color":[255,0,0]},"off":{"image":"builtin:microphone"}}"#).unwrap();
+        assert_eq!(display.poll_ms, 1000);
+        let key = Key { label: "Défaut".into(), state_display: Some(display.clone()), ..Key::default() };
+        assert_eq!(serde_json::to_value(&key).unwrap()["state_display"]["on"]["label"], "Muet");
+        let roundtrip: Key = serde_json::from_value(serde_json::to_value(&key).unwrap()).unwrap();
+        assert_eq!(roundtrip.state_display, Some(display.clone()));
+        assert_eq!(display.apply(&key, true).label, "Muet");
+        assert_eq!(display.apply(&key, false).label, "Défaut");
+        assert!(serde_json::from_str::<StateDisplay>(r#"{"unexpected":1}"#).is_err());
+        assert!(serde_json::from_str::<StateFace>(r#"{"label":"x","unexpected":1}"#).is_err());
+        for poll_ms in [0, 249, 600_001] {
+            let bad = StateDisplay { poll_ms, ..display.clone() };
+            assert!(validate_key(&Key { state_display: Some(bad), ..Key::default() }, &Config::default()).is_err());
+        }
+        assert!(validate_key(&Key { state_display: Some(StateDisplay { condition: crate::conditions::Condition::All { conditions: vec![] }, ..display }), ..Key::default() }, &Config::default()).is_err());
+    }
+}
+#[cfg(test)]
+mod math_step_tests {
+    use super::*;
+    #[test]
+    fn defaults_roundtrip_unknown_fields_and_validation() {
+        let step: Step = serde_json::from_str(r#"{"type":"math"}"#).unwrap();
+        assert_eq!(step, serde_json::from_str(&serde_json::to_string(&step).unwrap()).unwrap());
+        assert_eq!(step.math_summary().as_deref(), Some("Ajouter 1 à compteur"));
+        assert!(serde_json::from_str::<Step>(r#"{"type":"math","unexpected":1}"#).is_err());
+        for op in ["bad", "divide"] {
+            let bad = Step::Math { name: "x".into(), op: op.into(), value: "1".into(), min: 2.0, max: 1.0 };
+            assert!(validate_key(&Key { steps: vec![bad], ..Key::default() }, &Config::default()).is_err());
+        }
+        let bad = Step::Math { name: "bad name".into(), op: "add".into(), value: "1".into(), min: 0.0, max: 1.0 };
+        assert!(validate_key(&Key { steps: vec![bad], ..Key::default() }, &Config::default()).is_err());
+    }
 }
 
 #[cfg(test)]

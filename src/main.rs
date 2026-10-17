@@ -37,6 +37,7 @@ mod store;
 mod token_equal;
 mod theme;
 mod ui;
+mod state_display;
 
 #[derive(Debug)]
 pub enum Event {
@@ -47,6 +48,7 @@ pub enum Event {
     D6Brightness(String, u8),
     D6Sleep,
     ToggleVisual,
+    StateDisplay(u64, usize, bool),
     Open,
     TrayReady(bool),
     Toggle,

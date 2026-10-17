@@ -47,6 +47,9 @@ pub fn presets() -> Vec<Preset> {
             }],
         );
     }
+    for (label, op, value) in [("Compteur +1", "add", "1"), ("Compteur −1", "subtract", "1"), ("Compteur à 0", "set", "0")] {
+        add("Variables", label, "Calcule la valeur numérique du compteur pendant cette macro.", [108, 135, 236], vec![Step::Math { name: "compteur".into(), op: op.into(), value: value.into(), min: 0.0, max: 100.0 }]);
+    }
     for (label, action, level) in [("App +5 %", "up", 0), ("App −5 %", "down", 0), ("App muette", "toggle_mute", 0), ("App à 50 %", "set", 50)] {
         add("Audio", label, "Volume de l’application active, sans modifier le volume général.", [76, 166, 137], vec![Step::AppVolume {
             target: "foreground".into(), action: action.into(), step: 5, level, include_children: true,
@@ -263,6 +266,20 @@ pub fn presets() -> Vec<Preset> {
     add("Automatisations", "Si… sinon", "Choisit ALORS ou SINON suivant une condition Windows en lecture seule.", [158,116,224], vec![Step::IfCondition { condition: crate::conditions::Condition::default(), then_steps: vec![], else_steps: vec![] }]);
     add("Automatisations", "Attendre que…", "Attend une condition en lecture seule pendant 5 secondes au plus.", [158,116,224], vec![Step::WaitUntil { condition: crate::conditions::Condition::default(), timeout_ms: 5000, poll_ms: 200 }]);
     add("Automatisations", "Notification", "Affiche un message Windows sans voler le focus.", [158,116,224], vec![Step::Notify { title: "DeckForge".into(), message: "Bonjour {nom}".into() }]);
+    drop(add);
+    for (label, description, condition, true_label, false_label, color) in [
+        ("Micro coupé = icône rouge", "Le microphone muet affiche un état rouge, même après un changement externe.", crate::conditions::Condition::DeviceMuted { input: true, device: "default".into() }, "Micro coupé", "Micro actif", [215, 58, 69]),
+        ("Application muette", "Lit l'état muet de l'application au premier plan.", crate::conditions::Condition::AppMuted { exe: "foreground".into() }, "App muette", "App audible", [215, 58, 69]),
+        ("Casque branché", "Détecte un périphérique de sortie actif dont le nom contient Casque.", crate::conditions::Condition::AudioDevicePresent { name_contains: "Casque".into(), input: false }, "Casque branché", "Casque absent", [67, 158, 124]),
+    ] {
+        items.push(Preset { category: "Audio", description,
+            key: Key { label: label.into(), color: [76, 166, 137],
+                steps: vec![Step::Delay { ms: 1 }],
+                state_display: Some(crate::model::StateDisplay { condition,
+                    on: crate::model::StateFace { label: Some(true_label.into()), image: Some("builtin:microphone".into()), color: Some(color) },
+                    off: crate::model::StateFace { label: Some(false_label.into()), ..Default::default() },
+                    ..Default::default() }), ..Key::default() } });
+    }
     items
 }
 
@@ -450,7 +467,7 @@ mod tests {    #[test]
     #[test]
     fn every_preset_and_action_is_executable_with_valid_configuration() {
         let c = Config::default();
-        assert_eq!(presets().len(), 70);
+        assert_eq!(presets().len(), 76);
         for p in presets() {
             validate_key(&p.key, &c).unwrap();
             assert!(!p.key.steps.is_empty());
