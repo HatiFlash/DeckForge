@@ -31,6 +31,10 @@ pub fn tools() -> Value {
         json!({"type":"object","properties":{"type":{"const":"d6_brightness"},"mode":{"enum":["set","up","down"]},"value":{"type":"integer","minimum":0,"maximum":100}},"required":["type","mode","value"],"additionalProperties":false}),
         json!({"type":"object","properties":{"type":{"const":"d6_sleep"}},"required":["type"],"additionalProperties":false}),
     ]);
+    step_schema["oneOf"].as_array_mut().unwrap().extend([
+        json!({"type":"object","properties":{"type":{"const":"udp_send"},"host":{"type":"string","minLength":1,"maxLength":253},"port":{"type":"integer","minimum":1,"maximum":65535},"text":{"type":"string","maxLength":65507}},"required":["type","host","port","text"],"additionalProperties":false}),
+        json!({"type":"object","properties":{"type":{"const":"http_request"},"method":{"enum":["GET","POST","PUT"]},"url":{"type":"string","maxLength":2048,"pattern":"^http://"},"body":{"type":"string","maxLength":65536},"content_type":{"type":"string","maxLength":128}},"required":["type","method","url","body","content_type"],"additionalProperties":false}),
+    ]);
     let nested = json!({"type":"array","items":{"$ref":"#/$defs/step"},"maxItems":256});
     step_schema["oneOf"].as_array_mut().unwrap().extend([
         json!({"type":"object","properties":{"type":{"const":"audio_switch"},"first":{"type":"string"},"second":{"type":"string"},"input":{"type":"boolean"},"first_label":{"type":"string"},"second_label":{"type":"string"},"first_icon":{"type":"string"},"second_icon":{"type":"string"}},"required":["type","first","second","input"],"additionalProperties":false}),

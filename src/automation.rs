@@ -57,6 +57,8 @@ pub fn step(kind: usize) -> Step {
         31 => Step::StopSounds,
         32 => Step::D6Brightness { mode: "set".into(), value: 70 },
         33 => Step::D6Sleep,
+        34 => Step::UdpSend { host: "127.0.0.1".into(), port: 8099, text: "message".into() },
+        35 => Step::HttpRequest { method: "GET".into(), url: "http://127.0.0.1:8088/api".into(), body: String::new(), content_type: "text/plain".into() },
         26 => Step::CloseWindow,
         27 => Step::MouseClick { button: "left".into(), double: false },
         28 => Step::MouseMove { x: 0, y: 0, relative: true },

@@ -156,3 +156,6 @@ deckforge_configure_key accepte close_window (sans paramètre), mouse_click (but
 
 
 Soundboard : deckforge_configure_key accepte play_sound avec path (fichier WAV/MP3 local) et olume (entier 0 à 100), ainsi que stop_sounds sans paramètre. Les fichiers ne sont ni lus ni transmis par MCP lors de la proposition : la validation reste locale et la lecture ne démarre que sur un appui après validation. deckforge_simulate_macro n'émet aucun son. L'export AutoHotkey refuse ces blocs plutôt que de les ignorer.
+
+
+Actions réseau : configure_key accepte udp_send (host, port, text) et http_request (method GET/POST/PUT, url http://, body, content_type). HTTPS est refusé explicitement faute de TLS ; validation locale avant proposition, aucune requête en simulation. La réponse HTTP est journalisée sur une longueur bornée ; l’export AutoHotkey refuse ces blocs.

@@ -3,6 +3,7 @@ mod assets;
 mod assistant;
 mod audio;
 mod automation;
+mod network_actions;
 mod catalog;
 mod control;
 mod desktop;

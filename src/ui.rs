@@ -2439,6 +2439,8 @@ fn edit_step(
         Step::MouseScroll { amount } => { ui.label("Défilement (crans)"); changed |= ui.add(egui::DragValue::new(amount).range(-100..=100)).changed(); }
         Step::PlaySound { path, volume } => { ui.label("Fichier WAV ou MP3"); changed |= ui.text_edit_singleline(path).changed(); ui.label("Volume"); changed |= ui.add(egui::Slider::new(volume, 0..=100)).changed(); }
         Step::StopSounds => { ui.label("Arrête tous les sons lancés par DeckForge."); }
+        Step::UdpSend { host, port, text } => { ui.label("Hôte UDP"); changed |= ui.text_edit_singleline(host).changed(); ui.label("Port"); changed |= ui.add(egui::DragValue::new(port).range(1..=65535)).changed(); ui.label("Message"); changed |= ui.text_edit_multiline(text).changed(); }
+        Step::HttpRequest { method, url, body, content_type } => { ui.label("Méthode"); egui::ComboBox::from_id_salt("http_method").selected_text(method.as_str()).show_ui(ui, |ui| { for choice in ["GET", "POST", "PUT"] { changed |= ui.selectable_value(method, choice.into(), choice).changed(); } }); ui.label("Adresse HTTP (sans HTTPS)"); changed |= ui.text_edit_singleline(url).changed(); ui.label("Corps"); changed |= ui.text_edit_multiline(body).changed(); ui.label("Type de contenu"); changed |= ui.text_edit_singleline(content_type).changed(); }
         Step::D6Brightness { mode, value } => {
             ui.label("Luminosité du pavé D6");
             egui::ComboBox::from_id_salt("d6_brightness_mode").selected_text(match mode.as_str() { "up" => "Augmenter", "down" => "Diminuer", _ => "Régler à" }).show_ui(ui, |ui| {
@@ -2656,6 +2658,8 @@ fn step_summary(step: &Step) -> String {
         Step::MouseScroll { amount } => format!("Défiler de {amount} crans"),
         Step::PlaySound { path, volume } => format!("Son : {path} ({volume} %)"),
         Step::StopSounds => "Arrêter les sons".into(),
+        Step::UdpSend { host, port, .. } => format!("UDP : {host}:{port}"),
+        Step::HttpRequest { method, url, .. } => format!("HTTP {method} : {url}"),
         Step::D6Brightness { mode, value } => format!("Luminosité D6 : {mode} {value} %"),
         Step::D6Sleep => "Veille du D6".into(),
         Step::CloseWindow => "Fermer la fenêtre active".into(),

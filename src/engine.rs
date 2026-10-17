@@ -205,6 +205,8 @@ fn run_steps(
             Step::Disabled { .. } => {},
             Step::PlaySound { path, volume } => crate::soundboard::play(path, *volume)?,
             Step::StopSounds => crate::soundboard::stop(),
+            Step::UdpSend { host, port, text } => crate::network_actions::udp_send(host, *port, text)?,
+            Step::HttpRequest { method, url, body, content_type } => { let reply = crate::network_actions::http_request(method, url, body, content_type)?; let _ = tx.send(Event::Log(reply)); },
             Step::D6Brightness { mode, value } => { let _ = tx.send(Event::D6Brightness(mode.clone(), *value)); },
             Step::D6Sleep => { let _ = tx.send(Event::D6Sleep); },
             Step::CloseWindow => close_foreground_window()?,

@@ -129,6 +129,8 @@ fn block_summary(step: &Step) -> String {
         Step::Text { text } => format!("Écrire {}", text.chars().take(50).collect::<String>()),
         Step::Launch { program, .. } => format!("Lancer {program}"),
         Step::Repeat { count, steps } => format!("Répéter {count} fois ({} blocs)", steps.len()),
+        Step::UdpSend { host, port, .. } => format!("UDP : {host}:{port}"),
+        Step::HttpRequest { method, url, .. } => format!("HTTP {method} : {url}"),
         Step::D6Brightness { mode, value } => format!("Luminosité D6 : {mode} {value} %"),
         Step::IfWindow { title, .. } => format!("Si la fenêtre {title} est ouverte"),
         Step::IfVariable { name, value, .. } => format!("Si {name} vaut {value}"),

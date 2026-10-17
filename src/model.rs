@@ -77,6 +77,8 @@ pub enum Step {
     },
     PlaySound { path: String, volume: u8 },
     StopSounds,
+    UdpSend { host: String, port: u16, text: String },
+    HttpRequest { method: String, url: String, body: String, content_type: String },
     D6Brightness { mode: String, value: u8 },
     D6Sleep,
     CloseWindow,
@@ -126,6 +128,8 @@ impl Step {
             Self::MouseScroll { .. } => "Défilement souris",
             Self::PlaySound { .. } => "Jouer un son",
             Self::StopSounds => "Arrêter les sons",
+            Self::UdpSend { .. } => "Envoyer en UDP",
+            Self::HttpRequest { .. } => "Requête HTTP",
             Self::D6Brightness { .. } => "Luminosité du D6",
             Self::D6Sleep => "Mettre le D6 en veille",
             Self::CloseWindow => "Fermer la fenêtre active",
@@ -651,6 +655,8 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
             Step::MouseScroll { amount } if !(-100..=100).contains(amount) => bail!("Défilement souris hors limites"),
             Step::PlaySound { path, volume } if path.trim().is_empty() || path.len() > 1024 || path.contains('"') || path.chars().any(char::is_control) || !["wav", "mp3"].iter().any(|ext| std::path::Path::new(path).extension().is_some_and(|e| e.eq_ignore_ascii_case(ext))) || *volume > 100 => bail!("Son WAV/MP3 ou volume invalide"),
             Step::StopSounds => {},
+            Step::UdpSend { host, port, text } if !valid_udp_host(host) || *port == 0 || text.len() > 65507 => bail!("Destination UDP ou message invalide"),
+            Step::HttpRequest { method, url, body, content_type } => validate_http(method, url, body, content_type)?,
             Step::D6Brightness { mode, value } if !["set", "up", "down"].contains(&mode.as_str()) || *value > 100 => bail!("Mode ou luminosité du D6 invalide"),
             Step::D6Sleep => {},
             Step::CloseWindow => {},
@@ -747,6 +753,21 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
 }
 pub fn d6_brightness(current: u8, mode: &str, value: u8) -> u8 {
     match mode { "set" => value, "up" => current.saturating_add(value).min(100), "down" => current.saturating_sub(value), _ => current }
+}
+pub fn valid_udp_host(host: &str) -> bool {
+    !host.is_empty() && host.len() <= 253 && host.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'.' || c == b'-')
+        && !host.starts_with('-') && !host.ends_with('-')
+}
+pub fn validate_http(method: &str, url: &str, body: &str, content_type: &str) -> Result<()> {
+    if url.starts_with("https://") { bail!("HTTPS non pris en charge sans bibliothèque TLS"); }
+    let rest = url.strip_prefix("http://").ok_or_else(|| anyhow::anyhow!("Adresse HTTP requise"))?;
+    let authority = rest.split('/').next().unwrap_or("");
+    let (host, port) = authority.rsplit_once(':').unwrap_or((authority, "80"));
+    anyhow::ensure!(valid_udp_host(host) && port.parse::<u16>().is_ok_and(|n| n != 0)
+        && url.len() <= 2048 && !url.chars().any(char::is_control)
+        && ["GET", "POST", "PUT"].contains(&method) && body.len() <= 65536
+        && content_type.len() <= 128 && !content_type.chars().any(|c| c.is_control() || c == '\r' || c == '\n'), "Requête HTTP invalide");
+    Ok(())
 }
 fn obs_mode(mode: &str, valid: &[&str]) -> bool { valid.contains(&mode) }
 fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> {
