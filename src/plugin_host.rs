@@ -3,6 +3,13 @@ use std::{net::TcpListener, process::{Child,Command,Stdio}, sync::{mpsc::{self,R
 use serde_json::{json,Value};
 use crate::plugins::{Plugin,Runtime};
 
+fn node_executable()->Option<std::path::PathBuf>{
+ let mut candidates=Vec::new();
+ if let Some(paths)=std::env::var_os("PATH"){candidates.extend(std::env::split_paths(&paths).map(|p|p.join("node.exe")));}
+ if let Some(p)=std::env::var_os("ProgramFiles(x86)"){candidates.push(std::path::PathBuf::from(p).join("fifine Control Deck/node/node20.exe"));}
+ if let Some(p)=std::env::var_os("APPDATA"){if let Ok(entries)=std::fs::read_dir(std::path::PathBuf::from(p).join("Elgato/StreamDeck/NodeJS")){for entry in entries.flatten().take(32){candidates.push(entry.path().join("node.exe"));}}}
+ candidates.into_iter().find(|p|p.is_file())
+}
 pub struct Host { pub incoming:Receiver<Value>, outgoing:Sender<Value>, child:Child, worker:Option<thread::JoinHandle<()>>, stop:Arc<AtomicBool> }
 impl Host {
  pub fn start(plugin:&Plugin)->anyhow::Result<Self>{
@@ -10,7 +17,7 @@ impl Host {
   let port=listener.local_addr()?.port();
   let mut process=match &plugin.runtime {
    Runtime::Exe(p)=>Command::new(p),
-   Runtime::Node(p)=>{let node=std::env::var_os("ProgramFiles").map(std::path::PathBuf::from).map(|p|p.join("nodejs/node.exe")).filter(|p|p.is_file()).ok_or_else(||anyhow::anyhow!("Node.js introuvable"))?;let mut c=Command::new(node);c.arg(p);c},
+   Runtime::Node(p)=>{let node=node_executable().ok_or_else(||anyhow::anyhow!("Node.js introuvable (système, FIFINE ou Elgato)"))?;let mut c=Command::new(node);c.arg(p);c},
    _=>anyhow::bail!("Plugin protégé ou type non pris en charge"),
   };
   let info=json!({"application":{"font":"","language":"fr","platform":"windows","platformVersion":"10","version":"6.9.0"},"plugin":{"uuid":plugin.uuid,"version":plugin.version},"devicePixelRatio":1,"colors":{},"devices":[{"id":"deckforge-d6","name":"FIFINE D6","size":{"columns":5,"rows":3},"type":0}]});
