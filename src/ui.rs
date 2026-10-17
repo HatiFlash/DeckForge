@@ -1619,13 +1619,13 @@ impl App {
             let width=ui.available_width(); let body_height=ui.available_height();
             ui.horizontal_top(|ui| {
                 ui.allocate_ui_with_layout(Vec2::new(215.0,body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
-                    egui::ScrollArea::vertical().id_salt("key_appearance").max_height(body_height).show(ui,|ui| {
+                    egui::ScrollArea::vertical().id_salt("key_appearance").auto_shrink([false, false]).max_height(body_height).show(ui,|ui| {
                         ui.label(RichText::new("Titre sur le D6").small().color(p.muted));
                         changed|=ui.add(egui::TextEdit::singleline(&mut key.label).desired_width(200.0).hint_text("Nom de la touche")).changed();
                         ui.horizontal(|ui| {
                             ui.label("Taille du titre");
                             changed |= ui.add(egui::Slider::new(&mut key.title_size, 10..=20).show_value(false)).changed();
-                            ui.label(format!("{} %", key.title_size));
+                            ui.label(format!("{} px", key.title_size));
                         });
                         changed|=appearance::color(ui,key);
                         if crate::audio::single_switch(&key.steps).is_some(){if ui.button("Icônes par état →").on_hover_text("Choisir séparément les icônes des deux états audio").clicked(){open_icons=true;}}else{
@@ -1659,13 +1659,13 @@ impl App {
                         if actions.clear {key.image.clear();changed=true;}
 
                         }
-                        ui.label("Taille de l’icône");
                         ui.horizontal(|ui| {
-                            changed |= ui.add(egui::Slider::new(&mut key.icon_scale, 20..=200).suffix(" %")).changed();
-                            if ui.small_button("Réinitialiser").clicked() && key.icon_scale != 100 {
+                        ui.label("Taille de l’icône");
+                            if ui.small_button("Défaut").on_hover_text("Remettre la taille de l’icône à 100 %").clicked() && key.icon_scale != 100 {
                                 key.icon_scale = 100; changed = true;
                             }
                         });
+                        changed |= ui.add(egui::Slider::new(&mut key.icon_scale, 20..=200).suffix(" %")).changed();
                         ui.horizontal(|ui|{ui.label("Répéter");changed|=ui.add(egui::DragValue::new(&mut key.repeat).range(1..=1000)).changed();ui.label("fois");});
                         ui.add_space(6.0);
                         ui.label(RichText::new("La simulation ne lance aucune action. Le test réel vise la fenêtre active.").size(10.0).color(p.muted));

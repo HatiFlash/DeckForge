@@ -70,3 +70,11 @@ Tests exécutés : Build-Windows.ps1 -Action All : 86 tests application, 5 tests
 - `tools/Build-Windows.ps1 -Action All` : 102 tests de l'application, 5 tests du connecteur MCP, contrôles MCP stdio et HTTP réussis ; aucun avertissement de compilation.
 - Clippy installé : 30 avertissements au plus (33 au départ), tous de style.
 - Aperçus de l'interface régénérés sans fenêtre native et contrôlés visuellement à chaque lot.
+
+## Correctif inspecteur - affichage des tailles
+
+- Colonne Apparence défilable avec identifiant stable, taille conservée dans l’inspecteur ; disposition resserrée pour la taille de l’icône et bouton Défaut compact.
+- Taille du titre affichée en pixels (« 14 px ») ; taille de l’icône conservée en pourcentage.
+- Test egui sans fenêtre : à 1380 × 1050, vérifie les unités et l’accès à la taille de l’icône par défilement si nécessaire.
+- Tests : cargo test --locked (103 application, 5 connecteur) ; Build-Windows.ps1 -Action All avec aperçus dans %TEMP%\df-fix1 : terminé sans avertissement de compilation, contrôles MCP stdio/HTTP OK ; clippy --locked --all-targets : code 0, 28 lignes warning (dont résumés), limite 30 respectée.
+- À vérifier sur matériel : défilement à la souris dans la fenêtre réelle et rendu sur le pavé D6.

@@ -790,6 +790,28 @@ fn audio_state_gallery_assigns_only_the_selected_state_and_rejects_stale_blocks(
 }
 
 #[test]
+fn appearance_inspector_sizes_have_correct_units_and_icon_slider_can_scroll_into_view() {
+    let size = vec2(1380.0, 1050.0);
+    let mut h = Harness::new();
+    h.app.config.keys_mut()[0].title_size = 14;
+    h.app.config.keys_mut()[0].icon_scale = 100;
+    let output = h.warm(size);
+    assert!(text_position(&output.shapes, "14 px").is_some(), "title size is measured in pixels");
+    assert!(text_position(&output.shapes, "Taille du titre").is_some());
+    let origin = text_position(&output.shapes, "Titre sur le D6").unwrap();
+    let area = pos2(origin.x + 85.0, origin.y + 90.0);
+    let mut visible = text_position(&output.shapes, "Taille de l’icône").is_some()
+        && text_position(&output.shapes, "100 %").is_some();
+    for _ in 0..8 {
+        if visible { break; }
+        let output = h.frame(size, vec![Input::PointerMoved(area), Input::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, -90.0), modifiers: Modifiers::NONE }]);
+        visible = text_position(&output.shapes, "Taille de l’icône").is_some()
+            && text_position(&output.shapes, "100 %").is_some();
+    }
+    assert!(visible, "icon size control and percentage must be reachable by scrolling the appearance column");
+}
+
+#[test]
 fn both_audio_state_previews_are_visible_in_the_compact_inspector() {
     for (size, name) in [
         (vec2(1380.0, 900.0), "audio-options.png"),
