@@ -111,7 +111,15 @@ pub fn jpeg(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8>>
             .with_context(|| format!("Image invalide pour {}", k.label))?
             .resize_to_fill(size, size, image::imageops::FilterType::Lanczos3)
             .into_rgba8();
-        for (target, source) in image.pixels_mut().zip(icon.pixels()) {
+        // At 100%, keep the original pixel path byte-for-byte identical.
+        let scaled = if k.icon_scale == 100 { icon } else {
+            let side = ((size as f32 * k.icon_scale.clamp(20, 200) as f32 / 100.0).round() as u32).max(1);
+            let resized = image::imageops::resize(&icon, side, side, image::imageops::FilterType::Lanczos3);
+            let mut canvas = image::RgbaImage::new(size, size);
+            image::imageops::overlay(&mut canvas, &resized, (size as i64 - side as i64) / 2, (size as i64 - side as i64) / 2);
+            canvas
+        };
+        for (target, source) in image.pixels_mut().zip(scaled.pixels()) {
             let alpha = source[3] as u32;
             for ch in 0..3 {
                 target[ch] =
@@ -122,7 +130,23 @@ pub fn jpeg(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8>>
     }
     let has_icon = k.image.is_empty() && !k.steps.is_empty();
     if has_icon {
-        crate::icons::draw(&mut image, crate::icons::kind(k));
+        if k.icon_scale == 100 {
+            crate::icons::draw(&mut image, crate::icons::kind(k));
+        } else {
+            let side = ((size as f32 * k.icon_scale.clamp(20, 200) as f32 / 100.0).round() as u32).max(32);
+            let mut overlay = RgbImage::from_pixel(side, side, Rgb(background));
+            crate::icons::draw(&mut overlay, crate::icons::kind(k));
+            let x0 = (size as i64 - side as i64) / 2;
+            let y0 = ((size as f32 * 0.29 - side as f32 * 0.29).round()) as i64;
+            for y in 0..size { for x in 0..size {
+                let sx = x as i64 - x0;
+                let sy = y as i64 - y0;
+                if sx >= 0 && sy >= 0 && sx < side as i64 && sy < side as i64 {
+                    let src = overlay.get_pixel(sx as u32, sy as u32);
+                    if src.0 != background { image.put_pixel(x, y, *src); }
+                }
+            }}
+        }
     }
     if !k.label.is_empty() {
         let scaled = font.as_scaled(PxScale::from(size as f32 * k.title_size as f32 / 100.0));
@@ -193,6 +217,28 @@ pub fn jpeg(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8>>
 mod tests {
     use super::*;
     use crate::model::{Key, Step};
+    #[test]
+    fn icon_scale_preserves_legacy_pixels_and_changes_image_and_symbol() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("icon.png");
+        let mut img = image::RgbaImage::from_pixel(32, 32, image::Rgba([255, 0, 0, 255]));
+        img.put_pixel(0, 0, image::Rgba([0, 255, 0, 255]));
+        img.save(&path).unwrap();
+        let mut key = Key { image: path.to_string_lossy().into_owned(), ..Key::default() };
+        let legacy: Key = serde_json::from_value(serde_json::to_value(&key).unwrap()).unwrap();
+        assert_eq!(legacy.icon_scale, 100);
+        let original = jpeg(&key, 126, &font().unwrap()).unwrap();
+        assert_eq!(original, jpeg(&legacy, 126, &font().unwrap()).unwrap());
+        key.icon_scale = 50;
+        assert_ne!(original, jpeg(&key, 126, &font().unwrap()).unwrap());
+        key.image.clear(); key.steps = vec![Step::Delay { ms: 1 }];
+        let small = jpeg(&key, 126, &font().unwrap()).unwrap();
+        key.icon_scale = 100;
+        assert_ne!(small, jpeg(&key, 126, &font().unwrap()).unwrap());
+        key.icon_scale = 19;
+        assert!(crate::model::Config::default().validate().is_ok());
+    }
+
     #[test]
     fn title_size_changes_canonical_jpeg_and_legacy_keeps_normal() {
         let mut key = Key { label: "Titre D6".into(), ..Key::default() };

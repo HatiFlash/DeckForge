@@ -43,6 +43,7 @@ struct Binding {
     background: Option<bool>,
     #[serde(default)]
     repeat: Option<u32>,
+    icon_scale: Option<u8>,
     steps: Vec<Step>,
     #[serde(default)]
     long_steps: Option<Vec<Step>>,
@@ -164,6 +165,7 @@ impl Proposals {
                     image: old.image.clone(),
                     repeat: a.repeat.unwrap_or(1),
                     title_size: old.title_size,
+                    icon_scale: a.icon_scale.unwrap_or(old.icon_scale),
                     steps: a.steps,
                     long_steps: a.long_steps.unwrap_or_else(|| old.long_steps.clone()),
                     display_kind: None,

@@ -138,3 +138,5 @@ Le guide de connexion ChatGPT est décrit dans [la documentation officielle Open
 ## Fond de touche en 0.4.3
 
 `deckforge_configure_key` accepte `background: false` pour un écran noir ou `background: true` pour rétablir la couleur RGB mémorisée. Si ce champ est absent, le réglage actuel est conservé. Le connecteur 0.4.3 doit être rechargé dans le client IA pour exposer ce nouveau champ ; les connecteurs plus anciens peuvent continuer les opérations existantes.
+
+La proposition `deckforge_configure_key` accepte `icon_scale` (entier facultatif de 20 à 200 %, 100 % par défaut), validé localement avant application.

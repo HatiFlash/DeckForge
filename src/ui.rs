@@ -1581,6 +1581,13 @@ impl App {
                         if actions.clear {key.image.clear();changed=true;}
 
                         }
+                        ui.label("Taille de l’icône");
+                        ui.horizontal(|ui| {
+                            changed |= ui.add(egui::Slider::new(&mut key.icon_scale, 20..=200).suffix(" %")).changed();
+                            if ui.small_button("Réinitialiser").clicked() && key.icon_scale != 100 {
+                                key.icon_scale = 100; changed = true;
+                            }
+                        });
                         ui.horizontal(|ui|{ui.label("Répéter");changed|=ui.add(egui::DragValue::new(&mut key.repeat).range(1..=1000)).changed();ui.label("fois");});
                         ui.add_space(6.0);
                         ui.label(RichText::new("La simulation ne lance aucune action. Le test réel vise la fenêtre active.").size(10.0).color(p.muted));

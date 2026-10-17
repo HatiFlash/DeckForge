@@ -123,6 +123,8 @@ pub struct Key {
     pub repeat: u32,
     #[serde(default = "default_title_size", skip_serializing_if = "is_default_title_size")]
     pub title_size: u8,
+    #[serde(default = "default_icon_scale", skip_serializing_if = "is_default_icon_scale")]
+    pub icon_scale: u8,
     pub steps: Vec<Step>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub long_steps: Vec<Step>,
@@ -138,6 +140,7 @@ impl Default for Key {
             image: String::new(),
             repeat: 1,
             title_size: 14,
+            icon_scale: 100,
             steps: vec![],
             long_steps: vec![],
             display_kind: None,
@@ -145,6 +148,8 @@ impl Default for Key {
     }
 }
 fn default_long_press_ms() -> u64 { 500 }
+fn default_icon_scale() -> u8 { 100 }
+fn is_default_icon_scale(value: &u8) -> bool { *value == 100 }
 fn default_title_size() -> u8 { 14 }
 fn is_default_title_size(value: &u8) -> bool { *value == 14 }
 fn default_background() -> bool {
@@ -542,6 +547,7 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
         validate_key(&long, config)?;
     }
     anyhow::ensure!((10..=20).contains(&key.title_size), "Taille du titre invalide");
+    anyhow::ensure!((20..=200).contains(&key.icon_scale), "Taille de l’icône invalide");
     if !(1..=1000).contains(&key.repeat) || key.steps.len() > 256 {
         bail!("Limite : 1000 répétitions, 256 étapes");
     }
