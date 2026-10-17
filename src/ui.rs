@@ -1206,9 +1206,9 @@ impl App {
                         }
                         if ui
                             .button(if self.preferences.dark {
-                                "? Thème clair"
+                                "Thème clair"
                             } else {
-                                "? Thème sombre"
+                                "Thème sombre"
                             })
                             .on_hover_text("Changer le thème de toute l’interface")
                             .clicked()
