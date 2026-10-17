@@ -261,6 +261,7 @@ pub fn presets() -> Vec<Preset> {
     add("Streaming", "Jouer un son", "Lit un fichier WAV ou MP3 sans interrompre la macro (8 sons maximum).", [76, 166, 137], vec![Step::PlaySound { path: "choisir.wav".into(), volume: 100 }]);
     add("Streaming", "Arrêter les sons", "Arrête les sons lancés par DeckForge.", [76, 166, 137], vec![Step::StopSounds]);
     add("Automatisations", "Si… sinon", "Choisit ALORS ou SINON suivant une condition Windows en lecture seule.", [158,116,224], vec![Step::IfCondition { condition: crate::conditions::Condition::default(), then_steps: vec![], else_steps: vec![] }]);
+    add("Automatisations", "Attendre que…", "Attend une condition en lecture seule pendant 5 secondes au plus.", [158,116,224], vec![Step::WaitUntil { condition: crate::conditions::Condition::default(), timeout_ms: 5000, poll_ms: 200 }]);
     items
 }
 
@@ -448,7 +449,7 @@ mod tests {    #[test]
     #[test]
     fn every_preset_and_action_is_executable_with_valid_configuration() {
         let c = Config::default();
-        assert_eq!(presets().len(), 68);
+        assert_eq!(presets().len(), 69);
         for p in presets() {
             validate_key(&p.key, &c).unwrap();
             assert!(!p.key.steps.is_empty());

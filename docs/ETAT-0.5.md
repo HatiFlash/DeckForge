@@ -14,7 +14,8 @@ Exécutables prêts sur le PC fixe : `Bureau\DeckForge-0.5-fusion\DeckForge.exe`
 
 - Livré et testé automatiquement : « Si… sinon » (`if_condition`), conditions Windows en lecture seule et logique booléenne/variables ; les deux branches sont simulées sans effet.
 - À tester avec Hatim : application ouverte par rapport au premier plan, titre de fenêtre, sessions audio actives et muettes, périphériques branchés/débranchés, branches de macro sur le D6. Aucun test automatisé n'agit sur le son ou le clavier.
-- Non livré dans ce premier groupe : « Attendre que… » (`wait_until`).
+- Livré et testé automatiquement : « Attendre que… » (`wait_until`), sondage annulable, délai borné et simulation en lecture seule.
+- À tester avec Hatim : attente d’une condition réelle, expiration et bouton Arrêter pendant une attente.
 
 ## Nouveautés 0.5
 

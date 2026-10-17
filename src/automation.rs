@@ -21,10 +21,11 @@ pub const NAMES: &[&str] = &[
     "Si une variable correspond",
     "Script AutoHotkey",
     "OBS : scène", "OBS : enregistrement", "OBS : diffusion", "OBS : caméra",
-    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active", "Clic souris", "Déplacer la souris", "Défilement souris", "Jouer un son", "Arrêter les sons", "Luminosité du D6", "Veille du D6", "Envoyer en UDP", "Requête HTTP", "Touche à deux états", "Volume d’une application", "Volume d’un périphérique", "Si… sinon",
+    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active", "Clic souris", "Déplacer la souris", "Défilement souris", "Jouer un son", "Arrêter les sons", "Luminosité du D6", "Veille du D6", "Envoyer en UDP", "Requête HTTP", "Touche à deux états", "Volume d’une application", "Volume d’un périphérique", "Si… sinon", "Attendre que…",
 ];
 pub fn step(kind: usize) -> Step {
     match kind {
+        40 => Step::WaitUntil { condition: crate::conditions::Condition::default(), timeout_ms: 5000, poll_ms: 200 },
         39 => Step::IfCondition { condition: crate::conditions::Condition::default(), then_steps: vec![], else_steps: vec![] },
         38 => Step::DeviceVolume { input: false, device: "default".into(), action: "up".into(), step: 5, level: 50 },
         37 => Step::AppVolume { target: "foreground".into(), action: "up".into(), step: 5, level: 50, include_children: true },

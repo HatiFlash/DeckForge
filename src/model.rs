@@ -70,6 +70,11 @@ pub enum Step {
         #[serde(default = "default_app_step")] step: u8,
         #[serde(default = "default_device_level")] level: u8,
     },
+    WaitUntil {
+        #[serde(default)] condition: crate::conditions::Condition,
+        #[serde(default = "default_wait_timeout")] timeout_ms: u64,
+        #[serde(default = "default_wait_poll")] poll_ms: u64,
+    },
     IfCondition {
         #[serde(default)] condition: crate::conditions::Condition,
         #[serde(default)] then_steps: Vec<Step>,
@@ -121,6 +126,8 @@ pub enum Step {
     PageNext,
     PagePrevious,
 }
+fn default_wait_timeout() -> u64 { 5000 }
+fn default_wait_poll() -> u64 { 200 }
 fn default_device() -> String { "default".into() }
 fn default_device_level() -> u8 { 50 }
 fn default_app_target() -> String { "foreground".into() }
@@ -179,6 +186,7 @@ impl Step {
             Self::AppVolume { .. } => "Volume d’une application",
             Self::DeviceVolume { .. } => "Volume d’un périphérique",
             Self::IfCondition { .. } => "Si… sinon",
+            Self::WaitUntil { .. } => "Attendre que…",
             Self::IfWindow { .. } => "Si une fenêtre est ouverte",
             Self::Repeat { .. } => "Répéter des blocs",
             Self::SetVariable { .. } => "Définir une variable",
@@ -724,7 +732,14 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
     validate_tree(&key.steps, 0, &mut total)?;
     for s in &key.steps {
         if s.is_disabled() { continue; }
-        if let Step::IfCondition { condition, .. } = s { condition.validate()?; }
+        match s {
+            Step::IfCondition { condition, .. } => condition.validate()?,
+            Step::WaitUntil { condition, timeout_ms, poll_ms } => {
+                condition.validate()?;
+                anyhow::ensure!((1..=600_000).contains(timeout_ms) && *poll_ms >= 50 && *poll_ms <= *timeout_ms, "Délai (1 à 600000 ms) ou sondage (50 ms minimum, au plus le délai) invalide");
+            }
+            _ => {}
+        }
         match s {
             Step::MouseClick { button, .. } if !["left", "right", "middle"].contains(&button.as_str()) => bail!("Bouton souris invalide"),
             Step::MouseMove { x, y, .. } if !(-32768..=32767).contains(x) || !(-32768..=32767).contains(y) => bail!("Position souris hors limites"),
@@ -917,6 +932,18 @@ mod condition_step_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn wait_until_defaults_roundtrip_and_validation() {
+        let s: Step = serde_json::from_str(r#"{"type":"wait_until"}"#).unwrap();
+        assert!(matches!(&s, Step::WaitUntil { timeout_ms: 5000, poll_ms: 200, .. }));
+        assert_eq!(serde_json::from_str::<Step>(&serde_json::to_string(&s).unwrap()).unwrap(), s);
+        assert!(serde_json::from_str::<Step>(r#"{"type":"wait_until","surprise":1}"#).is_err());
+        assert!(s.name().contains("Attendre"));
+        for (timeout_ms, poll_ms) in [(600_001, 200), (5000, 49), (100, 200)] {
+            let bad = Step::WaitUntil { condition: crate::conditions::Condition::default(), timeout_ms, poll_ms };
+            assert!(validate_key(&Key { steps: vec![bad], ..Key::default() }, &Config::default()).is_err());
+        }
+    }
     #[test]
     fn device_volume_defaults_roundtrip_and_validation() {
         let s: Step = serde_json::from_str(r#"{"type":"device_volume"}"#).unwrap();

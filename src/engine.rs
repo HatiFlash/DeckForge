@@ -198,6 +198,10 @@ fn run_steps(
         if dry {
             if let Some(summary) = step.active().app_volume_summary().or_else(|| step.active().device_volume_summary()) { let _ = tx.send(Event::Log(format!("Simulation : {summary}"))); }
             match step {
+                Step::WaitUntil { condition, .. } => {
+                    let result = condition.evaluate(variables)?;
+                    let _ = tx.send(Event::Log(format!("Simulation : {} = {result} ; aucune attente ni action", condition.summary())));
+                }
                 Step::IfCondition { condition, then_steps, else_steps } => {
                     let result = condition.evaluate(variables)?;
                     let _ = tx.send(Event::Log(format!("Simulation : {} = {result} ; ALORS et SINON explorés sans effet", condition.summary())));
@@ -299,6 +303,19 @@ fn run_steps(
             }
             Step::SetVariable { name, value } => {
                 variables.insert(name.clone(), value.clone());
+            }
+            Step::WaitUntil { condition, timeout_ms, poll_ms } => {
+                let start = Instant::now();
+                loop {
+                    check(cancel)?;
+                    if condition.evaluate(variables)? {
+                        let _ = tx.send(Event::Log(format!("Condition atteinte : {}", condition.summary())));
+                        break;
+                    }
+                    let remaining = Duration::from_millis(*timeout_ms).saturating_sub(start.elapsed());
+                    anyhow::ensure!(!remaining.is_zero(), "Délai expiré après {timeout_ms} ms : {}", condition.summary());
+                    wait(remaining.min(Duration::from_millis(*poll_ms)).as_millis() as u64, cancel)?;
+                }
             }
             Step::IfCondition { condition, then_steps, else_steps } => {
                 let result = condition.evaluate(variables)?;

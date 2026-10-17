@@ -62,6 +62,7 @@ pub fn tools() -> Value {
         {"type":"object","properties":{"kind":{"const":"all"},"conditions":{"type":"array","items":{"$ref":"#/$defs/condition"},"minItems":1,"maxItems":32}},"required":["kind"],"additionalProperties":false},
         {"type":"object","properties":{"kind":{"const":"any"},"conditions":{"type":"array","items":{"$ref":"#/$defs/condition"},"minItems":1,"maxItems":32}},"required":["kind"],"additionalProperties":false}
     ]});
+    step_schema["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"type":{"const":"wait_until"},"condition":{"$ref":"#/$defs/condition"},"timeout_ms":{"type":"integer","minimum":1,"maximum":600000,"default":5000},"poll_ms":{"type":"integer","minimum":50,"maximum":600000,"default":200}},"required":["type"],"additionalProperties":false}));
     step_schema["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"type":{"const":"if_condition"},"condition":{"$ref":"#/$defs/condition"},"then_steps":nested.clone(),"else_steps":nested.clone()},"required":["type"],"additionalProperties":false}));
     step_schema["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"type":{"const":"disabled"},"step":{"$ref":"#/$defs/step"}},"required":["type","step"],"additionalProperties":false}));
     let key_args = json!({"type":"object","properties":{"profile":profile,"page":{"type":"string","maxLength":160},"key":position},"required":["profile","key"],"additionalProperties":false});

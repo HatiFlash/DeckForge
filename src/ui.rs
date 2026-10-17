@@ -3004,6 +3004,15 @@ fn edit_step(
         step @ Step::AudioSwitch { .. } => {
             changed |= icon_ui::audio_options(ui, step, audio, pick_audio_icon, tx, target);
         }
+        Step::WaitUntil { condition, timeout_ms, poll_ms } => {
+            changed |= edit_condition(ui, condition, audio, 0);
+            egui::CollapsingHeader::new("Options avancées").id_salt("wait_until_advanced").show(ui, |ui| {
+                ui.label("Délai maximal (ms)");
+                changed |= ui.add(egui::DragValue::new(timeout_ms).range(50..=600_000)).changed();
+                ui.label("Intervalle de vérification (ms)");
+                changed |= ui.add(egui::DragValue::new(poll_ms).range(50..=600_000)).changed();
+            });
+        }
         Step::IfCondition { condition, .. } => {
             changed |= edit_condition(ui, condition, audio, 0);
             ui.label("Configure ALORS et SINON dans l’Atelier blocs.");
@@ -3083,6 +3092,7 @@ fn step_summary(step: &Step) -> String {
         Step::MouseScroll { amount } => format!("Défiler de {amount} crans"),
         Step::PlaySound { path, volume } => format!("Son : {path} ({volume} %)"),
         Step::IfCondition { condition, .. } => format!("Si {}", condition.summary()),
+        Step::WaitUntil { condition, timeout_ms, .. } => format!("Attendre que {} ({} ms max)", condition.summary(), timeout_ms),
         Step::AppVolume { .. } => step.app_volume_summary().unwrap_or_default(),
         Step::DeviceVolume { .. } => step.device_volume_summary().unwrap_or_default(),
         Step::StopSounds => "Arrêter les sons".into(),

@@ -1,5 +1,9 @@
 # Connecter une IA à DeckForge
 
+### Attendre une condition (`wait_until`)
+
+`{"type":"wait_until","condition":{"kind":"foreground_app","exe":"chrome.exe"},"timeout_ms":5000,"poll_ms":200}` attend en lecture seule, au plus 600000 ms, vérifie au minimum toutes les 50 ms et respecte Arrêter. Le délai expiré est une erreur explicite ; en simulation, la condition est lue une seule fois, sans attente.
+
 ### Condition en lecture seule (`if_condition`)
 
 « Si… sinon » utilise `condition` (objet `kind`), `then_steps` et `else_steps` facultatifs. `kind` accepte `foreground_app`, `app_running` (même en arrière-plan), `window_open`, `app_audio_playing`, `app_muted`, `app_volume_compare`, `device_muted`, `device_volume_compare`, `audio_device_present`, `default_output_is`, `variable_compare`, `not`, `all` et `any`. Une cible audio d'application : `exe` = `foreground` ou nom `.exe`. Une cible périphérique : `device` = `default` ou ID Windows. Comparaison de volume : `op` = `above`/`below`, `value` = 0–100. En simulation, lecture sans modification et exploration des deux branches.
