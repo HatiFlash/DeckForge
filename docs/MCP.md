@@ -193,6 +193,12 @@ Actions réseau : configure_key accepte udp_send (host, port, text) et http_requ
 - `action` : `up`, `down` (en points : 40 → 45 %), `set` (utilise `level` 0-100), `mute`, `unmute`, `toggle_mute`.
 - Agit seulement sur les sessions audio Windows des processus ciblés (toutes sorties actives), jamais sur le volume général ni une autre application. Même bloc que l'Atelier ; une proposition MCP reste soumise à la validation locale.
 
+## Bloc Texte (`text_op`)
+
+`{"type":"text_op","name":"texte","op":"upper","value":"","find":""}`
+
+Transforme une variable de macro (vide si absente) sans clavier ni presse-papiers : `set`, `append`, `prepend`, `upper`, `lower`, `trim`, `replace` (recherche `find` non vide), `length` (nombre de caractères Unicode). `value` et `find` acceptent `{variable}` par interpolation ; le résultat remplace `name`. Tous les champs sont facultatifs, les champs inconnus refusés. Simulation : aucun changement de variable ; export AutoHotkey non pris en charge.
+
 ## Bloc Calculer (`math`)
 
 Le bloc `math` accepte `name`, `op` (`set`, `add`, `subtract`, `multiply`, `divide`, `modulo`, `min`, `max`, `random`), `value` (nombre ou `{variable}`), `min` et `max` pour le tirage aléatoire. Les champs sont facultatifs avec leurs valeurs par défaut ; les champs inconnus sont refusés. La simulation ne modifie aucune variable.

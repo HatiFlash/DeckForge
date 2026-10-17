@@ -218,6 +218,47 @@ fn calculate(current: f64, op: &str, operand: f64, min: f64, max: f64, random_un
     Ok(result)
 }
 
+fn text_operation(current: &str, op: &str, value: &str, find: &str) -> Result<String> {
+    let result = match op {
+        "set" => value.to_owned(),
+        "append" => format!("{current}{value}"),
+        "prepend" => format!("{value}{current}"),
+        "upper" => current.to_uppercase(),
+        "lower" => current.to_lowercase(),
+        "trim" => current.trim().to_owned(),
+        "replace" if !find.is_empty() => current.replace(find, value),
+        "length" => current.chars().count().to_string(),
+        _ => anyhow::bail!("Texte : opération ou recherche invalide"),
+    };
+    anyhow::ensure!(result.len() <= 100_000, "Texte : résultat trop long (100 000 octets maximum)");
+    Ok(result)
+}
+
+#[cfg(test)]
+mod text_op_tests {
+    use super::*;
+    #[test]
+    fn operations_are_pure_and_unicode_counts_characters() {
+        assert_eq!(text_operation("déjà", "upper", "", "").unwrap(), "DÉJÀ");
+        assert_eq!(text_operation("AbC", "lower", "", "").unwrap(), "abc");
+        assert_eq!(text_operation("  oui  ", "trim", "", "").unwrap(), "oui");
+        assert_eq!(text_operation("abc", "set", "é", "").unwrap(), "é");
+        assert_eq!(text_operation("a", "append", "b", "").unwrap(), "ab");
+        assert_eq!(text_operation("a", "prepend", "b", "").unwrap(), "ba");
+        assert_eq!(text_operation("aba", "replace", "é", "a").unwrap(), "ébé");
+        assert_eq!(text_operation("é🙂", "length", "", "").unwrap(), "2");
+        assert!(text_operation("abc", "replace", "x", "").is_err());
+        assert!(text_operation(&"a".repeat(100_000), "append", "b", "").is_err());
+    }
+    #[test]
+    fn interpolation_precedes_operations() {
+        let vars = std::collections::BTreeMap::from([("mot".into(), "école".into())]);
+        let value = interpolate("{mot}", &vars);
+        assert_eq!(text_operation("", "upper", &value, "").unwrap(), "");
+        assert_eq!(text_operation("", "set", &value, "").unwrap(), "école");
+    }
+}
+
 fn run_steps(
     steps: &[Step],
     dry: bool,
@@ -249,6 +290,9 @@ fn run_steps(
             if let Step::Notify { title, message } = step { let _ = tx.send(Event::Log(format!("Simulation : notification « {} » — {} (non envoyée)", interpolate(title, variables), interpolate(message, variables)))); }
             if let Some(summary) = step.active().app_volume_summary().or_else(|| step.active().device_volume_summary()) { let _ = tx.send(Event::Log(format!("Simulation : {summary}"))); }
             match step {
+                Step::TextOp { .. } => {
+                    let _ = tx.send(Event::Log(format!("Simulation : {} (aucune variable modifiée)", step.text_op_summary().unwrap_or_default())));
+                }
                 Step::Math { name, op, value, min, max } => {
                     let _ = tx.send(Event::Log(format!("Simulation : {} (aucune variable modifiée)", step.math_summary().unwrap_or_default())));
                     let _ = (name, op, value, min, max);
@@ -360,6 +404,14 @@ fn run_steps(
                 let title = interpolate(title, variables);
                 let message = interpolate(message, variables);
                 let _ = tx.send(Event::Notification(title, message));
+            }
+            Step::TextOp { name, op, value, find } => {
+                let current = variables.get(name).map(String::as_str).unwrap_or("");
+                let value = interpolate(value, variables);
+                let find = interpolate(find, variables);
+                let result = text_operation(current, op, &value, &find)?;
+                variables.insert(name.clone(), result.clone());
+                let _ = tx.send(Event::Log(format!("Texte : {name} = {} caractères", result.chars().count())));
             }
             Step::Math { name, op, value, min, max } => {
                 let current = variables.get(name).map(|s| s.parse::<f64>()).transpose()

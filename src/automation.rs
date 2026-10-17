@@ -21,10 +21,11 @@ pub const NAMES: &[&str] = &[
     "Si une variable correspond",
     "Script AutoHotkey",
     "OBS : scène", "OBS : enregistrement", "OBS : diffusion", "OBS : caméra",
-    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active", "Clic souris", "Déplacer la souris", "Défilement souris", "Jouer un son", "Arrêter les sons", "Luminosité du D6", "Veille du D6", "Envoyer en UDP", "Requête HTTP", "Touche à deux états", "Volume d’une application", "Volume d’un périphérique", "Si… sinon", "Attendre que…", "Notification", "Calculer",
+    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active", "Clic souris", "Déplacer la souris", "Défilement souris", "Jouer un son", "Arrêter les sons", "Luminosité du D6", "Veille du D6", "Envoyer en UDP", "Requête HTTP", "Touche à deux états", "Volume d’une application", "Volume d’un périphérique", "Si… sinon", "Attendre que…", "Notification", "Calculer", "Texte",
 ];
 pub fn step(kind: usize) -> Step {
     match kind {
+        43 => Step::TextOp { name: "texte".into(), op: "upper".into(), value: String::new(), find: String::new() },
         42 => Step::Math { name: "compteur".into(), op: "add".into(), value: "1".into(), min: 0.0, max: 100.0 },
         41 => Step::Notify { title: "DeckForge".into(), message: "Bonjour {nom}".into() },
         40 => Step::WaitUntil { condition: crate::conditions::Condition::default(), timeout_ms: 5000, poll_ms: 200 },
@@ -212,6 +213,11 @@ fn regex_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn text_op_export_refuses_without_omitting() {
+        let key = Key { steps: vec![step(43)], ..Key::default() };
+        assert!(export(&key).unwrap_err().to_string().contains("Texte"));
+    }
     #[test]
     fn disabled_unsupported_block_is_omitted_from_export() {
         let key = Key { steps: vec![Step::Disabled { step: Box::new(Step::AudioSwitch {

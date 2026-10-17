@@ -4060,6 +4060,25 @@ fn edit_step(
         step @ Step::AudioSwitch { .. } => {
             changed |= icon_ui::audio_options(ui, step, audio, pick_audio_icon, tx, target);
         }
+        Step::TextOp { name, op, value, find } => {
+            ui.label("Variable texte");
+            changed |= ui.text_edit_singleline(name).changed();
+            let choices = [("set", "Définir"), ("append", "Ajouter à la fin"), ("prepend", "Ajouter au début"),
+                ("upper", "Mettre en majuscules"), ("lower", "Mettre en minuscules"), ("trim", "Supprimer les espaces"),
+                ("replace", "Remplacer"), ("length", "Compter les caractères")];
+            let selected = choices.iter().find(|(id, _)| *id == op).map(|(_, label)| *label).unwrap_or("Opération inconnue");
+            egui::ComboBox::from_id_salt("text_op_choice").selected_text(selected).show_ui(ui, |ui| {
+                for (id, label) in choices { changed |= ui.selectable_value(op, id.into(), label).changed(); }
+            });
+            if ["set", "append", "prepend", "replace"].contains(&op.as_str()) {
+                ui.label("Valeur (accepte {variable})"); changed |= ui.text_edit_multiline(value).changed();
+            }
+            egui::CollapsingHeader::new("Options avancées").id_salt("text_op_advanced").show(ui, |ui| {
+                if op == "replace" { ui.label("Texte recherché (accepte {variable}, non vide après interpolation)"); changed |= ui.text_edit_singleline(find).changed(); }
+                else { ui.label("Remplacer : sélectionner l’opération pour préciser le texte recherché."); }
+                ui.label("Longueur : nombre de caractères Unicode ; le résultat est stocké dans la même variable.");
+            });
+        }
         Step::Notify { title, message } => {
             ui.label("Titre"); changed |= ui.text_edit_singleline(title).changed();
             ui.label("Message (variables : {nom} ; {{ pour une accolade)"); changed |= ui.text_edit_multiline(message).changed();
@@ -4175,6 +4194,7 @@ fn step_summary(step: &Step) -> String {
         Step::WaitUntil { condition, timeout_ms, .. } => format!("Attendre que {} ({} ms max)", condition.summary(), timeout_ms),
         Step::Notify { title, message } => format!("Notification « {title} » : {}", message.chars().take(50).collect::<String>()),
         Step::Math { .. } => step.math_summary().unwrap_or_default(),
+        Step::TextOp { .. } => step.text_op_summary().unwrap_or_default(),
         Step::AppVolume { .. } => step.app_volume_summary().unwrap_or_default(),
         Step::DeviceVolume { .. } => step.device_volume_summary().unwrap_or_default(),
         Step::StopSounds => "Arrêter les sons".into(),

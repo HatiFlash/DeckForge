@@ -47,6 +47,9 @@ pub fn presets() -> Vec<Preset> {
             }],
         );
     }
+    add("Variables", "Mettre en majuscules", "Met en majuscules la variable texte pendant cette macro.", [108, 135, 236], vec![Step::TextOp {
+        name: "texte".into(), op: "upper".into(), value: String::new(), find: String::new(),
+    }]);
     for (label, op, value) in [("Compteur +1", "add", "1"), ("Compteur −1", "subtract", "1"), ("Compteur à 0", "set", "0")] {
         add("Variables", label, "Calcule la valeur numérique du compteur pendant cette macro.", [108, 135, 236], vec![Step::Math { name: "compteur".into(), op: op.into(), value: value.into(), min: 0.0, max: 100.0 }]);
     }
@@ -468,7 +471,7 @@ mod tests {    #[test]
     #[test]
     fn every_preset_and_action_is_executable_with_valid_configuration() {
         let c = Config::default();
-        assert_eq!(presets().len(), 76);
+        assert_eq!(presets().len(), 77);
         for p in presets() {
             validate_key(&p.key, &c).unwrap();
             assert!(!p.key.steps.is_empty());

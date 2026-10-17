@@ -101,4 +101,10 @@ Checkpoint instrumentation : capture locale opt-in câblée dans Réglages, cach
 
 Implémenté mais non livré : Calculer (`math`). Le build complet échoue sur `ui::tests::inspector_dpi_keeps_keys_and_primary_actions_visible_without_button_overlap` (182 tests réussis, 1 échec ; fichier `src/ui_tests.rs` déjà modifié avant ce lot). Aucun commit tant que le build complet ne passe pas.
 À tester avec Hatim : ergonomie de l’inspecteur et calculs dans une macro réelle ; aucun test automatique ne touche au clavier ni au presse-papiers.
-Non livré : opérations texte, persistance des variables, interpolation élargie et presse-papiers.
+Non livré dans le premier passage : opérations texte, persistance des variables, interpolation élargie et presse-papiers.
+
+## Lot B2 — bloc Texte (`text_op`)
+
+- Livré : bloc Texte dans l’Atelier et MCP ; opérations définir, ajouter, préfixer, majuscules, minuscules, rogner, remplacer et compter les caractères. Modèle « Mettre en majuscules » dans le magasin après les médias ; variables locales à la macro, interpolation des valeurs et recherches, simulation sans effet.
+- Testé automatiquement : sérialisation, valeurs par défaut, refus des champs inconnus et des opérations invalides, résumés et calculs purs Unicode ; build complet Windows vert : 191 tests Rust et 6 MCP, zéro warning.
+- À tester avec Hatim : enchaîner des blocs Texte avec les variables d’une macro et contrôler l’ergonomie de l’Atelier. Aucun test automatique ne saisit au clavier ni n’utilise le presse-papiers.

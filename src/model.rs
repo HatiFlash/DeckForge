@@ -101,6 +101,12 @@ pub enum Step {
         #[serde(default)] min: f64,
         #[serde(default = "default_math_max")] max: f64,
     },
+    TextOp {
+        #[serde(default = "default_text_name")] name: String,
+        #[serde(default = "default_text_op")] op: String,
+        #[serde(default)] value: String,
+        #[serde(default)] find: String,
+    },
     SetVariable {
         name: String,
         value: String,
@@ -138,6 +144,9 @@ pub enum Step {
     PageNext,
     PagePrevious,
 }
+fn default_text_name() -> String { "texte".into() }
+fn default_text_op() -> String { "upper".into() }
+fn valid_text_op(op: &str) -> bool { ["set", "append", "prepend", "upper", "lower", "trim", "replace", "length"].contains(&op) }
 fn default_math_name() -> String { "compteur".into() }
 fn default_math_op() -> String { "add".into() }
 fn default_math_value() -> String { "1".into() }
@@ -152,6 +161,20 @@ fn default_app_target() -> String { "foreground".into() }
 fn default_app_action() -> String { "up".into() }
 fn default_app_step() -> u8 { 5 }
 impl Step {
+    pub fn text_op_summary(&self) -> Option<String> {
+        let Self::TextOp { name, op, value, find } = self else { return None };
+        Some(match op.as_str() {
+            "set" => format!("Définir {name} à « {} »", value.chars().take(40).collect::<String>()),
+            "append" => format!("Ajouter « {} » à la fin de {name}", value.chars().take(40).collect::<String>()),
+            "prepend" => format!("Ajouter « {} » au début de {name}", value.chars().take(40).collect::<String>()),
+            "upper" => format!("Mettre {name} en majuscules"),
+            "lower" => format!("Mettre {name} en minuscules"),
+            "trim" => format!("Supprimer les espaces autour de {name}"),
+            "replace" => format!("Remplacer « {} » dans {name}", find.chars().take(40).collect::<String>()),
+            "length" => format!("Compter les caractères de {name}"),
+            _ => "Opération de texte inconnue".into(),
+        })
+    }
     pub fn math_summary(&self) -> Option<String> {
         let Self::Math { name, op, value, min, max } = self else { return None };
         Some(match op.as_str() {
@@ -225,6 +248,7 @@ impl Step {
             Self::Repeat { .. } => "Répéter des blocs",
             Self::SetVariable { .. } => "Définir une variable",
             Self::Math { .. } => "Calculer",
+            Self::TextOp { .. } => "Texte",
             Self::IfVariable { .. } => "Si une variable correspond",
             Self::AutoHotkey { .. } => "Script AutoHotkey",
             Self::MouseClick { .. } => "Clic souris",
@@ -923,6 +947,10 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
             Step::IfWindow { title, .. } if title.trim().is_empty() => {
                 bail!("Titre de fenêtre vide")
             }
+            Step::TextOp { name, op, value, find } => {
+                anyhow::ensure!(valid_math_name(name) && valid_text_op(op) && value.len() <= 4096 && find.len() <= 4096
+                    && (op != "replace" || !find.is_empty()), "Bloc Texte : nom, opération ou texte de recherche invalide");
+            }
             Step::Math { name, op, value, min, max } => {
                 anyhow::ensure!(valid_math_name(name) && value.len() <= 4096 && min.is_finite() && max.is_finite() && min <= max
                     && ["set", "add", "subtract", "multiply", "divide", "modulo", "min", "max", "random"].contains(&op.as_str()), "Bloc Calculer : nom, opération ou bornes invalides");
@@ -1117,6 +1145,20 @@ mod condition_step_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn text_op_serde_validation_and_summary() {
+        let step: Step = serde_json::from_str(r#"{"type":"text_op"}"#).unwrap();
+        assert_eq!(step, Step::TextOp { name: "texte".into(), op: "upper".into(), value: String::new(), find: String::new() });
+        let round: Step = serde_json::from_value(serde_json::to_value(&step).unwrap()).unwrap();
+        assert_eq!(round, step);
+        assert_eq!(step.text_op_summary().unwrap(), "Mettre texte en majuscules");
+        assert!(serde_json::from_str::<Step>(r#"{"type":"text_op","surprise":1}"#).is_err());
+        for (name, op, value, find) in [("", "upper", "", ""), ("avec espace", "set", "", ""), ("ok", "invalid", "", ""), ("ok", "replace", "x", "")] {
+            let bad = Step::TextOp { name: name.into(), op: op.into(), value: value.into(), find: find.into() };
+            assert!(validate_key(&Key { steps: vec![bad], ..Key::default() }, &Config::default()).is_err());
+        }
+        assert!(validate_key(&Key { steps: vec![step], ..Key::default() }, &Config::default()).is_ok());
+    }
     #[test]
     fn focus_audio_launches_become_native_app_volume() {
         let legacy = |args: &[&str]| Step::Launch { program: "C:\\Users\\hatif\\Desktop\\DeckForge-0.5-diagnostic\\assets\\automations-codex\\module\\FocusAudio.exe".into(), args: args.iter().map(|a| a.to_string()).collect(), focus_if_running: false };
