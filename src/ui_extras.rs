@@ -90,6 +90,31 @@ mod workshop_summary_tests {
         assert_eq!(block_summary(&Step::SetVariable { name: "mode".into(), value: "travail".into() }), "Mémoriser mode = travail");
     }
 }
+const TEMPLATE_NAMES: &[&str] = &[
+    "Ouvrir une application puis un site", "Copier puis coller ailleurs",
+    "Taper une signature", "Basculer casque / enceintes",
+    "Mode travail", "Répéter une touche N fois",
+];
+fn template(index: usize) -> Vec<Step> {
+    match index {
+        0 => vec![Step::Launch { program: String::new(), args: vec![] }, Step::Url { url: String::new() }],
+        1 => vec![Step::Hotkey { keys: "CTRL+C".into() }, Step::Hotkey { keys: "CTRL+V".into() }],
+        2 => vec![Step::Text { text: String::new() }],
+        3 => vec![crate::automation::step(13)],
+        4 => vec![Step::SetVariable { name: "mode".into(), value: "travail".into() },
+            Step::IfVariable { name: "mode".into(), value: "travail".into(),
+                then_steps: vec![Step::Text { text: String::new() }], else_steps: vec![] }],
+        5 => vec![Step::Repeat { count: 3, steps: vec![Step::Hotkey { keys: "F13".into() }] }],
+        _ => unreachable!(),
+    }
+}
+fn template_menu(ui: &mut egui::Ui, choice: &mut Option<usize>) {
+    ui.menu_button("Partir d'un modèle", |ui| {
+        for (i, name) in TEMPLATE_NAMES.iter().enumerate() {
+            if ui.button(*name).clicked() { *choice = Some(i); ui.close_menu(); }
+        }
+    });
+}
 fn new_block(kind: usize, profiles: &[String]) -> Step {
     catalog::action(kind, profiles.first().map(String::as_str).unwrap_or("Bureau")).steps.remove(0)
 }
@@ -371,6 +396,9 @@ impl App {
         let mut pick_audio = None;
         let mut changed = false;
         let mut export = false;
+        let pending_id = egui::Id::new("workshop_template_pending");
+        let mut template_choice = ctx.data(|d| d.get_temp::<usize>(pending_id));
+        let mut template_action = None;
         let title = format!(
             "Atelier · touche {:02} · {}",
             self.selected + 1,
@@ -382,6 +410,21 @@ impl App {
             }
             ui.label(RichText::new("Construis ton automatisation").size(23.0).strong());
             ui.label("Assemble les blocs de haut en bas. Les variables sont propres à chaque exécution.");
+            if self.config.keys()[self.selected].steps.is_empty() {
+                template_menu(ui, &mut template_choice);
+            } else {
+                ui.menu_button("Modèles", |ui| template_menu(ui, &mut template_choice));
+            }
+            if let Some(index) = template_choice {
+                let existing = self.config.keys()[self.selected].steps.len();
+                if existing == 0 { template_action = Some((index, false)); }
+                else { ui.label("Cette touche contient déjà des blocs. Choisis comment utiliser le modèle :");
+                    ui.horizontal(|ui| {
+                        if ui.button("Ajouter à la fin").clicked() { template_action = Some((index, false)); }
+                        if ui.button("Remplacer les blocs").clicked() { template_action = Some((index, true)); }
+                    });
+                }
+            }
             ui.horizontal(|ui|{if ui.button("Créer avec mon IA").clicked(){self.assistant_settings=true;}if ui.add(egui::Button::new("Simuler les blocs").fill(BLUE)).clicked(){self.preview(true);}if ui.button("Tester dans 3 s").on_hover_text("Exécute réellement la macro sur le PC dans 3 secondes").clicked(){self.preview(false);}if ui.button("Exporter en AutoHotkey v2…").clicked(){export=true;}});
             if !self.engine.running.load(Ordering::SeqCst){self.running_block.clear();}
             let validation_config = self.config.clone();
@@ -413,6 +456,14 @@ impl App {
             }
             if let Err(e)=validate_key(&self.config.keys()[selected],&self.config){ui.colored_label(Color32::LIGHT_RED,format!("Brouillon : {e}"));}
         });
+        if let Some((index, replace)) = template_action {
+            let steps = &mut self.config.keys_mut()[self.selected].steps;
+            let model = template(index);
+            if replace { steps.clear(); }
+            if steps.len() + model.len() <= 256 { steps.extend(model); changed = true; }
+            template_choice = None;
+        }
+        ctx.data_mut(|d| { if let Some(index) = template_choice { d.insert_temp(pending_id, index); } else { d.remove::<usize>(pending_id); } });
         if let Some(target) = pick_audio {
             self.open_icon_gallery(Some(target));
         }
@@ -548,6 +599,26 @@ impl App {
 #[cfg(test)]
 mod workshop_tests {
     use super::*;
+    #[test]
+    fn templates_use_existing_steps_and_become_valid_after_personalisation() {
+        let c = crate::model::Config::default();
+        for i in 0..TEMPLATE_NAMES.len() {
+            let mut steps = template(i);
+            assert!(!steps.is_empty());
+            fn fill(steps: &mut [Step]) {
+                for s in steps { match s {
+                    Step::Launch { program, .. } => *program = "notepad.exe".into(),
+                    Step::Url { url } => *url = "https://example.org".into(),
+                    Step::Text { text } => *text = "Bonjour".into(),
+                    Step::AudioSwitch { first, second, .. } => { *first = "device-one".into(); *second = "device-two".into(); },
+                    Step::IfVariable { then_steps, else_steps, .. } => { fill(then_steps); fill(else_steps); },
+                    Step::Repeat { steps, .. } => fill(steps), _ => {}
+                }}
+            }
+            fill(&mut steps);
+            assert!(crate::model::validate_key(&Key { steps, ..Key::default() }, &c).is_ok(), "{}", TEMPLATE_NAMES[i]);
+        }
+    }
     #[test]
     fn summaries_are_readable() {
         assert_eq!(block_summary(&Step::Delay { ms: 500 }), "Attendre 500 ms");
