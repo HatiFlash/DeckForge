@@ -642,7 +642,7 @@ impl App {
             let index=self.preferences.triggers.iter().position(|t|t.profile==name&&t.page==page&&t.key==key);
             let mut text=index.map(|i|self.preferences.triggers[i].keys.clone()).unwrap_or_default();
             ui.horizontal(|ui|{if ui.text_edit_singleline(&mut text).changed(){hotkeys=true;}if ui.button("Enregistrer…").clicked(){capture=true;}});
-            if !text.is_empty(){if let Err(e)=crate::desktop::chord(&text){ui.colored_label(Color32::LIGHT_RED,e.to_string());}}
+            if !text.is_empty() { match crate::desktop::chord(&text) { Ok(_) => {}, Err(e) => { ui.colored_label(Color32::LIGHT_RED,e.to_string()); } } }
             ui.label(RichText::new("Exemple : CTRL+ALT+F9. Vide le champ pour désactiver. Windows signale les combinaisons déjà utilisées dans le journal.").small());
             if hotkeys {if let Some(i)=index {if text.is_empty(){self.preferences.triggers.remove(i);}else{self.preferences.triggers[i].keys=text;}}else if !text.is_empty()&&self.preferences.triggers.len()<256{self.preferences.triggers.push(crate::desktop::Trigger{profile:name,page,key,keys:text});}changed=true;}
             if self.trigger_recording{ui.colored_label(BLUE,"Appuie sur la combinaison souhaitée…");if ui.button("Annuler").clicked(){self.trigger_recording=false;self.refresh_hotkeys();}}
@@ -733,7 +733,7 @@ mod workshop_tests {
     #[test]
     fn templates_use_existing_steps_and_become_valid_after_personalisation() {
         let c = crate::model::Config::default();
-        for i in 0..TEMPLATE_NAMES.len() {
+        for (i, name) in TEMPLATE_NAMES.iter().enumerate() {
             let mut steps = template(i);
             assert!(!steps.is_empty());
             fn fill(steps: &mut [Step]) {
@@ -749,7 +749,7 @@ mod workshop_tests {
                 }}
             }
             fill(&mut steps);
-            assert!(crate::model::validate_key(&Key { steps, ..Key::default() }, &c).is_ok(), "{}", TEMPLATE_NAMES[i]);
+            assert!(crate::model::validate_key(&Key { steps, ..Key::default() }, &c).is_ok(), "{}", name);
         }
     }
     #[test]
