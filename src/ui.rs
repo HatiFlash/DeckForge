@@ -25,6 +25,35 @@ mod key_preview;
 #[path = "ui_appearance.rs"]
 mod appearance;
 
+#[path = "ui_plugin_store.rs"]
+mod plugin_store_ui;
+
+#[derive(Default,Clone)]
+struct PluginFace { title:String, image_bytes:Option<Vec<u8>>, state:u8, flash:Option<(bool,Instant)>, version:u64 }
+#[cfg(test)]
+#[test]
+fn plugin_image_formats_and_limits() {
+    assert_eq!(decode_plugin_image("").unwrap(),None);
+    assert_eq!(decode_plugin_image("<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><rect width='16' height='16'/></svg>").unwrap().unwrap()[0],b'<');
+    assert!(decode_plugin_image("data:image/png;base64,????").is_err());
+    assert!(decode_plugin_image("data:text/html;base64,PHA+").is_err());
+    assert!(decode_plugin_image(&"x".repeat(2_000_001)).is_err());
+}
+fn decode_plugin_image(value:&str)->anyhow::Result<Option<Vec<u8>>> {
+    use base64::Engine as _;
+    if value.is_empty() {return Ok(None);}
+    let bytes=if let Some((mime,payload))=value.split_once(",") {
+        anyhow::ensure!(matches!(mime,"data:image/png;base64"|"data:image/jpeg;base64"|"data:image/svg+xml;base64"),"Format d'image non pris en charge");
+        anyhow::ensure!(payload.len()<=2_000_000,"Image trop volumineuse");
+        base64::engine::general_purpose::STANDARD.decode(payload)?
+    }else{
+        anyhow::ensure!(value.trim_start().starts_with("<svg") && value.len()<=2_000_000,"SVG invalide");
+        value.as_bytes().to_vec()
+    };
+    anyhow::ensure!(bytes.len()<=1_500_000,"Image trop volumineuse");
+    crate::assets::decode_image(&bytes,512)?;
+    Ok(Some(bytes))
+}
 type DialogEffect = Box<dyn FnOnce(&mut App) + Send>;
 type StepTarget = (usize, String, usize, Vec<usize>);
 fn choose_step_file(tx: Sender<Option<DialogEffect>>, target: StepTarget, executable: bool) {
@@ -100,6 +129,9 @@ pub struct App {
     capturing: bool,
     last_key: Option<(usize, Instant)>,
     key_previews: key_preview::Cache,
+    plugins: Option<crate::plugin_runtime::Manager>,
+    plugin_faces: HashMap<String, PluginFace>,
+    plugin_errors: HashMap<String,String>,
     assistant: Option<crate::mcp_server::Server>,
     proposals: crate::assistant::Proposals,
     assistant_cache: HashMap<String, Result<serde_json::Value, String>>,
@@ -261,6 +293,9 @@ impl App {
             capturing: false,
             last_key: None,
             key_previews: key_preview::Cache::default(),
+            plugin_faces: HashMap::new(),
+            plugin_errors: HashMap::new(),
+            plugins: if isolated || smoke { None } else { Some(crate::plugin_runtime::Manager::new(crate::plugin_import::installed_root().map(|root|crate::plugin_import::inventory(&root)).unwrap_or_default())) },
             assistant,
             proposals: Default::default(),
             assistant_cache: HashMap::new(),
@@ -524,6 +559,7 @@ impl App {
                         if let Some((r, c)) = self.pending.take() {
                             if r == revision {
                                 self.applied = c;
+                                if let Some(plugins)=&mut self.plugins { plugins.sync(&self.applied); }
                                 if self.sleep.sleeping {
                                     let _ = self.device.send(Command::Brightness(self.config.sleep_brightness));
                                 }
@@ -554,6 +590,7 @@ impl App {
                             self.log(format!("Touche {:02} : {reason}", index + 1))
                         }
                         Decision::Execute => {
+                            if index < 15 && self.applied.keys()[index].plugin.is_some() { if let Some(plugins)=&self.plugins { plugins.key(index,true); } }
                             let has_long = !self.applied.keys()[index].long_steps.is_empty();
                             if self.long_press.press(index, at, has_long) {
                                 self.execute_physical(index, false);
@@ -563,6 +600,7 @@ impl App {
                 }
                 Event::KeyRelease(index, at) => {
                     if index < 15 {
+                        if self.gate.decision()==Decision::Execute && self.applied.keys()[index].plugin.is_some() { if let Some(plugins)=&self.plugins { plugins.key(index,false); } }
                         if let Some(long) = self.long_press.release(index, at, self.applied.long_press_ms) {
                             self.execute_physical(index, long);
                         }
@@ -1520,17 +1558,19 @@ impl App {
         egui::SidePanel::right("action_catalog").exact_width(296.0).resizable(false).frame(egui::Frame::new().fill(p.surface).inner_margin(16)).show(ctx,|ui| {
             ui.horizontal(|ui| { ui.label(RichText::new("Bibliothèque").size(19.0).strong()); ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| { theme::pill(ui,"40 binds",BLUE); }); });
             ui.add_space(5.0);
-            ui.horizontal(|ui| { for (i,label) in ["Actions","Magasin","Mes binds"].iter().enumerate() {
-                let(r,response)=ui.allocate_exact_size(Vec2::new(80.0,51.0),egui::Sense::click());let selected=i==self.catalog_tab;
+            ui.horizontal(|ui| { for (i,label) in ["Actions","Magasin","Mes binds","Plugins"].iter().enumerate() {
+                let(r,response)=ui.allocate_exact_size(Vec2::new(66.0,51.0),egui::Sense::click());let selected=i==self.catalog_tab;
                 ui.painter().rect_filled(r,10.0,if selected{p.wash}else{p.surface});
-                theme::symbol(ui.painter(),r.center_top()+Vec2::new(0.0,16.0),18.0,[21,20,15][i],if selected{BLUE}else{p.muted});
+                theme::symbol(ui.painter(),r.center_top()+Vec2::new(0.0,16.0),18.0,[21,20,15,15][i],if selected{BLUE}else{p.muted});
                 ui.painter().text(r.center_bottom()-Vec2::new(0.0,7.0),egui::Align2::CENTER_BOTTOM,*label,egui::FontId::proportional(11.0),if selected{p.ink}else{p.muted});
                 if response.clicked(){self.catalog_tab=i;self.catalog_selection=None;self.catalog_search.clear();}
             }});
             ui.add_space(6.0);
             ui.add(egui::TextEdit::singleline(&mut self.catalog_search).desired_width(f32::INFINITY).hint_text("Rechercher une action…"));
             let search=self.catalog_search.to_lowercase();
-            if self.catalog_tab==0 {
+            if self.catalog_tab==3 {
+                self.plugin_store(ui,&search);
+            } else if self.catalog_tab==0 {
                 ui.label(RichText::new("Glisse une action sur une touche. Elle s’ajoute à la fin de sa macro.").small().color(p.muted));
                 let actions=crate::automation::NAMES;
                 egui::ScrollArea::vertical().id_salt("action_browser").show(ui,|ui| {
@@ -1704,6 +1744,15 @@ impl App {
             let active=self.config.active; let names=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
             let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let image_size=self.config.image_size;let key=&mut self.config.keys_mut()[selected];
             let mut removed_step=false; let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut pick_audio=None; let mut open_workflow=false; let mut open_model=false;
+            if let Some(binding)=key.plugin.clone(){
+                ui.horizontal(|ui|{
+                    ui.label(format!("Plugin : {} · {}",binding.plugin,binding.action));
+                    ui.label(self.plugin_errors.get(&binding.plugin).map(String::as_str).unwrap_or("Actif"));
+                    if self.plugins.as_ref().is_some_and(|m|m.inspector_path(selected).is_some())
+                        && ui.button("Réglages du plugin").clicked(){if let Some(m)=&self.plugins {m.open_inspector(selected);}}
+                    if ui.button("Retirer le plugin").clicked(){key.plugin=None;changed=true;}
+                });
+            }
             let width=ui.available_width(); let body_height=ui.available_height();
             ui.horizontal_top(|ui| {
                 ui.allocate_ui_with_layout(Vec2::new(215.0,body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
@@ -1869,13 +1918,13 @@ impl App {
                     let device=egui::Frame::new().fill(Color32::TRANSPARENT).stroke(egui::Stroke::NONE).shadow(egui::epaint::Shadow{offset:[0,12],blur:24,spread:0,color:Color32::from_black_alpha(75)}).corner_radius(20).inner_margin(egui::Margin{left:24,right:24,top:24,bottom:44}).show(ui,|ui| {
                         egui::Grid::new("deck_grid_v3").spacing([14.0,14.0]).show(ui,|ui| {
                             for i in 0..15 {
-                                let key=self.presented_key(i);let selected=i==self.selected;
+                                let mut key=self.presented_key(i);let face=self.plugin_face(i).cloned();if let Some(face)=&face {key=self.plugin_render_key(i,key,face);}let selected=i==self.selected;
                                 let flashing=self.last_key.is_some_and(|(idx,t)|idx==i&&t.elapsed()<Duration::from_millis(350));
                                 let(r,response)=ui.allocate_exact_size(Vec2::splat(width),egui::Sense::click_and_drag());
                                 let hovering=self.drag.moving() && self.drag.position.is_some_and(|pos|r.contains(pos));
                                 theme::key_face(ui.painter(),r,selected||hovering,flashing);
                                 let lcd=r.shrink(5.0);
-                                match self.key_previews.texture(ctx,i,&key,self.config.image_size) {
+                                match self.key_previews.texture(ctx,i,&key,self.config.image_size,face.as_ref()) {
                                     Ok(texture)=>{ui.painter().image(texture.id(),lcd,egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(1.0,1.0)),Color32::WHITE);}
                                     Err(error)=>{ui.painter().text(lcd.center(),egui::Align2::CENTER_CENTER,"Aperçu indisponible",egui::FontId::proportional(9.0),p.muted); ui.painter().text(lcd.left_top(),egui::Align2::LEFT_TOP,"!",egui::FontId::proportional(12.0),Color32::LIGHT_RED);let _=error;}
                                 }
@@ -2242,6 +2291,7 @@ impl App {
         self.record_trigger(ctx);
         self.record_events(ctx);
         self.events();
+        self.plugin_events();
         self.housekeeping();
         self.assistant_events();
         let modal = self.show_workflow
@@ -2333,6 +2383,7 @@ impl eframe::App for App {
     }
     fn on_exit(&mut self, _: Option<&eframe::glow::Context>) {
         self.stop_http();
+        self.plugins.take();
         if self.gate.dirty && !self.gate.invalid {
             if let Err(e) = store::save(&self.path, &self.config) {
                 let message = format!("Échec de sauvegarde à la fermeture : {e}\n");
@@ -2370,6 +2421,87 @@ impl Runner {
     }
 }
 impl App {
+    fn plugin_face(&self,index:usize)->Option<&PluginFace>{
+        let manager=self.plugins.as_ref()?;
+        let id=manager.visible().values().find(|v|v.index==index)?.context.as_str();
+        self.plugin_faces.get(id)
+    }
+    fn plugin_render_key(&self,index:usize,mut key:Key,face:&PluginFace)->Key {
+        if !face.title.is_empty(){key.label=face.title.clone();}
+        if face.image_bytes.is_none() {
+            if let Some(v)=self.plugins.as_ref().and_then(|m|m.visible().values().find(|v|v.index==index)) {
+                if let Some(action)=self.plugins.as_ref().into_iter().flat_map(|m|m.catalog.iter()).find(|p|p.uuid==v.plugin).and_then(|p|p.actions.iter().find(|a|a.uuid==v.action)) {
+                    if key.label.is_empty(){if let Some(title)=action.titles.get(face.state as usize).and_then(Option::as_ref){key.label=title.clone();}}
+                    if let Some(icon)=action.states.get(face.state as usize).and_then(Option::as_ref).or(action.icon.as_ref()) {
+                        key.image=icon.to_string_lossy().into_owned();
+                    }
+                }
+            }
+        }
+        key
+    }
+    fn send_plugin_face(&self,index:usize){
+        let Some(face)=self.plugin_face(index) else {return};
+        let key=self.plugin_render_key(index,self.applied.keys()[index].clone(),face);
+        if let Ok(font)=crate::key_render::font(){
+            if let Ok(jpeg)=crate::key_render::for_plugin(&key,self.applied.image_size,&font,face.image_bytes.as_deref(),face.flash.filter(|(_,when)|when.elapsed()<Duration::from_secs(1)).map(|(ok,_)|ok)){
+                let _=self.device.send(Command::KeyImage(index,jpeg));
+            }
+        }
+    }
+    fn plugin_events(&mut self){
+        let mut messages=Vec::new();
+        if let Some(manager)=&self.plugins {while let Ok(message)=manager.rx.try_recv(){messages.push(message);if messages.len()>=100 {break;}}}
+        for message in messages {match message {
+            crate::plugin_runtime::Reply::Error(plugin,error)=>{self.plugin_errors.insert(plugin.clone(),error.clone());self.log(format!("Plugin {plugin} : {error}"));},
+            crate::plugin_runtime::Reply::Message(plugin,message)=>self.plugin_message(&plugin,&message),
+        }}
+    }
+    fn plugin_message(&mut self,plugin:&str,message:&serde_json::Value){
+        use serde_json::json;
+        let name=message["event"].as_str().unwrap_or("");
+        let context=message["context"].as_str().unwrap_or("");
+        let visible=self.plugins.as_ref().and_then(|m|m.visible().get(context)).filter(|v|v.plugin==plugin).cloned();
+        let pi=message["__pi"].as_str();
+        match name {
+            "registerPlugin"=>{},
+            "logMessage"=>{if let Some(text)=message["payload"]["message"].as_str(){self.log(format!("Plugin {plugin} : {}",text.chars().take(500).collect::<String>()));}},
+            "setTitle"|"setState"|"setImage"|"showOk"|"showAlert"=>{
+                if visible.is_none(){return;}
+                let face=self.plugin_faces.entry(context.to_owned()).or_default();
+                let previous=face.clone();
+                match name {
+                    "setTitle"=>{if let Some(title)=message["payload"]["title"].as_str(){face.title=title.chars().take(100).collect();}},
+                    "setState"=>{if let Some(state)=message["payload"]["state"].as_u64(){face.state=state.min(255) as u8;}},
+                    "showOk"=>face.flash=Some((true,Instant::now())),
+                    "showAlert"=>face.flash=Some((false,Instant::now())),
+                    "setImage"=>{if let Some(value)=message["payload"]["image"].as_str(){
+                        if let Ok(image)=decode_plugin_image(value){face.image_bytes=image;}
+                    }else if message["payload"]["image"].is_null(){face.image_bytes=None;}},
+                    _=>{}
+                }
+                if face.title!=previous.title || face.image_bytes!=previous.image_bytes || face.state!=previous.state || face.flash.is_some() {
+                    face.version=face.version.wrapping_add(1);
+                    if let Some(v)=visible { self.send_plugin_face(v.index); }
+                }
+            },
+            "setSettings"=>{
+                if let (Some(v),Some(settings))=(visible,message["payload"]["settings"].as_object()){
+                    if self.config.active==self.applied.active && self.config.page==self.applied.page && !self.gate.dirty {
+                        if let Some(binding)=self.config.keys_mut()[v.index].plugin.as_mut(){binding.settings=json!(settings);}
+                        if let Some(binding)=self.applied.keys_mut()[v.index].plugin.as_mut(){binding.settings=json!(settings);}
+                        if let Err(e)=store::save(&self.path,&self.config){self.fail(format!("Réglages du plugin non sauvegardés : {e}"));}
+                        else if let Some(manager)=&mut self.plugins {manager.sync(&self.applied);manager.send(plugin,json!({"event":"didReceiveSettings","action":v.action,"context":v.context,"device":"deckforge-d6","payload":{"settings":settings}}));}
+                    }
+                }
+            },
+            "getSettings"=>{if let (Some(v),Some(manager))=(visible,&self.plugins){manager.send(plugin,json!({"event":"didReceiveSettings","action":v.action,"context":v.context,"device":"deckforge-d6","payload":{"settings":v.settings},"__pi":pi}));}},
+            "setGlobalSettings"=>{let settings=&message["payload"]["settings"];if settings.is_object(){let path=self.path.with_file_name("plugin-settings.json");let mut all=std::fs::read(&path).ok().and_then(|b|serde_json::from_slice::<serde_json::Value>(&b).ok()).filter(|v|v.is_object()).unwrap_or_else(||json!({}));all[plugin]=settings.clone();if let Err(e)=std::fs::write(path,serde_json::to_vec_pretty(&all).unwrap_or_default()){self.fail(format!("Réglages globaux non sauvegardés : {e}"));}else if let (Some(id),Some(manager))=(pi,&self.plugins){manager.send(plugin,json!({"event":"didReceiveGlobalSettings","payload":{"settings":settings},"__pi":id}));}}},
+            "getGlobalSettings"=>{let all=std::fs::read(self.path.with_file_name("plugin-settings.json")).ok().and_then(|b|serde_json::from_slice::<serde_json::Value>(&b).ok()).unwrap_or_else(||json!({}));if let Some(manager)=&self.plugins {manager.send(plugin,json!({"event":"didReceiveGlobalSettings","payload":{"settings":all.get(plugin).cloned().unwrap_or_else(||json!({}))},"__pi":pi}));}},
+            "openUrl"=>{if let Some(url)=message["payload"]["url"].as_str().filter(|u|u.starts_with("https://")||u.starts_with("http://")){let _=std::process::Command::new("rundll32.exe").arg("url.dll,FileProtocolHandler").arg(url).spawn();}},
+            _=>{}
+        }
+    }
     fn background_tick(&mut self) {
         crate::obs_monitor::update(&self.config.obs, false);
         let obs_state = crate::obs_monitor::snapshot();
@@ -2377,7 +2509,17 @@ impl App {
             self.obs_state = obs_state;
             if self.wanted && !self.gate.dirty && !self.gate.invalid { self.upload(false); }
         }
+        let expired=self.plugin_faces.iter_mut().filter_map(|(context,face)|{
+            if face.flash.is_some_and(|(_,at)|at.elapsed()>=Duration::from_secs(1)){
+                face.flash=None; face.version=face.version.wrapping_add(1);Some(context.clone())
+            }else{None}
+        }).collect::<Vec<_>>();
+        for context in expired {if let Some(index)=self.plugins.as_ref().and_then(|m|m.visible().get(&context)).map(|v|v.index){self.send_plugin_face(index);}}
+        if let Some(plugins)=&mut self.plugins { if !self.gate.dirty && self.pending.is_none() { plugins.sync(&self.applied); } }
+        let initial=self.plugins.as_ref().map(|m|m.visible().values().filter(|v| !self.plugin_faces.contains_key(&v.context)).map(|v|(v.context.clone(),v.index,v.state)).collect::<Vec<_>>()).unwrap_or_default();
+        for (context,index,state) in initial { self.plugin_faces.insert(context,PluginFace{state,..Default::default()}); self.send_plugin_face(index); }
         self.events();
+        self.plugin_events();
         self.housekeeping();
         let due = self.long_press.due(Instant::now(), self.applied.long_press_ms);
         for index in due { self.execute_physical(index, true); }

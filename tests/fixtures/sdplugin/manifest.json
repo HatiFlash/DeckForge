@@ -1,0 +1,1 @@
+{"UUID":"test.deckforge.fixture","Name":"Test DeckForge","Version":"1.0.0","CodePath":"plugin.js","Actions":[{"UUID":"test.deckforge.fixture.action","Name":"Test","States":[{"Image":"icon"}]}]}

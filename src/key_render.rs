@@ -99,19 +99,25 @@ pub fn for_device(
         }
     }
 }
+pub fn for_plugin(k: &crate::model::Key, size: u32, font: &FontArc, bytes: Option<&[u8]>, flash: Option<bool>) -> Result<Vec<u8>> {
+    let mut key = k.clone();
+    let source = bytes.map(|data| crate::assets::decode_image(data, 512)).transpose()?;
+    if source.is_some() { key.image = "<plugin-runtime>".into(); }
+    jpeg_with_options(&key, size, font, source.as_ref(), flash)
+}
 pub fn jpeg(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8>> {
-    jpeg_with_frame(k, size, font, None)
+    jpeg_with_options(k, size, font, None, None)
 }
 
-fn jpeg_with_frame(k: &crate::model::Key, size: u32, font: &FontArc, frame: Option<&image::DynamicImage>) -> Result<Vec<u8>> {
+fn jpeg_with_options(k: &crate::model::Key, size: u32, font: &FontArc, frame: Option<&image::DynamicImage>, flash: Option<bool>) -> Result<Vec<u8>> {
     anyhow::ensure!((32..=512).contains(&size), "Taille LCD invalide");
     let background = if k.background { k.color } else { [0, 0, 0] };
     let mut image = RgbImage::from_pixel(size, size, Rgb(background));
     if !k.image.is_empty() {
-        anyhow::ensure!(
+        if frame.is_none() { anyhow::ensure!(
             std::fs::metadata(&k.image)?.len() <= if k.image.to_ascii_lowercase().ends_with(".gif") { 20_000_000 } else { 8_000_000 },
             "Image supérieure à 8 Mo"
-        );
+        ); }
         let source = match frame {
             Some(frame) => frame.clone(),
             None => crate::assets::decode_image(&std::fs::read(&k.image)?, 512)
@@ -243,6 +249,30 @@ fn jpeg_with_frame(k: &crate::model::Key, size: u32, font: &FontArc, frame: Opti
             x += scaled.h_advance(id);
         }
     }
+    if let Some(ok) = flash {
+        let center = size as i32 / 2;
+        let radius = size as i32 / 6;
+        for y in -radius..=radius { for x in -radius..=radius {
+            if x*x+y*y <= radius*radius {
+                image.put_pixel((center+x) as u32, (center+y) as u32,
+                    Rgb(if ok {[25,165,73]}else{[240,142,25]}));
+            }
+        }}
+        let mark = if ok { '✓' } else { '!' };
+        let scaled = font.as_scaled(PxScale::from(size as f32 * 0.28));
+        let id = scaled.glyph_id(mark);
+        let glyph = id.with_scale_and_position(scaled.scale(), ab_glyph::point(center as f32 - scaled.h_advance(id)/2.0, center as f32 + scaled.ascent()/2.0));
+        if let Some(outline) = font.outline_glyph(glyph) {
+            let bounds = outline.px_bounds();
+            outline.draw(|gx,gy,coverage| {
+                let x=bounds.min.x as i32+gx as i32;let y=bounds.min.y as i32+gy as i32;
+                if x>=0&&y>=0&&x<size as i32&&y<size as i32 {
+                    let p=image.get_pixel_mut(x as u32,y as u32);
+                    for c in &mut p.0 {*c=(*c as f32*(1.0-coverage)+255.0*coverage) as u8;}
+                }
+            });
+        }
+    }
     let image = image::imageops::rotate180(&image);
     let mut bytes = Vec::new();
     image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, 88).encode(
@@ -279,7 +309,7 @@ pub fn animated(key: &crate::model::Key, size: u32, font: &FontArc) -> Result<Ve
         if frames.is_empty() || elapsed.saturating_sub(sampled) >= 50 {
             sampled = elapsed;
             frames.push(AnimatedFrame {
-                jpeg: jpeg_with_frame(key, size, font, Some(&image::DynamicImage::ImageRgba8(frame.into_buffer())))?,
+                jpeg: jpeg_with_options(key, size, font, Some(&image::DynamicImage::ImageRgba8(frame.into_buffer())), None)?,
                 delay: std::time::Duration::from_millis(duration.max(50) as u64),
             });
         }
@@ -337,6 +367,22 @@ mod tests {
         assert_ne!(small, jpeg(&key, 126, &font().unwrap()).unwrap());
         key.icon_scale = 19;
         assert!(crate::model::Config::default().validate().is_ok());
+    }
+
+    #[test]
+    fn plugin_image_flash_and_canonical_orientation() {
+        let key=Key{label:"Plugin".into(),..Key::default()};
+        let mut png=Vec::new();
+        image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(16,16,image::Rgba([240,20,10,255])))
+            .write_to(&mut std::io::Cursor::new(&mut png),image::ImageFormat::Png).unwrap();
+        let font=font().unwrap();
+        let normal=for_plugin(&key,126,&font,Some(&png),None).unwrap();
+        assert_ne!(normal,for_device(&key,126,&font).unwrap().0);
+        let flash=for_plugin(&key,126,&font,Some(&png),Some(true)).unwrap();
+        assert_ne!(normal,flash);
+        assert_ne!(flash,for_plugin(&key,126,&font,Some(&png),Some(false)).unwrap());
+        let upright=image::imageops::rotate180(&image::load_from_memory(&normal).unwrap().into_rgb8());
+        assert_eq!(upright.dimensions(),(126,126));
     }
 
     #[test]

@@ -408,7 +408,7 @@ fn editor_textures_match_usb_images_with_custom_files_audio_states_and_fallbacks
             let texture = h
                 .app
                 .key_previews
-                .texture(&h.ctx, index, &key, h.app.config.image_size)
+                .texture(&h.ctx, index, &key, h.app.config.image_size, None)
                 .unwrap();
             let gui = &h.textures[&texture.id()];
             let (bytes, _) = crate::key_render::for_device(
@@ -448,7 +448,7 @@ fn lcd_preview_cache_refreshes_labels_colors_icons_and_changed_image_files() {
     let old = h
         .app
         .key_previews
-        .texture(&h.ctx, 5, &key, 126)
+        .texture(&h.ctx, 5, &key, 126, None)
         .unwrap()
         .id();
     image::RgbImage::from_pixel(49, 23, image::Rgb([12, 220, 80]))
@@ -457,7 +457,7 @@ fn lcd_preview_cache_refreshes_labels_colors_icons_and_changed_image_files() {
     let new = h
         .app
         .key_previews
-        .texture(&h.ctx, 5, &key, 126)
+        .texture(&h.ctx, 5, &key, 126, None)
         .unwrap()
         .id();
     assert_ne!(old, new);
@@ -465,7 +465,7 @@ fn lcd_preview_cache_refreshes_labels_colors_icons_and_changed_image_files() {
         new,
         h.app
             .key_previews
-            .texture(&h.ctx, 5, &key, 126)
+            .texture(&h.ctx, 5, &key, 126, None)
             .unwrap()
             .id()
     );
@@ -474,7 +474,7 @@ fn lcd_preview_cache_refreshes_labels_colors_icons_and_changed_image_files() {
     let label = h
         .app
         .key_previews
-        .texture(&h.ctx, 5, &changed, 126)
+        .texture(&h.ctx, 5, &changed, 126, None)
         .unwrap()
         .id();
     assert_ne!(new, label);
@@ -482,7 +482,7 @@ fn lcd_preview_cache_refreshes_labels_colors_icons_and_changed_image_files() {
     let color = h
         .app
         .key_previews
-        .texture(&h.ctx, 5, &changed, 126)
+        .texture(&h.ctx, 5, &changed, 126, None)
         .unwrap()
         .id();
     assert_ne!(label, color);
@@ -490,7 +490,7 @@ fn lcd_preview_cache_refreshes_labels_colors_icons_and_changed_image_files() {
     let black = h
         .app
         .key_previews
-        .texture(&h.ctx, 5, &changed, 126)
+        .texture(&h.ctx, 5, &changed, 126, None)
         .unwrap()
         .id();
     assert_ne!(color, black);
@@ -501,7 +501,7 @@ fn lcd_preview_cache_refreshes_labels_colors_icons_and_changed_image_files() {
     let play = h
         .app
         .key_previews
-        .texture(&h.ctx, 5, &changed, 126)
+        .texture(&h.ctx, 5, &changed, 126, None)
         .unwrap()
         .id();
     assert_ne!(black, play);
@@ -512,7 +512,7 @@ fn lcd_preview_cache_refreshes_labels_colors_icons_and_changed_image_files() {
         play,
         h.app
             .key_previews
-            .texture(&h.ctx, 5, &changed, 126)
+            .texture(&h.ctx, 5, &changed, 126, None)
             .unwrap()
             .id()
     );
@@ -1154,5 +1154,17 @@ fn mcp_connect_window_previews_all_clients_without_touching_real_settings() {
     for client in ["Claude Desktop","Claude Code","Codex CLI","Cursor","ChatGPT"] {assert!(text.contains(client),"Carte manquante : {client}");}
     if let Some(dir)=std::env::var_os("DECKFORGE_UI_OUTPUT") {
         h.png(size,output,&PathBuf::from(dir).join("mcp-connect.png"));
+    }
+}
+#[test]
+fn plugin_store_is_rendered_without_a_window() {
+    let mut h=Harness::new();
+    h.app.catalog_tab=3;
+    let size=vec2(1180.0,800.0);
+    let output=h.warm(size);
+    assert!(text_position(&output.shapes,"Installés dans DeckForge").is_some());
+    assert!(text_position(&output.shapes,"Disponibles depuis FIFINE / StreamDock").is_some());
+    if let Some(dir)=std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        h.png(size,output,&PathBuf::from(dir).join("plugins-store.png"));
     }
 }

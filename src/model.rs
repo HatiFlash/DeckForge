@@ -149,6 +149,13 @@ impl Step {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PluginBinding {
+    pub plugin: String,
+    pub action: String,
+    #[serde(default)] pub settings: serde_json::Value,
+    #[serde(default)] pub state: u8,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Key {
     pub label: String,
@@ -161,6 +168,8 @@ pub struct Key {
     pub title_size: u8,
     #[serde(default = "default_icon_scale", skip_serializing_if = "is_default_icon_scale")]
     pub icon_scale: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<PluginBinding>,
     pub steps: Vec<Step>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub long_steps: Vec<Step>,
@@ -181,6 +190,7 @@ impl Default for Key {
             repeat: 1,
             title_size: 14,
             icon_scale: 100,
+            plugin: None,
             steps: vec![],
             long_steps: vec![],
             display_kind: None,
@@ -1041,5 +1051,18 @@ mod native_mouse_tests {
         for invalid in [Step::MouseClick { button: "other".into(), double: false }, Step::MouseScroll { amount: 101 }, Step::MouseMove { x: 99999, y: 0, relative: false }] {
             assert!(validate_key(&Key { steps: vec![invalid], ..Key::default() }, &c).is_err());
         }
+    }
+}
+
+#[cfg(test)] mod plugin_compatibility_tests {
+    use super::*;
+    #[test] fn legacy_key_and_plugin_binding_roundtrip() {
+        let original = serde_json::to_value(Key::default()).unwrap();
+        assert!(original.get("plugin").is_none());
+        let mut key: Key = serde_json::from_value(original).unwrap();
+        assert!(key.plugin.is_none() && key.background);
+        key.plugin = Some(PluginBinding {plugin:"example.plugin".into(), action:"example.action".into(),settings:serde_json::json!({"mode":1}),state:2});
+        let loaded: Key = serde_json::from_value(serde_json::to_value(&key).unwrap()).unwrap();
+        assert_eq!(loaded.plugin.unwrap().settings["mode"],1);
     }
 }

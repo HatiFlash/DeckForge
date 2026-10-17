@@ -27,6 +27,7 @@ pub enum Command {
     Connect(Config, u64),
     Update(Config, u64),
     Brightness(u8),
+    KeyImage(usize, Vec<u8>),
     Disconnect,
 }
 pub fn spawn(tx: Sender<Event>) -> Sender<Command> {
@@ -50,6 +51,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
     let mut last_frame = Instant::now() - Duration::from_secs(1);
     let mut last_per_key = [Instant::now() - Duration::from_secs(1); 15];
     let mut cursor = 0usize;
+    let mut key_images: [Option<Vec<u8>>;15] = std::array::from_fn(|_|None);
     loop {
         let mut update = false;
         let mut brightness = None;
@@ -68,9 +70,11 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
                     update = true;
                 }
                 Ok(Command::Brightness(value)) => brightness = Some(value.min(100)),
+                Ok(Command::KeyImage(index,jpeg)) => { if index<15 && jpeg.len()<=100_000 {key_images[index]=Some(jpeg);} },
                 Ok(Command::Disconnect) => {
                     wanted = false;
                     deck = None;
+                    key_images.fill(None);
                     let _ = tx.send(Event::Device(false, "D6 déconnecté de DeckForge".into()));
                 }
                 Err(TryRecvError::Empty) => break,
@@ -172,6 +176,14 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
                     }
                     Err(e) => failed = Some(e.to_string()),
                     _ => {}
+                }
+            }
+            // Pending runtime faces are replayed after a complete apply, never interleaved.
+            if failed.is_none() && !update {
+                if let Some(index) = key_images.iter().position(Option::is_some) {
+                    if let Some(jpeg) = key_images[index].take() {
+                        if let Err(e)=d.send_frame(index,&jpeg,frame_end()) { failed=Some(e.to_string()); }
+                    }
                 }
             }
             // Read HID before every animation frame; uploads never preempt a full apply.

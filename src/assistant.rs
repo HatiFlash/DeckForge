@@ -44,6 +44,8 @@ struct Binding {
     #[serde(default)]
     repeat: Option<u32>,
     icon_scale: Option<u8>,
+    #[serde(default)]
+    plugin: Option<crate::model::PluginBinding>,
     steps: Vec<Step>,
     #[serde(default)]
     long_steps: Option<Vec<Step>>,
@@ -166,6 +168,7 @@ impl Proposals {
                     repeat: a.repeat.unwrap_or(1),
                     title_size: old.title_size,
                     icon_scale: a.icon_scale.unwrap_or(old.icon_scale),
+                    plugin: a.plugin.or_else(|| old.plugin.clone()),
                     steps: a.steps,
                     long_steps: a.long_steps.unwrap_or_else(|| old.long_steps.clone()),
                     display_kind: None,
