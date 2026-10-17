@@ -426,7 +426,7 @@ impl App {
             );
             return;
         }
-        self.engine.start(key, dry, if delayed { 3000 } else { 0 });
+        self.engine.start(key, dry, if delayed { 3000 } else { 0 }, config.obs.clone());
     }
     fn preview(&mut self, dry: bool) {
         let key = self.config.keys()[self.selected].clone();
@@ -2397,6 +2397,12 @@ fn edit_step(
     let mut changed = false;
     match step {
         Step::Disabled { .. } => unreachable!("atelier passe une étape active"),
+        Step::ObsScene { name } => { ui.label("Scène OBS"); changed |= ui.text_edit_singleline(name).changed(); }
+        Step::ObsMute { input, mode } => { ui.label("Entrée audio OBS"); changed |= ui.text_edit_singleline(input).changed(); obs_choice(ui, mode, &["toggle", "mute", "unmute"], &mut changed); }
+        Step::ObsSourceVisibility { scene, source, mode } => { ui.label("Scène puis source OBS"); changed |= ui.text_edit_singleline(scene).changed(); changed |= ui.text_edit_singleline(source).changed(); obs_choice(ui, mode, &["toggle", "show", "hide"], &mut changed); }
+        Step::ObsRecord { mode } => obs_choice(ui, mode, &["toggle", "start", "stop", "pause"], &mut changed),
+        Step::ObsStream { mode } | Step::ObsVirtualCam { mode } => obs_choice(ui, mode, &["toggle", "start", "stop"], &mut changed),
+        Step::ObsReplay { mode } => obs_choice(ui, mode, &["toggle", "start", "stop", "save"], &mut changed),
         Step::Delay { ms } => {
             ui.horizontal(|ui| {
                 changed |= ui
@@ -2698,4 +2704,10 @@ mod automatic_profile_sleep_tests {
         assert!(!sleep.press(now + Duration::from_secs(63)));
         assert!(!sleep.due(now + Duration::from_secs(999), 0));
     }
+}
+
+fn obs_choice(ui: &mut egui::Ui, mode: &mut String, options: &[&str], changed: &mut bool) {
+    egui::ComboBox::from_id_salt(ui.next_auto_id()).selected_text(mode.as_str()).show_ui(ui, |ui| {
+        for option in options { *changed |= ui.selectable_value(mode, (*option).to_owned(), *option).changed(); }
+    });
 }

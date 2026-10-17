@@ -42,7 +42,7 @@ impl Engine {
                 > *self.last_finished.lock().unwrap_or_else(|e| e.into_inner())
                     + Duration::from_millis(150)
     }
-    pub fn start(&self, key: Key, dry: bool, initial_delay: u64) {
+    pub fn start(&self, key: Key, dry: bool, initial_delay: u64, obs: crate::model::ObsSettings) {
         if self
             .running
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -63,7 +63,7 @@ impl Engine {
                 if !dry {
                     wait(initial_delay, &cancel)?;
                 }
-                run(&key, dry, &cancel, &tx)
+                run(&key, dry, &cancel, &tx, &obs)
             }));
             let message = match result {
                 Ok(Ok(())) => "Macro terminée".into(),
@@ -104,7 +104,7 @@ fn wait(ms: u64, cancel: &AtomicBool) -> Result<()> {
         std::thread::sleep(remaining.min(Duration::from_millis(20)));
     }
 }
-fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>) -> Result<()> {
+fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>, obs: &crate::model::ObsSettings) -> Result<()> {
     let _ = tx.send(Event::Log(format!(
         "{} — {} ({} répétition(s))",
         if dry { "SIMULATION" } else { "EXÉCUTION" },
@@ -122,6 +122,7 @@ fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>) -> Result<
             &mut variables,
             &mut budget,
             &[],
+            obs,
         )?;
     }
     let _ = tx.send(Event::Block(vec![]));
@@ -135,6 +136,7 @@ fn run_steps(
     variables: &mut std::collections::BTreeMap<String, String>,
     budget: &mut usize,
     parent: &[usize],
+    obs: &crate::model::ObsSettings,
 ) -> Result<()> {
     for (idx, step) in steps.iter().enumerate() {
         if step.is_disabled() { continue; }
@@ -172,6 +174,7 @@ fn run_steps(
                         variables,
                         budget,
                         &[path.clone(), vec![0]].concat(),
+                        obs,
                     )?;
                     run_steps(
                         else_steps,
@@ -181,6 +184,7 @@ fn run_steps(
                         variables,
                         budget,
                         &[path.clone(), vec![1]].concat(),
+                        obs,
                     )?;
                 }
                 Step::Repeat { steps, .. } => run_steps(
@@ -191,6 +195,7 @@ fn run_steps(
                     variables,
                     budget,
                     &[path.clone(), vec![0]].concat(),
+                    obs,
                 )?,
                 _ => {}
             }
@@ -198,6 +203,9 @@ fn run_steps(
         }
         match step {
             Step::Disabled { .. } => {},
+            Step::ObsScene { .. } | Step::ObsRecord { .. } | Step::ObsStream { .. }
+            | Step::ObsVirtualCam { .. } | Step::ObsReplay { .. } | Step::ObsMute { .. }
+            | Step::ObsSourceVisibility { .. } => crate::obs::execute(step, obs)?,
             Step::AudioSwitch {
                 first,
                 second,
@@ -227,6 +235,7 @@ fn run_steps(
                     variables,
                     budget,
                     &[path.clone(), vec![branch_id]].concat(),
+                    obs,
                 )?;
             }
             Step::IfVariable {
@@ -248,6 +257,7 @@ fn run_steps(
                     variables,
                     budget,
                     &[path.clone(), vec![branch_id]].concat(),
+                    obs,
                 )?;
             }
             Step::Repeat { count, steps } => {
@@ -260,6 +270,7 @@ fn run_steps(
                         variables,
                         budget,
                         &[path.clone(), vec![0]].concat(),
+                        obs,
                     )?;
                 }
             }
@@ -429,7 +440,7 @@ mod tests {
                 Step::Disabled { step: Box::new(Step::SetVariable { name: "bad".into(), value: "yes".into() }) },
                 Step::SetVariable { name: "good".into(), value: "yes".into() },
             ] }];
-            run_steps(&steps, dry, &AtomicBool::new(false), &tx, &mut vars, &mut budget, &[]).unwrap();
+            run_steps(&steps, dry, &AtomicBool::new(false), &tx, &mut vars, &mut budget, &[], &crate::model::ObsSettings::default()).unwrap();
             assert!(!vars.contains_key("bad"));
             if !dry { assert_eq!(vars.get("good").map(String::as_str), Some("yes")); }
             assert_eq!(budget, 8);
@@ -472,6 +483,7 @@ mod tests {
             &mut variables,
             &mut budget,
             &[],
+            &crate::model::ObsSettings::default(),
         )
         .unwrap();
         assert_eq!(variables["result"], "oui");
@@ -495,7 +507,7 @@ mod tests {
             }],
             ..Key::default()
         };
-        run(&key, true, &AtomicBool::new(false), &tx).unwrap();
+        run(&key, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default()).unwrap();
     }
     #[test]
     fn nested_execution_budget_stops_before_another_block_runs() {
@@ -519,6 +531,7 @@ mod tests {
             &mut variables,
             &mut budget,
             &[],
+            &crate::model::ObsSettings::default(),
         )
         .unwrap_err();
         assert!(err.to_string().contains("10 000"));
@@ -545,7 +558,7 @@ mod tests {
             ],
             ..Key::default()
         };
-        run(&k, true, &AtomicBool::new(false), &tx).unwrap();
+        run(&k, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default()).unwrap();
         assert_eq!(
             rx.try_iter()
                 .filter(|e| matches!(e, Event::Profile(_)))
@@ -564,7 +577,7 @@ mod tests {
             ],
             ..Key::default()
         };
-        run(&k, false, &AtomicBool::new(false), &tx).unwrap();
+        run(&k, false, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default()).unwrap();
         let names = rx
             .try_iter()
             .filter_map(|e| {

@@ -39,6 +39,7 @@ pub fn step_kind(step: &Step) -> usize {
         Step::Repeat { .. } => 30,
         Step::SetVariable { .. } => 2,
         Step::AutoHotkey { .. } => 1,
+        Step::ObsScene { .. } | Step::ObsRecord { .. } | Step::ObsStream { .. } | Step::ObsVirtualCam { .. } | Step::ObsReplay { .. } | Step::ObsMute { .. } | Step::ObsSourceVisibility { .. } => 6,
         Step::Folder { .. } => 15,
         Step::Back => 16,
         Step::Page { .. } => 17,

@@ -20,6 +20,8 @@ pub const NAMES: &[&str] = &[
     "Définir une variable",
     "Si une variable correspond",
     "Script AutoHotkey",
+    "OBS : scène", "OBS : enregistrement", "OBS : diffusion", "OBS : caméra",
+    "OBS : replay", "OBS : micro", "OBS : source",
 ];
 pub fn step(kind: usize) -> Step {
     match kind {
@@ -51,6 +53,13 @@ pub fn step(kind: usize) -> Step {
             then_steps: vec![Step::Delay { ms: 250 }],
             else_steps: vec![],
         },
+        19 => Step::ObsScene { name: "Scène".into() },
+        20 => Step::ObsRecord { mode: "toggle".into() },
+        21 => Step::ObsStream { mode: "toggle".into() },
+        22 => Step::ObsVirtualCam { mode: "toggle".into() },
+        23 => Step::ObsReplay { mode: "save".into() },
+        24 => Step::ObsMute { input: "Micro/Aux".into(), mode: "toggle".into() },
+        25 => Step::ObsSourceVisibility { scene: "Scène".into(), source: "Source".into(), mode: "toggle".into() },
         _ => Step::AutoHotkey {
             executable: detect_ahk(),
             script: "#Requires AutoHotkey v2.0\n; Écris ton script ici.\n".into(),

@@ -29,7 +29,7 @@ pub(super) fn step_mut<'a>(steps: &'a mut [Step], path: &[usize]) -> Option<&'a 
     step_mut(children, &path[2..])
 }
 const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
-    ("Streaming", &[0, 4]), ("Système", &[0, 2, 4]),
+    ("Streaming", &[19, 20, 21, 22, 23, 24, 25, 0, 4]), ("Système", &[0, 2, 4]),
     ("Clavier", &[0]), ("Texte", &[1]), ("Applications et sites", &[2, 3]),
     ("Médias et audio", &[4, 13]), ("Fenêtres", &[6]), ("Attendre", &[5]),
     ("Logique et répétitions", &[14, 15]), ("Variables", &[16, 17]),
@@ -43,11 +43,13 @@ fn block_help(kind: usize) -> &'static str {
         6 => "Attend et peut activer une fenêtre.", 13 => "Bascule entre deux appareils audio.",
         14 => "Exécute des blocs si une fenêtre est ouverte.", 15 => "Rejoue plusieurs fois les blocs imbriqués.",
         16 => "Enregistre une valeur pour cette exécution.", 17 => "Choisit des blocs selon une valeur.",
+        19..=25 => "Commande OBS Studio par WebSocket local (OBS 28 ou plus).",
         18 => "Exécute un script AutoHotkey v2.", _ => "Change la page, le dossier ou le profil affiché.",
     }
 }
 fn matches_palette(kind: usize, category: &str, search: &str) -> bool {
     let aliases = match kind {
+        19..=25 => "obs studio record stream scene source visibility virtual camera replay mute",
         0 => "hotkey super hotkeys discord browser back forward refresh quick control close window",
         1 => "text plain text",
         2 => "open openapps quick tool calculator mail music",
@@ -84,6 +86,10 @@ fn simple_fields_visible(step: &Step, advanced: bool) -> bool {
 }
 fn block_summary(step: &Step) -> String {
     match step.active() {
+        Step::ObsScene { name } => format!("OBS : scène {name}"),
+        Step::ObsRecord { mode } | Step::ObsStream { mode } | Step::ObsVirtualCam { mode } | Step::ObsReplay { mode } => format!("{} : {mode}", step.name()),
+        Step::ObsMute { input, mode } => format!("OBS : {input} ({mode})"),
+        Step::ObsSourceVisibility { scene, source, mode } => format!("OBS : {scene} / {source} ({mode})"),
         Step::Hotkey { keys } => format!("Appuyer sur {keys}"),
         Step::Delay { ms } => format!("Attendre {ms} ms"),
         Step::Url { url } => format!("Ouvrir {url}"),
@@ -658,6 +664,13 @@ impl App {
             if ui.checkbox(&mut enabled,"Démarrer avec Windows en arrière-plan").changed(){startup=Some(enabled);}
             changed|=ui.checkbox(&mut self.preferences.close_to_tray,"Fermer la fenêtre garde DeckForge près de l’horloge").changed();
             if ui.add_enabled(self.tray_ready,egui::Button::new("Masquer maintenant")).clicked(){ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));}
+            ui.separator();ui.label("OBS Studio (WebSocket local)");
+            changed |= ui.text_edit_singleline(&mut self.config.obs.host).changed();
+            changed |= ui.add(egui::DragValue::new(&mut self.config.obs.port).range(1..=65535)).changed();
+            changed |= ui.add(egui::TextEdit::singleline(&mut self.config.obs.password).password(true).hint_text("Mot de passe OBS")).changed();
+            if ui.button("Tester la connexion OBS").clicked() {
+                match crate::obs::test_connection(&self.config.obs) { Ok(version) => { ui.label(format!("OBS {version}")); }, Err(_) => { ui.label("Connexion OBS impossible : vérifie OBS et le mot de passe"); } };
+            }
             ui.separator();ui.label(RichText::new(format!("Raccourci global · touche {:02}",self.selected+1)).strong());
             ui.label("Actif sur la page actuellement ouverte. Les raccourcis restent disponibles sans D6 branché.");
             let name=self.config.profiles[self.config.active].name.clone();let page=self.config.page.clone();let key=self.selected;
@@ -689,9 +702,7 @@ impl App {
                 Err(e) => self.fail(e.to_string()),
             }
         }
-        if changed && self.save_preferences() {
-            self.refresh_hotkeys();
-        }
+        if changed { self.save(); if self.save_preferences() { self.refresh_hotkeys(); } }
     }
     pub(super) fn record_trigger(&mut self, ctx: &egui::Context) {
         if !self.trigger_recording || !ctx.input(|i| i.focused) {

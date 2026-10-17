@@ -7,6 +7,9 @@ description = "Independent Windows macro controller for FIFINE D6 3142:0060"
 
 [dependencies]
 anyhow = "1"
+tungstenite = { version = "0.26", default-features = false, features = ["handshake"] }
+sha2 = "0.10"
+base64 = "0.22"
 eframe = { version = "=0.31.1", default-features = false, features = ["default_fonts", "glow"] }
 hidapi = { version = "2.6", default-features = false, features = ["windows-native"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }

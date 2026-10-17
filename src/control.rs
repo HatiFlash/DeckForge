@@ -167,7 +167,7 @@ mod tests {
                     },
                     false,
                     0,
-                );
+                    crate::model::ObsSettings::default());
                 let end = Instant::now() + Duration::from_secs(1);
                 while engine.running.load(Ordering::SeqCst) && Instant::now() < end {
                     std::thread::sleep(Duration::from_millis(2));

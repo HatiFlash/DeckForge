@@ -75,6 +75,13 @@ pub enum Step {
         script: String,
         args: Vec<String>,
     },
+    ObsScene { name: String },
+    ObsRecord { mode: String },
+    ObsStream { mode: String },
+    ObsVirtualCam { mode: String },
+    ObsReplay { mode: String },
+    ObsMute { input: String, mode: String },
+    ObsSourceVisibility { scene: String, source: String, mode: String },
     Back,
     PageNext,
     PagePrevious,
@@ -106,6 +113,13 @@ impl Step {
             Self::SetVariable { .. } => "Définir une variable",
             Self::IfVariable { .. } => "Si une variable correspond",
             Self::AutoHotkey { .. } => "Script AutoHotkey",
+            Self::ObsScene { .. } => "OBS : scène",
+            Self::ObsRecord { .. } => "OBS : enregistrement",
+            Self::ObsStream { .. } => "OBS : diffusion",
+            Self::ObsVirtualCam { .. } => "OBS : caméra virtuelle",
+            Self::ObsReplay { .. } => "OBS : replay",
+            Self::ObsMute { .. } => "OBS : couper une entrée",
+            Self::ObsSourceVisibility { .. } => "OBS : visibilité de source",
             Self::Back => "Retour au dossier précédent",
             Self::PageNext => "Page suivante",
             Self::PagePrevious => "Page précédente",
@@ -221,6 +235,8 @@ impl Profile {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
     pub schema: u32,
+    #[serde(default)]
+    pub obs: ObsSettings,
     pub brightness: u8,
     #[serde(default)]
     pub auto_profile: bool,
@@ -243,6 +259,17 @@ pub struct Config {
     pub page: String,
     #[serde(default)]
     pub trail: Vec<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ObsSettings {
+    #[serde(default = "obs_host")] pub host: String,
+    #[serde(default = "obs_port")] pub port: u16,
+    #[serde(default)] pub password: String,
+}
+fn obs_host() -> String { "127.0.0.1".into() }
+fn obs_port() -> u16 { 4455 }
+impl Default for ObsSettings {
+    fn default() -> Self { Self { host: obs_host(), port: obs_port(), password: String::new() } }
 }
 impl Default for Config {
     fn default() -> Self {
@@ -290,6 +317,7 @@ impl Default for Config {
         };
         Self {
             schema: 2,
+            obs: ObsSettings::default(),
             brightness: 70,
             auto_profile: false,
             sleep_after_min: 0,
@@ -365,6 +393,8 @@ impl Config {
         Ok(next)
     }
     pub fn validate(&self) -> Result<()> {
+        anyhow::ensure!(self.obs.host == "127.0.0.1" || self.obs.host == "localhost", "OBS doit être local");
+        anyhow::ensure!(self.obs.port != 0 && self.obs.password.len() <= 4096, "Réglages OBS invalides");
         if ![1, 2].contains(&self.schema) {
             bail!("Version de configuration non prise en charge");
         }
@@ -597,6 +627,12 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
     for s in &key.steps {
         if s.is_disabled() { continue; }
         match s {
+            Step::ObsScene { name } if name.trim().is_empty() || name.len() > 256 => bail!("Scène OBS invalide"),
+            Step::ObsMute { input, mode } if input.trim().is_empty() || !obs_mode(mode, &["toggle", "mute", "unmute"]) => bail!("Entrée OBS ou mode invalide"),
+            Step::ObsSourceVisibility { scene, source, mode } if scene.trim().is_empty() || source.trim().is_empty() || !obs_mode(mode, &["toggle", "show", "hide"]) => bail!("Source OBS ou mode invalide"),
+            Step::ObsRecord { mode } if !obs_mode(mode, &["toggle", "start", "stop", "pause"]) => bail!("Mode OBS invalide"),
+            Step::ObsStream { mode } | Step::ObsVirtualCam { mode } if !obs_mode(mode, &["toggle", "start", "stop"]) => bail!("Mode OBS invalide"),
+            Step::ObsReplay { mode } if !obs_mode(mode, &["toggle", "start", "stop", "save"]) => bail!("Mode replay invalide"),
             Step::Delay { ms } if *ms > 3_600_000 => bail!("Pause supérieure à une heure"),
             Step::Hotkey { keys } => {
                 parse_hotkey(keys)?;
@@ -682,6 +718,7 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
     }
     Ok(())
 }
+fn obs_mode(mode: &str, valid: &[&str]) -> bool { valid.contains(&mode) }
 fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> {
     anyhow::ensure!(depth <= 8, "8 niveaux de blocs maximum");
     *total += steps.len();
