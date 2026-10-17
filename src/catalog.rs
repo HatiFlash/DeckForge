@@ -280,6 +280,7 @@ pub fn action(kind: usize, profile: &str) -> Key {
             2 => Step::Launch {
                 program: "explorer.exe".into(),
                 args: vec![],
+                focus_if_running: false,
             },
             3 => Step::Url {
                 url: "https://example.com".into(),

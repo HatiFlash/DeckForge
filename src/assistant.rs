@@ -290,7 +290,7 @@ fn describe(key: &Key) -> String {
     for (i, step) in key.steps.iter().enumerate() {
         let detail=match step{
         Step::Delay{ms}=>format!("Attendre {ms} ms"),Step::Hotkey{keys}=>format!("Raccourci : {keys}"),Step::Text{text}=>format!("Saisir ce texte :\n{text}"),
-        Step::Launch{program,args}=>format!("Ouvrir : {program}\nArguments : {}",args.join(" | ")),Step::Url{url}=>format!("Ouvrir le site : {url}"),
+        Step::Launch{program,args,..}=>format!("Ouvrir : {program}\nArguments : {}",args.join(" | ")),Step::Url{url}=>format!("Ouvrir le site : {url}"),
         Step::WaitWindow{title,timeout_ms,focus}=>format!("Attendre une fenêtre contenant « {title} » ({timeout_ms} ms maximum)\nMettre au premier plan : {}",if *focus{"oui"}else{"non"}),
         Step::Media{command}=>format!("Média / volume : {command}"),Step::Profile{name}=>format!("Passer au profil : {name}"),Step::Page{id}=>format!("Aller à la page : {id}"),Step::Folder{id}=>format!("Ouvrir le dossier : {id}"),Step::Back=>"Retour au dossier précédent".into(),Step::PageNext=>"Page suivante".into(),Step::PagePrevious=>"Page précédente".into(), _=>serde_json::to_string_pretty(step).unwrap_or_default()};
         text.push_str(&format!("{:02}. {detail}\n\n", i + 1));

@@ -9,7 +9,7 @@ pub fn tools() -> Value {
         {"type":"object","properties":{"type":{"const":"delay"},"ms":{"type":"integer","minimum":0,"maximum":3600000}},"required":["type","ms"],"additionalProperties":false},
         {"type":"object","properties":{"type":{"const":"hotkey"},"keys":{"type":"string"}},"required":["type","keys"],"additionalProperties":false},
         {"type":"object","properties":{"type":{"const":"text"},"text":{"type":"string","maxLength":100000}},"required":["type","text"],"additionalProperties":false},
-        {"type":"object","properties":{"type":{"const":"launch"},"program":{"type":"string"},"args":{"type":"array","items":{"type":"string"},"maxItems":128}},"required":["type","program","args"],"additionalProperties":false},
+        {"type":"object","properties":{"type":{"const":"launch"},"program":{"type":"string"},"args":{"type":"array","items":{"type":"string"},"maxItems":128},"focus_if_running":{"type":"boolean"}},"required":["type","program","args"],"additionalProperties":false},
         {"type":"object","properties":{"type":{"const":"url"},"url":{"type":"string"}},"required":["type","url"],"additionalProperties":false},
         {"type":"object","properties":{"type":{"const":"wait_window"},"title":{"type":"string"},"timeout_ms":{"type":"integer","minimum":100,"maximum":3600000},"focus":{"type":"boolean"}},"required":["type","title","timeout_ms","focus"],"additionalProperties":false},
         {"type":"object","properties":{"type":{"const":"media"},"command":{"enum":["play_pause","next","previous","stop","mute","volume_up","volume_down"]}},"required":["type","command"],"additionalProperties":false},

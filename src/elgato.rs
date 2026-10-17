@@ -401,6 +401,7 @@ fn convert_action(a: &Value, ids: &HashMap<String, String>, depth: usize) -> Res
             vec![Step::Launch {
                 program: path.into(),
                 args: vec![],
+                focus_if_running: false,
             }]
         }
         "com.elgato.streamdeck.profile.openchild" => {
