@@ -113,7 +113,7 @@ fn template(index: usize) -> Vec<Step> {
     }
 }
 fn template_menu(ui: &mut egui::Ui, choice: &mut Option<usize>) {
-    ui.menu_button("Partir d'un modèle", |ui| {
+    ui.menu_button("Modèles", |ui| {
         for (i, name) in TEMPLATE_NAMES.iter().enumerate() {
             if ui.button(*name).clicked() { *choice = Some(i); ui.close_menu(); }
         }
@@ -501,16 +501,23 @@ impl App {
             }
             ui.label(RichText::new("Construis ton automatisation").size(23.0).strong());
             ui.label("Assemble les blocs de haut en bas. Les variables sont propres à chaque exécution.");
-            ui.horizontal(|ui| {
-                ui.label("Mode de l'atelier :");
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Mode :");
                 if ui.selectable_value(&mut self.preferences.workshop_advanced, false, "Simple").changed() { self.save_preferences(); }
+                ui.label("|");
                 if ui.selectable_value(&mut self.preferences.workshop_advanced, true, "Avancé").changed() { self.save_preferences(); }
-            });
-            if self.config.keys()[self.selected].steps.is_empty() {
                 template_menu(ui, &mut template_choice);
-            } else {
-                ui.menu_button("Modèles", |ui| template_menu(ui, &mut template_choice));
-            }
+                if ui.button("Créer avec mon IA").clicked() { self.assistant_settings = true; }
+                if ui.add(egui::Button::new("Simuler les blocs").fill(BLUE)).clicked() {
+                    if validate_key(&self.config.keys()[self.selected], &self.config).is_ok() {
+                        let trace = simulation_trace(&self.config.keys()[self.selected].steps);
+                        ctx.data_mut(|d| d.insert_temp(trace_id, trace.iter().map(|line| (line.path.clone(), line.text.clone())).collect::<Vec<_>>()));
+                    } else { ctx.data_mut(|d| d.remove::<Vec<(Vec<usize>, String)>>(trace_id)); }
+                    self.preview(true);
+                }
+                if ui.button("Tester dans 3 s").on_hover_text("Exécute réellement la macro sur le PC dans 3 secondes").clicked() { self.preview(false); }
+                if self.preferences.workshop_advanced && ui.button("Exporter AHK").clicked() { export = true; }
+            });
             if let Some(index) = template_choice {
                 let existing = self.config.keys()[self.selected].steps.len();
                 if existing == 0 { template_action = Some((index, false)); }
@@ -521,13 +528,6 @@ impl App {
                     });
                 }
             }
-            ui.horizontal(|ui|{if ui.button("Créer avec mon IA").clicked(){self.assistant_settings=true;}if ui.add(egui::Button::new("Simuler les blocs").fill(BLUE)).clicked(){
-                if validate_key(&self.config.keys()[self.selected], &self.config).is_ok() {
-                    let trace = simulation_trace(&self.config.keys()[self.selected].steps);
-                    ctx.data_mut(|d| d.insert_temp(trace_id, trace.iter().map(|line| (line.path.clone(), line.text.clone())).collect::<Vec<_>>()));
-                } else { ctx.data_mut(|d| d.remove::<Vec<(Vec<usize>, String)>>(trace_id)); }
-                self.preview(true);
-            }if ui.button("Tester dans 3 s").on_hover_text("Exécute réellement la macro sur le PC dans 3 secondes").clicked(){self.preview(false);}if self.preferences.workshop_advanced && ui.button("Exporter en AutoHotkey v2…").clicked(){export=true;}});
             if !self.engine.running.load(Ordering::SeqCst){self.running_block.clear();}
             let validation_config = self.config.clone();
             let profiles=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();let pages=self.config.profiles[self.config.active].pages.clone();let selected=self.selected;let target=(self.config.active,self.config.page.clone(),selected);let dialog_tx=self.dialog_tx.clone();
