@@ -16,17 +16,61 @@ const SHOW: u32 = WM_APP + 42;
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(Some(0)).collect()
 }
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Trigger {
     pub profile: String,
-    #[serde(default)]
-    pub page: String,
+    #[serde(default)] pub page: String,
     pub key: usize,
-    pub keys: String,
+    #[serde(default)] pub keys: String,
+    #[serde(default = "hotkey_kind")] pub kind: String,
+    #[serde(default)] pub value: String,
+    #[serde(default)] pub days: Vec<u8>, // 0 = dimanche, 6 = samedi ; vide = chaque jour
+    #[serde(default)] pub minutes: u32,
+    #[serde(default)] pub input: bool,
 }
+fn hotkey_kind() -> String { "hotkey".into() }
+impl Trigger {
+    pub fn hotkey(profile: String, page: String, key: usize, keys: String) -> Self {
+        Self { profile, page, key, keys, kind: hotkey_kind(), value: String::new(), days: vec![], minutes: 0, input: false }
+    }
+    pub fn validate(&self) -> Result<()> {
+        anyhow::ensure!(self.key < 15 && !self.profile.trim().is_empty() && self.profile.len() <= 128 && self.page.len() <= 128, "Destination du déclencheur invalide");
+        match self.kind.as_str() {
+            "hotkey" => { chord(&self.keys)?; }
+            "app_open" | "app_close" => anyhow::ensure!(self.value.len() <= 128 && crate::conditions::valid_exe(&self.value), "Exécutable du déclencheur invalide"),
+            "audio_connect" | "audio_disconnect" => anyhow::ensure!(!self.value.trim().is_empty() && self.value.len() <= 256 && !self.value.chars().any(char::is_control), "Nom de périphérique invalide"),
+            "clock" => {
+                let bytes = self.value.as_bytes();
+                anyhow::ensure!(bytes.len() == 5 && bytes[2] == b':' && [0, 1, 3, 4].iter().all(|&i| bytes[i].is_ascii_digit()) && self.value[0..2].parse::<u8>().unwrap() < 24 && self.value[3..5].parse::<u8>().unwrap() < 60 && self.days.len() <= 7 && self.days.iter().all(|d| *d <= 6) && { let mut d = self.days.clone(); d.sort(); d.dedup(); d.len() == self.days.len() }, "Heure ou jours invalides (HH:MM, dimanche = 0)");
+            }
+            "timer" => anyhow::ensure!((1..=1440).contains(&self.minutes), "Minuteur : 1 à 1440 minutes"),
+            _ => anyhow::bail!("Type de déclencheur inconnu"),
+        }
+        Ok(())
+    }
+    pub fn description(&self) -> String {
+        match self.kind.as_str() {
+            "app_open" => format!("ouverture de {}", self.value), "app_close" => format!("fermeture de {}", self.value),
+            "audio_connect" => format!("branchement audio {}", self.value), "audio_disconnect" => format!("débranchement audio {}", self.value),
+            "clock" => format!("{} (jours : {})", self.value, if self.days.is_empty() { "tous".into() } else { self.days.iter().map(u8::to_string).collect::<Vec<_>>().join(",") }),
+            "timer" => format!("toutes les {} minutes", self.minutes), _ => format!("raccourci {}", self.keys),
+        }
+    }
+}
+/// Transition pure : aucune émission lors du premier échantillon (baseline).
+pub fn transition(kind: &str, before: Option<bool>, now: bool) -> bool {
+    match kind { "app_open" | "audio_connect" => before == Some(false) && now,
+        "app_close" | "audio_disconnect" => before == Some(true) && !now, _ => false }
+}
+pub fn clock_transition(before: Option<(u16,u16,u16,u16,u16)>, now: (u16,u16,u16,u16,u16), weekday: u8, trigger: &Trigger) -> bool {
+    before.is_some_and(|old| old != now) && (trigger.days.is_empty() || trigger.days.contains(&weekday))
+        && trigger.value == format!("{:02}:{:02}", now.3, now.4)
+}
+pub fn timer_due(elapsed: Duration, minutes: u32) -> bool { minutes > 0 && elapsed >= Duration::from_secs(u64::from(minutes) * 60) }
 pub enum Command {
     Hotkeys(Vec<(usize, String)>),
+    Triggers(Vec<Trigger>),
     Window(isize),
     Notify(String, String),
     Stop,
@@ -235,10 +279,21 @@ pub fn spawn(tx: Sender<Event>, ctx: eframe::egui::Context) -> Desktop {
         let mut last_foreground = None;
         let mut last_scan = Instant::now() - Duration::from_secs(1);
         let mut stop = false;
+        let mut triggers: Vec<Trigger> = Vec::new();
+        let mut baselines: Vec<Option<bool>> = Vec::new();
+        let mut timers: Vec<Instant> = Vec::new();
+        let mut last_clock: Option<(u16,u16,u16,u16,u16)> = None;
+        let mut last_trigger_scan = Instant::now();
         while !stop {
             while let Ok(command) = rx.try_recv() {
                 match command {
                     Command::Window(window) => state.main.set(window),
+                    Command::Triggers(next) => {
+                        triggers = next.into_iter().filter(|t| t.kind != "hotkey" && t.validate().is_ok()).collect();
+                        baselines = vec![None; triggers.len()];
+                        timers = vec![Instant::now(); triggers.len()];
+                        last_clock = None;
+                    },
                     Command::Notify(title, message) => {
                         let mut balloon = state.icon;
                         balloon.uFlags = NIF_INFO;
@@ -281,6 +336,36 @@ pub fn spawn(tx: Sender<Event>, ctx: eframe::egui::Context) -> Desktop {
                         state.send(Event::Foreground(Some(exe)));
                     }
                 }
+            }
+            if !triggers.is_empty() && last_trigger_scan.elapsed() >= Duration::from_secs(1) {
+                last_trigger_scan = Instant::now();
+                let processes = if triggers.iter().any(|t| t.kind.starts_with("app_")) {
+                    crate::conditions::running_processes().ok()
+                } else { None };
+                let audio = if triggers.iter().any(|t| t.kind.starts_with("audio_")) {
+                    crate::audio::snapshot().ok()
+                } else { None };
+                let mut local: windows_sys::Win32::Foundation::SYSTEMTIME = std::mem::zeroed();
+                windows_sys::Win32::System::SystemInformation::GetLocalTime(&mut local);
+                let clock = (local.wYear, local.wMonth, local.wDay, local.wHour, local.wMinute);
+                for (i, trigger) in triggers.iter().enumerate() {
+                    let present = match trigger.kind.as_str() {
+                        "app_open" | "app_close" => processes.as_ref().map(|list| list.iter().any(|(_, exe)| exe.eq_ignore_ascii_case(&trigger.value))),
+                        "audio_connect" | "audio_disconnect" => audio.as_ref().map(|s| s.devices.iter().any(|d| d.input == trigger.input && d.name.to_lowercase().contains(&trigger.value.to_lowercase()))),
+                        _ => None,
+                    };
+                    let fired = if let Some(present) = present {
+                        let fire = transition(&trigger.kind, baselines[i], present);
+                        baselines[i] = Some(present);
+                        fire
+                    } else if trigger.kind == "clock" {
+                        clock_transition(last_clock, clock, local.wDayOfWeek as u8, trigger)
+                    } else if trigger.kind == "timer" && timer_due(timers[i].elapsed(), trigger.minutes) {
+                        timers[i] = Instant::now(); true
+                    } else { false };
+                    if fired { state.send(Event::Automatic(trigger.clone(), Instant::now())); }
+                }
+                last_clock = Some(clock);
             }
             let mut msg: MSG = std::mem::zeroed();
             while PeekMessageW(&mut msg, hwnd, 0, 0, PM_REMOVE) != 0 {
@@ -346,6 +431,38 @@ pub fn startup(enable: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn automatic_transitions_and_legacy_preferences() {
+        let old = r#"{"profile":"Défaut","page":"","key":2,"keys":"CTRL+ALT+F9"}"#;
+        let legacy: Trigger = serde_json::from_str(old).unwrap();
+        assert_eq!(legacy.kind, "hotkey");
+        assert!(legacy.validate().is_ok());
+        assert_eq!(serde_json::from_str::<Trigger>(&serde_json::to_string(&legacy).unwrap()).unwrap(), legacy);
+        assert!(serde_json::from_str::<Trigger>(r#"{"profile":"P","key":0,"keys":"CTRL+A","extra":true}"#).is_err());
+        assert!(!transition("app_open", None, true));
+        assert!(transition("app_open", Some(false), true));
+        assert!(!transition("app_open", Some(true), true));
+        assert!(transition("app_close", Some(true), false));
+        assert!(transition("audio_connect", Some(false), true));
+        assert!(transition("audio_disconnect", Some(true), false));
+        let mut clock = Trigger::hotkey("P".into(), String::new(), 2, String::new());
+        clock.kind = "clock".into(); clock.value = "13:05".into(); clock.days = vec![1, 3];
+        assert!(clock.validate().is_ok());
+        let minute = (2026, 10, 19, 13, 5);
+        assert!(!clock_transition(None, minute, 1, &clock));
+        assert!(!clock_transition(Some(minute), minute, 1, &clock));
+        assert!(!clock_transition(Some((2026, 10, 19, 13, 4)), minute, 2, &clock));
+        assert!(clock_transition(Some((2026, 10, 19, 13, 4)), minute, 1, &clock));
+        clock.value = "25:00".into(); assert!(clock.validate().is_err());
+        clock.value = "13:05".into(); clock.days = vec![7]; assert!(clock.validate().is_err());
+        let mut timer = Trigger::hotkey("P".into(), String::new(), 2, String::new());
+        timer.kind = "timer".into(); timer.minutes = 5;
+        assert!(timer.validate().is_ok());
+        assert!(!timer_due(Duration::from_secs(299), timer.minutes));
+        assert!(timer_due(Duration::from_secs(300), timer.minutes));
+        timer.minutes = 0; assert!(timer.validate().is_err());
+        timer.kind = "app_open".into(); timer.value = "bad/path.exe".into(); assert!(timer.validate().is_err());
+    }
     #[test]
     fn global_hotkeys_require_one_main_key_and_reject_reserved_keys() {
         assert!(chord("CTRL+ALT+F9").is_ok());

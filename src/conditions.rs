@@ -53,7 +53,7 @@ pub fn compare_variable(actual: &str, op: &str, value: &str) -> bool {
 pub fn decide_not(value: bool) -> bool { !value }
 pub fn decide_all(values: &[bool]) -> bool { values.iter().all(|&v| v) }
 pub fn decide_any(values: &[bool]) -> bool { values.iter().any(|&v| v) }
-fn valid_exe(exe: &str) -> bool {
+pub(crate) fn valid_exe(exe: &str) -> bool {
     exe.len() <= 260 && exe.trim() == exe && exe.to_ascii_lowercase().ends_with(".exe")
         && !exe.contains(['/', '\\']) && !exe.chars().any(char::is_control)
 }
@@ -112,7 +112,7 @@ pub fn running_exes() -> Vec<String> {
     let mut names: Vec<_> = running_processes().unwrap_or_default().into_iter().map(|(_, n)| n).collect();
     names.sort_by_key(|s| s.to_lowercase()); names.dedup_by(|a, b| a.eq_ignore_ascii_case(b)); names
 }
-fn running_processes() -> Result<Vec<(u32, String)>> {
+pub(crate) fn running_processes() -> Result<Vec<(u32, String)>> {
     unsafe {
         let handle = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if handle.is_null() || handle as isize == -1 { bail!("Lecture des processus Windows impossible"); }

@@ -4,6 +4,12 @@ Point de reprise après la session Claude du 17/10/2026. Version de travail : br
 
 Exécutables prêts sur le PC fixe : `Bureau\DeckForge-0.5-fusion\DeckForge.exe` (+ `deckforge-mcp.exe`, config, assets, `plugins\`). Version d'essai plugins seule : `Bureau\DeckForge-plugins-test`.
 
+## E1 — Déclencheurs automatiques (17/10/2026)
+
+- Livré : ouverture/fermeture d’application, heure fixe avec jours, minuteur, branchement/débranchement de périphérique audio ; ajout et suppression dans « Windows et raccourcis », destination profil/page/touche conservée. Surveillance hors verrou, une seconde, sans action au démarrage ; pause globale respectée.
+- Testé automatiquement : transitions pures et compatibilité des anciennes préférences ; build complet Windows.
+- À tester avec Hatim : vrais lancements/fermetures d’application, connexion/déconnexion d’un périphérique audio, heure locale et passage de minute, pause globale et fonctionnement sans D6. Aucun test automatisé ne déclenche de macro réelle.
+
 ## Blocs de l'Atelier — lot A
 
 - Livré et testé (automatique) : `device_volume`, contrôle du périphérique de sortie ou d'entrée Core Audio, liste des périphériques actifs, simulation sans effet, cinq modèles audio et schéma MCP.

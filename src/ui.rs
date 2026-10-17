@@ -189,6 +189,11 @@ pub struct App {
     icon_pack: String,
     asset_tab: usize,
     trigger_recording: bool,
+    trigger_kind: String,
+    trigger_value: String,
+    trigger_days: Vec<u8>,
+    trigger_minutes: u32,
+    trigger_input: bool,
     icon_target: Option<icon_ui::Target>,
     icon_selected: Option<PathBuf>,
     icon_notice: String,
@@ -367,12 +372,20 @@ impl App {
             icon_pack: String::new(),
             asset_tab: 0,
             trigger_recording: false,
+            trigger_kind: "app_open".into(),
+            trigger_value: "obs64.exe".into(),
+            trigger_days: vec![],
+            trigger_minutes: 5,
+            trigger_input: false,
             icon_target: None,
             icon_selected: None,
             icon_notice: String::new(),
             assistant_request: String::new(),
             flicker: None, flicker_path: None, diagnostic_deck: None, diagnostic_inspector: None, diagnostic_key_width: 0.0,
         };
+        if let Some(desktop) = &app.desktop {
+            let _ = desktop.tx.send(crate::desktop::Command::Triggers(app.preferences.triggers.clone()));
+        }
         if let Some(e) = load_error {
             app.fail(e);
         } else if (!ui_test && !smoke) || (!isolated && std::env::args().any(|a| a == "--connect"))
@@ -584,6 +597,23 @@ impl App {
                     self.audio = snapshot;
                     if changed && self.wanted && !self.gate.dirty {
                         self.upload(false);
+                    }
+                }
+                Event::Automatic(trigger, at) => {
+                    if at.elapsed() < Duration::from_secs(3) && self.gate.enabled
+                        && !self.gate.invalid && !self.gate.dirty && !self.trigger_recording
+                        && self.recording.is_none() && self.engine.allows_global_press(at)
+                        && self.preferences.triggers.contains(&trigger)
+                    {
+                        if let Some(profile) = self.config.profiles.iter().find(|p| p.name == trigger.profile) {
+                            if let Some(key) = profile.keys_at(&trigger.page).and_then(|keys| keys.get(trigger.key)) {
+                                let mut key = key.clone();
+                                key.runtime_id = Some(crate::engine::identity(&trigger.profile, &trigger.page, trigger.key));
+                                self.log(format!("Déclencheur : {} → touche {}", trigger.description(), trigger.key + 1));
+                                let config = self.config.clone();
+                                self.execute_key(key, false, false, &config);
+                            }
+                        }
                     }
                 }
                 Event::Hotkey(index, at) => {
@@ -1682,7 +1712,12 @@ impl App {
             .preferences
             .save(&self.path.with_file_name("preferences.json"))
         {
-            Ok(()) => true,
+            Ok(()) => {
+                if let Some(desktop) = &self.desktop {
+                    let _ = desktop.tx.send(crate::desktop::Command::Triggers(self.preferences.triggers.clone()));
+                }
+                true
+            },
             Err(e) => {
                 self.fail(format!("Enregistrement de Mes binds impossible : {e}"));
                 false

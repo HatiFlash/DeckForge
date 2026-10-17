@@ -448,7 +448,7 @@ impl Preferences {
         ensure!(data.len() <= 8_000_000, "Préférences trop volumineuses");
         let p: Self = serde_json::from_slice(&data)?;
         ensure!(
-            p.library.schema == 1 && p.library.binds.len() <= 128 && p.triggers.len() <= 256,
+            p.library.schema == 1 && p.library.binds.len() <= 128 && p.triggers.len() <= 256 && p.triggers.iter().all(|t| t.validate().is_ok()),
             "Bibliothèque invalide"
         );
         Ok(p)

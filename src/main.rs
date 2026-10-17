@@ -55,6 +55,7 @@ pub enum Event {
     Toggle,
     Quit,
     Hotkey(usize, std::time::Instant),
+    Automatic(desktop::Trigger, std::time::Instant),
     Key(usize, std::time::Instant),
     KeyRelease(usize, std::time::Instant),
     Device(bool, String),

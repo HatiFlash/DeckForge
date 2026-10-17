@@ -536,7 +536,7 @@ impl App {
                 .preferences
                 .triggers
                 .iter()
-                .filter(|t| &t.profile == name && t.page == self.config.page && t.key < 15)
+                .filter(|t| t.kind == "hotkey" && &t.profile == name && t.page == self.config.page && t.key < 15)
                 .map(|t| (t.key, t.keys.clone()))
                 .collect();
             let _ = desktop.tx.send(crate::desktop::Command::Hotkeys(bindings));
@@ -774,12 +774,57 @@ impl App {
             ui.separator();ui.label(RichText::new(format!("Raccourci global · touche {:02}",self.selected+1)).strong());
             ui.label("Actif sur la page actuellement ouverte. Les raccourcis restent disponibles sans D6 branché.");
             let name=self.config.profiles[self.config.active].name.clone();let page=self.config.page.clone();let key=self.selected;
-            let index=self.preferences.triggers.iter().position(|t|t.profile==name&&t.page==page&&t.key==key);
+            let index=self.preferences.triggers.iter().position(|t|t.kind=="hotkey"&&t.profile==name&&t.page==page&&t.key==key);
             let mut text=index.map(|i|self.preferences.triggers[i].keys.clone()).unwrap_or_default();
             ui.horizontal(|ui|{if ui.text_edit_singleline(&mut text).changed(){hotkeys=true;}if ui.button("Enregistrer…").clicked(){capture=true;}});
             if !text.is_empty() { match crate::desktop::chord(&text) { Ok(_) => {}, Err(e) => { ui.colored_label(Color32::LIGHT_RED,e.to_string()); } } }
             ui.label(RichText::new("Exemple : CTRL+ALT+F9. Vide le champ pour désactiver. Windows signale les combinaisons déjà utilisées dans le journal.").small());
-            if hotkeys {if let Some(i)=index {if text.is_empty(){self.preferences.triggers.remove(i);}else{self.preferences.triggers[i].keys=text;}}else if !text.is_empty()&&self.preferences.triggers.len()<256{self.preferences.triggers.push(crate::desktop::Trigger{profile:name,page,key,keys:text});}changed=true;}
+            if hotkeys {if let Some(i)=index {if text.is_empty(){self.preferences.triggers.remove(i);}else{self.preferences.triggers[i].keys=text;}}else if !text.is_empty()&&self.preferences.triggers.len()<256{self.preferences.triggers.push(crate::desktop::Trigger::hotkey(name.clone(),page.clone(),key,text));}changed=true;}
+            ui.separator();
+            ui.label(RichText::new("Déclencheurs automatiques").strong());
+            ui.label("Surveillance toutes les secondes, sans action au démarrage. La pause globale bloque également ces déclencheurs.");
+            egui::ComboBox::from_id_salt("automatic_trigger_kind").selected_text(match self.trigger_kind.as_str() {
+                "app_open" => "Ouverture d’application", "app_close" => "Fermeture d’application",
+                "clock" => "Heure fixe", "timer" => "Minuteur",
+                "audio_connect" => "Branchement audio", _ => "Débranchement audio",
+            }).show_ui(ui, |ui| {
+                for (kind, label) in [("app_open", "Ouverture d’application"), ("app_close", "Fermeture d’application"), ("clock", "Heure fixe"), ("timer", "Minuteur"), ("audio_connect", "Branchement audio"), ("audio_disconnect", "Débranchement audio")] {
+                    ui.selectable_value(&mut self.trigger_kind, kind.into(), label);
+                }
+            });
+            match self.trigger_kind.as_str() {
+                "timer" => { ui.horizontal(|ui| { ui.label("Toutes les (minutes)"); ui.add(egui::DragValue::new(&mut self.trigger_minutes).range(1..=1440)); }); },
+                "clock" => {
+                    ui.horizontal(|ui| { ui.label("Heure HH:MM"); ui.text_edit_singleline(&mut self.trigger_value); });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Jours (aucun = tous) :");
+                        for (d, label) in ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"].iter().enumerate() {
+                            let mut selected = self.trigger_days.contains(&(d as u8));
+                            if ui.checkbox(&mut selected, *label).changed() {
+                                if selected { self.trigger_days.push(d as u8); } else { self.trigger_days.retain(|&n| n != d as u8); }
+                            }
+                        }
+                    });
+                },
+                _ => {
+                    ui.horizontal(|ui| { ui.label(if self.trigger_kind.starts_with("app_") { "Nom .exe" } else { "Nom contient" }); ui.text_edit_singleline(&mut self.trigger_value); });
+                    if self.trigger_kind.starts_with("audio_") { ui.checkbox(&mut self.trigger_input, "Périphérique d’entrée (microphone)"); }
+                }
+            }
+            if ui.add(crate::theme::secondary_button(format!("Ajouter → touche {:02} (profil et page actuels)", key + 1))).clicked() {
+                let trigger = crate::desktop::Trigger { profile: name.clone(), page: page.clone(), key, keys: String::new(), kind: self.trigger_kind.clone(), value: self.trigger_value.clone(), days: self.trigger_days.clone(), minutes: self.trigger_minutes, input: self.trigger_input };
+                if let Err(e) = trigger.validate() { self.fail(format!("Déclencheur : {e}")); }
+                else if self.preferences.triggers.len() >= 256 { self.fail("256 déclencheurs maximum".into()); }
+                else { self.preferences.triggers.push(trigger); changed = true; }
+            }
+            let mut remove = None;
+            for (i, trigger) in self.preferences.triggers.iter().enumerate().filter(|(_, t)| t.kind != "hotkey") {
+                ui.horizontal(|ui| {
+                    ui.label(format!("{} → {} / {} / touche {:02}", trigger.description(), trigger.profile, if trigger.page.is_empty() { "Accueil" } else { &trigger.page }, trigger.key + 1));
+                    if ui.add(crate::theme::danger_button("Supprimer")).clicked() { remove = Some(i); }
+                });
+            }
+            if let Some(i) = remove { self.preferences.triggers.remove(i); changed = true; }
             if self.trigger_recording{ui.colored_label(BLUE,"Appuie sur la combinaison souhaitée…");if ui.button("Annuler").clicked(){self.trigger_recording=false;self.refresh_hotkeys();}}
         });
         self.show_desktop_settings = open;
@@ -824,16 +869,11 @@ impl App {
                         .preferences
                         .triggers
                         .iter_mut()
-                        .find(|t| t.profile == name && t.page == page && t.key == key)
+                        .find(|t| t.kind == "hotkey" && t.profile == name && t.page == page && t.key == key)
                     {
                         t.keys = keys;
                     } else if self.preferences.triggers.len() < 256 {
-                        self.preferences.triggers.push(crate::desktop::Trigger {
-                            profile: name,
-                            page,
-                            key,
-                            keys,
-                        });
+                        self.preferences.triggers.push(crate::desktop::Trigger::hotkey(name, page, key, keys));
                     }
                     self.trigger_recording = false;
                     if self.save_preferences() {
