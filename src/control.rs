@@ -2,17 +2,21 @@
 #[derive(Default, Debug)]
 pub struct LongPress {
     pending: [Option<std::time::Instant>; 15],
+    held: [bool; 15],
 }
 impl LongPress {
-    pub fn clear(&mut self) { self.pending.fill(None); }
+    pub fn clear(&mut self) { self.pending.fill(None); self.held.fill(false); }
     /// True means execute the ordinary binding immediately.
     pub fn press(&mut self, index: usize, at: std::time::Instant, has_long: bool) -> bool {
-        if !has_long { self.pending[index] = None; return true; }
-        if self.pending[index].is_none() { self.pending[index] = Some(at); }
+        if !has_long { self.pending[index] = None; self.held[index] = false; return true; }
+        if self.held[index] { return false; }
+        self.held[index] = true;
+        self.pending[index] = Some(at);
         false
     }
     /// Return whether the released binding is long; None for an unmatched release.
     pub fn release(&mut self, index: usize, at: std::time::Instant, threshold_ms: u64) -> Option<bool> {
+        self.held[index] = false;
         self.pending[index].take().map(|start| at.saturating_duration_since(start) >= std::time::Duration::from_millis(threshold_ms))
     }
     pub fn due(&mut self, now: std::time::Instant, threshold_ms: u64) -> Vec<usize> {
@@ -123,7 +127,11 @@ mod tests {
         assert_eq!(state.release(1, t + Duration::from_millis(500), 500), Some(true));
         assert!(!state.press(2, t, true));
         assert_eq!(state.due(t + Duration::from_millis(500), 500), vec![2]);
+        assert!(!state.press(2, t + Duration::from_millis(600), true));
+        assert!(state.due(t + Duration::from_millis(1200), 500).is_empty());
         assert_eq!(state.release(2, t + Duration::from_millis(800), 500), None);
+        assert!(!state.press(2, t + Duration::from_millis(900), true));
+        assert_eq!(state.due(t + Duration::from_millis(1400), 500), vec![2]);
         state.press(3, t, true);
         state.clear();
         assert!(state.due(t + Duration::from_secs(1), 500).is_empty());
