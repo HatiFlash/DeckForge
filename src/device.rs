@@ -11,6 +11,18 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Pure decision: no upload during apply, one frame per turn, fair round-robin.
+fn next_animation_frame(now: Instant, applying: bool, enabled: bool, fps: u8,
+    lengths: &[usize; 15], due: &[Instant; 15], last_per_key: &[Instant; 15],
+    last_global: Instant, cursor: usize) -> Option<usize> {
+    if applying || !enabled || now.saturating_duration_since(last_global) < Duration::from_millis(34) {
+        return None;
+    }
+    let interval = Duration::from_millis(1000 / fps.max(1) as u64);
+    (0..15).map(|n| (cursor + n) % 15).find(|&i| lengths[i] > 1
+        && now >= due[i] && now.saturating_duration_since(last_per_key[i]) >= interval)
+}
+
 pub enum Command {
     Connect(Config, u64),
     Update(Config, u64),
@@ -30,6 +42,14 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
     let mut retry = Instant::now();
     let mut beat = Instant::now();
     let mut last_press = [Instant::now() - Duration::from_secs(1); 15];
+    let (animation_tx, animation_rx) = mpsc::channel::<(u64, Vec<Vec<crate::key_render::AnimatedFrame>>)>() ;
+    let mut animation_generation = 0u64;
+    let mut animations: Vec<Vec<crate::key_render::AnimatedFrame>> = Vec::new();
+    let mut next_frame = [1usize; 15];
+    let mut due = [Instant::now(); 15];
+    let mut last_frame = Instant::now() - Duration::from_secs(1);
+    let mut last_per_key = [Instant::now() - Duration::from_secs(1); 15];
+    let mut cursor = 0usize;
     loop {
         let mut update = false;
         let mut brightness = None;
@@ -78,6 +98,10 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
             }
         }
         let mut failed = None;
+        if update || deck.is_none() {
+            animations.clear();
+            animation_generation = animation_generation.wrapping_add(1);
+        }
         if let Some(d) = &deck {
             if update {
                 match d.apply(&config) {
@@ -87,6 +111,17 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
                             format!("D6 connecté · 15 touches · rapports {} octets", d.packet),
                         ));
                         let _ = tx.send(Event::Applied(revision));
+                        if config.d6_animations && config.keys().iter().any(|k| k.image.to_ascii_lowercase().ends_with(".gif")) {
+                            let generation = animation_generation;
+                            let c = config.clone();
+                            let reply = animation_tx.clone();
+                            std::thread::spawn(move || {
+                                let rendered = crate::key_render::font().ok().map(|font| c.keys().iter()
+                                    .map(|key| crate::key_render::animated(key, c.image_size, &font).unwrap_or_default())
+                                    .collect::<Vec<_>>()).unwrap_or_default();
+                                let _ = reply.send((generation, rendered));
+                            });
+                        }
                         for warning in warnings {
                             let _ = tx.send(Event::Log(warning));
                         }
@@ -99,6 +134,13 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
                     if let Err(e) = d.command(&[b'L', b'I', b'G', 0, 0, value]) {
                         failed = Some(e.to_string());
                     }
+                }
+            }
+            while let Ok((generation, rendered)) = animation_rx.try_recv() {
+                if generation == animation_generation {
+                    animations = rendered;
+                    next_frame = [1; 15];
+                    due = [Instant::now(); 15];
                 }
             }
             if failed.is_none() && beat.elapsed() >= Duration::from_secs(8) {
@@ -130,6 +172,26 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
                     }
                     Err(e) => failed = Some(e.to_string()),
                     _ => {}
+                }
+            }
+            // Read HID before every animation frame; uploads never preempt a full apply.
+            let now = Instant::now();
+            let lengths = std::array::from_fn(|i| animations.get(i).map_or(0, Vec::len));
+            if let Some(index) = next_animation_frame(now, update || failed.is_some(),
+                config.d6_animations, config.animation_fps, &lengths, &due,
+                &last_per_key, last_frame, cursor) {
+                let frames = &animations[index];
+                let frame = &frames[next_frame[index] % frames.len()];
+                match d.send_frame(index, &frame.jpeg, frame_end()) {
+                    Ok(()) => {
+                        let sent = Instant::now();
+                        due[index] = sent + frame.delay.max(Duration::from_millis(1000 / config.animation_fps.max(1) as u64));
+                        last_per_key[index] = sent;
+                        next_frame[index] += 1;
+                        cursor = (index + 1) % 15;
+                        last_frame = sent;
+                    }
+                    Err(e) => failed = Some(e.to_string()),
                 }
             }
         } else {
@@ -255,7 +317,21 @@ struct Deck {
     packet: usize,
     rid: u8,
 }
+// Hardware hypothesis: a single BAT upload ends with STP, without CLE.
+// Change this constant to UlendStp if the D6 firmware requires the full terminator.
+#[derive(Clone, Copy)]
+enum FrameEnd { Stp, UlendStp }
+fn frame_end() -> FrameEnd {
+    if std::env::var_os("DECKFORGE_D6_FRAME_ULEND").is_some() { FrameEnd::UlendStp } else { FrameEnd::Stp }
+}
 impl Deck {
+    fn send_frame(&self, idx: usize, jpeg: &[u8], end: FrameEnd) -> Result<()> {
+        anyhow::ensure!(idx < 15 && jpeg.len() <= 65535, "Image JPEG trop lourde");
+        self.command(&[b'B', b'A', b'T', 0, 0, (jpeg.len() >> 8) as u8, jpeg.len() as u8, display_index(idx) as u8 + 1])?;
+        for chunk in jpeg.chunks(self.packet) { self.report(chunk)?; }
+        if matches!(end, FrameEnd::UlendStp) { self.command(b"ULEND")?; }
+        self.command(b"STP")
+    }
     fn open() -> Result<Self> {
         let api = HidApi::new()?;
         let info = api
@@ -526,5 +602,30 @@ mod tests {
             (1024, 1)
         );
         assert!(output_report(&[0x75]).is_err());
+    }
+}
+
+#[cfg(test)]
+mod animation_scheduler_tests {
+    use super::*;
+    #[test]
+    fn rate_limits_fairness_and_apply_barrier() {
+        let now = Instant::now();
+        let mut due = [now; 15];
+        let mut per_key = [now - Duration::from_secs(1); 15];
+        let mut lengths = [0; 15];
+        lengths[0] = 3; lengths[1] = 2;
+        let old = now - Duration::from_secs(1);
+        let choose = |time, apply, enabled, due: &[Instant;15], per: &[Instant;15], global, cursor|
+            next_animation_frame(time, apply, enabled, 12, &lengths, due, per, global, cursor);
+        assert_eq!(choose(now, false, true, &due, &per_key, old, 0), Some(0));
+        per_key[0] = now; due[0] = now + Duration::from_millis(84);
+        assert_eq!(choose(now + Duration::from_millis(33), false, true, &due, &per_key, now, 1), None);
+        assert_eq!(choose(now + Duration::from_millis(34), false, true, &due, &per_key, now, 1), Some(1));
+        assert_eq!(choose(now + Duration::from_millis(84), false, true, &due, &per_key, now, 0), Some(0));
+        assert_eq!(choose(now + Duration::from_millis(84), true, true, &due, &per_key, old, 0), None);
+        assert_eq!(choose(now + Duration::from_millis(84), false, false, &due, &per_key, old, 0), None);
+        due[1] = now; per_key[1] = now;
+        assert_eq!(choose(now + Duration::from_millis(84), false, true, &due, &per_key, old, 1), Some(1));
     }
 }

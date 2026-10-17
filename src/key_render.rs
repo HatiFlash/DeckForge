@@ -1,7 +1,8 @@
 //! Canonical LCD rendering. The editor previews the actual JPEG, in upright orientation.
 use ab_glyph::{Font, FontArc, PxScale, ScaleFont};
 use anyhow::{Context, Result};
-use image::{Rgb, RgbImage};
+use image::{AnimationDecoder, Rgb, RgbImage};
+use std::io::Cursor;
 use std::sync::OnceLock;
 
 pub fn font() -> Result<FontArc> {
@@ -99,19 +100,34 @@ pub fn for_device(
     }
 }
 pub fn jpeg(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8>> {
+    jpeg_with_frame(k, size, font, None)
+}
+
+fn jpeg_with_frame(k: &crate::model::Key, size: u32, font: &FontArc, frame: Option<&image::DynamicImage>) -> Result<Vec<u8>> {
     anyhow::ensure!((32..=512).contains(&size), "Taille LCD invalide");
     let background = if k.background { k.color } else { [0, 0, 0] };
     let mut image = RgbImage::from_pixel(size, size, Rgb(background));
     if !k.image.is_empty() {
         anyhow::ensure!(
-            std::fs::metadata(&k.image)?.len() <= 8_000_000,
+            std::fs::metadata(&k.image)?.len() <= if k.image.to_ascii_lowercase().ends_with(".gif") { 20_000_000 } else { 8_000_000 },
             "Image supérieure à 8 Mo"
         );
-        let icon = crate::assets::decode_image(&std::fs::read(&k.image)?, 512)
-            .with_context(|| format!("Image invalide pour {}", k.label))?
-            .resize_to_fill(size, size, image::imageops::FilterType::Lanczos3)
+        let source = match frame {
+            Some(frame) => frame.clone(),
+            None => crate::assets::decode_image(&std::fs::read(&k.image)?, 512)
+                .with_context(|| format!("Image invalide pour {}", k.label))?,
+        };
+        let icon = source.resize_to_fill(size, size, image::imageops::FilterType::Lanczos3)
             .into_rgba8();
-        for (target, source) in image.pixels_mut().zip(icon.pixels()) {
+        // At 100%, keep the original pixel path byte-for-byte identical.
+        let scaled = if k.icon_scale == 100 { icon } else {
+            let side = ((size as f32 * k.icon_scale.clamp(20, 200) as f32 / 100.0).round() as u32).max(1);
+            let resized = image::imageops::resize(&icon, side, side, image::imageops::FilterType::Lanczos3);
+            let mut canvas = image::RgbaImage::new(size, size);
+            image::imageops::overlay(&mut canvas, &resized, (size as i64 - side as i64) / 2, (size as i64 - side as i64) / 2);
+            canvas
+        };
+        for (target, source) in image.pixels_mut().zip(scaled.pixels()) {
             let alpha = source[3] as u32;
             for ch in 0..3 {
                 target[ch] =
@@ -122,7 +138,23 @@ pub fn jpeg(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8>>
     }
     let has_icon = k.image.is_empty() && !k.steps.is_empty();
     if has_icon {
-        crate::icons::draw(&mut image, crate::icons::kind(k));
+        if k.icon_scale == 100 {
+            crate::icons::draw(&mut image, crate::icons::kind(k));
+        } else {
+            let side = ((size as f32 * k.icon_scale.clamp(20, 200) as f32 / 100.0).round() as u32).max(32);
+            let mut overlay = RgbImage::from_pixel(side, side, Rgb(background));
+            crate::icons::draw(&mut overlay, crate::icons::kind(k));
+            let x0 = (size as i64 - side as i64) / 2;
+            let y0 = ((size as f32 * 0.29 - side as f32 * 0.29).round()) as i64;
+            for y in 0..size { for x in 0..size {
+                let sx = x as i64 - x0;
+                let sy = y as i64 - y0;
+                if sx >= 0 && sy >= 0 && sx < side as i64 && sy < side as i64 {
+                    let src = overlay.get_pixel(sx as u32, sy as u32);
+                    if src.0 != background { image.put_pixel(x, y, *src); }
+                }
+            }}
+        }
     }
     if !k.label.is_empty() {
         let scaled = font.as_scaled(PxScale::from(size as f32 * k.title_size as f32 / 100.0));
@@ -189,10 +221,89 @@ pub fn jpeg(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8>>
     Ok(bytes)
 }
 
+/// The same canonical JPEG path is used for the still preview, D6 upload and animation.
+pub struct AnimatedFrame {
+    pub jpeg: Vec<u8>,
+    pub delay: std::time::Duration,
+}
+pub fn animated(key: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<AnimatedFrame>> {
+    if !key.image.to_ascii_lowercase().ends_with(".gif") { return Ok(vec![]); }
+    let bytes = std::fs::read(&key.image)?;
+    anyhow::ensure!(bytes.len() <= 20_000_000, "GIF supérieur à 20 Mo");
+    let decoder = image::codecs::gif::GifDecoder::new(Cursor::new(bytes))?;
+    let mut frames = Vec::new();
+    let mut elapsed = 0u32;
+    let mut sampled = 0u32;
+    for frame in decoder.into_frames().take(151) {
+        let frame = frame?;
+        anyhow::ensure!(frames.len() < 150 || elapsed >= 10_000, "GIF supérieur à 150 images");
+        let (num, den) = frame.delay().numer_denom_ms();
+        let duration = num.checked_div(den).unwrap_or(100).max(20);
+        if elapsed >= 10_000 { break; }
+        elapsed = elapsed.saturating_add(duration);
+        if frames.is_empty() || elapsed.saturating_sub(sampled) >= 50 {
+            sampled = elapsed;
+            frames.push(AnimatedFrame {
+                jpeg: jpeg_with_frame(key, size, font, Some(&image::DynamicImage::ImageRgba8(frame.into_buffer())))?,
+                delay: std::time::Duration::from_millis(duration.max(50) as u64),
+            });
+        }
+    }
+    if frames.len() < 2 { frames.clear(); }
+    Ok(frames)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::{Key, Step};
+    #[test]
+    fn animated_gif_uses_the_canonical_jpeg_and_bounded_frames() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("two.gif");
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = image::codecs::gif::GifEncoder::new(&mut bytes);
+            encoder.set_repeat(image::codecs::gif::Repeat::Infinite).unwrap();
+            for color in [image::Rgba([255, 0, 0, 255]), image::Rgba([0, 255, 0, 255])] {
+                encoder.encode_frame(image::Frame::from_parts(
+                    image::RgbaImage::from_pixel(16, 16, color), 0, 0,
+                    image::Delay::from_numer_denom_ms(100, 1))).unwrap();
+            }
+        }
+        std::fs::write(&path, &bytes).unwrap();
+        let key = Key { image: path.to_string_lossy().into_owned(), icon_scale: 60, label: "GIF".into(), ..Key::default() };
+        let frames = animated(&key, 126, &font().unwrap()).unwrap();
+        assert_eq!(frames.len(), 2);
+        assert_ne!(frames[0].jpeg, frames[1].jpeg);
+        assert_eq!(frames[0].jpeg, jpeg(&key, 126, &font().unwrap()).unwrap());
+        let imported = crate::assets::import_image(&bytes, dir.path(), "two").unwrap();
+        assert_eq!(imported.extension().unwrap(), "gif");
+        assert_eq!(std::fs::read(imported).unwrap(), bytes);
+    }
+
+    #[test]
+    fn icon_scale_preserves_legacy_pixels_and_changes_image_and_symbol() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("icon.png");
+        let mut img = image::RgbaImage::from_pixel(32, 32, image::Rgba([255, 0, 0, 255]));
+        img.put_pixel(0, 0, image::Rgba([0, 255, 0, 255]));
+        img.save(&path).unwrap();
+        let mut key = Key { image: path.to_string_lossy().into_owned(), ..Key::default() };
+        let legacy: Key = serde_json::from_value(serde_json::to_value(&key).unwrap()).unwrap();
+        assert_eq!(legacy.icon_scale, 100);
+        let original = jpeg(&key, 126, &font().unwrap()).unwrap();
+        assert_eq!(original, jpeg(&legacy, 126, &font().unwrap()).unwrap());
+        key.icon_scale = 50;
+        assert_ne!(original, jpeg(&key, 126, &font().unwrap()).unwrap());
+        key.image.clear(); key.steps = vec![Step::Delay { ms: 1 }];
+        let small = jpeg(&key, 126, &font().unwrap()).unwrap();
+        key.icon_scale = 100;
+        assert_ne!(small, jpeg(&key, 126, &font().unwrap()).unwrap());
+        key.icon_scale = 19;
+        assert!(crate::model::Config::default().validate().is_ok());
+    }
+
     #[test]
     fn title_size_changes_canonical_jpeg_and_legacy_keeps_normal() {
         let mut key = Key { label: "Titre D6".into(), ..Key::default() };

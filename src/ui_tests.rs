@@ -1039,3 +1039,18 @@ fn duplicate_uses_next_empty_key_without_replacing_existing_keys() {
     assert_eq!(h.app.config.keys()[5].steps, h.app.config.keys()[0].steps);
     assert_eq!(h.app.config.keys()[1].label, "Lecture");
 }
+#[test]
+fn icon_scale_drag_shares_one_undo_entry_for_focused_field() {
+    let mut h = Harness::new();
+    let id = egui::Id::new("icon_scale_slider");
+    h.ctx.memory_mut(|m| m.request_focus(id));
+    let original = h.app.config.keys()[0].icon_scale;
+    for value in [110, 130, 160] {
+        let before = h.app.config.clone();
+        h.app.config.keys_mut()[0].icon_scale = value;
+        h.app.record_history(before, &h.ctx);
+    }
+    assert_eq!(h.app.history.len(), 1);
+    h.app.undo_edit();
+    assert_eq!(h.app.config.keys()[0].icon_scale, original);
+}

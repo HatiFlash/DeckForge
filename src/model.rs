@@ -123,6 +123,8 @@ pub struct Key {
     pub repeat: u32,
     #[serde(default = "default_title_size", skip_serializing_if = "is_default_title_size")]
     pub title_size: u8,
+    #[serde(default = "default_icon_scale", skip_serializing_if = "is_default_icon_scale")]
+    pub icon_scale: u8,
     pub steps: Vec<Step>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub long_steps: Vec<Step>,
@@ -138,6 +140,7 @@ impl Default for Key {
             image: String::new(),
             repeat: 1,
             title_size: 14,
+            icon_scale: 100,
             steps: vec![],
             long_steps: vec![],
             display_kind: None,
@@ -145,6 +148,9 @@ impl Default for Key {
     }
 }
 fn default_long_press_ms() -> u64 { 500 }
+fn default_animation_fps() -> u8 { 12 }
+fn default_icon_scale() -> u8 { 100 }
+fn is_default_icon_scale(value: &u8) -> bool { *value == 100 }
 fn default_title_size() -> u8 { 14 }
 fn is_default_title_size(value: &u8) -> bool { *value == 14 }
 fn default_background() -> bool {
@@ -224,6 +230,10 @@ pub struct Config {
     pub sleep_brightness: u8,
     #[serde(default = "default_long_press_ms")]
     pub long_press_ms: u64,
+    #[serde(default = "default_background")]
+    pub d6_animations: bool,
+    #[serde(default = "default_animation_fps")]
+    pub animation_fps: u8,
     pub active: usize,
     pub profiles: Vec<Profile>,
     // Firmware variants disagree on whether key input needs the display row flip.
@@ -285,6 +295,8 @@ impl Default for Config {
             sleep_after_min: 0,
             sleep_brightness: 0,
             long_press_ms: 500,
+            d6_animations: true,
+            animation_fps: 12,
             active: 0,
             profiles: vec![profile],
             flip_input_rows: false,
@@ -368,7 +380,7 @@ impl Config {
         if self.sleep_after_min > 240 || self.sleep_brightness > 100 {
             bail!("Réglages de veille invalides");
         }
-        if self.brightness > 100 || ![112, 126].contains(&self.image_size) {
+        if !(1..=15).contains(&self.animation_fps) || self.brightness > 100 || ![112, 126].contains(&self.image_size) {
             bail!("Réglages du D6 invalides");
         }
         let mut names = std::collections::HashSet::new();
@@ -557,6 +569,7 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
         validate_key(&long, config)?;
     }
     anyhow::ensure!((10..=20).contains(&key.title_size), "Taille du titre invalide");
+    anyhow::ensure!((20..=200).contains(&key.icon_scale), "Taille de l’icône invalide");
     if !(1..=1000).contains(&key.repeat) || key.steps.len() > 256 {
         bail!("Limite : 1000 répétitions, 256 étapes");
     }
@@ -716,9 +729,13 @@ mod tests {
         let key = legacy["profiles"][0]["keys"][0].as_object_mut().unwrap();
         key.remove("long_steps");
         key.remove("title_size");
+        key.remove("icon_scale");
         let restored: Config = serde_json::from_value(legacy).unwrap();
         assert_eq!(restored.long_press_ms, 500);
         assert_eq!(restored.keys()[0].title_size, 14);
+        assert_eq!(restored.keys()[0].icon_scale, 100);
+        assert!(restored.d6_animations);
+        assert_eq!(restored.animation_fps, 12);
         assert!(restored.keys()[0].long_steps.is_empty());
         c.long_press_ms = 249;
         assert!(c.validate().is_err());

@@ -1287,7 +1287,7 @@ impl App {
     }
     fn record_history(&mut self, before: Config, ctx: &egui::Context) {
         if self.replaying || serde_json::to_value(&before).ok() == serde_json::to_value(&self.config).ok() { return; }
-        let field = if ctx.wants_keyboard_input() { ctx.memory(|m| m.focused()) } else { None };
+        let field = ctx.memory(|m| m.focused());
         let grouped = field.is_some() && field == self.last_field && self.history_at.elapsed() < Duration::from_millis(800) && self.future.is_empty();
         if !grouped { self.history.push(before); if self.history.len() > 50 { self.history.remove(0); } }
         self.future.clear(); self.last_field = field; self.history_at = Instant::now();
@@ -1309,7 +1309,7 @@ impl App {
         if ctx.wants_keyboard_input() { return; }
         let pressed = |key| ctx.input(|i| i.modifiers.ctrl && !i.modifiers.alt && !i.modifiers.shift && i.key_pressed(key));
         if pressed(egui::Key::Z) { self.undo_edit(); } else if pressed(egui::Key::Y) { self.redo_edit(); }
-        else if self.show_workflow { return; }
+        else if self.show_workflow { }
         else if pressed(egui::Key::C) { self.copy_key(); } else if pressed(egui::Key::V) { self.paste_key(self.selected); }
         else if ctx.input(|i| !i.modifiers.ctrl && i.key_pressed(egui::Key::Delete)) { self.assign(DragItem::Bind(Key::default()), self.selected); }
     }
@@ -1614,7 +1614,7 @@ impl App {
             ui.separator();
             let long_editor = self.long_editor;
             let active=self.config.active; let names=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
-            let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let key=&mut self.config.keys_mut()[selected];
+            let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let image_size=self.config.image_size;let key=&mut self.config.keys_mut()[selected];
             let mut removed_step=false; let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut pick_audio=None;
             let width=ui.available_width(); let body_height=ui.available_height();
             ui.horizontal_top(|ui| {
@@ -1634,18 +1634,38 @@ impl App {
                         if actions.pick_file {
                             let profile=active;let page=page_id.clone();let index=selected;
                             let tx=self.dialog_tx.clone();
+                            let assets=self.path.parent().unwrap().join("assets/mes-icones");
+                            let size=image_size;
                             std::thread::spawn(move || {
-                                let path=rfd::FileDialog::new().add_filter("Image", &["png","jpg","jpeg","svg"]).pick_file();
-                                let _=tx.send(path.map(|path| Box::new(move |app: &mut App| {
-                                    if let Some(key)=app.config.profiles.get_mut(profile).and_then(|p|p.keys_at_mut(&page)).and_then(|keys|keys.get_mut(index)) {
-                                        key.image=path.to_string_lossy().into_owned();app.edited();
-                                    }
-                                }) as DialogEffect));
+                                let path=rfd::FileDialog::new().add_filter("Image ou vidéo", &["png","jpg","jpeg","svg","gif","mp4","webm","mov","mkv","avi"]).pick_file();
+                                if let Some(path) = path {
+                                    let video = crate::assets::is_video(&path);
+                                    if video { let _ = tx.send(Some(Box::new(|app: &mut App| app.log("Conversion de la vidéo…".into())) as DialogEffect)); }
+                                    let result = if video {
+                                        crate::assets::import_video(&path, &assets, size).map_err(|e| e.to_string())
+                                    } else { Ok(path) };
+                                    let _=tx.send(Some(Box::new(move |app: &mut App| match result {
+                                        Ok(path) => {
+                                            if let Some(key)=app.config.profiles.get_mut(profile).and_then(|p|p.keys_at_mut(&page)).and_then(|keys|keys.get_mut(index)) {
+                                                key.image=path.to_string_lossy().into_owned();app.edited();
+                                                if video { app.log("Vidéo convertie en GIF animé.".into()); }
+                                            }
+                                        }
+                                        Err(e) => app.fail(format!("Import vidéo impossible : {e}")),
+                                    }) as DialogEffect));
+                                }
                             });
                         }
                         if actions.clear {key.image.clear();changed=true;}
 
                         }
+                        ui.label("Taille de l’icône");
+                        ui.horizontal(|ui| {
+                            changed |= ui.add(egui::Slider::new(&mut key.icon_scale, 20..=200).suffix(" %")).changed();
+                            if ui.small_button("Réinitialiser").clicked() && key.icon_scale != 100 {
+                                key.icon_scale = 100; changed = true;
+                            }
+                        });
                         ui.horizontal(|ui|{ui.label("Répéter");changed|=ui.add(egui::DragValue::new(&mut key.repeat).range(1..=1000)).changed();ui.label("fois");});
                         ui.add_space(6.0);
                         ui.label(RichText::new("La simulation ne lance aucune action. Le test réel vise la fenêtre active.").size(10.0).color(p.muted));
@@ -2013,6 +2033,9 @@ impl App {
                     ui.add_space(8.0);
                     if ui.add(egui::Slider::new(&mut self.config.long_press_ms, 250..=2000).text("Appui long (ms)")).changed() { self.edited(); }
                     ui.label(RichText::new("Une touche avec appui long attend ce délai ; sans relâchement détecté, elle lance l’action longue.").small().color(p.muted));
+                    if ui.checkbox(&mut self.config.d6_animations, "Animations sur le D6").changed() { self.edited(); }
+                    if ui.add(egui::Slider::new(&mut self.config.animation_fps, 1..=15).text("Images/s max")).changed() { self.edited(); }
+                    ui.label(RichText::new("Animation des GIF : protocole à vérifier sur le matériel D6.").small().color(p.muted));
                     ui.add_space(16.0);
                     ui.label(RichText::new("Diagnostic des touches").strong());
                     if ui

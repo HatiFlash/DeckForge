@@ -551,7 +551,7 @@ pub fn symbol(p: &egui::Painter, c: egui::Pos2, size: f32, kind: usize, color: C
                 stroke,
             );
         }
-        9 | 10 | 11 => {
+        9..=11 => {
             p.add(egui::Shape::convex_polygon(
                 vec![
                     c + Vec2::new(-s * 0.85, -s * 0.3),

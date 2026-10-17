@@ -268,6 +268,11 @@ impl App {
                     let(r,response)=ui.allocate_exact_size(Vec2::new(82.0,88.0),egui::Sense::click());let path=icon.path.to_string_lossy().into_owned();
                     if let Some(texture)=texture(ctx,&path){ui.painter().image(texture.id(),egui::Rect::from_center_size(r.center_top()+Vec2::new(0.0,33.0),Vec2::splat(62.0)),egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(1.0,1.0)),Color32::WHITE);}
                     ui.painter().text(r.center_bottom(),egui::Align2::CENTER_BOTTOM,icon.name.chars().take(13).collect::<String>(),egui::FontId::proportional(10.0),theme::palette(ctx).ink);
+                    if icon.path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("gif")) {
+                        let badge=egui::Rect::from_min_size(r.left_top()+Vec2::new(4.0,4.0),Vec2::new(27.0,15.0));
+                        ui.painter().rect_filled(badge,3.0,BLUE);
+                        ui.painter().text(badge.center(),egui::Align2::CENTER_CENTER,"GIF",egui::FontId::proportional(10.0),Color32::WHITE);
+                    }
                     selection_border(ui,r,selected.as_deref()==Some(icon.path.as_path()),response.hovered());
                     if response.clicked(){choose=Some((path,icon.name.clone()));}response.on_hover_text(format!("{}\n{}",icon.name,icon.pack));
                 }});}});
@@ -312,19 +317,27 @@ impl App {
             });
         }
         if import {
-            let tx=self.dialog_tx.clone();let assets=self.path.parent().unwrap().join("assets");
+            let tx=self.dialog_tx.clone();let assets=self.path.parent().unwrap().join("assets/mes-icones");
+            let size=self.config.image_size;
             std::thread::spawn(move || {
                 let Some(path)=rfd::FileDialog::new()
-                    .add_filter("Pack d'icônes", &["zip","streamDeckIconPack","sdIconPack"])
+                    .add_filter("Images, vidéos et packs", &["png","jpg","jpeg","svg","gif","mp4","webm","mov","mkv","avi","zip","streamDeckIconPack","sdIconPack"])
                     .pick_file() else {return};
-                let result=crate::assets::import_pack(&path,&assets);
+                let video=crate::assets::is_video(&path);
+                if video { let _=tx.send(Some(Box::new(|app: &mut App| app.log("Conversion de la vidéo…".into())) as DialogEffect)); }
+                let result: Result<String, String> = if video {
+                    crate::assets::import_video(&path,&assets,size).map(|_| "Vidéo convertie en GIF animé.".into()).map_err(|e|e.to_string())
+                } else if path.extension().is_some_and(|e| ["zip","streamDeckIconPack","sdIconPack"].iter().any(|x| e.eq_ignore_ascii_case(x))) {
+                    crate::assets::import_pack(&path,&assets).map(|(count,skipped)|format!("{count} icônes importées - {skipped} images non prises en charge.")).map_err(|e|e.to_string())
+                } else {
+                    std::fs::read(&path).map_err(|e|e.to_string()).and_then(|bytes|
+                        crate::assets::import_image(&bytes,&assets,path.file_stem().and_then(|s|s.to_str()).unwrap_or("icone"))
+                            .map(|_| "Icône importée.".into()).map_err(|e|e.to_string()))
+                };
                 let icons=if result.is_ok(){Some(crate::assets::scan(&[assets]))}else{None};
                 let _=tx.send(Some(Box::new(move |app: &mut App| match result {
-                    Ok((count,skipped))=>{
-                        if let Some(icons)=icons {app.available_icons=icons;}
-                        app.log(format!("{count} icônes importées — {skipped} images non prises en charge."));
-                    }
-                    Err(e)=>app.fail(e.to_string()),
+                    Ok(message)=>{if let Some(icons)=icons {app.available_icons=icons;} app.log(message);}
+                    Err(e)=>app.fail(format!("Import impossible : {e}")),
                 }) as DialogEffect));
             });
         }
