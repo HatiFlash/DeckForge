@@ -28,6 +28,45 @@ pub(super) fn step_mut<'a>(steps: &'a mut [Step], path: &[usize]) -> Option<&'a 
     };
     step_mut(children, &path[2..])
 }
+const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
+    ("Clavier", &[0]), ("Texte", &[1]), ("Applications et sites", &[2, 3]),
+    ("Médias et audio", &[4, 13]), ("Fenêtres", &[6]), ("Attendre", &[5]),
+    ("Logique et répétitions", &[14, 15]), ("Variables", &[16, 17]),
+    ("Navigation DeckForge", &[7, 8, 9, 10, 11]), ("Avancé / AutoHotkey", &[18]),
+];
+fn block_help(kind: usize) -> &'static str {
+    match kind {
+        0 => "Appuie sur une combinaison de touches.", 1 => "Écrit du texte dans la fenêtre active.",
+        2 => "Démarre un programme Windows.", 3 => "Ouvre une adresse web.",
+        4 => "Commande la lecture et le volume.", 5 => "Attend avant le bloc suivant.",
+        6 => "Attend et peut activer une fenêtre.", 13 => "Bascule entre deux appareils audio.",
+        14 => "Exécute des blocs si une fenêtre est ouverte.", 15 => "Rejoue plusieurs fois les blocs imbriqués.",
+        16 => "Enregistre une valeur pour cette exécution.", 17 => "Choisit des blocs selon une valeur.",
+        18 => "Exécute un script AutoHotkey v2.", _ => "Change la page, le dossier ou le profil affiché.",
+    }
+}
+fn palette(ui: &mut egui::Ui, search: &mut String, depth: usize) -> Option<usize> {
+    let mut selected = None;
+    ui.add(egui::TextEdit::singleline(search).hint_text("Rechercher un bloc"));
+    for &(category, kinds) in BLOCK_CATEGORIES {
+        let matches: Vec<_> = kinds.iter().copied().filter(|&kind| {
+            (depth == 0 || !(7..=11).contains(&kind)) &&
+            (search.is_empty() || format!("{} {}", category, crate::automation::NAMES[kind]).to_lowercase().contains(&search.to_lowercase()))
+        }).collect();
+        if matches.is_empty() { continue; }
+        ui.label(RichText::new(category).strong().color(BLUE));
+        for kind in matches {
+            if ui.button(crate::automation::NAMES[kind]).on_hover_text(block_help(kind)).clicked() {
+                selected = Some(kind);
+            }
+        }
+        ui.add_space(7.0);
+    }
+    selected
+}
+fn new_block(kind: usize, profiles: &[String]) -> Step {
+    catalog::action(kind, profiles.first().map(String::as_str).unwrap_or("Bureau")).steps.remove(0)
+}
 #[allow(clippy::too_many_arguments)] // Recursive editor forwards selection and async dialog context.
 pub(super) fn block_editor(
     ui: &mut egui::Ui,
@@ -47,12 +86,25 @@ pub(super) fn block_editor(
     let mut changed = false;
     let mut remove = None;
     let mut movement = None;
+    let mut insertion = None;
     for (i, step) in steps.iter_mut().enumerate() {
         let mut path = parent.to_vec();
         path.push(i);
         ui.push_id(i, |ui| {
             if i > 0 {
-                ui.label(RichText::new("↓").color(p.muted));
+                ui.menu_button("+ Insérer ici", |ui| {
+                    for &(category, kinds) in BLOCK_CATEGORIES {
+                        ui.menu_button(category, |ui| {
+                            for &kind in kinds {
+                                if depth > 0 && (7..=11).contains(&kind) { continue; }
+                                if ui.button(crate::automation::NAMES[kind]).on_hover_text(block_help(kind)).clicked() {
+                                    insertion = Some((i, kind));
+                                    ui.close_menu();
+                                }
+                            }
+                        });
+                    }
+                });
             }
             let color = if matches!(step, Step::IfWindow { .. } | Step::IfVariable { .. }) {
                 Color32::from_rgb(164, 123, 239)
@@ -82,7 +134,12 @@ pub(super) fn block_editor(
                                 .join("."),
                             color,
                         );
-                        ui.label(RichText::new(step.name()).strong());
+                        if ui.selectable_label(
+                            parent.is_empty() && ui.data(|d| d.get_temp::<usize>(egui::Id::new("workshop_selected"))) == Some(i),
+                            RichText::new(step.name()).strong(),
+                        ).clicked() && parent.is_empty() {
+                            ui.data_mut(|d| d.insert_temp(egui::Id::new("workshop_selected"), i));
+                        }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.small_button("Retirer").clicked() {
                                 remove = Some(i);
@@ -168,6 +225,12 @@ pub(super) fn block_editor(
                     }
                 });
         });
+    }
+    if let Some((i, kind)) = insertion {
+        if steps.len() < 256 {
+            steps.insert(i, new_block(kind, profiles));
+            changed = true;
+        }
     }
     if let Some(i) = remove {
         steps.remove(i);
@@ -264,9 +327,31 @@ impl App {
             ui.horizontal(|ui|{if ui.button("Créer avec mon IA").clicked(){self.assistant_settings=true;}if ui.button("Simuler les blocs").clicked(){self.preview(true);}if ui.button("Tester dans 3 s").clicked(){self.preview(false);}if ui.button("Exporter en AutoHotkey v2…").clicked(){export=true;}});
             if !self.engine.running.load(Ordering::SeqCst){self.running_block.clear();}
             let profiles=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();let pages=self.config.profiles[self.config.active].pages.clone();let selected=self.selected;let target=(self.config.active,self.config.page.clone(),selected);let dialog_tx=self.dialog_tx.clone();
-            egui::ScrollArea::vertical().id_salt("workflow_scroll").show(ui,|ui|{
-                changed=block_editor(ui,&mut self.config.keys_mut()[selected].steps,&profiles,&pages,&self.audio,&[],&mut record,0,&self.running_block,&mut pick_audio,&dialog_tx,&target);
+            let search_id = egui::Id::new("workshop_search");
+            let mut search = ui.data(|d| d.get_temp::<String>(search_id)).unwrap_or_default();
+            let mut add = None;
+            ui.horizontal_top(|ui| {
+                ui.vertical(|ui| {
+                    ui.set_width(205.0);
+                    ui.label(RichText::new("BIBLIOTHÈQUE DE BLOCS").strong());
+                    egui::ScrollArea::vertical().id_salt("block_palette").show(ui, |ui| {
+                        add = palette(ui, &mut search, 0);
+                    });
+                });
+                ui.separator();
+                egui::ScrollArea::vertical().id_salt("workflow_scroll").show(ui,|ui|{ ui.vertical(|ui| {
+                    changed=block_editor(ui,&mut self.config.keys_mut()[selected].steps,&profiles,&pages,&self.audio,&[],&mut record,0,&self.running_block,&mut pick_audio,&dialog_tx,&target);
+                }); });
             });
+            ui.data_mut(|d| d.insert_temp(search_id, search));
+            if let Some(kind) = add {
+                let position = ui.data(|d| d.get_temp::<usize>(egui::Id::new("workshop_selected")));
+                let steps = &mut self.config.keys_mut()[selected].steps;
+                if steps.len() < 256 {
+                    steps.insert(position.map_or(steps.len(), |i| (i + 1).min(steps.len())), new_block(kind, &profiles));
+                    changed = true;
+                }
+            }
             if let Err(e)=validate_key(&self.config.keys()[selected],&self.config){ui.colored_label(Color32::LIGHT_RED,format!("Brouillon : {e}"));}
         });
         if let Some(target) = pick_audio {

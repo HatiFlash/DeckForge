@@ -702,6 +702,8 @@ fn workflow_preview_shows_conditional_blocks() {
     h.app.show_workflow = true;
     let output = h.warm(size);
     assert!(text_position(&output.shapes, "Construis ton automatisation").is_some());
+    assert!(text_position(&output.shapes, "BIBLIOTHÈQUE DE BLOCS").is_some());
+    assert!(text_position(&output.shapes, "Clavier").is_some());
     if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
         h.png(size, output, &PathBuf::from(dir).join("workflow.png"));
     }
