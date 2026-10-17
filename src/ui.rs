@@ -2178,7 +2178,7 @@ impl App {
         self.drop_targets.clear();
         self.shortcuts(ctx);
         self.frames += 1;
-        ctx.request_repaint_after(Duration::from_millis(60));
+        self.key_previews.begin_frame();
         self.screenshot(ctx);
         self.header(ctx);
         self.footer(ctx);
@@ -2210,6 +2210,7 @@ impl App {
         self.extras(ctx);
         self.windows(ctx);
         self.assistant_window(ctx);
+        self.key_previews.end_frame(ctx);
         self.record_history(history_before, ctx);
         if self.gate.dirty
             && !self.gate.invalid
