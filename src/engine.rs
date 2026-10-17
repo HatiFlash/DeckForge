@@ -204,6 +204,9 @@ fn run_steps(
         match step {
             Step::Disabled { .. } => {},
             Step::CloseWindow => close_foreground_window()?,
+            Step::MouseClick { button, double } => mouse_click(button, *double)?,
+            Step::MouseMove { x, y, relative } => mouse_move(*x, *y, *relative)?,
+            Step::MouseScroll { amount } => mouse_event(MOUSEEVENTF_WHEEL, amount.wrapping_mul(120) as u32, 0, 0)?,
             Step::ObsScene { .. } | Step::ObsRecord { .. } | Step::ObsStream { .. }
             | Step::ObsVirtualCam { .. } | Step::ObsReplay { .. } | Step::ObsMute { .. }
             | Step::ObsSourceVisibility { .. } => crate::obs::execute(step, obs)?,
@@ -349,6 +352,39 @@ fn run_steps(
         wait(10, cancel)?;
     }
     Ok(())
+}
+fn mouse_event(flags: u32, data: u32, dx: i32, dy: i32) -> Result<()> {
+    let event = INPUT { r#type: INPUT_MOUSE, Anonymous: INPUT_0 { mi: MOUSEINPUT {
+        dx, dy, mouseData: data, dwFlags: flags, time: 0, dwExtraInfo: 0,
+    } } };
+    anyhow::ensure!(unsafe { SendInput(1, &event, std::mem::size_of::<INPUT>() as i32) } == 1, "Windows a refusé l'action souris");
+    Ok(())
+}
+fn mouse_click(button: &str, double: bool) -> Result<()> {
+    let (down, up) = match button {
+        "left" => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
+        "right" => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
+        "middle" => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
+        _ => anyhow::bail!("Bouton souris invalide"),
+    };
+    for _ in 0..if double { 2 } else { 1 } {
+        mouse_event(down, 0, 0, 0)?;
+        mouse_event(up, 0, 0, 0)?;
+    }
+    Ok(())
+}
+fn mouse_move(x: i32, y: i32, relative: bool) -> Result<()> {
+    if relative { mouse_event(MOUSEEVENTF_MOVE, 0, x, y) }
+    else {
+        let width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
+        let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
+        anyhow::ensure!(width > 1 && height > 1, "Écran introuvable");
+        let left = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
+        let top = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
+        mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, 0,
+            ((i64::from(x - left) * 65535) / i64::from(width - 1)).clamp(0, 65535) as i32,
+            ((i64::from(y - top) * 65535) / i64::from(height - 1)).clamp(0, 65535) as i32)
+    }
 }
 fn close_foreground_window() -> Result<()> {
     let window = unsafe { GetForegroundWindow() };

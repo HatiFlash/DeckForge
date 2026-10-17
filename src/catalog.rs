@@ -24,6 +24,9 @@ pub fn presets() -> Vec<Preset> {
             },
         });
     };
+    add("Système", "Clic souris", "Clique sur le bouton gauche de la souris.", [73, 160, 217], vec![Step::MouseClick { button: "left".into(), double: false }]);
+    add("Système", "Déplacer la souris", "Déplace le curseur relativement à sa position.", [73, 160, 217], vec![Step::MouseMove { x: 10, y: 0, relative: true }]);
+    add("Système", "Défiler", "Fait défiler la fenêtre active d'un cran.", [73, 160, 217], vec![Step::MouseScroll { amount: 1 }]);
     add("Système", "Fermer la fenêtre", "Demande à Windows de fermer la fenêtre active, sauf DeckForge.", [73, 160, 217], vec![Step::CloseWindow]);
     for (label, command) in [
         ("Lecture / pause", "play_pause"),
@@ -429,7 +432,7 @@ mod tests {    #[test]
     #[test]
     fn every_preset_and_action_is_executable_with_valid_configuration() {
         let c = Config::default();
-        assert_eq!(presets().len(), 50);
+        assert_eq!(presets().len(), 53);
         for p in presets() {
             validate_key(&p.key, &c).unwrap();
             assert!(!p.key.steps.is_empty());

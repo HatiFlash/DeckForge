@@ -76,6 +76,9 @@ pub enum Step {
         args: Vec<String>,
     },
     CloseWindow,
+    MouseClick { button: String, double: bool },
+    MouseMove { x: i32, y: i32, relative: bool },
+    MouseScroll { amount: i32 },
     ObsScene { name: String },
     ObsRecord { mode: String },
     ObsStream { mode: String },
@@ -114,6 +117,9 @@ impl Step {
             Self::SetVariable { .. } => "Définir une variable",
             Self::IfVariable { .. } => "Si une variable correspond",
             Self::AutoHotkey { .. } => "Script AutoHotkey",
+            Self::MouseClick { .. } => "Clic souris",
+            Self::MouseMove { .. } => "Déplacer la souris",
+            Self::MouseScroll { .. } => "Défilement souris",
             Self::CloseWindow => "Fermer la fenêtre active",
             Self::ObsScene { .. } => "OBS : scène",
             Self::ObsRecord { .. } => "OBS : enregistrement",
@@ -632,6 +638,9 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
     for s in &key.steps {
         if s.is_disabled() { continue; }
         match s {
+            Step::MouseClick { button, .. } if !["left", "right", "middle"].contains(&button.as_str()) => bail!("Bouton souris invalide"),
+            Step::MouseMove { x, y, .. } if !(-32768..=32767).contains(x) || !(-32768..=32767).contains(y) => bail!("Position souris hors limites"),
+            Step::MouseScroll { amount } if !(-100..=100).contains(amount) => bail!("Défilement souris hors limites"),
             Step::CloseWindow => {},
             Step::ObsScene { name } if name.trim().is_empty() || name.len() > 256 => bail!("Scène OBS invalide"),
             Step::ObsMute { input, mode } if input.trim().is_empty() || !obs_mode(mode, &["toggle", "mute", "unmute"]) => bail!("Entrée OBS ou mode invalide"),
@@ -938,5 +947,22 @@ mod native_close_tests {
         let step = Step::CloseWindow;
         assert_eq!(serde_json::to_string(&step).unwrap(), r#"{"type":"close_window"}"#);
         validate_key(&Key { steps: vec![step], ..Key::default() }, &Config::default()).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod native_mouse_tests {
+    use super::*;
+    #[test]
+    fn mouse_actions_validate_and_roundtrip() {
+        let c = Config::default();
+        for step in [Step::MouseClick { button: "left".into(), double: true }, Step::MouseMove { x: 14, y: -5, relative: true }, Step::MouseScroll { amount: -3 }] {
+            let json = serde_json::to_string(&step).unwrap();
+            assert_eq!(serde_json::from_str::<Step>(&json).unwrap(), step);
+            validate_key(&Key { steps: vec![step], ..Key::default() }, &c).unwrap();
+        }
+        for invalid in [Step::MouseClick { button: "other".into(), double: false }, Step::MouseScroll { amount: 101 }, Step::MouseMove { x: 99999, y: 0, relative: false }] {
+            assert!(validate_key(&Key { steps: vec![invalid], ..Key::default() }, &c).is_err());
+        }
     }
 }

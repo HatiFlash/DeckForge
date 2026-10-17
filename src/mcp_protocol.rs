@@ -18,6 +18,11 @@ pub fn tools() -> Value {
         {"type":"object","properties":{"type":{"enum":["back","page_next","page_previous"]}},"required":["type"],"additionalProperties":false}
     ]});
     step_schema["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"type":{"const":"close_window"}},"required":["type"],"additionalProperties":false}));
+    step_schema["oneOf"].as_array_mut().unwrap().extend([
+        json!({"type":"object","properties":{"type":{"const":"mouse_click"},"button":{"enum":["left","right","middle"]},"double":{"type":"boolean"}},"required":["type","button","double"],"additionalProperties":false}),
+        json!({"type":"object","properties":{"type":{"const":"mouse_move"},"x":{"type":"integer","minimum":-32768,"maximum":32767},"y":{"type":"integer","minimum":-32768,"maximum":32767},"relative":{"type":"boolean"}},"required":["type","x","y","relative"],"additionalProperties":false}),
+        json!({"type":"object","properties":{"type":{"const":"mouse_scroll"},"amount":{"type":"integer","minimum":-100,"maximum":100}},"required":["type","amount"],"additionalProperties":false}),
+    ]);
     let nested = json!({"type":"array","items":{"$ref":"#/$defs/step"},"maxItems":256});
     step_schema["oneOf"].as_array_mut().unwrap().extend([
         json!({"type":"object","properties":{"type":{"const":"audio_switch"},"first":{"type":"string"},"second":{"type":"string"},"input":{"type":"boolean"},"first_label":{"type":"string"},"second_label":{"type":"string"},"first_icon":{"type":"string"},"second_icon":{"type":"string"}},"required":["type","first","second","input"],"additionalProperties":false}),

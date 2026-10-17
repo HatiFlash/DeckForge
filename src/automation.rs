@@ -21,7 +21,7 @@ pub const NAMES: &[&str] = &[
     "Si une variable correspond",
     "Script AutoHotkey",
     "OBS : scène", "OBS : enregistrement", "OBS : diffusion", "OBS : caméra",
-    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active",
+    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active", "Clic souris", "Déplacer la souris", "Défilement souris",
 ];
 pub fn step(kind: usize) -> Step {
     match kind {
@@ -54,6 +54,9 @@ pub fn step(kind: usize) -> Step {
             else_steps: vec![],
         },
         26 => Step::CloseWindow,
+        27 => Step::MouseClick { button: "left".into(), double: false },
+        28 => Step::MouseMove { x: 0, y: 0, relative: true },
+        29 => Step::MouseScroll { amount: 1 },
         19 => Step::ObsScene { name: "Scène".into() },
         20 => Step::ObsRecord { mode: "toggle".into() },
         21 => Step::ObsStream { mode: "toggle".into() },

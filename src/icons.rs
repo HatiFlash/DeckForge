@@ -12,6 +12,7 @@ pub fn kind(key: &Key) -> usize {
 pub fn step_kind(step: &Step) -> usize {
     match step.active() {
         Step::Disabled { .. } => unreachable!(),
+        Step::MouseClick { .. } | Step::MouseMove { .. } | Step::MouseScroll { .. } => 1,
         Step::CloseWindow => 5,
         Step::Delay { .. } => 0,
         Step::Hotkey { .. } => 1,

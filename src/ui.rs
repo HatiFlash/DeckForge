@@ -2405,6 +2405,17 @@ fn edit_step(
     let mut changed = false;
     match step {
         Step::Disabled { .. } => unreachable!("atelier passe une étape active"),
+        Step::MouseClick { button, double } => {
+            egui::ComboBox::from_id_salt("mouse_button").selected_text(match button.as_str() { "left" => "Gauche", "right" => "Droit", _ => "Milieu" }).show_ui(ui, |ui| {
+                for (id, label) in [("left", "Gauche"), ("right", "Droit"), ("middle", "Milieu")] { changed |= ui.selectable_value(button, id.into(), label).changed(); }
+            });
+            changed |= ui.checkbox(double, "Double clic").changed();
+        }
+        Step::MouseMove { x, y, relative } => {
+            ui.horizontal(|ui| { ui.label("X"); changed |= ui.add(egui::DragValue::new(x).range(-32768..=32767)).changed(); ui.label("Y"); changed |= ui.add(egui::DragValue::new(y).range(-32768..=32767)).changed(); });
+            changed |= ui.checkbox(relative, "Déplacement relatif").changed();
+        }
+        Step::MouseScroll { amount } => { ui.label("Défilement (crans)"); changed |= ui.add(egui::DragValue::new(amount).range(-100..=100)).changed(); }
         Step::CloseWindow => { ui.label("Ferme la fenêtre active (jamais DeckForge)."); }
         Step::ObsScene { name } => { ui.label("Scène OBS"); changed |= obs_entry(ui, name, &crate::obs_monitor::snapshot().scenes); }
         Step::ObsMute { input, mode } => { ui.label("Entrée audio OBS"); changed |= obs_entry(ui, input, &crate::obs_monitor::snapshot().inputs); obs_choice(ui, mode, &["toggle", "mute", "unmute"], &mut changed); }
@@ -2609,6 +2620,9 @@ fn step_summary(step: &Step) -> String {
     match step {
         Step::Hotkey { keys } => keys.clone(),
         Step::Delay { ms } => format!("Attendre {ms} ms"),
+        Step::MouseClick { button, double } => format!("Clic {button}{}", if *double { " double" } else { "" }),
+        Step::MouseMove { x, y, relative } => format!("Souris {x}, {y} ({})", if *relative { "relatif" } else { "absolu" }),
+        Step::MouseScroll { amount } => format!("Défiler de {amount} crans"),
         Step::CloseWindow => "Fermer la fenêtre active".into(),
         Step::Media { command } => format!("Média : {command}"),
         Step::Url { url } => url.clone(),
