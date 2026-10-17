@@ -169,6 +169,8 @@ La proposition `deckforge_configure_key` accepte `icon_scale` (entier facultatif
 
 ## Actions natives supplémentaires
 
+Le bloc launch accepte focus_if_running (booléen, défaut false) : si une fenêtre visible du même exécutable est ouverte, elle est activée sans relancer le programme. Un refus Windows de mise au premier plan est signalé ; aucune fenêtre DeckForge n’est ciblée par défaut.
+
 deckforge_configure_key accepte close_window (sans paramètre), mouse_click (button : left/right/middle, double : booléen), mouse_move (x/y : coordonnées entières, relative : booléen) et mouse_scroll (amount : crans -100 à 100). Ces étapes sont validées localement, sans exécution lors de la proposition. La simulation n'agit pas sur Windows ; l'export AutoHotkey refuse explicitement ces étapes non prises en charge.
 
 

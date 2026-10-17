@@ -17,6 +17,7 @@ pub enum Step {
     Launch {
         program: String,
         args: Vec<String>,
+        #[serde(default)] focus_if_running: bool,
     },
     Url {
         url: String,
@@ -694,7 +695,7 @@ impl Config {
 /// Converts a legacy `FocusAudio.exe` launch (Codex module) into the equivalent native
 /// application-volume block. Only exact, well-formed calls are recognised.
 pub fn focus_audio_step(step: &Step) -> Option<Step> {
-    let Step::Launch { program, args } = step else { return None };
+    let Step::Launch { program, args, .. } = step else { return None };
     if !program.trim().to_ascii_lowercase().ends_with("focusaudio.exe") { return None; }
     let number = |i: usize| args.get(i).and_then(|a| a.trim().parse::<u8>().ok());
     let (action, step, level) = match (args.first().map(|a| a.trim()), args.len()) {
@@ -886,7 +887,7 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
                 parse_hotkey(keys)?;
             }
             Step::Text { text } if text.len() > 100_000 => bail!("Texte trop long"),
-            Step::Launch { program, args } if program.trim().is_empty() || args.len() > 128 => {
+            Step::Launch { program, args, .. } if program.trim().is_empty() || args.len() > 128 => {
                 bail!("Application ou arguments invalides")
             }
             Step::Url { url }
@@ -1083,6 +1084,19 @@ mod math_step_tests {
         assert!(validate_key(&Key { steps: vec![bad], ..Key::default() }, &Config::default()).is_err());
     }
 }
+#[cfg(test)]
+mod launch_option_tests {
+    use super::*;
+    #[test]
+    fn launch_option_defaults_roundtrip_and_rejects_unknown() {
+        let step: Step = serde_json::from_str(r#"{"type":"launch","program":"notepad.exe","args":[]}"#).unwrap();
+        assert!(matches!(step, Step::Launch { focus_if_running: false, .. }));
+        assert_eq!(step, serde_json::from_str(&serde_json::to_string(&step).unwrap()).unwrap());
+        assert!(serde_json::from_str::<Step>(r#"{"type":"launch","program":"notepad.exe","args":[],"unknown":true}"#).is_err());
+        assert!(serde_json::from_str::<Step>(r#"{"type":"launch","program":"notepad.exe","args":[],"focus_if_running":"yes"}"#).is_err());
+        assert!(validate_key(&Key { steps: vec![Step::Launch { program: "".into(), args: vec![], focus_if_running: true }], ..Key::default() }, &Config::default()).is_err());
+    }
+}
 
 #[cfg(test)]
 mod condition_step_tests {
@@ -1105,14 +1119,14 @@ mod tests {
     use super::*;
     #[test]
     fn focus_audio_launches_become_native_app_volume() {
-        let legacy = |args: &[&str]| Step::Launch { program: "C:\\Users\\hatif\\Desktop\\DeckForge-0.5-diagnostic\\assets\\automations-codex\\module\\FocusAudio.exe".into(), args: args.iter().map(|a| a.to_string()).collect() };
+        let legacy = |args: &[&str]| Step::Launch { program: "C:\\Users\\hatif\\Desktop\\DeckForge-0.5-diagnostic\\assets\\automations-codex\\module\\FocusAudio.exe".into(), args: args.iter().map(|a| a.to_string()).collect(), focus_if_running: false };
         let app = |action: &str, step: u8, level: u8| Step::AppVolume { target: "foreground".into(), action: action.into(), step, level, include_children: true };
         assert_eq!(focus_audio_step(&legacy(&["up", "5"])), Some(app("up", 5, 0)));
         assert_eq!(focus_audio_step(&legacy(&["down", "5"])), Some(app("down", 5, 0)));
         assert_eq!(focus_audio_step(&legacy(&["mute"])), Some(app("toggle_mute", 5, 0)));
         assert_eq!(focus_audio_step(&legacy(&["set", "50"])), Some(app("set", 5, 50)));
         for bad in [&["set", "150"][..], &["up"], &["mute", "1"], &["louder", "5"], &["up", "0"]] { assert_eq!(focus_audio_step(&legacy(bad)), None, "{bad:?}"); }
-        assert_eq!(focus_audio_step(&Step::Launch { program: "notepad.exe".into(), args: vec!["up".into(), "5".into()] }), None);
+        assert_eq!(focus_audio_step(&Step::Launch { program: "notepad.exe".into(), args: vec!["up".into(), "5".into()], focus_if_running: false }), None);
         let mut key = Key { label: "Audio".into(), steps: vec![Step::Repeat { count: 2, steps: vec![legacy(&["up", "5"])] }], long_steps: vec![legacy(&["mute"])], ..Key::default() };
         assert_eq!(migrate_focus_audio_key(&mut key), 2);
         assert_eq!(key.label, "Audio");

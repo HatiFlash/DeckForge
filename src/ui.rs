@@ -3958,13 +3958,14 @@ fn edit_step(
                 )
                 .changed();
         }
-        Step::Launch { program, args } => {
+        Step::Launch { program, args, focus_if_running } => {
             ui.horizontal(|ui| {
                 changed |= ui.text_edit_singleline(program).changed();
                 if ui.small_button("…").clicked() {
                     choose_step_file(tx.clone(),target.clone(),false);
                 }
             });
+            changed |= ui.checkbox(focus_if_running, "Si déjà ouverte, activer au lieu de relancer").changed();
             ui.label(RichText::new("Arguments : un par ligne, sans guillemets ajoutés").small());
             let mut text = args.join("\n");
             if ui

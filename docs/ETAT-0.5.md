@@ -18,6 +18,12 @@ Exécutables prêts sur le PC fixe : `Bureau\DeckForge-0.5-fusion\DeckForge.exe`
 - Livré et testé automatiquement : « Attendre que… » (`wait_until`), sondage annulable, délai borné et simulation en lecture seule.
 - À tester avec Hatim : attente d’une condition réelle, expiration et bouton Arrêter pendant une attente.
 
+## Lot C — application déjà ouverte
+
+- Livré (tests automatiques) : « Lancer une application » (`launch`) accepte `focus_if_running` (défaut false, anciennes configurations compatibles). Recherche une fenêtre visible du même exécutable et tente de l’activer sans créer de processus.
+- À tester avec Hatim : activation d’une application ouverte, refus Windows du premier plan, application élevée/inaccessible. Aucun test automatisé n’ouvre de fenêtre réelle.
+- Non livré dans ce sous-lot : maintien des touches, coordonnées et défilement avancés de la souris, opérations sur les fenêtres.
+
 ## Nouveautés 0.5
 
 | Domaine | Contenu | Vérifié |

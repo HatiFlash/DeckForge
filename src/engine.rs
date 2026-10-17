@@ -469,7 +469,14 @@ fn run_steps(
                     input(0, unit, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP)?;
                 }
             }
-            Step::Launch { program, args } => {
+            Step::Launch { program, args, focus_if_running } => {
+                if *focus_if_running {
+                    if let Some(window) = find_window_by_exe(program) {
+                        activate_window(window)?;
+                        let _ = tx.send(Event::Log(format!("Application déjà ouverte : {program} activée")));
+                        continue;
+                    }
+                }
                 let mut child = std::process::Command::new(program).args(args).spawn()?;
                 std::thread::spawn(move || {
                     let _ = child.wait();
@@ -639,6 +646,43 @@ unsafe extern "system" fn enum_window(hwnd: HWND, data: LPARAM) -> BOOL {
     }
     1
 }
+// Search only visible top-level windows with an accessible executable identity.
+// A process without a visible window is not activated and follows the normal launch path.
+struct ExecutableSearch { name: String, found: Option<HWND> }
+fn executable_name(program: &str) -> Option<String> {
+    std::path::Path::new(program).file_name().map(|s| s.to_string_lossy().to_lowercase())
+}
+unsafe extern "system" fn enum_executable_window(hwnd: HWND, data: LPARAM) -> BOOL {
+    use windows_sys::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION};
+    use windows_sys::Win32::Foundation::CloseHandle;
+    let search = &mut *(data as *mut ExecutableSearch);
+    if IsWindowVisible(hwnd) == 0 || GetWindow(hwnd, GW_OWNER) != std::ptr::null_mut() { return 1; }
+    let mut pid = 0;
+    GetWindowThreadProcessId(hwnd, &mut pid);
+    if pid == 0 || pid == std::process::id() { return 1; }
+    let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+    if process.is_null() { return 1; }
+    let mut buffer = [0u16; 32768];
+    let mut len = buffer.len() as u32;
+    let matches = QueryFullProcessImageNameW(process, 0, buffer.as_mut_ptr(), &mut len) != 0
+        && executable_name(&String::from_utf16_lossy(&buffer[..len as usize])).as_deref() == Some(search.name.as_str());
+    CloseHandle(process);
+    if matches { search.found = Some(hwnd); 0 } else { 1 }
+}
+fn find_window_by_exe(program: &str) -> Option<HWND> {
+    let mut search = ExecutableSearch { name: executable_name(program)?, found: None };
+    unsafe { EnumWindows(Some(enum_executable_window), &mut search as *mut _ as isize); }
+    search.found
+}
+fn activate_window(hwnd: HWND) -> Result<()> {
+    unsafe {
+        if IsIconic(hwnd) != 0 { ShowWindow(hwnd, SW_RESTORE); }
+        // Windows foreground lock policy may reject activation; never claim success in that case.
+        anyhow::ensure!(SetForegroundWindow(hwnd) != 0 && GetForegroundWindow() == hwnd,
+            "Windows a refusé d’activer l’application déjà ouverte (restriction du premier plan)");
+    }
+    Ok(())
+}
 pub(crate) fn find_window(query: &str) -> Option<HWND> {
     let mut search = Search {
         query: query.to_lowercase(),
@@ -653,6 +697,11 @@ pub(crate) fn find_window(query: &str) -> Option<HWND> {
 #[cfg(test)]
 mod tests {
 
+    #[test]
+    fn executable_identity_is_pure() {
+        assert_eq!(super::executable_name("C:\\Apps\\NOTEPAD.EXE").as_deref(), Some("notepad.exe"));
+        assert_eq!(super::executable_name("notepad.exe").as_deref(), Some("notepad.exe"));
+    }
     #[test]
     fn toggle_alternates_and_badge_follows() {
         let key = crate::model::Key { steps: vec![crate::model::Step::Toggle { a: vec![], b: vec![] }], ..crate::model::Key::default() };

@@ -177,7 +177,7 @@ const TEMPLATE_NAMES: &[&str] = &[
 ];
 fn template(index: usize) -> Vec<Step> {
     match index {
-        0 => vec![Step::Launch { program: String::new(), args: vec![] }, Step::Url { url: String::new() }],
+        0 => vec![Step::Launch { program: String::new(), args: vec![], focus_if_running: false }, Step::Url { url: String::new() }],
         1 => vec![Step::Hotkey { keys: "CTRL+C".into() }, Step::Hotkey { keys: "CTRL+V".into() }],
         2 => vec![Step::Text { text: String::new() }],
         3 => vec![crate::automation::step(13)],
