@@ -85,7 +85,12 @@ pub struct App {
     catalog_selection: Option<usize>,
     save_bind: bool,
     bind_name: String,
-    undo: Option<(String, String, Vec<Key>)>,
+    clipboard: Option<Key>,
+    history: Vec<Config>,
+    future: Vec<Config>,
+    last_field: Option<egui::Id>,
+    history_at: Instant,
+    replaying: bool,
     drag: crate::gesture::Drag<DragItem>,
     drag_sources: Vec<(egui::Rect, DragItem)>,
     drop_targets: Vec<(egui::Rect, usize)>,
@@ -229,7 +234,12 @@ impl App {
             catalog_selection: Some(0),
             save_bind: false,
             bind_name: String::new(),
-            undo: None,
+            clipboard: None,
+            history: Vec::new(),
+            future: Vec::new(),
+            last_field: None,
+            history_at: Instant::now(),
+            replaying: false,
             drag: Default::default(),
             drag_sources: vec![],
             drop_targets: vec![],
@@ -289,7 +299,7 @@ impl App {
         self.error = true;
     }
     fn edited(&mut self) {
-        self.undo = None;
+
         self.gate.dirty = true;
         self.last_edit = Instant::now();
     }
@@ -489,7 +499,7 @@ impl App {
     fn navigate(&mut self, step: Step) {
         match self.config.navigate(&step) {
             Ok(()) => {
-                self.undo = None;
+                self.last_field = None;
                 self.selected = 0;
                 self.save();
             }
@@ -611,7 +621,7 @@ impl App {
     }
     fn select_profile(&mut self, index: usize) {
         if index != self.config.active {
-            self.undo = None;
+            self.last_field = None;
             self.engine.stop();
             self.config.active = index;
             self.config.reset_navigation();
@@ -981,12 +991,15 @@ impl App {
                         if self.gate.connected {
                             "D6 connecté"
                         } else if self.wanted {
-                            "Connexion…"
+                            "D6 en attente"
                         } else {
                             "D6 déconnecté"
                         },
-                        if self.gate.connected { GREEN } else { p.muted },
+                        if self.gate.connected { GREEN } else if self.wanted { Color32::from_rgb(235, 165, 69) } else { Color32::from_rgb(231, 94, 102) },
                     );
+
+                    if ui.add_enabled(!self.history.is_empty(), egui::Button::new("Annuler")).on_hover_text("Annuler — Ctrl+Z").clicked() { self.undo_edit(); }
+                    if ui.add_enabled(!self.future.is_empty(), egui::Button::new("Rétablir")).on_hover_text("Rétablir — Ctrl+Y").clicked() { self.redo_edit(); }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.menu_button("Réglages", |ui| {
                             if ui.button("Windows et raccourcis…").clicked() {
@@ -1046,9 +1059,9 @@ impl App {
                         });
                         if ui
                             .button(if self.preferences.dark {
-                                "Clair"
+                                "☀ Thème clair"
                             } else {
-                                "Sombre"
+                                "☾ Thème sombre"
                             })
                             .on_hover_text("Changer le thème de toute l’interface")
                             .clicked()
@@ -1085,7 +1098,7 @@ impl App {
                                 } else {
                                     if !self.gate.connected {
                                         if self.wanted {
-                                            "Connexion…"
+                                            "D6 en attente"
                                         } else {
                                             "Déconnecté"
                                         }
@@ -1131,7 +1144,7 @@ impl App {
         let active = self.config.active;
         let before = self.config.keys().clone();
         let page = self.config.page.clone();
-        let name = self.config.profiles[active].name.clone();
+
         match item {
             DragItem::Position(profile, origin, from)
                 if profile == active
@@ -1179,22 +1192,38 @@ impl App {
             return;
         }
         self.edited();
-        self.undo = Some((name, page, before));
+
         self.log(format!(
-            "Touche {:02} mise à jour. Tu peux annuler cette affectation.",
+            "Touche {:02} mise à jour. Ctrl+Z pour annuler.",
             target + 1
         ));
     }
-    fn undo_assignment(&mut self) {
-        if let Some((name, page, keys)) = self.undo.take() {
-            if let Some(profile) = self.config.profiles.iter_mut().find(|p| p.name == name) {
-                if let Some(current) = profile.keys_at_mut(&page) {
-                    *current = keys;
-                }
-                self.edited();
-                self.log("Dernière affectation annulée.".into());
-            }
-        }
+    fn record_history(&mut self, before: Config, ctx: &egui::Context) {
+        if self.replaying || serde_json::to_value(&before).ok() == serde_json::to_value(&self.config).ok() { return; }
+        let field = if ctx.wants_keyboard_input() { ctx.memory(|m| m.focused()) } else { None };
+        let grouped = field.is_some() && field == self.last_field && self.history_at.elapsed() < Duration::from_millis(800) && self.future.is_empty();
+        if !grouped { self.history.push(before); if self.history.len() > 50 { self.history.remove(0); } }
+        self.future.clear(); self.last_field = field; self.history_at = Instant::now();
+    }
+    fn undo_edit(&mut self) {
+        if let Some(previous) = self.history.pop() { self.future.push(self.config.clone()); self.config = previous; self.replaying = true; self.edited(); self.log("Modification annulée.".into()); }
+    }
+    fn redo_edit(&mut self) {
+        if let Some(next) = self.future.pop() { self.history.push(self.config.clone()); self.config = next; self.replaying = true; self.edited(); self.log("Modification rétablie.".into()); }
+    }
+    fn copy_key(&mut self) { self.clipboard = Some(self.config.keys()[self.selected].clone()); self.log("Touche copiée.".into()); }
+    fn paste_key(&mut self, target: usize) { if let Some(key) = self.clipboard.clone() { self.assign(DragItem::Bind(key), target); } }
+    fn duplicate_key(&mut self, from: usize) {
+        let Some(target) = ((from+1)..15).find(|&i| Self::empty_key(&self.config.keys()[i])) else { self.log("Aucune touche vide après celle-ci sur cette page.".into()); return; };
+        self.assign(DragItem::Bind(self.config.keys()[from].clone()), target);
+    }
+    fn empty_key(key: &Key) -> bool { key.label.is_empty() && key.image.is_empty() && key.steps.is_empty() }
+    fn shortcuts(&mut self, ctx: &egui::Context) {
+        if ctx.wants_keyboard_input() { return; }
+        let pressed = |key| ctx.input(|i| i.modifiers.ctrl && !i.modifiers.alt && !i.modifiers.shift && i.key_pressed(key));
+        if pressed(egui::Key::Z) { self.undo_edit(); } else if pressed(egui::Key::Y) { self.redo_edit(); }
+        else if pressed(egui::Key::C) { self.copy_key(); } else if pressed(egui::Key::V) { self.paste_key(self.selected); }
+        else if ctx.input(|i| !i.modifiers.ctrl && i.key_pressed(egui::Key::Delete)) { self.assign(DragItem::Bind(Key::default()), self.selected); }
     }
     fn import_elgato(&mut self) {
         self.gate.enabled = false;
@@ -1254,7 +1283,7 @@ impl App {
             store::save(&self.path, &next)?;
             self.config = next;
             self.selected = 0;
-            self.undo = None;
+            self.last_field = None;
             self.gate.dirty = false;
             if self.wanted {
                 self.upload(false);
@@ -1435,6 +1464,7 @@ impl App {
                             p.muted
                         },
                     ));
+
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .small_button(if self.show_logs {
@@ -1488,14 +1518,14 @@ impl App {
                     if ui.button("Atelier blocs").clicked(){self.show_workflow=true;}
                     if ui.button("Enregistrer dans Mes binds").on_hover_text("Conserver cette macro pour la réutiliser").clicked(){self.bind_name=self.config.keys()[self.selected].label.clone();self.save_bind=true;}
                     if ui.add_enabled(!self.config.keys()[self.selected].steps.is_empty(),egui::Button::new("Vider")).clicked(){self.assign(DragItem::Bind(Key::default()),self.selected);}
-                    if ui.add_enabled(!running,theme::primary(RichText::new("Tester dans 3 s").color(Color32::WHITE))).on_hover_text("Exécute la macro sur ton PC après 3 secondes, dans la fenêtre active.").clicked(){self.preview(false);}
-                    if ui.add_enabled(!running,egui::Button::new("Simuler")).on_hover_text("Affiche les étapes sans les exécuter.").clicked(){self.preview(true);}
+                    if ui.add_enabled(!running,egui::Button::new("Tester dans 3 s")).on_hover_text("Exécute la macro sur ton PC après 3 secondes, dans la fenêtre active.").clicked(){self.preview(false);}
+                    if ui.add_enabled(!running,theme::primary(RichText::new("Simuler").color(Color32::WHITE))).on_hover_text("Affiche les étapes sans les exécuter.").clicked(){self.preview(true);}
                 });
             });
             ui.separator();
             let active=self.config.active; let names=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
             let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let key=&mut self.config.keys_mut()[selected];
-            let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut pick_audio=None;
+            let mut removed_step=false; let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut pick_audio=None;
             let width=ui.available_width(); let body_height=ui.available_height();
             ui.horizontal_top(|ui| {
                 ui.allocate_ui_with_layout(Vec2::new(215.0,body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
@@ -1547,11 +1577,11 @@ impl App {
                             });
                         });}
                     });
-                    if let Some(i)=remove{key.steps.remove(i);changed=true;}if let Some((a,b))=movement{key.steps.swap(a,b);changed=true;}
+                    if let Some(i)=remove{key.steps.remove(i);changed=true;removed_step=true;}if let Some((a,b))=movement{key.steps.swap(a,b);changed=true;}
                 });
             });
             if let Some(step)=record_step {self.recording=Some((active,self.config.page.clone(),self.selected,vec![step],self.gate.enabled));self.recording_error.clear();self.gate.enabled=false;self.engine.stop();self.refresh_hotkeys();}
-            if changed {self.edited();}
+            if changed {self.edited(); if removed_step {self.log("Étape retirée — Ctrl+Z pour annuler".into());}}
             if open_icons{self.open_icon_gallery(None);}if let Some(target)=pick_audio{self.open_icon_gallery(Some(target));}
             if let Some(i)=add_kind {if i==12{self.create_page(true);}else{self.assign(DragItem::Action(catalog::action(i,&names[active])),self.selected);}}
 
@@ -1571,7 +1601,6 @@ impl App {
                     if ui.add_enabled(self.config.profiles.len()<64,egui::Button::new("Nouveau profil")).clicked(){self.add_profile(false);ui.close_menu();}
                     if ui.button("Renommer / dupliquer").clicked(){self.rename=true;ui.close_menu();}
                 });
-                if self.undo.is_some() && ui.button("Annuler l’affectation").clicked(){self.undo_assignment();}
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{ui.label(RichText::new("FIFINE D6 · 15 touches").size(11.0).color(p.muted));});
             });
             ui.add_space(7.0);
@@ -1602,7 +1631,7 @@ impl App {
             ui.add_space(7.0);
             if ctx.screen_rect().width()>=1200.0 {ui.label(RichText::new("Glisse un bind sur une touche, puis personnalise ses actions dans l’inspecteur.").small().color(p.muted));}
             egui::ScrollArea::vertical().id_salt("device_canvas").show(ui,|ui| {
-                let width=((ui.available_width()-112.0)/5.0).min((ui.available_height()-105.0)/3.0).clamp(56.0,112.0);
+                let width=((ui.available_width()-112.0)/5.0).min((ui.available_height()-92.0)/3.0).clamp(56.0,160.0);
                 let total=width*5.0+56.0+48.0;
                 ui.horizontal(|ui| {
                     ui.add_space(((ui.available_width()-total)/2.0).max(0.0));
@@ -1626,7 +1655,13 @@ impl App {
                                 if crate::model::validate_key_in_profile(&self.config.keys()[i],&self.config,&self.config.profiles[self.config.active]).is_err() { ui.painter().circle_filled(r.left_top()+Vec2::new(10.0,10.0),4.0,Color32::from_rgb(242,126,106)); }
                                 if width>=70.0 {ui.painter().text(r.right_bottom()+Vec2::new(0.0,3.0),egui::Align2::RIGHT_TOP,format!("{:02}",i+1),egui::FontId::proportional(8.0),p.muted);}
                                 self.drag_sources.push((r.intersect(ui.clip_rect()),DragItem::Position(self.config.active,self.config.page.clone(),i)));self.drop_targets.push((r.intersect(ui.clip_rect()),i));
-                                if response.clicked(){self.selected=i;} if response.double_clicked(){if let Some(step @ Step::Folder{..})=key.steps.first(){self.navigate(step.clone());}}
+                                if response.clicked(){self.selected=i;self.retarget_gallery();}
+                                response.context_menu(|ui| {
+                                    if ui.button("Copier").clicked(){self.selected=i;self.copy_key();ui.close_menu();}
+                                    if ui.add_enabled(self.clipboard.is_some(),egui::Button::new("Coller")).clicked(){self.paste_key(i);ui.close_menu();}
+                                    if ui.button("Dupliquer vers la prochaine touche vide").clicked(){self.duplicate_key(i);ui.close_menu();}
+                                    if ui.button("Vider").clicked(){self.assign(DragItem::Bind(Key::default()),i);ui.close_menu();}
+                                }); if response.double_clicked(){if let Some(step @ Step::Folder{..})=key.steps.first(){self.navigate(step.clone());}}
 
                                 response.on_hover_text(format!("Touche {:02} · {}\nGlisse depuis la bibliothèque pour affecter un bind. Glisse une touche sur une autre pour les échanger.",i+1,key.label));
                                 if i%5==4{ui.end_row();}
@@ -1928,6 +1963,8 @@ impl App {
         }
     }
     fn frame(&mut self, ctx: &egui::Context) {
+        let history_before = self.config.clone();
+        self.replaying = false;
         self.dialog_results();
         self.record_trigger(ctx);
         self.record_events(ctx);
@@ -1959,6 +1996,7 @@ impl App {
         }
         self.drag_sources.clear();
         self.drop_targets.clear();
+        self.shortcuts(ctx);
         self.frames += 1;
         ctx.request_repaint_after(Duration::from_millis(60));
         self.screenshot(ctx);
@@ -1988,6 +2026,7 @@ impl App {
         self.extras(ctx);
         self.windows(ctx);
         self.assistant_window(ctx);
+        self.record_history(history_before, ctx);
         if self.gate.dirty
             && !self.gate.invalid
             && self.last_edit.elapsed() > Duration::from_millis(800)

@@ -217,6 +217,15 @@ impl App {
         self.reload_icons();
         self.show_assets = true;
     }
+    pub(super) fn retarget_gallery(&mut self) {
+        if !self.show_assets { return; }
+        if let Some(target) = &self.icon_target {
+            if target.profile == self.config.active && target.page == self.config.page && target.key == self.selected { return; }
+        }
+        let icons = self.available_icons.clone();
+        self.open_icon_gallery(None);
+        self.available_icons = icons;
+    }
     pub(super) fn asset_browser(&mut self, ctx: &egui::Context) {
         if !self.show_assets {
             return;
@@ -224,6 +233,7 @@ impl App {
         if self.icon_target.is_none() {
             self.open_icon_gallery(None);
         }
+        self.retarget_gallery();
         let target = self.icon_target.clone().unwrap();
         let title = target.label(&self.config);
         let selected = self.icon_selected.clone();

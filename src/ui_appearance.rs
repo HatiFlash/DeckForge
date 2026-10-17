@@ -116,7 +116,8 @@ pub(super) struct IconActions {
 pub(super) fn icons(ui: &mut egui::Ui, has_image: bool) -> IconActions {
     let mut actions = IconActions::default();
     ui.horizontal(|ui| {
-        let width = (ui.available_width() - 30.0 - ui.spacing().item_spacing.x).max(80.0);
+        let buttons = if has_image { 2.0 } else { 1.0 };
+        let width = (ui.available_width() - buttons * (30.0 + ui.spacing().item_spacing.x)).max(80.0);
         actions.gallery = ui
             .add_sized(
                 Vec2::new(width, 30.0),
@@ -131,9 +132,12 @@ pub(super) fn icons(ui: &mut egui::Ui, has_image: bool) -> IconActions {
             true,
         )
         .clicked();
+        if has_image {
+            actions.clear = ui
+                .add_sized(Vec2::new(30.0, 30.0), egui::Button::new("×"))
+                .on_hover_text("Retirer l’image de la touche")
+                .clicked();
+        }
     });
-    if has_image {
-        actions.clear = ui.small_button("Retirer l’image").clicked();
-    }
     actions
 }

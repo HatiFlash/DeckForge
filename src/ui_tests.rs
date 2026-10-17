@@ -189,8 +189,8 @@ fn real_widgets_assign_catalog_bind_swap_keys_and_undo() {
         vec![Input::PointerMoved(target), button(target, false)],
     );
     assert_eq!(h.app.config.keys()[7].label, "Piste suivante");
-    assert!(h.app.undo.is_some());
-    h.app.undo_assignment();
+    assert!(!h.app.history.is_empty());
+    h.app.undo_edit();
     assert!(h.app.config.keys()[7].steps.is_empty());
     h.warm(size);
     let a = h.app.drop_targets[1].0.center();
@@ -708,7 +708,7 @@ fn workflow_preview_shows_conditional_blocks() {
 }
 
 #[test]
-fn gallery_click_immediately_shows_selection_and_keeps_the_original_destination() {
+fn gallery_click_retargets_to_current_selected_key() {
     let mut h = Harness::new();
     let size = vec2(1380.0, 900.0);
     let source = h.dir.path().join("demo.png");
@@ -734,14 +734,14 @@ fn gallery_click_immediately_shows_selection_and_keeps_the_original_destination(
     h.click(size, pos);
     let output = h.warm(size);
     assert_eq!(h.app.icon_selected.as_deref(), Some(source.as_path()));
-    assert!(!h.app.config.keys()[6].image.is_empty());
-    assert!(h.app.config.keys()[7].image.is_empty());
+    assert!(h.app.config.keys()[6].image.is_empty());
+    assert!(!h.app.config.keys()[7].image.is_empty());
     assert!(output
         .shapes
         .iter()
         .any(|s| matches!(&s.shape,egui::Shape::Circle(c) if c.radius==8.0 && c.fill==BLUE)));
     assert!(h.app.icon_notice.contains("appliquée"));
-    assert!(h.app.icon_notice.contains("07"));
+    assert!(h.app.icon_notice.contains("08"));
     if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
         h.png(
             size,
@@ -983,4 +983,57 @@ fn mcp_stdio_can_propose_real_audio_blocks_for_review_in_the_headless_app() {
     h.app.show_workflow = true;
     let output = h.warm(size);
     assert!(text_position(&output.shapes, "Construis ton automatisation").is_some());
+}
+
+#[test]
+fn clipboard_crosses_pages_and_profiles_and_undo_redo_tracks_changes() {
+    let mut h = Harness::new();
+    let source = h.app.config.keys()[0].clone();
+    h.app.copy_key();
+    h.app.config.profiles[0].pages.push(crate::model::Page::new("test-page".into(), "Test".into(), false));
+    h.app.config.profiles.push(Profile::new("Second".into()));
+    h.app.config.active = 1;
+    h.app.config.page.clear();
+    h.app.selected = 7;
+    let before = h.app.config.clone();
+    h.app.paste_key(7);
+    h.app.record_history(before, &h.ctx);
+    assert_eq!(h.app.config.keys()[7].label, source.label);
+    assert_eq!(h.app.config.keys()[7].steps, source.steps);
+    h.app.undo_edit();
+    assert!(h.app.config.keys()[7].steps.is_empty());
+    assert!(h.app.gate.dirty);
+    h.app.redo_edit();
+    assert_eq!(h.app.config.keys()[7].repeat, source.repeat);
+    h.app.config.active = 0;
+    h.app.config.page = "test-page".into();
+    h.app.paste_key(4);
+    assert_eq!(h.app.config.keys()[4].label, source.label);
+}
+
+#[test]
+fn history_keeps_fifty_edits_and_discards_redo_after_new_change() {
+    let mut h = Harness::new();
+    for n in 0..55 {
+        let before = h.app.config.clone();
+        h.app.config.keys_mut()[0].label = format!("Edition {n}");
+        h.app.record_history(before, &h.ctx);
+    }
+    assert_eq!(h.app.history.len(), 50);
+    h.app.undo_edit();
+    assert_eq!(h.app.config.keys()[0].label, "Edition 53");
+    h.app.replaying = false;
+    let before = h.app.config.clone();
+    h.app.config.keys_mut()[0].label = "Nouvelle branche".into();
+    h.app.record_history(before, &h.ctx);
+    assert!(h.app.future.is_empty());
+}
+
+#[test]
+fn duplicate_uses_next_empty_key_without_replacing_existing_keys() {
+    let mut h = Harness::new();
+    h.app.duplicate_key(0);
+    assert_eq!(h.app.selected, 5);
+    assert_eq!(h.app.config.keys()[5].steps, h.app.config.keys()[0].steps);
+    assert_eq!(h.app.config.keys()[1].label, "Lecture");
 }

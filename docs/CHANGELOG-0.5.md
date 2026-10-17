@@ -14,3 +14,15 @@
 
 - Vérifier sur D6 physique les appuis USB et MCP pendant un dialogue Windows prolongé, ainsi que l’import de packs et les chemins d’icônes/étapes. Aucun programme natif ni macro réelle n’a été lancé pendant ces tests.
 - La restriction ACL du fichier `mcp-connection.json` à l’utilisateur courant n’est pas encore appliquée ; le jeton reste local mais dépend des permissions du dossier contenant l’exécutable.
+
+## Lot 2 - Interface et édition
+
+- Copier / coller / dupliquer une touche (menu clic droit sur l'aperçu, Ctrl+C / Ctrl+V), y compris entre pages et profils.
+- Annuler / Rétablir multi-niveaux (50 étapes, frappes regroupées par champ) : boutons en haut, Ctrl+Z / Ctrl+Y. Retrait d'étape annulable.
+- Simuler devient le bouton principal ; Tester dans 3 s est secondaire. Flèches ↑ puis ↓ partout.
+- Bouton de thème explicite ; indicateur D6 coloré (connecté / en attente / déconnecté) ; aperçu du deck agrandi.
+- Correctif : la Galerie ciblait l'ancienne touche après changement de sélection (Touche 07 au lieu de 08).
+- Bouton Retirer l'image intégré à la ligne Galerie (la colonne de l'inspecteur était coupée).
+- Seuls des glyphes présents dans les polices egui par défaut sont utilisés (↶ ↷ ✕ s'affichaient en carrés).
+
+Tests exécutés : Build-Windows.ps1 -Action All : 81 tests application, 5 tests connecteur, MCP stdio et HTTP OK ; aperçus régénérés et contrôlés visuellement.
