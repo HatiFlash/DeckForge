@@ -1,5 +1,35 @@
 use super::*;
 
+// These two presets send hotkeys; Discord does not report its real mute state.
+pub(super) fn discord_shortcut(key: &Key) -> Option<&str> {
+    let expected = match key.label.as_str() {
+        "Discord : Micro" => "CTRL+SHIFT+F13",
+        "Discord : Casque" => "CTRL+SHIFT+F14",
+        _ => return None,
+    };
+    match key.steps.as_slice() {
+        [Step::Hotkey { keys }] if keys == expected => Some(keys.as_str()),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod discord_assistant_tests {
+    use super::*;
+    #[test]
+    fn only_original_discord_shortcuts_show_the_assistant() {
+        let mut key = Key { label: "Discord : Micro".into(),
+            steps: vec![Step::Hotkey { keys: "CTRL+SHIFT+F13".into() }],
+            ..Key::default() };
+        assert_eq!(discord_shortcut(&key), Some("CTRL+SHIFT+F13"));
+        key.steps = vec![Step::Hotkey { keys: "CTRL+SHIFT+F14".into() }];
+        assert_eq!(discord_shortcut(&key), None);
+        key.label = "Discord : Casque".into();
+        assert_eq!(discord_shortcut(&key), Some("CTRL+SHIFT+F14"));
+        key.steps.push(Step::Delay { ms: 1 });
+        assert_eq!(discord_shortcut(&key), None);
+    }
+}
 pub(super) fn step_mut<'a>(steps: &'a mut [Step], path: &[usize]) -> Option<&'a mut Step> {
     let step = steps.get_mut(*path.first()?)?.active_mut();
     if path.len() == 1 {

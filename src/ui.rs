@@ -1674,6 +1674,16 @@ impl App {
                 });
             });
             ui.separator();
+            if let Some(shortcut) = extras::discord_shortcut(&self.config.keys()[self.selected]) {
+                ui.group(|ui| {
+                    ui.label("Discord : configure ce raccourci dans Discord → Paramètres → Raccourcis clavier");
+                    ui.horizontal(|ui| {
+                        ui.label(shortcut);
+                        if ui.button("Copier").clicked() { ui.ctx().copy_text(shortcut.to_owned()); }
+                    });
+                    ui.label("État estimé : DeckForge ne lit pas l'état réel du micro ni du casque dans Discord.");
+                });
+            }
             let long_editor = self.long_editor;
             let active=self.config.active; let names=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
             let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let image_size=self.config.image_size;let key=&mut self.config.keys_mut()[selected];
