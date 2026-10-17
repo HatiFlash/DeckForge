@@ -18,6 +18,12 @@ Exécutables prêts sur le PC fixe : `Bureau\DeckForge-0.5-fusion\DeckForge.exe`
 - Livré et testé automatiquement : « Attendre que… » (`wait_until`), sondage annulable, délai borné et simulation en lecture seule.
 - À tester avec Hatim : attente d’une condition réelle, expiration et bouton Arrêter pendant une attente.
 
+## Lot C1 — maintien de touche (17/10/2026)
+
+- Livré : « Maintenir une touche » (`key_hold`), touches au format Raccourci, maintien borné ou jusqu’au bloc Relâcher. Registre de touches dans le moteur ; libération à la fin, lors d’Arrêter / Ctrl+Alt+F12 et à la fermeture. Atelier, modèle et schéma MCP inclus ; simulation sans effet.
+- Testé automatiquement : sérialisation, validation, résumés, registre pur et build Windows complet (voir commit). Aucun test ne produit de saisie clavier réelle.
+- À tester avec Hatim : maintien / relâchement sur une application volontairement ouverte, arrêt pendant maintien, fin de macro et fermeture de DeckForge ; ne pas lancer les tests sur une application sensible.
+
 ## Lot C — application déjà ouverte
 
 - Livré (tests automatiques) : « Lancer une application » (`launch`) accepte `focus_if_running` (défaut false, anciennes configurations compatibles). Recherche une fenêtre visible du même exécutable et tente de l’activer sans créer de processus.

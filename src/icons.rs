@@ -19,7 +19,7 @@ pub fn step_kind(step: &Step) -> usize {
         Step::D6Brightness { .. } | Step::D6Sleep => 9,
         Step::CloseWindow => 5,
         Step::Delay { .. } => 0,
-        Step::Hotkey { .. } => 1,
+        Step::Hotkey { .. } | Step::KeyHold { .. } => 1,
         Step::Text { .. } | Step::Clipboard { .. } => 2,
         Step::Launch { .. } => 3,
         Step::Url { .. } => 4,

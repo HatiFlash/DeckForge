@@ -38,9 +38,42 @@ fn next_branch(path: &[usize]) -> usize {
     *next = !*next;
     branch
 }
+// Pure registry: only keys successfully pressed by this macro are tracked.
+#[derive(Default, Debug)]
+struct KeyRegistry(Vec<u16>);
+impl KeyRegistry {
+    fn press(&mut self, vk: u16) -> bool { if self.0.contains(&vk) { false } else { self.0.push(vk); true } }
+    fn release(&mut self, vk: u16) -> bool { if let Some(i) = self.0.iter().position(|&key| key == vk) { self.0.remove(i); true } else { false } }
+    fn release_all(&mut self) -> Vec<u16> { self.0.drain(..).rev().collect() }
+}
+struct HoldCleanup(Arc<std::sync::Mutex<KeyRegistry>>);
+impl Drop for HoldCleanup { fn drop(&mut self) { let _ = release_held(&self.0); } }
+fn release_held(held: &std::sync::Mutex<KeyRegistry>) -> Result<()> {
+    let mut held = held.lock().unwrap_or_else(|e| e.into_inner());
+    let mut first_error = None;
+    for vk in held.release_all() {
+        if let Err(err) = input(vk, 0, KEYEVENTF_KEYUP) { if first_error.is_none() { first_error = Some(err); } }
+    }
+    if let Some(err) = first_error { Err(err.context("Relâchement des touches maintenues impossible")) } else { Ok(()) }
+}
+fn hold_keys(keys: &[u16], action: &str, held: &std::sync::Mutex<KeyRegistry>, cancel: &AtomicBool) -> Result<()> {
+    let mut held = held.lock().unwrap_or_else(|e| e.into_inner());
+    check(cancel)?;
+    match action {
+        "down" => for &vk in keys {
+            if !held.0.contains(&vk) { input(vk, 0, 0).context("Maintien de touche refusé par Windows")?; held.press(vk); }
+        },
+        "up" => for &vk in keys.iter().rev() {
+            if held.0.contains(&vk) { input(vk, 0, KEYEVENTF_KEYUP).context("Relâchement de touche refusé par Windows")?; held.release(vk); }
+        },
+        _ => bail!("Action de maintien inconnue"),
+    }
+    Ok(())
+}
 pub struct Engine {
     pub running: Arc<AtomicBool>,
     cancel: Arc<AtomicBool>,
+    held: Arc<std::sync::Mutex<KeyRegistry>>,
     tx: Sender<Event>,
     last_finished: Arc<std::sync::Mutex<Instant>>,
 }
@@ -49,6 +82,7 @@ impl Engine {
         Self {
             running: Arc::new(AtomicBool::new(false)),
             cancel: Arc::new(AtomicBool::new(false)),
+            held: Arc::new(std::sync::Mutex::new(KeyRegistry::default())),
             tx,
             last_finished: Arc::new(std::sync::Mutex::new(
                 Instant::now() - Duration::from_secs(1),
@@ -57,6 +91,7 @@ impl Engine {
     }
     pub fn stop(&self) {
         self.cancel.store(true, Ordering::SeqCst);
+        if let Err(e) = release_held(&self.held) { let _ = self.tx.send(Event::Log(format!("{e:#}"))); }
     }
     pub fn allows_global_press(&self, at: Instant) -> bool {
         !self.running.load(Ordering::SeqCst)
@@ -78,6 +113,7 @@ impl Engine {
         self.cancel.store(false, Ordering::SeqCst);
         let running = self.running.clone();
         let cancel = self.cancel.clone();
+        let held = self.held.clone();
         let tx = self.tx.clone();
         let last_finished = self.last_finished.clone();
         // Physical press: capture before spawning; delayed test: capture after countdown.
@@ -85,6 +121,7 @@ impl Engine {
             Some(crate::app_audio::capture("foreground", true))
         } else { None };
         std::thread::spawn(move || {
+            let cleanup = HoldCleanup(held.clone());
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if !dry {
                     wait(initial_delay, &cancel)?;
@@ -93,8 +130,9 @@ impl Engine {
                 let foreground = if dry || !has_app_volume(&key.steps) { None }
                     else if let Some(captured) = captured { Some(captured?) }
                     else { Some(crate::app_audio::capture("foreground", true)?) };
-                run(&key, dry, &cancel, &tx, &obs, foreground.as_ref())
+                run(&key, dry, &cancel, &tx, &obs, foreground.as_ref(), &held)
             }));
+            drop(cleanup);
             let message = match result {
                 Ok(Ok(())) => "Macro terminée".into(),
                 Ok(Err(e)) => format!("Macro arrêtée : {e}"),
@@ -143,7 +181,7 @@ fn has_app_volume(steps: &[Step]) -> bool {
         _ => false,
     })
 }
-fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>, obs: &crate::model::ObsSettings, foreground: Option<&crate::app_audio::Target>) -> Result<()> {
+fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>, obs: &crate::model::ObsSettings, foreground: Option<&crate::app_audio::Target>, held: &std::sync::Mutex<KeyRegistry>) -> Result<()> {
     let _ = tx.send(Event::Log(format!(
         "{} — {} ({} répétition(s))",
         if dry { "SIMULATION" } else { "EXÉCUTION" },
@@ -165,6 +203,7 @@ fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>, obs: &crat
             &[],
             obs,
             foreground,
+            held,
         )?;
     }
     let _ = tx.send(Event::Block(vec![]));
@@ -300,6 +339,22 @@ mod math_tests {
     }
 }
 
+#[cfg(test)]
+mod key_registry_tests {
+    use super::*;
+    #[test]
+    fn registry_is_idempotent_and_cleans_up_in_reverse_order() {
+        let mut held = KeyRegistry::default();
+        assert!(held.press(0x11));
+        assert!(held.press(0x41));
+        assert!(!held.press(0x11));
+        assert!(!held.release(0x42));
+        assert!(held.release(0x41));
+        assert!(held.press(0x42));
+        assert_eq!(held.release_all(), vec![0x42, 0x11]);
+        assert!(held.release_all().is_empty());
+    }
+}
 fn calculate(current: f64, op: &str, operand: f64, min: f64, max: f64, random_unit: f64) -> Result<f64> {
     anyhow::ensure!(current.is_finite() && operand.is_finite() && min.is_finite() && max.is_finite(), "Calcul : nombre non fini");
     let result = match op {
@@ -367,6 +422,7 @@ fn run_steps(
     parent: &[usize],
     obs: &crate::model::ObsSettings,
     foreground: Option<&crate::app_audio::Target>,
+    held: &std::sync::Mutex<KeyRegistry>,
 ) -> Result<()> {
     for (idx, step) in steps.iter().enumerate() {
         if step.is_disabled() { continue; }
@@ -388,6 +444,7 @@ fn run_steps(
             if let Step::Notify { title, message } = step { let _ = tx.send(Event::Log(format!("Simulation : notification « {} » — {} (non envoyée)", interpolate(title, variables), interpolate(message, variables)))); }
             if let Some(summary) = step.active().app_volume_summary().or_else(|| step.active().device_volume_summary()) { let _ = tx.send(Event::Log(format!("Simulation : {summary}"))); }
             match step {
+                Step::KeyHold { .. } => { let _ = tx.send(Event::Log(format!("Simulation : {} (aucune touche enfoncée)", step.key_hold_summary().unwrap_or_default()))); }
                 Step::Clipboard { .. } => {
                     let _ = tx.send(Event::Log(format!("Simulation : {} (presse-papiers non consulté ni modifié)", step.clipboard_summary().unwrap_or_default())));
                 }
@@ -406,7 +463,7 @@ fn run_steps(
                     let result = condition.evaluate(variables)?;
                     let _ = tx.send(Event::Log(format!("Simulation : {} = {result} ; ALORS et SINON explorés sans effet", condition.summary())));
                     for (branch_id, branch) in [then_steps, else_steps].into_iter().enumerate() {
-                        run_steps(branch, true, cancel, tx, variables, budget, saved_clipboard, &[path.clone(), vec![branch_id]].concat(), obs, foreground)?;
+                        run_steps(branch, true, cancel, tx, variables, budget, saved_clipboard, &[path.clone(), vec![branch_id]].concat(), obs, foreground, held)?;
                     }
                 }
                 Step::IfWindow {
@@ -430,6 +487,7 @@ fn run_steps(
                         &[path.clone(), vec![0]].concat(),
                         obs,
                         foreground,
+                        held,
                     )?;
                     run_steps(
                         else_steps,
@@ -442,11 +500,12 @@ fn run_steps(
                         &[path.clone(), vec![1]].concat(),
                         obs,
                         foreground,
+                        held,
                     )?;
                 }
                 Step::Toggle { a, b } => {
                     for (branch, list) in [a, b].into_iter().enumerate() {
-                        run_steps(list, true, cancel, tx, variables, budget, saved_clipboard, &[path.clone(), vec![branch]].concat(), obs, foreground)?;
+                        run_steps(list, true, cancel, tx, variables, budget, saved_clipboard, &[path.clone(), vec![branch]].concat(), obs, foreground, held)?;
                     }
                 },
                 Step::Repeat { steps, .. } => run_steps(
@@ -460,6 +519,7 @@ fn run_steps(
                     &[path.clone(), vec![0]].concat(),
                     obs,
                     foreground,
+                    held,
                 )?,
                 _ => {}
             }
@@ -470,7 +530,7 @@ fn run_steps(
             Step::Toggle { a, b } => {
                 let branch = next_branch(&path);
                 let _ = tx.send(Event::ToggleVisual);
-                run_steps(if branch == 0 { a } else { b }, dry, cancel, tx, variables, budget, saved_clipboard, &[path.clone(), vec![branch]].concat(), obs, foreground)?;
+                run_steps(if branch == 0 { a } else { b }, dry, cancel, tx, variables, budget, saved_clipboard, &[path.clone(), vec![branch]].concat(), obs, foreground, held)?;
             },
             Step::PlaySound { path, volume } => crate::soundboard::play(path, *volume)?,
             Step::StopSounds => crate::soundboard::stop(),
@@ -564,7 +624,7 @@ fn run_steps(
                 let result = condition.evaluate(variables)?;
                 let _ = tx.send(Event::Log(format!("{} : {}", condition.summary(), if result { "ALORS" } else { "SINON" })));
                 let branch_id = usize::from(!result);
-                run_steps(if result { then_steps } else { else_steps }, false, cancel, tx, variables, budget, saved_clipboard, &[path.clone(), vec![branch_id]].concat(), obs, foreground)?;
+                run_steps(if result { then_steps } else { else_steps }, false, cancel, tx, variables, budget, saved_clipboard, &[path.clone(), vec![branch_id]].concat(), obs, foreground, held)?;
             }
             Step::IfWindow {
                 title,
@@ -587,6 +647,7 @@ fn run_steps(
                     &[path.clone(), vec![branch_id]].concat(),
                     obs,
                     foreground,
+                    held,
                 )?;
             }
             Step::IfVariable {
@@ -611,6 +672,7 @@ fn run_steps(
                     &[path.clone(), vec![branch_id]].concat(),
                     obs,
                     foreground,
+                    held,
                 )?;
             }
             Step::Repeat { count, steps } => {
@@ -626,6 +688,7 @@ fn run_steps(
                         &[path.clone(), vec![0]].concat(),
                         obs,
                         foreground,
+                        held,
                     )?;
                 }
             }
@@ -636,6 +699,11 @@ fn run_steps(
             } => crate::automation::run_script(executable, script, args, cancel)?,
             Step::Delay { ms } => wait(*ms, cancel)?,
             Step::Hotkey { keys } => hotkey(&parse_hotkey(keys)?)?,
+            Step::KeyHold { keys, action, hold_ms } => {
+                let codes = parse_hotkey(keys)?;
+                hold_keys(&codes, action, held, cancel)?;
+                if action == "down" && *hold_ms > 0 { wait(*hold_ms, cancel)?; hold_keys(&codes, "up", held, cancel)?; }
+            }
             Step::Text { text } => {
                 for unit in interpolate_runtime(text, variables, cancel)?.encode_utf16() {
                     check(cancel)?;
@@ -897,7 +965,7 @@ mod tests {
     fn sound_simulation_does_not_open_missing_files() {
         let (tx, rx) = std::sync::mpsc::channel();
         let key = Key { steps: vec![Step::PlaySound { path: "Z:\\missing.wav".into(), volume: 40 }, Step::StopSounds], ..Key::default() };
-        run(&key, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default(), None).unwrap();
+        run(&key, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default(), None, &std::sync::Mutex::new(KeyRegistry::default())).unwrap();
         assert!(rx.try_iter().any(|event| matches!(event, Event::Log(s) if s.contains("Jouer un son"))));
     }
     #[test]
@@ -911,7 +979,7 @@ mod tests {
                 Step::Disabled { step: Box::new(Step::SetVariable { name: "bad".into(), value: "yes".into(), persistent: false, }) },
                 Step::SetVariable { name: "good".into(), value: "yes".into(), persistent: false, },
             ] }];
-            run_steps(&steps, dry, &AtomicBool::new(false), &tx, &mut vars, &mut budget, &mut None, &[], &crate::model::ObsSettings::default(), None).unwrap();
+            run_steps(&steps, dry, &AtomicBool::new(false), &tx, &mut vars, &mut budget, &mut None, &[], &crate::model::ObsSettings::default(), None, &std::sync::Mutex::new(KeyRegistry::default())).unwrap();
             assert!(!vars.contains_key("bad"));
             if !dry { assert_eq!(vars.get("good").map(String::as_str), Some("yes")); }
             assert_eq!(budget, 8);
@@ -958,6 +1026,7 @@ mod tests {
             &[],
             &crate::model::ObsSettings::default(),
             None,
+            &std::sync::Mutex::new(KeyRegistry::default()),
         )
         .unwrap();
         assert_eq!(variables["result"], "oui");
@@ -981,7 +1050,7 @@ mod tests {
             }],
             ..Key::default()
         };
-        run(&key, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default(), None).unwrap();
+        run(&key, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default(), None, &std::sync::Mutex::new(KeyRegistry::default())).unwrap();
     }
     #[test]
     fn nested_execution_budget_stops_before_another_block_runs() {
@@ -1008,6 +1077,7 @@ mod tests {
             &[],
             &crate::model::ObsSettings::default(),
             None,
+            &std::sync::Mutex::new(KeyRegistry::default()),
         )
         .unwrap_err();
         assert!(err.to_string().contains("10 000"));
@@ -1034,7 +1104,7 @@ mod tests {
             ],
             ..Key::default()
         };
-        run(&k, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default(), None).unwrap();
+        run(&k, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default(), None, &std::sync::Mutex::new(KeyRegistry::default())).unwrap();
         assert_eq!(
             rx.try_iter()
                 .filter(|e| matches!(e, Event::Profile(_)))
@@ -1053,7 +1123,7 @@ mod tests {
             ],
             ..Key::default()
         };
-        run(&k, false, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default(), None).unwrap();
+        run(&k, false, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default(), None, &std::sync::Mutex::new(KeyRegistry::default())).unwrap();
         let names = rx
             .try_iter()
             .filter_map(|e| {
@@ -1094,7 +1164,7 @@ mod clipboard_pure_tests {
     fn dry_clipboard_only_logs_and_never_reads_or_writes() {
         let (tx, rx) = std::sync::mpsc::channel();
         let key = Key { steps: vec![Step::Clipboard { op: "read_to_variable".into(), value: String::new(), name: "x".into() }, Step::Clipboard { op: "restore".into(), value: String::new(), name: "x".into() }], ..Key::default() };
-        run(&key, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default(), None).unwrap();
+        run(&key, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default(), None, &std::sync::Mutex::new(KeyRegistry::default())).unwrap();
         assert_eq!(rx.try_iter().filter(|event| matches!(event, Event::Log(s) if s.contains("non consulté ni modifié"))).count(), 2);
     }
 }

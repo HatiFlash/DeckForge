@@ -3857,6 +3857,20 @@ fn edit_step(
     let mut changed = false;
     match step {
         Step::Disabled { .. } => unreachable!("atelier passe une étape active"),
+        Step::KeyHold { keys, action, hold_ms } => {
+            ui.label("Touches (ex. CTRL+SHIFT+A)");
+            changed |= ui.text_edit_singleline(keys).changed();
+            egui::ComboBox::from_id_salt("key_hold_action").selected_text(if action == "up" { "Relâcher" } else { "Maintenir" }).show_ui(ui, |ui| {
+                changed |= ui.selectable_value(action, "down".into(), "Maintenir").changed();
+                changed |= ui.selectable_value(action, "up".into(), "Relâcher").changed();
+            });
+            if action == "down" {
+                ui.collapsing("Options avancées", |ui| {
+                    ui.label("Durée (ms) : 0 = jusqu’au bloc Relâcher ou fin de macro");
+                    changed |= ui.add(egui::DragValue::new(hold_ms).range(0..=3_600_000)).changed();
+                });
+            } else if *hold_ms != 0 { *hold_ms = 0; changed = true; }
+        }
         Step::MouseClick { button, double } => {
             egui::ComboBox::from_id_salt("mouse_button").selected_text(match button.as_str() { "left" => "Gauche", "right" => "Droit", _ => "Milieu" }).show_ui(ui, |ui| {
                 for (id, label) in [("left", "Gauche"), ("right", "Droit"), ("middle", "Milieu")] { changed |= ui.selectable_value(button, id.into(), label).changed(); }
@@ -4227,6 +4241,7 @@ fn edit_step(
 fn step_summary(step: &Step) -> String {
     match step {
         Step::Hotkey { keys } => keys.clone(),
+        Step::KeyHold { .. } => step.key_hold_summary().unwrap_or_default(),
         Step::Delay { ms } => format!("Attendre {ms} ms"),
         Step::MouseClick { button, double } => format!("Clic {button}{}", if *double { " double" } else { "" }),
         Step::MouseMove { x, y, relative } => format!("Souris {x}, {y} ({})", if *relative { "relatif" } else { "absolu" }),

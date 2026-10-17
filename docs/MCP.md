@@ -8,6 +8,10 @@ Dans `deckforge_configure_key`, `state_display` est optionnel : `{"condition":{"
 
 Les blocs `text` (texte saisi), `url`, `http_request` (`url` et `body`), `udp_send` (`text`) et `launch` (`args`) acceptent `{nom}` ; les gabarits restent inchangés dans la configuration et les propositions MCP. Variables spéciales en lecture : `{date}` (AAAA-MM-JJ locale), `{heure}` (HH:MM:SS locale), `{horodatage}` (secondes Unix), `{presse_papiers}` (texte Unicode du presse-papiers Windows). `{{` donne une accolade littérale. Les noms spéciaux sont réservés ; une variable ordinaire homonyme ne les remplace pas. L'adresse résolue est revalidée avant ouverture/requête. La simulation n'envoie ni texte, ni requête, ni lancement et ne lit pas le presse-papiers.
 
+### Maintenir une touche (`key_hold`)
+
+`{"type":"key_hold","keys":"CTRL+SHIFT","action":"down","hold_ms":500}` maintient les touches au format Raccourci, puis les relâche après 500 ms. Avec `hold_ms:0`, elles restent enfoncées jusqu’à un bloc `{"type":"key_hold","keys":"CTRL+SHIFT","action":"up"}`, la fin de la macro ou son annulation. `up` exige une durée nulle. Simulation sans saisie réelle ; export AutoHotkey non disponible.
+
 ### Presse-papiers (`clipboard`)
 
 `{"type":"clipboard","op":"copy_text","value":"Bonjour {nom}"}` copie du texte Unicode sans mise en forme. `op` accepte aussi `read_to_variable` (`name` : variable de macro, défaut `texte`), `clear`, `save` et `restore`. `save`/`restore` conservent le texte uniquement pendant une exécution de macro ; les autres formats ne sont pas restaurés. Le modèle « Coller sans mise en forme » lit dans `texte_colle`, copie `{texte_colle}`, puis envoie Ctrl+V. Une simulation n'accède jamais au presse-papiers et ne colle rien.

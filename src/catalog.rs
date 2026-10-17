@@ -47,6 +47,7 @@ pub fn presets() -> Vec<Preset> {
             }],
         );
     }
+    add("Clavier", "Maintenir Ctrl 500 ms", "Maintient Ctrl puis le relâche après une demi-seconde ; Arrêter relâche immédiatement.", [73, 160, 217], vec![Step::KeyHold { keys: "CTRL".into(), action: "down".into(), hold_ms: 500 }]);
     add("Texte", "Coller sans mise en forme", "Lit le texte Unicode, le recopie sans formatage puis colle dans la fenêtre active.", [108, 135, 236], vec![
         Step::Clipboard { op: "read_to_variable".into(), value: String::new(), name: "texte_colle".into() },
         Step::Clipboard { op: "copy_text".into(), value: "{texte_colle}".into(), name: "texte".into() },
@@ -477,7 +478,7 @@ mod tests {    #[test]
     #[test]
     fn every_preset_and_action_is_executable_with_valid_configuration() {
         let c = Config::default();
-        assert_eq!(presets().len(), 78);
+        assert_eq!(presets().len(), 79);
         for p in presets() {
             validate_key(&p.key, &c).unwrap();
             assert!(!p.key.steps.is_empty());

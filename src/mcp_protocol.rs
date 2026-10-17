@@ -50,6 +50,7 @@ pub fn tools() -> Value {
     step_schema["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"type":{"const":"math"},"persistent":{"type":"boolean","default":false},"name":{"type":"string","minLength":1,"maxLength":64,"default":"compteur"},"op":{"enum":["set","add","subtract","multiply","divide","modulo","min","max","random"],"default":"add"},"value":{"type":"string","maxLength":4096,"default":"1"},"min":{"type":"number","default":0},"max":{"type":"number","default":100}},"required":["type"],"additionalProperties":false}));
     step_schema["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"type":{"const":"text_op"},"persistent":{"type":"boolean","default":false},"name":{"type":"string","minLength":1,"maxLength":64,"default":"texte"},"op":{"enum":["set","append","prepend","upper","lower","trim","replace","length"],"default":"upper"},"value":{"type":"string","maxLength":4096,"default":""},"find":{"type":"string","maxLength":4096,"default":""}},"required":["type"],"additionalProperties":false}));
     step_schema["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"type":{"const":"clipboard"},"op":{"enum":["copy_text","read_to_variable","clear","save","restore"],"default":"copy_text"},"value":{"type":"string","maxLength":100000,"default":""},"name":{"type":"string","minLength":1,"maxLength":64,"default":"texte"}},"required":["type"],"additionalProperties":false}));
+    step_schema["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"type":{"const":"key_hold"},"keys":{"type":"string","default":"CTRL"},"action":{"enum":["down","up"],"default":"down"},"hold_ms":{"type":"integer","minimum":0,"maximum":3600000,"default":0}},"required":["type"],"additionalProperties":false}));
     let condition_schema = json!({"oneOf":[
         {"type":"object","properties":{"kind":{"const":"foreground_app"},"exe":{"type":"string"}},"required":["kind"],"additionalProperties":false},
         {"type":"object","properties":{"kind":{"const":"app_running"},"exe":{"type":"string"}},"required":["kind"],"additionalProperties":false},
@@ -146,6 +147,20 @@ mod tests {
             initialize(Some("2024-11-05"))["protocolVersion"],
             "2024-11-05"
         );
+    }
+}
+
+#[cfg(test)]
+mod key_hold_schema_tests {
+    #[test]
+    fn key_hold_has_strict_schema() {
+        let tools = super::tools();
+        let configure = tools["tools"].as_array().unwrap().iter().find(|t| t["name"] == "deckforge_configure_key").unwrap();
+        let steps = configure["inputSchema"]["$defs"]["step"]["oneOf"].as_array().unwrap();
+        let schema = steps.iter().find(|s| s["properties"]["type"]["const"] == "key_hold").unwrap();
+        assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(schema["required"], serde_json::json!(["type"]));
+        assert_eq!(schema["properties"]["hold_ms"]["default"], 0);
     }
 }
 

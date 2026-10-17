@@ -11,6 +11,11 @@ pub enum Step {
     Hotkey {
         keys: String,
     },
+    KeyHold {
+        #[serde(default = "default_hold_keys")] keys: String,
+        #[serde(default = "default_hold_action")] action: String,
+        #[serde(default)] hold_ms: u64,
+    },
     Text {
         text: String,
     },
@@ -152,6 +157,8 @@ pub enum Step {
     PageNext,
     PagePrevious,
 }
+fn default_hold_keys() -> String { "CTRL".into() }
+fn default_hold_action() -> String { "down".into() }
 fn default_text_name() -> String { "texte".into() }
 fn default_text_op() -> String { "upper".into() }
 fn valid_text_op(op: &str) -> bool { ["set", "append", "prepend", "upper", "lower", "trim", "replace", "length"].contains(&op) }
@@ -229,6 +236,15 @@ impl Step {
         })
     }
 
+    pub fn key_hold_summary(&self) -> Option<String> {
+        let Self::KeyHold { keys, action, hold_ms } = self else { return None };
+        Some(match (action.as_str(), hold_ms) {
+            ("down", 0) => format!("Maintenir {keys} jusqu’au bloc Relâcher ou à la fin de la macro"),
+            ("down", ms) => format!("Maintenir {keys} pendant {ms} ms"),
+            ("up", _) => format!("Relâcher {keys}"),
+            _ => format!("Action de maintien inconnue : {keys}"),
+        })
+    }
     pub fn clipboard_summary(&self) -> Option<String> {
         let Self::Clipboard { op, value, name } = self else { return None };
         Some(match op.as_str() {
@@ -252,6 +268,7 @@ impl Step {
             Self::Disabled { step } => step.name(),
             Self::Delay { .. } => "Attendre",
             Self::Hotkey { .. } => "Raccourci",
+            Self::KeyHold { .. } => "Maintenir une touche",
             Self::Text { .. } => "Saisir du texte",
             Self::Launch { .. } => "Lancer une application",
             Self::Url { .. } => "Ouvrir un site",
@@ -933,6 +950,10 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
             Step::Hotkey { keys } => {
                 parse_hotkey(keys)?;
             }
+            Step::KeyHold { keys, action, hold_ms } => {
+                parse_hotkey(keys)?;
+                anyhow::ensure!(["down", "up"].contains(&action.as_str()) && *hold_ms <= 3_600_000 && (action != "up" || *hold_ms == 0), "Maintien de touche : action ou durée invalide");
+            }
             Step::Text { text } if text.len() > 100_000 => bail!("Texte trop long"),
             Step::Launch { program, args, .. } if program.trim().is_empty() || args.len() > 128 => {
                 bail!("Application ou arguments invalides")
@@ -1125,6 +1146,24 @@ mod state_display_tests {
         assert!(validate_key(&Key { state_display: Some(StateDisplay { condition: crate::conditions::Condition::All { conditions: vec![] }, ..display }), ..Key::default() }, &Config::default()).is_err());
     }
 }
+#[cfg(test)]
+mod key_hold_tests {
+    use super::*;
+    #[test]
+    fn defaults_roundtrip_unknown_fields_and_validation() {
+        let s: Step = serde_json::from_str(r#"{"type":"key_hold"}"#).unwrap();
+        assert_eq!(s, Step::KeyHold { keys: "CTRL".into(), action: "down".into(), hold_ms: 0 });
+        assert!(s.key_hold_summary().unwrap().contains("fin de la macro"));
+        assert_eq!(serde_json::from_str::<Step>(&serde_json::to_string(&s).unwrap()).unwrap(), s);
+        assert!(serde_json::from_str::<Step>(r#"{"type":"key_hold","unexpected":1}"#).is_err());
+        for bad in [Step::KeyHold { keys: "?".into(), action: "down".into(), hold_ms: 0 }, Step::KeyHold { keys: "A".into(), action: "other".into(), hold_ms: 0 }, Step::KeyHold { keys: "A".into(), action: "up".into(), hold_ms: 1 }, Step::KeyHold { keys: "A".into(), action: "down".into(), hold_ms: 3_600_001 }] {
+            assert!(validate_key(&Key { steps: vec![bad], ..Key::default() }, &Config::default()).is_err());
+        }
+        assert!(validate_key(&Key { steps: vec![s], ..Key::default() }, &Config::default()).is_ok());
+        assert!(crate::automation::export(&Key { steps: vec![Step::KeyHold { keys: "A".into(), action: "up".into(), hold_ms: 0 }], ..Key::default() }).is_err());
+    }
+}
+
 #[cfg(test)]
 mod math_step_tests {
     use super::*;

@@ -61,7 +61,7 @@ pub(super) fn step_mut<'a>(steps: &'a mut [Step], path: &[usize]) -> Option<&'a 
     step_mut(children, &path[2..])
 }
 const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
-    ("Clavier", &[0]),
+    ("Clavier", &[0, 45]),
     ("Streaming", &[19, 20, 21, 22, 23, 24, 25, 30, 31, 0, 4]), ("Système", &[0, 2, 4, 26, 27, 28, 29, 32, 33]),
     ("Texte", &[1, 43, 44]), ("Applications et sites", &[2, 3]),
     ("Médias et audio", &[4, 13, 37, 38]), ("Fenêtres", &[6]), ("Attendre", &[5, 40]), ("Notifications", &[41]),
@@ -70,6 +70,7 @@ const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
 ];
 fn block_help(kind: usize) -> &'static str {
     match kind {
+        45 => "Maintient des touches ; 0 ms jusqu’au bloc Relâcher, fin ou annulation de la macro.",
         0 => "Appuie sur une combinaison de touches.", 1 => "Écrit du texte dans la fenêtre active ; accepte {nom} et les variables spéciales.",
         2 => "Démarre un programme Windows (arguments interpolés).", 3 => "Ouvre une adresse web (gabarit interpolé).",
         4 => "Commande la lecture et le volume.", 5 => "Attend avant le bloc suivant.",
@@ -135,6 +136,7 @@ fn block_summary(step: &Step) -> String {
         Step::ObsMute { input, mode } => format!("OBS : {input} ({mode})"),
         Step::ObsSourceVisibility { scene, source, mode } => format!("OBS : {scene} / {source} ({mode})"),
         Step::Hotkey { keys } => format!("Appuyer sur {keys}"),
+        Step::KeyHold { .. } => step.key_hold_summary().unwrap_or_default(),
         Step::Delay { ms } => format!("Attendre {ms} ms"),
         Step::Url { url } => format!("Ouvrir {url}"),
         Step::Text { text } => format!("Écrire {}", text.chars().take(50).collect::<String>()),

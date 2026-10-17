@@ -21,10 +21,11 @@ pub const NAMES: &[&str] = &[
     "Si une variable correspond",
     "Script AutoHotkey",
     "OBS : scène", "OBS : enregistrement", "OBS : diffusion", "OBS : caméra",
-    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active", "Clic souris", "Déplacer la souris", "Défilement souris", "Jouer un son", "Arrêter les sons", "Luminosité du D6", "Veille du D6", "Envoyer en UDP", "Requête HTTP", "Touche à deux états", "Volume d’une application", "Volume d’un périphérique", "Si… sinon", "Attendre que…", "Notification", "Calculer", "Texte", "Presse-papiers",
+    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active", "Clic souris", "Déplacer la souris", "Défilement souris", "Jouer un son", "Arrêter les sons", "Luminosité du D6", "Veille du D6", "Envoyer en UDP", "Requête HTTP", "Touche à deux états", "Volume d’une application", "Volume d’un périphérique", "Si… sinon", "Attendre que…", "Notification", "Calculer", "Texte", "Presse-papiers", "Maintenir une touche",
 ];
 pub fn step(kind: usize) -> Step {
     match kind {
+        45 => Step::KeyHold { keys: "CTRL".into(), action: "down".into(), hold_ms: 500 },
         44 => Step::Clipboard { op: "copy_text".into(), value: "Bonjour".into(), name: "texte".into() },
         43 => Step::TextOp { name: "texte".into(), op: "upper".into(), value: String::new(), find: String::new(), persistent: false, },
         42 => Step::Math { name: "compteur".into(), op: "add".into(), value: "1".into(), min: 0.0, max: 100.0, persistent: false, },
@@ -363,7 +364,8 @@ mod clipboard_export_tests {
     use super::*;
     #[test]
     fn clipboard_is_in_palette_and_refused_by_ahk_export() {
-        assert_eq!(NAMES.len(), 45);
+        assert!(NAMES.len() >= 45);
+        assert_eq!(NAMES[44], "Presse-papiers");
         let key = Key { steps: vec![step(44)], ..Key::default() };
         assert!(export(&key).unwrap_err().to_string().contains("Presse-papiers"));
     }
