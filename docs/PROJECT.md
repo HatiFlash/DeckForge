@@ -1,6 +1,6 @@
 # DeckForge — état du projet au 17 octobre 2026
 
-Version 0.4.3 de test. Dépôt privé : https://github.com/HatiFlash/DeckForge.
+Version 0.4.3 de test. Dépôt : https://github.com/HatiFlash/DeckForge.
 
 ## Ajouts 0.4.3
 

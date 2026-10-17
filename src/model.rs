@@ -1327,7 +1327,7 @@ mod tests {
     }
     #[test]
     fn focus_audio_launches_become_native_app_volume() {
-        let legacy = |args: &[&str]| Step::Launch { program: "C:\\Users\\hatif\\Desktop\\DeckForge-0.5-diagnostic\\assets\\automations-codex\\module\\FocusAudio.exe".into(), args: args.iter().map(|a| a.to_string()).collect(), focus_if_running: false };
+        let legacy = |args: &[&str]| Step::Launch { program: "C:\\DeckForge\\assets\\automations-codex\\module\\FocusAudio.exe".into(), args: args.iter().map(|a| a.to_string()).collect(), focus_if_running: false };
         let app = |action: &str, step: u8, level: u8| Step::AppVolume { target: "foreground".into(), action: action.into(), step, level, include_children: true };
         assert_eq!(focus_audio_step(&legacy(&["up", "5"])), Some(app("up", 5, 0)));
         assert_eq!(focus_audio_step(&legacy(&["down", "5"])), Some(app("down", 5, 0)));
