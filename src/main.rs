@@ -20,6 +20,7 @@ mod model;
 mod plugins;
 #[allow(dead_code)]
 mod plugin_host;
+mod plugin_http;
 mod plugin_runtime;
 #[allow(dead_code)]
 mod plugin_import;

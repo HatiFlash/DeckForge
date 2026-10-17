@@ -10,7 +10,7 @@ fn node_executable()->Option<std::path::PathBuf>{
  if let Some(p)=std::env::var_os("APPDATA"){if let Ok(entries)=std::fs::read_dir(std::path::PathBuf::from(p).join("Elgato/StreamDeck/NodeJS")){for entry in entries.flatten().take(32){candidates.push(entry.path().join("node.exe"));}}}
  candidates.into_iter().find(|p|p.is_file())
 }
-pub struct Host { pub incoming:Receiver<Value>, outgoing:Sender<Value>, child:Child, worker:Option<thread::JoinHandle<()>>, stop:Arc<AtomicBool> }
+pub struct Host { pub incoming:Receiver<Value>, outgoing:Sender<Value>, child:Child, worker:Option<thread::JoinHandle<()>>, stop:Arc<AtomicBool>, _http:Option<crate::plugin_http::HtmlServer> }
 impl Host {
  pub fn start(plugin:&Plugin)->anyhow::Result<Self>{
   let listener=TcpListener::bind("127.0.0.1:0")?;
@@ -18,10 +18,14 @@ impl Host {
   let mut process=match &plugin.runtime {
    Runtime::Exe(p)=>Command::new(p),
    Runtime::Node(p)=>{let node=node_executable().ok_or_else(||anyhow::anyhow!("Node.js introuvable (système, FIFINE ou Elgato)"))?;let mut c=Command::new(node);c.arg(p);c},
+   Runtime::Html(_)=>{let edge=std::path::Path::new(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe");anyhow::ensure!(edge.is_file(),"Microsoft Edge introuvable");Command::new(edge)},
    _=>anyhow::bail!("Plugin protégé ou type non pris en charge"),
   };
   let info=json!({"application":{"font":"","language":"fr","platform":"windows","platformVersion":"10","version":"6.9.0"},"plugin":{"uuid":plugin.uuid,"version":plugin.version},"devicePixelRatio":1,"colors":{},"devices":[{"id":"deckforge-d6","name":"FIFINE D6","size":{"columns":5,"rows":3},"type":0}]});
-  let child=process.arg("-port").arg(port.to_string()).arg("-pluginUUID").arg(&plugin.uuid).arg("-registerEvent").arg("registerPlugin").arg("-info").arg(info.to_string()).current_dir(&plugin.folder).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()?;
+  let http=if matches!(plugin.runtime,Runtime::Html(_)){Some(crate::plugin_http::HtmlServer::start(plugin.folder.clone(),plugin.uuid.clone(),info.to_string(),port)?)}else{None};
+  if let (Runtime::Html(path),Some(server))=(&plugin.runtime,&http){let name=path.strip_prefix(&plugin.folder)?.to_string_lossy().replace(std::path::MAIN_SEPARATOR,"/");let profile=std::env::current_exe()?.parent().ok_or_else(||anyhow::anyhow!("Dossier exécutable absent"))?.join("plugin-browser").join(plugin.uuid.chars().map(|c|if c.is_ascii_alphanumeric()||c=='-'||c=='_'{c}else{'_'}).collect::<String>());process.arg("--headless=new").arg("--disable-gpu").arg("--no-first-run").arg("--no-default-browser-check").arg(format!("--user-data-dir={}",profile.display())).arg(format!("http://127.0.0.1:{}/{}/{}",server.port,plugin.uuid,name));}
+  if !matches!(plugin.runtime,Runtime::Html(_)){process.arg("-port").arg(port.to_string()).arg("-pluginUUID").arg(&plugin.uuid).arg("-registerEvent").arg("registerPlugin").arg("-info").arg(info.to_string());}
+  let child=process.current_dir(&plugin.folder).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).creation_flags(0x08000000).spawn()?;
   let (outgoing,commands)=mpsc::channel::<Value>();let (messages,incoming)=mpsc::channel();
   let stop=Arc::new(AtomicBool::new(false));let stopped=stop.clone();
   let worker=thread::spawn(move||{
@@ -32,7 +36,7 @@ impl Host {
     match socket.read(){Ok(tungstenite::Message::Text(text))=>{if let Ok(v)=serde_json::from_str::<Value>(&text){if messages.send(v).is_err(){return}}},Ok(tungstenite::Message::Close(_))=>return,Err(tungstenite::Error::Io(ref e)) if e.kind()==std::io::ErrorKind::WouldBlock || e.kind()==std::io::ErrorKind::TimedOut=>{},Err(_)=>return,_=>{}}
    }
   });
-  Ok(Self{incoming,outgoing,child,worker:Some(worker),stop})
+  Ok(Self{incoming,outgoing,child,worker:Some(worker),stop,_http:http})
  }
  pub fn exited(&mut self)->bool{self.child.try_wait().ok().flatten().is_some()}
  pub fn send(&self,message:Value)->Result<(),mpsc::SendError<Value>>{self.outgoing.send(message)}
