@@ -1,5 +1,9 @@
 # Connecter une IA à DeckForge
 
+### Notification Windows (`notify`)
+
+`{"type":"notify","title":"DeckForge","message":"Bonjour {nom}"}` : titre facultatif, message obligatoire ; `{nom}` utilise la variable de macro, `{{` donne une accolade littérale. Si l’icône de notification manque, message dans le journal et bandeau DeckForge. La simulation n’envoie rien.
+
 ### Attendre une condition (`wait_until`)
 
 `{"type":"wait_until","condition":{"kind":"foreground_app","exe":"chrome.exe"},"timeout_ms":5000,"poll_ms":200}` attend en lecture seule, au plus 600000 ms, vérifie au minimum toutes les 50 ms et respecte Arrêter. Le délai expiré est une erreur explicite ; en simulation, la condition est lue une seule fois, sans attente.

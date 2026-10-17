@@ -502,6 +502,12 @@ impl App {
             };
             match event {
                 Event::Log(s) => self.log(s),
+                Event::Notification(title, message) => {
+                    self.log(format!("Notification — {title} : {message}"));
+                    if self.tray_ready {
+                        if let Some(desktop) = &self.desktop { let _ = desktop.tx.send(crate::desktop::Command::Notify(title, message)); }
+                    }
+                }
                 Event::Block(path) => self.running_block = path,
                 Event::D6Brightness(mode, value) => {
                     self.config.brightness = crate::model::d6_brightness(self.config.brightness, &mode, value);
@@ -3004,6 +3010,10 @@ fn edit_step(
         step @ Step::AudioSwitch { .. } => {
             changed |= icon_ui::audio_options(ui, step, audio, pick_audio_icon, tx, target);
         }
+        Step::Notify { title, message } => {
+            ui.label("Titre"); changed |= ui.text_edit_singleline(title).changed();
+            ui.label("Message (variables : {nom} ; {{ pour une accolade)"); changed |= ui.text_edit_multiline(message).changed();
+        }
         Step::WaitUntil { condition, timeout_ms, poll_ms } => {
             changed |= edit_condition(ui, condition, audio, 0);
             egui::CollapsingHeader::new("Options avancées").id_salt("wait_until_advanced").show(ui, |ui| {
@@ -3093,6 +3103,7 @@ fn step_summary(step: &Step) -> String {
         Step::PlaySound { path, volume } => format!("Son : {path} ({volume} %)"),
         Step::IfCondition { condition, .. } => format!("Si {}", condition.summary()),
         Step::WaitUntil { condition, timeout_ms, .. } => format!("Attendre que {} ({} ms max)", condition.summary(), timeout_ms),
+        Step::Notify { title, message } => format!("Notification « {title} » : {}", message.chars().take(50).collect::<String>()),
         Step::AppVolume { .. } => step.app_volume_summary().unwrap_or_default(),
         Step::DeviceVolume { .. } => step.device_volume_summary().unwrap_or_default(),
         Step::StopSounds => "Arrêter les sons".into(),

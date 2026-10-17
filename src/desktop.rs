@@ -28,6 +28,7 @@ pub struct Trigger {
 pub enum Command {
     Hotkeys(Vec<(usize, String)>),
     Window(isize),
+    Notify(String, String),
     Stop,
 }
 pub struct Desktop {
@@ -238,6 +239,19 @@ pub fn spawn(tx: Sender<Event>, ctx: eframe::egui::Context) -> Desktop {
             while let Ok(command) = rx.try_recv() {
                 match command {
                     Command::Window(window) => state.main.set(window),
+                    Command::Notify(title, message) => {
+                        let mut balloon = state.icon;
+                        balloon.uFlags = NIF_INFO;
+                        for (target, text) in [(&mut balloon.szInfoTitle[..], title.as_str()), (&mut balloon.szInfo[..], message.as_str())] {
+                            let utf16: Vec<u16> = text.encode_utf16().take(target.len().saturating_sub(1)).collect();
+                            target[..utf16.len()].copy_from_slice(&utf16);
+                            target[utf16.len()] = 0;
+                        }
+                        balloon.dwInfoFlags = NIIF_INFO | NIIF_NOSOUND;
+                        if Shell_NotifyIconW(NIM_MODIFY, &balloon) == 0 {
+                            state.send(Event::Log("Notification Windows indisponible ; message conservé dans le journal".into()));
+                        }
+                    },
                     Command::Stop => stop = true,
                     Command::Hotkeys(bindings) => {
                         for id in registered.drain(..) {

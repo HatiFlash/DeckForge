@@ -41,6 +41,7 @@ mod ui;
 #[derive(Debug)]
 pub enum Event {
     Log(String),
+    Notification(String, String),
     Audio(audio::Snapshot),
     Block(Vec<usize>),
     D6Brightness(String, u8),

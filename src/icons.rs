@@ -24,6 +24,7 @@ pub fn step_kind(step: &Step) -> usize {
         Step::Launch { .. } => 3,
         Step::Url { .. } => 4,
         Step::WaitWindow { .. } | Step::WaitUntil { .. } => 5,
+        Step::Notify { .. } => 6,
         Step::Profile { .. } => 7,
         Step::Media { command } => match command.as_str() {
             "volume_up" => 9,

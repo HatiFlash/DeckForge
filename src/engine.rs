@@ -168,6 +168,24 @@ fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>, obs: &crat
     let _ = tx.send(Event::Block(vec![]));
     Ok(())
 }
+pub(crate) fn interpolate(text: &str, vars: &std::collections::BTreeMap<String, String>) -> String {
+    let mut out = String::new();
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '{' { out.push(c); continue; }
+        if chars.peek() == Some(&'{') { chars.next(); out.push('{'); continue; }
+        let mut key = String::new();
+        let mut closed = false;
+        for next in chars.by_ref() {
+            if next == '}' { closed = true; break; }
+            key.push(next);
+        }
+        if closed { if let Some(value) = vars.get(&key) { out.push_str(value); } else { out.push('{'); out.push_str(&key); out.push('}'); } }
+        else { out.push('{'); out.push_str(&key); }
+    }
+    out
+}
+
 fn run_steps(
     steps: &[Step],
     dry: bool,
@@ -196,6 +214,7 @@ fn run_steps(
             step.name()
         )));
         if dry {
+            if let Step::Notify { title, message } = step { let _ = tx.send(Event::Log(format!("Simulation : notification « {} » — {} (non envoyée)", interpolate(title, variables), interpolate(message, variables)))); }
             if let Some(summary) = step.active().app_volume_summary().or_else(|| step.active().device_volume_summary()) { let _ = tx.send(Event::Log(format!("Simulation : {summary}"))); }
             match step {
                 Step::WaitUntil { condition, .. } => {
@@ -300,6 +319,11 @@ fn run_steps(
                 ..
             } => {
                 crate::audio::toggle(first, second, *input)?;
+            }
+            Step::Notify { title, message } => {
+                let title = interpolate(title, variables);
+                let message = interpolate(message, variables);
+                let _ = tx.send(Event::Notification(title, message));
             }
             Step::SetVariable { name, value } => {
                 variables.insert(name.clone(), value.clone());

@@ -70,6 +70,10 @@ pub enum Step {
         #[serde(default = "default_app_step")] step: u8,
         #[serde(default = "default_device_level")] level: u8,
     },
+    Notify {
+        #[serde(default = "default_notify_title")] title: String,
+        #[serde(default)] message: String,
+    },
     WaitUntil {
         #[serde(default)] condition: crate::conditions::Condition,
         #[serde(default = "default_wait_timeout")] timeout_ms: u64,
@@ -126,6 +130,7 @@ pub enum Step {
     PageNext,
     PagePrevious,
 }
+fn default_notify_title() -> String { "DeckForge".into() }
 fn default_wait_timeout() -> u64 { 5000 }
 fn default_wait_poll() -> u64 { 200 }
 fn default_device() -> String { "default".into() }
@@ -187,6 +192,7 @@ impl Step {
             Self::DeviceVolume { .. } => "Volume d’un périphérique",
             Self::IfCondition { .. } => "Si… sinon",
             Self::WaitUntil { .. } => "Attendre que…",
+            Self::Notify { .. } => "Notification",
             Self::IfWindow { .. } => "Si une fenêtre est ouverte",
             Self::Repeat { .. } => "Répéter des blocs",
             Self::SetVariable { .. } => "Définir une variable",
@@ -734,6 +740,9 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
         if s.is_disabled() { continue; }
         match s {
             Step::IfCondition { condition, .. } => condition.validate()?,
+            Step::Notify { title, message } => {
+                anyhow::ensure!(!title.trim().is_empty() && title.encode_utf16().count() <= 63 && !title.chars().any(char::is_control) && !message.trim().is_empty() && message.len() <= 2048, "Titre ou message de notification invalide");
+            }
             Step::WaitUntil { condition, timeout_ms, poll_ms } => {
                 condition.validate()?;
                 anyhow::ensure!((1..=600_000).contains(timeout_ms) && *poll_ms >= 50 && *poll_ms <= *timeout_ms, "Délai (1 à 600000 ms) ou sondage (50 ms minimum, au plus le délai) invalide");
@@ -932,6 +941,15 @@ mod condition_step_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn notify_defaults_roundtrip_and_validation() {
+        let s: Step = serde_json::from_str(r#"{"type":"notify","message":"Bonjour {nom}"}"#).unwrap();
+        assert_eq!(s, Step::Notify { title: "DeckForge".into(), message: "Bonjour {nom}".into() });
+        assert_eq!(serde_json::from_str::<Step>(&serde_json::to_string(&s).unwrap()).unwrap(), s);
+        assert!(serde_json::from_str::<Step>(r#"{"type":"notify","message":"ok","unknown":1}"#).is_err());
+        assert!(s.name().contains("Notification"));
+        assert!(validate_key(&Key { steps: vec![Step::Notify { title: "".into(), message: "ok".into() }], ..Key::default() }, &Config::default()).is_err());
+    }
     #[test]
     fn wait_until_defaults_roundtrip_and_validation() {
         let s: Step = serde_json::from_str(r#"{"type":"wait_until"}"#).unwrap();
