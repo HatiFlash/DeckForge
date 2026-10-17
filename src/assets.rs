@@ -282,7 +282,7 @@ pub fn decode_image(bytes: &[u8], size: u32) -> Result<image::DynamicImage> {
         &mut pixmap.as_mut(),
     );
     let mut pixels = pixmap.take();
-    for p in pixels.chunks_exact_mut(4) {
+    for p in pixels.as_chunks_mut::<4>().0 {
         let alpha = p[3] as u32;
         if alpha > 0 {
             for c in &mut p[..3] {

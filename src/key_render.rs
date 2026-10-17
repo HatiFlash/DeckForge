@@ -238,7 +238,7 @@ pub fn animated(key: &crate::model::Key, size: u32, font: &FontArc) -> Result<Ve
         let frame = frame?;
         anyhow::ensure!(frames.len() < 150 || elapsed >= 10_000, "GIF supérieur à 150 images");
         let (num, den) = frame.delay().numer_denom_ms();
-        let duration = if den == 0 { 100 } else { (num / den).max(20) };
+        let duration = num.checked_div(den).unwrap_or(100).max(20);
         if elapsed >= 10_000 { break; }
         elapsed = elapsed.saturating_add(duration);
         if frames.is_empty() || elapsed.saturating_sub(sampled) >= 50 {
