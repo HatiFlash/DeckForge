@@ -359,10 +359,11 @@ impl App {
             }
         };
         for p in &mut deployed.profiles {
-            for keys in std::iter::once(&mut p.keys).chain(p.pages.iter_mut().map(|p| &mut p.keys))
+            for (page, keys) in std::iter::once(("", &mut p.keys)).chain(p.pages.iter_mut().map(|page| (page.id.as_str(), &mut page.keys)))
             {
-                for key in keys {
+                for (index, key) in keys.iter_mut().enumerate() {
                     *key = crate::obs_monitor::present_key(&crate::audio::present_key(key, &self.audio), &self.obs_state);
+                    if let Some(badge) = crate::engine::toggle_badge(&crate::engine::identity(&p.name, page, index), key) { key.runtime_badge = Some(badge); }
                 }
             }
         }
@@ -431,7 +432,8 @@ impl App {
         self.engine.start(key, dry, if delayed { 3000 } else { 0 }, config.obs.clone());
     }
     fn preview(&mut self, dry: bool) {
-        let key = self.config.keys()[self.selected].clone();
+        let mut key = self.config.keys()[self.selected].clone();
+        key.runtime_id = Some(crate::engine::identity(&self.config.profiles[self.config.active].name, &self.config.page, self.selected));
         let c = self.config.clone();
         self.execute_key(key, dry, !dry, &c);
     }
@@ -439,6 +441,7 @@ impl App {
         if self.gate.decision() != Decision::Execute { return; }
         let c = self.applied.clone();
         let mut key = c.keys()[index].clone();
+        key.runtime_id = Some(crate::engine::identity(&c.profiles[c.active].name, &c.page, index));
         if long { key.steps = std::mem::take(&mut key.long_steps); }
         self.execute_key(key, false, false, &c);
     }
@@ -457,6 +460,7 @@ impl App {
                     }
                     self.edited();
                 }
+                Event::ToggleVisual => { if self.wanted && self.gate.connected { self.upload(false); } },
                 Event::D6Sleep => {
                     self.sleep.sleeping = true;
                     if self.wanted && self.gate.connected { let _ = self.device.send(Command::Brightness(self.config.sleep_brightness)); }
@@ -496,7 +500,8 @@ impl App {
                         && !self.gate.dirty
                     {
                         let c = self.config.clone();
-                        let key = c.keys()[index].clone();
+                        let mut key = c.keys()[index].clone();
+                        key.runtime_id = Some(crate::engine::identity(&c.profiles[c.active].name, &c.page, index));
                         self.execute_key(key, false, false, &c);
                     }
                 }
@@ -2439,6 +2444,7 @@ fn edit_step(
         Step::MouseScroll { amount } => { ui.label("Défilement (crans)"); changed |= ui.add(egui::DragValue::new(amount).range(-100..=100)).changed(); }
         Step::PlaySound { path, volume } => { ui.label("Fichier WAV ou MP3"); changed |= ui.text_edit_singleline(path).changed(); ui.label("Volume"); changed |= ui.add(egui::Slider::new(volume, 0..=100)).changed(); }
         Step::StopSounds => { ui.label("Arrête tous les sons lancés par DeckForge."); }
+        Step::Toggle { .. } => { ui.label("Alterne les états 1 et 2 à chaque appui. Modifie leurs blocs dans l’Atelier."); }
         Step::UdpSend { host, port, text } => { ui.label("Hôte UDP"); changed |= ui.text_edit_singleline(host).changed(); ui.label("Port"); changed |= ui.add(egui::DragValue::new(port).range(1..=65535)).changed(); ui.label("Message"); changed |= ui.text_edit_multiline(text).changed(); }
         Step::HttpRequest { method, url, body, content_type } => { ui.label("Méthode"); egui::ComboBox::from_id_salt("http_method").selected_text(method.as_str()).show_ui(ui, |ui| { for choice in ["GET", "POST", "PUT"] { changed |= ui.selectable_value(method, choice.into(), choice).changed(); } }); ui.label("Adresse HTTP (sans HTTPS)"); changed |= ui.text_edit_singleline(url).changed(); ui.label("Corps"); changed |= ui.text_edit_multiline(body).changed(); ui.label("Type de contenu"); changed |= ui.text_edit_singleline(content_type).changed(); }
         Step::D6Brightness { mode, value } => {
@@ -2658,6 +2664,7 @@ fn step_summary(step: &Step) -> String {
         Step::MouseScroll { amount } => format!("Défiler de {amount} crans"),
         Step::PlaySound { path, volume } => format!("Son : {path} ({volume} %)"),
         Step::StopSounds => "Arrêter les sons".into(),
+        Step::Toggle { a, b } => format!("Basculer 1 / 2 ({} / {} blocs)", a.len(), b.len()),
         Step::UdpSend { host, port, .. } => format!("UDP : {host}:{port}"),
         Step::HttpRequest { method, url, .. } => format!("HTTP {method} : {url}"),
         Step::D6Brightness { mode, value } => format!("Luminosité D6 : {mode} {value} %"),

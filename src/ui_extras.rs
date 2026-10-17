@@ -38,6 +38,7 @@ pub(super) fn step_mut<'a>(steps: &'a mut [Step], path: &[usize]) -> Option<&'a 
     let branch = *path.get(1)?;
     let children = match step {
         Step::Repeat { steps, .. } if branch == 0 => steps,
+        Step::Toggle { a, b } => if branch == 0 { a } else { b },
         Step::IfWindow {
             then_steps,
             else_steps,
@@ -128,6 +129,7 @@ fn block_summary(step: &Step) -> String {
         Step::Url { url } => format!("Ouvrir {url}"),
         Step::Text { text } => format!("Écrire {}", text.chars().take(50).collect::<String>()),
         Step::Launch { program, .. } => format!("Lancer {program}"),
+        Step::Toggle { a, b } => format!("Basculer : {} / {} blocs", a.len(), b.len()),
         Step::Repeat { count, steps } => format!("Répéter {count} fois ({} blocs)", steps.len()),
         Step::UdpSend { host, port, .. } => format!("UDP : {host}:{port}"),
         Step::HttpRequest { method, url, .. } => format!("HTTP {method} : {url}"),
@@ -202,6 +204,7 @@ fn simulation_trace(steps: &[Step]) -> Vec<TraceLine> {
                 Step::IfWindow { .. } => "ALORS et SINON explorés (fenêtre non évaluée)".into(),
                 Step::IfVariable { .. } => "ALORS et SINON explorés (valeur non évaluée)".into(),
                 Step::Repeat { count, .. } => format!("1 itération simulée sur {count} prévues"),
+                Step::Toggle { .. } => "États 1 et 2 explorés sans effet".into(),
                 _ => "0 ms (action non exécutée)".into(),
             };
             out.push(TraceLine { path: path.clone(), text: format!("{prefix} · {} — {detail}", block_summary(step)) });
@@ -211,6 +214,7 @@ fn simulation_trace(steps: &[Step]) -> Vec<TraceLine> {
                     p.pop(); p.push(1); walk(else_steps, &p, out, limit);
                 }
                 Step::Repeat { steps, .. } => { let mut p = path; p.push(0); walk(steps, &p, out, limit); }
+                Step::Toggle { a, b } => { let mut p = path.clone(); p.push(0); walk(a, &p, out, limit); p.pop(); p.push(1); walk(b, &p, out, limit); }
                 _ => {}
             }
         }
@@ -332,6 +336,7 @@ pub(super) fn block_editor(
                         Step::Url { .. } => 3, Step::Media { .. } => 4, Step::Delay { .. } => 5,
                         Step::WaitWindow { .. } => 6, Step::AudioSwitch { .. } => 13,
                         Step::IfWindow { .. } => 14, Step::Repeat { .. } => 15,
+                        Step::Toggle { .. } => 36,
                         Step::SetVariable { .. } => 16, Step::IfVariable { .. } => 17,
                         Step::AutoHotkey { .. } => 18, _ => 7,
                     })).small()); }
@@ -398,6 +403,13 @@ pub(super) fn block_editor(
                                         advanced,
                                     );
                                 });
+                            }
+                        }
+                        Step::Toggle { a, b } => {
+                            for (branch, label, list) in [(0, "ÉTAT 1", a), (1, "ÉTAT 2", b)] {
+                                ui.label(label);
+                                let mut child = path.clone(); child.push(branch);
+                                ui.indent(branch, |ui| { changed |= block_editor(ui, list, profiles, pages, audio, &child, record, depth + 1, running, pick_audio, tx, target, config, advanced); });
                             }
                         }
                         Step::Repeat { steps, .. } => {

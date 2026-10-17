@@ -34,6 +34,7 @@ pub enum Event {
     Block(Vec<usize>),
     D6Brightness(String, u8),
     D6Sleep,
+    ToggleVisual,
     Open,
     TrayReady(bool),
     Toggle,

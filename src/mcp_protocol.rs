@@ -39,6 +39,7 @@ pub fn tools() -> Value {
     step_schema["oneOf"].as_array_mut().unwrap().extend([
         json!({"type":"object","properties":{"type":{"const":"audio_switch"},"first":{"type":"string"},"second":{"type":"string"},"input":{"type":"boolean"},"first_label":{"type":"string"},"second_label":{"type":"string"},"first_icon":{"type":"string"},"second_icon":{"type":"string"}},"required":["type","first","second","input"],"additionalProperties":false}),
         json!({"type":"object","properties":{"type":{"const":"if_window"},"title":{"type":"string"},"then_steps":nested,"else_steps":nested},"required":["type","title","then_steps","else_steps"],"additionalProperties":false}),
+        json!({"type":"object","properties":{"type":{"const":"toggle"},"a":nested,"b":nested},"required":["type","a","b"],"additionalProperties":false}),
         json!({"type":"object","properties":{"type":{"const":"repeat"},"count":{"type":"integer","minimum":1,"maximum":100},"steps":nested},"required":["type","count","steps"],"additionalProperties":false}),
         json!({"type":"object","properties":{"type":{"const":"set_variable"},"name":{"type":"string"},"value":{"type":"string"}},"required":["type","name","value"],"additionalProperties":false}),
         json!({"type":"object","properties":{"type":{"const":"if_variable"},"name":{"type":"string"},"value":{"type":"string"},"then_steps":nested,"else_steps":nested},"required":["type","name","value","then_steps","else_steps"],"additionalProperties":false}),

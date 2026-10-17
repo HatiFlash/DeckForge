@@ -14,6 +14,7 @@ pub fn step_kind(step: &Step) -> usize {
         Step::Disabled { .. } => unreachable!(),
         Step::MouseClick { .. } | Step::MouseMove { .. } | Step::MouseScroll { .. } => 1,
         Step::PlaySound { .. } | Step::StopSounds => 6,
+        Step::Toggle { .. } => 30,
         Step::UdpSend { .. } | Step::HttpRequest { .. } => 4,
         Step::D6Brightness { .. } | Step::D6Sleep => 9,
         Step::CloseWindow => 5,

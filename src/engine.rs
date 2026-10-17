@@ -16,6 +16,28 @@ use windows_sys::Win32::{
     UI::{Input::KeyboardAndMouse::*, WindowsAndMessaging::*},
 };
 
+thread_local! { static ACTIVE_KEY: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) }; }
+static TOGGLE_STATES: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, bool>>> = std::sync::OnceLock::new();
+fn toggle_states() -> &'static std::sync::Mutex<std::collections::HashMap<String, bool>> {
+    TOGGLE_STATES.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+pub fn identity(profile: &str, page: &str, index: usize) -> String { format!("{profile}\0{page}\0{index}") }
+pub fn toggle_badge(id: &str, key: &Key) -> Option<String> {
+    let index = key.steps.iter().position(|s| matches!(s.active(), Step::Toggle { .. }))?;
+    let path = format!("{id}\0{index}");
+    let states = toggle_states().lock().unwrap_or_else(|e| e.into_inner());
+    Some(if *states.get(&path).unwrap_or(&false) { "2" } else { "1" }.to_owned() + "/2")
+}
+fn next_branch(path: &[usize]) -> usize {
+    let id = ACTIVE_KEY.with(|id| id.borrow().clone());
+    let id = format!("{id}\0{}", path.iter().map(usize::to_string).collect::<Vec<_>>().join("."));
+    let mut states = toggle_states().lock().unwrap_or_else(|e| e.into_inner());
+    if states.len() > 2048 { states.clear(); }
+    let next = states.entry(id).or_insert(false);
+    let branch = usize::from(*next);
+    *next = !*next;
+    branch
+}
 pub struct Engine {
     pub running: Arc<AtomicBool>,
     cancel: Arc<AtomicBool>,
@@ -63,6 +85,7 @@ impl Engine {
                 if !dry {
                     wait(initial_delay, &cancel)?;
                 }
+                ACTIVE_KEY.with(|id| *id.borrow_mut() = key.runtime_id.clone().unwrap_or_else(|| serde_json::to_string(&key).unwrap_or_default()));
                 run(&key, dry, &cancel, &tx, &obs)
             }));
             let message = match result {
@@ -187,6 +210,11 @@ fn run_steps(
                         obs,
                     )?;
                 }
+                Step::Toggle { a, b } => {
+                    for (branch, list) in [a, b].into_iter().enumerate() {
+                        run_steps(list, true, cancel, tx, variables, budget, &[path.clone(), vec![branch]].concat(), obs)?;
+                    }
+                },
                 Step::Repeat { steps, .. } => run_steps(
                     steps,
                     true,
@@ -203,6 +231,11 @@ fn run_steps(
         }
         match step {
             Step::Disabled { .. } => {},
+            Step::Toggle { a, b } => {
+                let branch = next_branch(&path);
+                let _ = tx.send(Event::ToggleVisual);
+                run_steps(if branch == 0 { a } else { b }, dry, cancel, tx, variables, budget, &[path.clone(), vec![branch]].concat(), obs)?;
+            },
             Step::PlaySound { path, volume } => crate::soundboard::play(path, *volume)?,
             Step::StopSounds => crate::soundboard::stop(),
             Step::UdpSend { host, port, text } => crate::network_actions::udp_send(host, *port, text)?,
@@ -481,6 +514,20 @@ fn find_window(query: &str) -> Option<HWND> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn toggle_alternates_and_badge_follows() {
+        let key = crate::model::Key { steps: vec![crate::model::Step::Toggle { a: vec![], b: vec![] }], ..crate::model::Key::default() };
+        let id = super::identity("t", "p", 7);
+        super::ACTIVE_KEY.with(|k| *k.borrow_mut() = id.clone());
+        assert_eq!(super::toggle_badge(&id, &key).as_deref(), Some("1/2"));
+        assert_eq!(super::next_branch(&[0]), 0);
+        assert_eq!(super::toggle_badge(&id, &key).as_deref(), Some("2/2"));
+        assert_eq!(super::next_branch(&[0]), 1);
+        assert_eq!(super::toggle_badge(&id, &key).as_deref(), Some("1/2"));
+        let json = serde_json::to_string(&key.steps[0]).unwrap();
+        assert!(json.contains("toggle"), "{json}");
+    }
     use super::*;
     #[test]
     fn sound_simulation_does_not_open_missing_files() {

@@ -77,6 +77,7 @@ pub enum Step {
     },
     PlaySound { path: String, volume: u8 },
     StopSounds,
+    Toggle { a: Vec<Step>, b: Vec<Step> },
     UdpSend { host: String, port: u16, text: String },
     HttpRequest { method: String, url: String, body: String, content_type: String },
     D6Brightness { mode: String, value: u8 },
@@ -128,6 +129,7 @@ impl Step {
             Self::MouseScroll { .. } => "Défilement souris",
             Self::PlaySound { .. } => "Jouer un son",
             Self::StopSounds => "Arrêter les sons",
+            Self::Toggle { .. } => "Basculer entre deux actions",
             Self::UdpSend { .. } => "Envoyer en UDP",
             Self::HttpRequest { .. } => "Requête HTTP",
             Self::D6Brightness { .. } => "Luminosité du D6",
@@ -166,6 +168,8 @@ pub struct Key {
     pub display_kind: Option<usize>,
     #[serde(skip)]
     pub runtime_badge: Option<String>,
+    #[serde(skip)]
+    pub runtime_id: Option<String>,
 }
 impl Default for Key {
     fn default() -> Self {
@@ -181,6 +185,7 @@ impl Default for Key {
             long_steps: vec![],
             display_kind: None,
             runtime_badge: None,
+            runtime_id: None,
         }
     }
 }
@@ -655,6 +660,7 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
             Step::MouseScroll { amount } if !(-100..=100).contains(amount) => bail!("Défilement souris hors limites"),
             Step::PlaySound { path, volume } if path.trim().is_empty() || path.len() > 1024 || path.contains('"') || path.chars().any(char::is_control) || !["wav", "mp3"].iter().any(|ext| std::path::Path::new(path).extension().is_some_and(|e| e.eq_ignore_ascii_case(ext))) || *volume > 100 => bail!("Son WAV/MP3 ou volume invalide"),
             Step::StopSounds => {},
+            Step::Toggle { a, b } => { for steps in [a, b] { validate_key(&Key { steps: steps.clone(), ..Key::default() }, config)?; } },
             Step::UdpSend { host, port, text } if !valid_udp_host(host) || *port == 0 || text.len() > 65507 => bail!("Destination UDP ou message invalide"),
             Step::HttpRequest { method, url, body, content_type } => validate_http(method, url, body, content_type)?,
             Step::D6Brightness { mode, value } if !["set", "up", "down"].contains(&mode.as_str()) || *value > 100 => bail!("Mode ou luminosité du D6 invalide"),
@@ -790,6 +796,7 @@ fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> 
                 validate_tree(then_steps, depth + 1, total)?;
                 validate_tree(else_steps, depth + 1, total)?;
             }
+            Step::Toggle { a, b } => { validate_tree(a, depth + 1, total)?; validate_tree(b, depth + 1, total)?; }
             Step::Repeat { count, steps } => {
                 anyhow::ensure!((1..=100).contains(count), "1 à 100 répétitions par bloc");
                 validate_tree(steps, depth + 1, total)?;
