@@ -1621,6 +1621,13 @@ impl App {
             let active=self.config.active; let names=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
             let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let image_size=self.config.image_size;let key=&mut self.config.keys_mut()[selected];
             let mut removed_step=false; let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut pick_audio=None; let mut open_workflow=false; let mut open_model=false;
+            if let Some(binding)=key.plugin.clone(){
+                ui.horizontal(|ui|{
+                    ui.label(format!("Plugin : {} · {}",binding.plugin,binding.action));
+                    ui.label("Arrêté");
+                    if ui.button("Retirer le plugin").clicked(){key.plugin=None;changed=true;}
+                });
+            }
             let width=ui.available_width(); let body_height=ui.available_height();
             ui.horizontal_top(|ui| {
                 ui.allocate_ui_with_layout(Vec2::new(215.0,body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
