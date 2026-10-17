@@ -2200,6 +2200,8 @@ impl App {
         self.dialog_results();
         self.record_trigger(ctx);
         self.record_events(ctx);
+        let initial=self.plugins.as_ref().map(|m|m.visible().values().filter(|v| !self.plugin_faces.contains_key(&v.context)).map(|v|(v.context.clone(),v.index,v.state)).collect::<Vec<_>>()).unwrap_or_default();
+        for (context,index,state) in initial { self.plugin_faces.insert(context,PluginFace{state,..Default::default()}); self.send_plugin_face(index); }
         self.events();
         self.plugin_events();
         self.housekeeping();
@@ -2341,6 +2343,7 @@ impl App {
         if face.image_bytes.is_none() {
             if let Some(v)=self.plugins.as_ref().and_then(|m|m.visible().values().find(|v|v.index==index)) {
                 if let Some(action)=self.plugins.as_ref().into_iter().flat_map(|m|m.catalog.iter()).find(|p|p.uuid==v.plugin).and_then(|p|p.actions.iter().find(|a|a.uuid==v.action)) {
+                    if key.label.is_empty(){if let Some(title)=action.titles.get(face.state as usize).and_then(Option::as_ref){key.label=title.clone();}}
                     if let Some(icon)=action.states.get(face.state as usize).and_then(Option::as_ref).or(action.icon.as_ref()) {
                         key.image=icon.to_string_lossy().into_owned();
                     }
@@ -2417,6 +2420,8 @@ impl App {
         }).collect::<Vec<_>>();
         for context in expired {if let Some(index)=self.plugins.as_ref().and_then(|m|m.visible().get(&context)).map(|v|v.index){self.send_plugin_face(index);}}
         if let Some(plugins)=&mut self.plugins { if !self.gate.dirty && self.pending.is_none() { plugins.sync(&self.applied); } }
+        let initial=self.plugins.as_ref().map(|m|m.visible().values().filter(|v| !self.plugin_faces.contains_key(&v.context)).map(|v|(v.context.clone(),v.index,v.state)).collect::<Vec<_>>()).unwrap_or_default();
+        for (context,index,state) in initial { self.plugin_faces.insert(context,PluginFace{state,..Default::default()}); self.send_plugin_face(index); }
         self.events();
         self.plugin_events();
         self.housekeeping();
