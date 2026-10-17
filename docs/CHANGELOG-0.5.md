@@ -26,3 +26,14 @@
 - Seuls des glyphes présents dans les polices egui par défaut sont utilisés (↶ ↷ ✕ s'affichaient en carrés).
 
 Tests exécutés : Build-Windows.ps1 -Action All : 81 tests application, 5 tests connecteur, MCP stdio et HTTP OK ; aperçus régénérés et contrôlés visuellement.
+## Lot 3a/3b - Atelier de blocs
+
+- L'atelier s'ouvre dans la zone centrale (plus de fenêtre flottante qui masque le deck) avec Retour au deck ; la bibliothèque de droite est masquée pendant l'édition.
+- Palette de blocs par catégories avec recherche ; ajout par clic ; + Insérer ici entre deux blocs.
+- Cartes repliables avec résumé lisible (ex. Attendre 250 ms, Mémoriser mode = travail), barre de couleur par catégorie, boutons ↑ ↓ Dupliquer Désactiver Retirer.
+- Bloc désactivé : conservé mais ignoré à l'exécution, en simulation, à la validation et à l'export AutoHotkey. Sérialisé comme {"type":"disabled","step":{...}}.
+  ATTENTION retour arrière : DeckForge 0.4.3 ne connaît pas ce type et refusera une configuration contenant un bloc désactivé. Réactiver les blocs ou garder config.json.bak avant de revenir en 0.4.3.
+- Bloc invalide signalé localement (bordure orange + message).
+- Simuler les blocs est le bouton principal.
+
+Tests exécutés : Build-Windows.ps1 -Action All : 86 tests application, 5 tests connecteur, MCP stdio/HTTP OK ; workflow.png contrôlé.

@@ -10,7 +10,8 @@ pub fn kind(key: &Key) -> usize {
     }
 }
 pub fn step_kind(step: &Step) -> usize {
-    match step {
+    match step.active() {
+        Step::Disabled { .. } => unreachable!(),
         Step::Delay { .. } => 0,
         Step::Hotkey { .. } => 1,
         Step::Text { .. } => 2,

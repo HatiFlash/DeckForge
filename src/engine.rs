@@ -137,6 +137,7 @@ fn run_steps(
     parent: &[usize],
 ) -> Result<()> {
     for (idx, step) in steps.iter().enumerate() {
+        if step.is_disabled() { continue; }
         check(cancel)?;
         anyhow::ensure!(*budget > 0, "Limite de 10 000 blocs exécutés atteinte");
         *budget -= 1;
@@ -196,6 +197,7 @@ fn run_steps(
             continue;
         }
         match step {
+            Step::Disabled { .. } => {},
             Step::AudioSwitch {
                 first,
                 second,
@@ -416,6 +418,25 @@ fn find_window(query: &str) -> Option<HWND> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn disabled_nested_blocks_are_skipped_during_execution_and_simulation() {
+        for dry in [false, true] {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let mut vars = std::collections::BTreeMap::new();
+            let mut budget = 10;
+            let steps = vec![Step::Repeat { count: 1, steps: vec![
+                Step::Disabled { step: Box::new(Step::AutoHotkey { executable: "missing.exe".into(), script: "fail".into(), args: vec![] }) },
+                Step::Disabled { step: Box::new(Step::SetVariable { name: "bad".into(), value: "yes".into() }) },
+                Step::SetVariable { name: "good".into(), value: "yes".into() },
+            ] }];
+            run_steps(&steps, dry, &AtomicBool::new(false), &tx, &mut vars, &mut budget, &[]).unwrap();
+            assert!(!vars.contains_key("bad"));
+            if !dry { assert_eq!(vars.get("good").map(String::as_str), Some("yes")); }
+            assert_eq!(budget, 8);
+            assert!(!rx.try_iter().any(|event| matches!(event, Event::Log(s) if s.contains("AutoHotkey"))));
+        }
+    }
+
     #[test]
     fn conditional_blocks_repeat_and_variables_choose_only_the_matching_branch() {
         let (tx, rx) = std::sync::mpsc::channel();

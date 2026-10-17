@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Step {
+    Disabled { step: Box<Step> },
     Delay {
         ms: u64,
     },
@@ -79,8 +80,16 @@ pub enum Step {
     PagePrevious,
 }
 impl Step {
+    pub fn is_disabled(&self) -> bool { matches!(self, Self::Disabled { .. }) }
+    pub fn active(&self) -> &Self {
+        match self { Self::Disabled { step } => step.active(), other => other }
+    }
+    pub fn active_mut(&mut self) -> &mut Self {
+        match self { Self::Disabled { step } => step.active_mut(), other => other }
+    }
     pub fn name(&self) -> &'static str {
         match self {
+            Self::Disabled { step } => step.name(),
             Self::Delay { .. } => "Attendre",
             Self::Hotkey { .. } => "Raccourci",
             Self::Text { .. } => "Saisir du texte",
@@ -513,7 +522,7 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
     if !(1..=1000).contains(&key.repeat) || key.steps.len() > 256 {
         bail!("Limite : 1000 répétitions, 256 étapes");
     }
-    if key.steps.iter().any(|s| {
+    if key.steps.iter().filter(|s| !s.is_disabled()).any(|s| {
         matches!(
             s,
             Step::Page { .. }
@@ -529,6 +538,7 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
     let mut total = 0;
     validate_tree(&key.steps, 0, &mut total)?;
     for s in &key.steps {
+        if s.is_disabled() { continue; }
         match s {
             Step::Delay { ms } if *ms > 3_600_000 => bail!("Pause supérieure à une heure"),
             Step::Hotkey { keys } => {
@@ -620,6 +630,7 @@ fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> 
     *total += steps.len();
     anyhow::ensure!(*total <= 256, "256 blocs maximum par macro");
     for s in steps {
+        if s.is_disabled() { continue; }
         match s {
             Step::IfWindow {
                 then_steps,
@@ -657,6 +668,22 @@ fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn disabled_step_roundtrip_and_legacy_json_remain_compatible() {
+        let legacy = r#"{"label":"Legacy","color":[1,2,3],"image":"","repeat":1,"steps":[{"type":"delay","ms":5}]}"#;
+        let mut key: Key = serde_json::from_str(legacy).unwrap();
+        assert!(key.background);
+        assert!(!key.steps[0].is_disabled());
+        key.steps[0] = Step::Disabled { step: Box::new(key.steps[0].clone()) };
+        let json = serde_json::to_string(&key).unwrap();
+        assert!(json.contains("\"type\":\"disabled\""));
+        let loaded: Key = serde_json::from_str(&json).unwrap();
+        assert!(loaded.steps[0].is_disabled());
+        assert!(validate_key(&loaded, &Config::default()).is_ok());
+        let invalid = Key { steps: vec![Step::Disabled { step: Box::new(Step::Hotkey { keys: String::new() }) }], ..Key::default() };
+        assert!(validate_key(&invalid, &Config::default()).is_ok());
+    }
+
     #[test]
     fn nested_validation_rejects_bad_keys_deep_trees_and_nested_navigation() {
         let c = Config::default();

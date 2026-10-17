@@ -26,6 +26,7 @@ pub fn tools() -> Value {
         json!({"type":"object","properties":{"type":{"const":"if_variable"},"name":{"type":"string"},"value":{"type":"string"},"then_steps":nested,"else_steps":nested},"required":["type","name","value","then_steps","else_steps"],"additionalProperties":false}),
         json!({"type":"object","properties":{"type":{"const":"auto_hotkey"},"executable":{"type":"string"},"script":{"type":"string","maxLength":200000},"args":{"type":"array","items":{"type":"string"},"maxItems":128}},"required":["type","executable","script","args"],"additionalProperties":false})
     ]);
+    step_schema["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"type":{"const":"disabled"},"step":{"$ref":"#/$defs/step"}},"required":["type","step"],"additionalProperties":false}));
     let key_args = json!({"type":"object","properties":{"profile":profile,"page":{"type":"string","maxLength":160},"key":position},"required":["profile","key"],"additionalProperties":false});
     let mut list=vec![
         tool("deckforge_get_state","Read connection state and current profiles. Available only when Assistant IA is enabled.",json!({"type":"object","properties":{},"additionalProperties":false}),true),

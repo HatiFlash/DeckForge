@@ -92,6 +92,7 @@ pub fn export(key: &Key) -> Result<String> {
     fn steps(out: &mut String, list: &[Step], indent: usize) -> Result<()> {
         let pad = "    ".repeat(indent);
         for s in list {
+            if s.is_disabled() { continue; }
             let line = match s {
                 Step::Delay { ms } => format!("Sleep({ms})"),
                 Step::Text { text } => format!("SendText({})", literal(text)),
@@ -185,6 +186,17 @@ fn regex_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn disabled_unsupported_block_is_omitted_from_export() {
+        let key = Key { steps: vec![Step::Disabled { step: Box::new(Step::AudioSwitch {
+            first: "x".into(), second: "y".into(), input: false,
+            first_label: String::new(), second_label: String::new(), first_icon: String::new(), second_icon: String::new()
+        }) }, Step::Delay { ms: 42 }], ..Key::default() };
+        let output = export(&key).unwrap();
+        assert!(output.contains("Sleep(42)"));
+        assert!(!output.contains("audio"));
+    }
+
     #[test]
     fn installed_ahk_runs_a_local_script_and_cancellation_stops_it() {
         let Some(executable) = std::env::var_os("DECKFORGE_TEST_AHK") else {

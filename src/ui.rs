@@ -2002,8 +2002,8 @@ impl App {
         self.screenshot(ctx);
         self.header(ctx);
         self.footer(ctx);
-        self.catalog(ctx);
         if !self.show_workflow {
+            self.catalog(ctx);
             self.editor(ctx);
             self.deck(ctx);
         } else {
@@ -2136,6 +2136,7 @@ fn edit_step(
 ) -> bool {
     let mut changed = false;
     match step {
+        Step::Disabled { .. } => unreachable!("atelier passe une étape active"),
         Step::Delay { ms } => {
             ui.horizontal(|ui| {
                 changed |= ui

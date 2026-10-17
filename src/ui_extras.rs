@@ -1,7 +1,7 @@
 use super::*;
 
 pub(super) fn step_mut<'a>(steps: &'a mut [Step], path: &[usize]) -> Option<&'a mut Step> {
-    let step = steps.get_mut(*path.first()?)?;
+    let step = steps.get_mut(*path.first()?)?.active_mut();
     if path.len() == 1 {
         return Some(step);
     }
@@ -65,7 +65,7 @@ fn palette(ui: &mut egui::Ui, search: &mut String, depth: usize) -> Option<usize
     selected
 }
 fn block_summary(step: &Step) -> String {
-    match step {
+    match step.active() {
         Step::Hotkey { keys } => format!("Appuyer sur {keys}"),
         Step::Delay { ms } => format!("Attendre {ms} ms"),
         Step::Url { url } => format!("Ouvrir {url}"),
@@ -77,6 +77,17 @@ fn block_summary(step: &Step) -> String {
         Step::SetVariable { name, value } => format!("Mémoriser {name} = {value}"),
         Step::WaitWindow { title, .. } => format!("Attendre la fenêtre {title}"),
         _ => step.name().to_owned(),
+    }
+}
+#[cfg(test)]
+mod workshop_summary_tests {
+    use super::*;
+    #[test]
+    fn summaries_do_not_repeat_the_block_name_and_wrappers_keep_the_summary() {
+        let step = Step::Delay { ms: 250 };
+        assert_eq!(block_summary(&step), "Attendre 250 ms");
+        assert_eq!(block_summary(&Step::Disabled { step: Box::new(step) }), "Attendre 250 ms");
+        assert_eq!(block_summary(&Step::SetVariable { name: "mode".into(), value: "travail".into() }), "Mémoriser mode = travail");
     }
 }
 fn new_block(kind: usize, profiles: &[String]) -> Step {
@@ -96,6 +107,7 @@ pub(super) fn block_editor(
     pick_audio: &mut Option<(Vec<usize>, usize)>,
     tx: &Sender<Option<DialogEffect>>,
     target: &(usize,String,usize),
+    config: &crate::model::Config,
 ) -> bool {
     let p = theme::palette(ui.ctx());
     let mut changed = false;
@@ -103,6 +115,7 @@ pub(super) fn block_editor(
     let mut movement = None;
     let mut insertion = None;
     let mut duplicate = None;
+    let mut toggle = None;
     for (i, step) in steps.iter_mut().enumerate() {
         let mut path = parent.to_vec();
         path.push(i);
@@ -122,23 +135,26 @@ pub(super) fn block_editor(
                     }
                 });
             }
-            let color = if matches!(step, Step::IfWindow { .. } | Step::IfVariable { .. }) {
+            let disabled = step.is_disabled();
+            let color = if matches!(step.active(), Step::IfWindow { .. } | Step::IfVariable { .. }) {
                 Color32::from_rgb(164, 123, 239)
-            } else if matches!(step, Step::Repeat { .. }) {
+            } else if matches!(step.active(), Step::Repeat { .. }) {
                 Color32::from_rgb(239, 169, 83)
             } else {
                 BLUE
             };
+            let error = crate::model::validate_key(&Key { steps: vec![step.active().clone()], ..Key::default() }, config).err();
             egui::Frame::new()
-                .fill(p.bg)
+                .fill(if disabled { p.surface } else { p.bg })
                 .stroke(egui::Stroke::new(
                     if running == path { 2.0_f32 } else { 1.0_f32 },
-                    if running == path { GREEN } else { p.line },
+                    if running == path { GREEN } else if error.is_some() && !disabled { Color32::from_rgb(255, 170, 70) } else { p.line },
                 ))
                 .corner_radius(12)
                 .inner_margin(14)
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
+                        let (bar, _) = ui.allocate_exact_size(egui::vec2(4.0, 20.0), egui::Sense::hover()); ui.painter().rect_filled(bar, 2.0, color);
                         theme::pill(
                             ui,
                             &path
@@ -154,7 +170,7 @@ pub(super) fn block_editor(
                         let folded = ui.data(|d| d.get_temp::<bool>(folded_id)).unwrap_or(false);
                         if ui.selectable_label(
                             !folded,
-                            format!("{} · {}", step.name(), block_summary(step)),
+                            if block_summary(step) == step.name() { step.name().to_owned() } else { block_summary(step) },
                         ).clicked() {
                             ui.data_mut(|d| d.insert_temp(folded_id, !folded));
                             if parent.is_empty() {
@@ -165,8 +181,12 @@ pub(super) fn block_editor(
                             if ui.small_button("Retirer").clicked() {
                                 remove = Some(i);
                             }
+                            if ui.small_button(if disabled { "Activer" } else { "Désactiver" }).clicked() { toggle = Some(i); }
                             if ui.small_button("Dupliquer").clicked() {
                                 duplicate = Some(i);
+                            }
+                            if ui.small_button("↓").clicked() {
+                                movement = Some((i, i + 1));
                             }
                             if ui
                                 .add_enabled(i > 0, egui::Button::new("↑").small())
@@ -174,25 +194,23 @@ pub(super) fn block_editor(
                             {
                                 movement = Some((i, i - 1));
                             }
-                            if ui.small_button("↓").clicked() {
-                                movement = Some((i, i + 1));
-                            }
                         });
                     });
+                    if let Some(e) = &error { if !disabled { ui.colored_label(Color32::from_rgb(255, 170, 70), format!("À compléter : {e}")); } }
                     if ui.data(|d| d.get_temp::<bool>(egui::Id::new("block_fold").with(&path))).unwrap_or(false) {
                         return;
                     }
                     ui.add_space(6.0);
                     let mut capture = false;
                     let mut icon = None;
-                    changed |= edit_step(ui, step, profiles, pages, &mut capture, audio, &mut icon, tx, &(target.0,target.1.clone(),target.2,path.clone()));
+                    changed |= edit_step(ui, step.active_mut(), profiles, pages, &mut capture, audio, &mut icon, tx, &(target.0,target.1.clone(),target.2,path.clone()));
                     if let Some(state) = icon {
                         *pick_audio = Some((path.clone(), state));
                     }
                     if capture {
                         *record = Some(path.clone());
                     }
-                    match step {
+                    match step.active_mut() {
                         Step::IfWindow {
                             then_steps,
                             else_steps,
@@ -224,6 +242,7 @@ pub(super) fn block_editor(
                                         pick_audio,
                                         tx,
                                         target,
+                                        config,
                                     );
                                 });
                             }
@@ -245,6 +264,7 @@ pub(super) fn block_editor(
                                     pick_audio,
                                     tx,
                                     target,
+                                    config,
                                 );
                             });
                         }
@@ -252,6 +272,11 @@ pub(super) fn block_editor(
                     }
                 });
         });
+    }
+    if let Some(i) = toggle {
+        let old = steps.remove(i);
+        steps.insert(i, match old { Step::Disabled { step } => *step, step => Step::Disabled { step: Box::new(step) } });
+        changed = true;
     }
     if let Some(i) = duplicate {
         if steps.len() < 256 {
@@ -357,8 +382,9 @@ impl App {
             }
             ui.label(RichText::new("Construis ton automatisation").size(23.0).strong());
             ui.label("Assemble les blocs de haut en bas. Les variables sont propres à chaque exécution.");
-            ui.horizontal(|ui|{if ui.button("Créer avec mon IA").clicked(){self.assistant_settings=true;}if ui.button("Simuler les blocs").clicked(){self.preview(true);}if ui.button("Tester dans 3 s").clicked(){self.preview(false);}if ui.button("Exporter en AutoHotkey v2…").clicked(){export=true;}});
+            ui.horizontal(|ui|{if ui.button("Créer avec mon IA").clicked(){self.assistant_settings=true;}if ui.add(egui::Button::new("Simuler les blocs").fill(BLUE)).clicked(){self.preview(true);}if ui.button("Tester dans 3 s").on_hover_text("Exécute réellement la macro sur le PC dans 3 secondes").clicked(){self.preview(false);}if ui.button("Exporter en AutoHotkey v2…").clicked(){export=true;}});
             if !self.engine.running.load(Ordering::SeqCst){self.running_block.clear();}
+            let validation_config = self.config.clone();
             let profiles=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();let pages=self.config.profiles[self.config.active].pages.clone();let selected=self.selected;let target=(self.config.active,self.config.page.clone(),selected);let dialog_tx=self.dialog_tx.clone();
             let search_id = egui::Id::new("workshop_search");
             let mut search = ui.data(|d| d.get_temp::<String>(search_id)).unwrap_or_default();
@@ -373,7 +399,7 @@ impl App {
                 });
                 ui.separator();
                 egui::ScrollArea::vertical().id_salt("workflow_scroll").show(ui,|ui|{ ui.vertical(|ui| {
-                    changed=block_editor(ui,&mut self.config.keys_mut()[selected].steps,&profiles,&pages,&self.audio,&[],&mut record,0,&self.running_block,&mut pick_audio,&dialog_tx,&target);
+                    changed=block_editor(ui,&mut self.config.keys_mut()[selected].steps,&profiles,&pages,&self.audio,&[],&mut record,0,&self.running_block,&mut pick_audio,&dialog_tx,&target,&validation_config);
                 }); });
             });
             ui.data_mut(|d| d.insert_temp(search_id, search));
