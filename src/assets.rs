@@ -158,6 +158,100 @@ pub fn import_image(bytes: &[u8], dest: &Path, name: &str) -> Result<PathBuf> {
     }
     Ok(path)
 }
+pub fn is_video(path: &Path) -> bool {
+    matches!(path.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase().as_str(),
+        "mp4" | "webm" | "mov" | "mkv" | "avi")
+}
+
+pub fn ffmpeg_path() -> Option<PathBuf> {
+    let name = "ffmpeg.exe";
+    if let Some(paths) = std::env::var_os("PATH") {
+        for folder in std::env::split_paths(&paths) {
+            let candidate = folder.join(name);
+            if candidate.is_file() { return Some(candidate); }
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        let candidate = exe.with_file_name(name);
+        if candidate.is_file() { return Some(candidate); }
+    }
+    let packages = PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("Microsoft/WinGet/Packages");
+    for package in std::fs::read_dir(packages).ok()?.flatten() {
+        if !package.file_name().to_string_lossy().starts_with("Gyan.FFmpeg") { continue; }
+        if let Ok(versions) = std::fs::read_dir(package.path()) {
+            for version in versions.flatten() {
+                let candidate = version.path().join("bin/ffmpeg.exe");
+                if candidate.is_file() { return Some(candidate); }
+            }
+        }
+    }
+    None
+}
+
+pub fn import_video(src: &Path, dest: &Path, size: u32) -> Result<PathBuf> {
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+    ensure!(is_video(src) && src.is_file() && [112, 126].contains(&size), "Vidéo ou taille invalide");
+    let ffmpeg = ffmpeg_path().ok_or_else(|| anyhow::anyhow!(
+        "Pour importer une vidéo, installe FFmpeg : winget install Gyan.FFmpeg"))?;
+    std::fs::create_dir_all(dest)?;
+    let name = src.file_stem().and_then(|s| s.to_str()).unwrap_or("video");
+    let temporary = dest.join(format!(".video-{}-{:?}.gif", std::process::id(), std::thread::current().id()));
+    let filter = format!("fps=12,scale={size}:{size}:force_original_aspect_ratio=increase,crop={size}:{size},split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse");
+    let result = (|| -> Result<PathBuf> {
+        let mut child = Command::new(ffmpeg)
+            .args(["-hide_banner", "-loglevel", "error", "-y", "-t", "10", "-i"])
+            .arg(src).args(["-vf", &filter, "-loop", "0"])
+            .arg(&temporary).creation_flags(0x08000000)
+            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()?;
+        let start = Instant::now();
+        loop {
+            if let Some(status) = child.try_wait()? {
+                ensure!(status.success(), "Conversion FFmpeg échouée (code {status})");
+                break;
+            }
+            if start.elapsed() >= Duration::from_secs(60) {
+                let _ = child.kill(); let _ = child.wait();
+                anyhow::bail!("Conversion vidéo interrompue après 60 s");
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let bytes = std::fs::read(&temporary)?;
+        ensure!(bytes.len() <= 20_000_000, "GIF supérieur à 20 Mo");
+        let imported = import_image(&bytes, dest, name)?;
+        let key = crate::model::Key { image: imported.to_string_lossy().into_owned(), ..Default::default() };
+        let valid = crate::key_render::font().and_then(|font| crate::key_render::animated(&key, size, &font));
+        if let Err(e) = valid { let _ = std::fs::remove_file(&imported); return Err(e); }
+        Ok(imported)
+    })();
+    let _ = std::fs::remove_file(temporary);
+    result
+}
+
+#[cfg(test)]
+mod video_tests {
+    use super::*;
+    #[test]
+    fn video_extension_and_optional_conversion() {
+        assert!(is_video(Path::new("VIDEO.MP4")));
+        assert!(is_video(Path::new("clip.webm")));
+        assert!(!is_video(Path::new("image.gif")));
+        let Some(ffmpeg) = ffmpeg_path() else { eprintln!("FFmpeg absent : essai réel omis"); return; };
+        use std::os::windows::process::CommandExt;
+        let temp = tempfile::tempdir().unwrap();
+        let src = temp.path().join("test.mp4");
+        let status = std::process::Command::new(ffmpeg)
+            .args(["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=25", "-t", "1"])
+            .arg(&src).creation_flags(0x08000000).status().unwrap();
+        assert!(status.success(), "génération de la vidéo d'essai");
+        let gif = import_video(&src, &temp.path().join("assets"), 126).unwrap();
+        assert!(gif.exists());
+        let key = crate::model::Key { image: gif.to_string_lossy().into_owned(), ..Default::default() };
+        assert!(crate::key_render::animated(&key, 126, &crate::key_render::font().unwrap()).unwrap().len() > 1);
+    }
+}
+
 pub fn decode_image(bytes: &[u8], size: u32) -> Result<image::DynamicImage> {
     ensure!(
         bytes.len() <= 20_000_000 && (1..=512).contains(&size),

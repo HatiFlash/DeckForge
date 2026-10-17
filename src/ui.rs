@@ -1549,7 +1549,7 @@ impl App {
             ui.separator();
             let long_editor = self.long_editor;
             let active=self.config.active; let names=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
-            let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let key=&mut self.config.keys_mut()[selected];
+            let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let image_size=self.config.image_size;let key=&mut self.config.keys_mut()[selected];
             let mut removed_step=false; let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut pick_audio=None;
             let width=ui.available_width(); let body_height=ui.available_height();
             ui.horizontal_top(|ui| {
@@ -1569,13 +1569,26 @@ impl App {
                         if actions.pick_file {
                             let profile=active;let page=page_id.clone();let index=selected;
                             let tx=self.dialog_tx.clone();
+                            let assets=self.path.parent().unwrap().join("assets/mes-icones");
+                            let size=image_size;
                             std::thread::spawn(move || {
-                                let path=rfd::FileDialog::new().add_filter("Image", &["png","jpg","jpeg","svg","gif"]).pick_file();
-                                let _=tx.send(path.map(|path| Box::new(move |app: &mut App| {
-                                    if let Some(key)=app.config.profiles.get_mut(profile).and_then(|p|p.keys_at_mut(&page)).and_then(|keys|keys.get_mut(index)) {
-                                        key.image=path.to_string_lossy().into_owned();app.edited();
-                                    }
-                                }) as DialogEffect));
+                                let path=rfd::FileDialog::new().add_filter("Image ou vidéo", &["png","jpg","jpeg","svg","gif","mp4","webm","mov","mkv","avi"]).pick_file();
+                                if let Some(path) = path {
+                                    let video = crate::assets::is_video(&path);
+                                    if video { let _ = tx.send(Some(Box::new(|app: &mut App| app.log("Conversion de la vidéo…".into())) as DialogEffect)); }
+                                    let result = if video {
+                                        crate::assets::import_video(&path, &assets, size).map_err(|e| e.to_string())
+                                    } else { Ok(path) };
+                                    let _=tx.send(Some(Box::new(move |app: &mut App| match result {
+                                        Ok(path) => {
+                                            if let Some(key)=app.config.profiles.get_mut(profile).and_then(|p|p.keys_at_mut(&page)).and_then(|keys|keys.get_mut(index)) {
+                                                key.image=path.to_string_lossy().into_owned();app.edited();
+                                                if video { app.log("Vidéo convertie en GIF animé.".into()); }
+                                            }
+                                        }
+                                        Err(e) => app.fail(format!("Import vidéo impossible : {e}")),
+                                    }) as DialogEffect));
+                                }
                             });
                         }
                         if actions.clear {key.image.clear();changed=true;}
