@@ -1,3 +1,32 @@
+/// State for long actions. Releases may be absent; the deadline always completes the hold.
+#[derive(Default, Debug)]
+pub struct LongPress {
+    pending: [Option<std::time::Instant>; 15],
+}
+impl LongPress {
+    pub fn clear(&mut self) { self.pending.fill(None); }
+    /// True means execute the ordinary binding immediately.
+    pub fn press(&mut self, index: usize, at: std::time::Instant, has_long: bool) -> bool {
+        if !has_long { self.pending[index] = None; return true; }
+        if self.pending[index].is_none() { self.pending[index] = Some(at); }
+        false
+    }
+    /// Return whether the released binding is long; None for an unmatched release.
+    pub fn release(&mut self, index: usize, at: std::time::Instant, threshold_ms: u64) -> Option<bool> {
+        self.pending[index].take().map(|start| at.saturating_duration_since(start) >= std::time::Duration::from_millis(threshold_ms))
+    }
+    pub fn due(&mut self, now: std::time::Instant, threshold_ms: u64) -> Vec<usize> {
+        let threshold = std::time::Duration::from_millis(threshold_ms);
+        let mut ready = Vec::new();
+        for (index, pending) in self.pending.iter_mut().enumerate() {
+            if pending.is_some_and(|start| now.saturating_duration_since(start) >= threshold) {
+                *pending = None;
+                ready.push(index);
+            }
+        }
+        ready
+    }
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decision {
     Execute,
@@ -80,6 +109,25 @@ impl InputGate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn long_press_deadline_release_and_missing_release() {
+        use std::time::{Duration, Instant};
+        let t = Instant::now();
+        let mut state = LongPress::default();
+        assert!(state.press(0, t, false));
+        assert_eq!(state.release(0, t + Duration::from_millis(10), 500), None);
+        assert!(!state.press(1, t, true));
+        assert!(state.due(t + Duration::from_millis(499), 500).is_empty());
+        assert_eq!(state.release(1, t + Duration::from_millis(499), 500), Some(false));
+        assert!(!state.press(1, t, true));
+        assert_eq!(state.release(1, t + Duration::from_millis(500), 500), Some(true));
+        assert!(!state.press(2, t, true));
+        assert_eq!(state.due(t + Duration::from_millis(500), 500), vec![2]);
+        assert_eq!(state.release(2, t + Duration::from_millis(800), 500), None);
+        state.press(3, t, true);
+        state.clear();
+        assert!(state.due(t + Duration::from_secs(1), 500).is_empty());
+    }
     #[test]
     fn captured_usb_presses_reach_macro_engine_once_each() {
         use std::sync::{atomic::Ordering, mpsc};

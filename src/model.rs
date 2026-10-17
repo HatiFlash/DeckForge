@@ -124,6 +124,8 @@ pub struct Key {
     #[serde(default = "default_title_size", skip_serializing_if = "is_default_title_size")]
     pub title_size: u8,
     pub steps: Vec<Step>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub long_steps: Vec<Step>,
     #[serde(skip)]
     pub display_kind: Option<usize>,
 }
@@ -137,10 +139,12 @@ impl Default for Key {
             repeat: 1,
             title_size: 14,
             steps: vec![],
+            long_steps: vec![],
             display_kind: None,
         }
     }
 }
+fn default_long_press_ms() -> u64 { 500 }
 fn default_title_size() -> u8 { 14 }
 fn is_default_title_size(value: &u8) -> bool { *value == 14 }
 fn default_background() -> bool {
@@ -209,6 +213,8 @@ impl Profile {
 pub struct Config {
     pub schema: u32,
     pub brightness: u8,
+    #[serde(default = "default_long_press_ms")]
+    pub long_press_ms: u64,
     pub active: usize,
     pub profiles: Vec<Profile>,
     // Firmware variants disagree on whether key input needs the display row flip.
@@ -266,6 +272,7 @@ impl Default for Config {
         Self {
             schema: 2,
             brightness: 70,
+            long_press_ms: 500,
             active: 0,
             profiles: vec![profile],
             flip_input_rows: false,
@@ -284,6 +291,7 @@ impl Config {
             {
                 for key in keys {
                     key.steps.clear();
+                    key.long_steps.clear();
                     key.repeat = 1;
                 }
             }
@@ -320,6 +328,7 @@ impl Config {
                 for key in keys {
                     if validate_key_in_profile(key, self, &self.profiles[pi]).is_err() {
                         key.steps.clear();
+                        key.long_steps.clear();
                         key.repeat = 1;
                         key.image.clear();
                         key.color = [110, 44, 49];
@@ -340,6 +349,9 @@ impl Config {
             || self.active >= self.profiles.len()
         {
             bail!("Profils invalides (1 à 64)");
+        }
+        if !(250..=2000).contains(&self.long_press_ms) {
+            bail!("Seuil de l’appui long invalide (250 à 2000 ms)");
         }
         if self.brightness > 100 || ![112, 126].contains(&self.image_size) {
             bail!("Réglages du D6 invalides");
@@ -438,7 +450,7 @@ impl Config {
 }
 pub fn validate_key_in_profile(key: &Key, c: &Config, p: &Profile) -> Result<()> {
     validate_key(key, c)?;
-    for step in &key.steps {
+    for step in key.steps.iter().chain(&key.long_steps) {
         match step {
             Step::Folder { id } => anyhow::ensure!(
                 p.pages.iter().any(|p| p.id == *id && p.folder),
@@ -524,6 +536,11 @@ pub fn parse_hotkey(text: &str) -> Result<Vec<u16>> {
     Ok(keys)
 }
 pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
+    if !key.long_steps.is_empty() {
+        let mut long = key.clone();
+        long.steps = std::mem::take(&mut long.long_steps);
+        validate_key(&long, config)?;
+    }
     anyhow::ensure!((10..=20).contains(&key.title_size), "Taille du titre invalide");
     if !(1..=1000).contains(&key.repeat) || key.steps.len() > 256 {
         bail!("Limite : 1000 répétitions, 256 étapes");
@@ -674,6 +691,29 @@ fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn long_press_config_and_actions_keep_legacy_compatible() {
+        let mut c = Config::default();
+        let legacy = serde_json::to_value(&c).unwrap();
+        assert!(legacy.get("long_press_ms").is_some());
+        let mut legacy = legacy;
+        legacy.as_object_mut().unwrap().remove("long_press_ms");
+        let key = legacy["profiles"][0]["keys"][0].as_object_mut().unwrap();
+        key.remove("long_steps");
+        key.remove("title_size");
+        let restored: Config = serde_json::from_value(legacy).unwrap();
+        assert_eq!(restored.long_press_ms, 500);
+        assert_eq!(restored.keys()[0].title_size, 14);
+        assert!(restored.keys()[0].long_steps.is_empty());
+        c.long_press_ms = 249;
+        assert!(c.validate().is_err());
+        c.long_press_ms = 2000;
+        assert!(c.validate().is_ok());
+        c.keys_mut()[0].long_steps = vec![Step::Page { id: "missing".into() }];
+        assert!(c.validate().is_err());
+        c.keys_mut()[0].long_steps = vec![Step::Hotkey { keys: String::new() }];
+        assert!(c.validate().is_err());
+    }
     #[test]
     fn disabled_step_roundtrip_and_legacy_json_remain_compatible() {
         let legacy = r#"{"label":"Legacy","color":[1,2,3],"image":"","repeat":1,"steps":[{"type":"delay","ms":5}]}"#;

@@ -106,13 +106,15 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
                 let mut data = [0u8; 2048];
                 match d.hid.read_timeout(&mut data, 30) {
                     Ok(n) if n > 0 => {
-                        if let Some(mut k) = decode_press(&data[..n]) {
-                            if config.flip_input_rows {
-                                k = display_index(k);
-                            }
-                            if last_press[k].elapsed() >= Duration::from_millis(150) {
-                                last_press[k] = Instant::now();
-                                let _ = tx.send(Event::Key(k, Instant::now()));
+                        if let Some((mut k, down)) = decode_input(&data[..n]) {
+                            if config.flip_input_rows { k = display_index(k); }
+                            if down {
+                                if last_press[k].elapsed() >= Duration::from_millis(150) {
+                                    last_press[k] = Instant::now();
+                                    let _ = tx.send(Event::Key(k, Instant::now()));
+                                }
+                            } else {
+                                let _ = tx.send(Event::KeyRelease(k, Instant::now()));
                             }
                         }
                     }
@@ -167,6 +169,9 @@ pub fn display_index(k: usize) -> usize {
     (2 - k / 5) * 5 + k % 5
 }
 pub fn decode_press(data: &[u8]) -> Option<usize> {
+    decode_input(data).and_then(|(index, down)| down.then_some(index))
+}
+pub fn decode_input(data: &[u8]) -> Option<(usize, bool)> {
     let d = if data.first() == Some(&0) {
         &data[1..]
     } else {
@@ -176,11 +181,11 @@ pub fn decode_press(data: &[u8]) -> Option<usize> {
         || &d[..3] != b"ACK"
         || &d[5..7] != b"OK"
         || !(1..=15).contains(&d[9])
-        || d[10] != 1
+        || !matches!(d[10], 0 | 1)
     {
         return None;
     }
-    Some(d[9] as usize - 1)
+    Some((d[9] as usize - 1, d[10] == 1))
 }
 // Reconstruct packet length from the actual HID descriptor; never guess 512/1024.
 fn output_report(desc: &[u8]) -> Result<(usize, u8)> {
@@ -491,9 +496,11 @@ mod tests {
         data[5..7].copy_from_slice(b"OK");
         data[10] = 2;
         assert_eq!(decode_press(&data), None);
+        assert_eq!(decode_input(&data), None);
         // Captured from this Windows D6: release is 0, not 2.
         data[10] = 0;
         assert_eq!(decode_press(&data), None);
+        assert_eq!(decode_input(&data), Some((14, false)));
         data[9] = 16;
         assert_eq!(decode_press(&data), None);
         assert_eq!(decode_press(&[0]), None);

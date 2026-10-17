@@ -33,6 +33,7 @@ pub enum Event {
     Quit,
     Hotkey(usize, std::time::Instant),
     Key(usize, std::time::Instant),
+    KeyRelease(usize, std::time::Instant),
     Device(bool, String),
     Applied(u64),
     Profile(String),

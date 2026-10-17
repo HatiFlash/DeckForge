@@ -44,6 +44,8 @@ struct Binding {
     #[serde(default)]
     repeat: Option<u32>,
     steps: Vec<Step>,
+    #[serde(default)]
+    long_steps: Option<Vec<Step>>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -163,6 +165,7 @@ impl Proposals {
                     repeat: a.repeat.unwrap_or(1),
                     title_size: old.title_size,
                     steps: a.steps,
+                    long_steps: a.long_steps.unwrap_or_else(|| old.long_steps.clone()),
                     display_kind: None,
                 };
                 next.validate_structure().map_err(|e| e.to_string())?;
