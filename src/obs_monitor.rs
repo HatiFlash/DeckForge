@@ -14,6 +14,7 @@ pub struct Snapshot {
     pub muted: std::collections::HashMap<String, bool>,
     pub scenes: Vec<String>,
     pub inputs: Vec<String>,
+    pub scene_items: std::collections::HashMap<String, Vec<String>>,
 }
 struct Monitor { tx: Sender<(ObsSettings, bool)>, state: std::sync::Arc<Mutex<Snapshot>> }
 static MONITOR: OnceLock<Monitor> = OnceLock::new();
@@ -44,6 +45,7 @@ fn apply(s: &mut Snapshot, kind: &str, data: &Value) {
         "GetCurrentProgramScene" | "CurrentProgramSceneChanged" => if let Some(v) = data["currentProgramSceneName"].as_str().or_else(|| data["sceneName"].as_str()) { s.scene = v.into(); },
         "GetInputMute" | "InputMuteStateChanged" => if let (Some(name), Some(mute)) = (data["inputName"].as_str(), data["inputMuted"].as_bool()) { s.muted.insert(name.into(), mute); },
         "GetSceneList" => if let Some(xs) = data["scenes"].as_array() { s.scenes = xs.iter().filter_map(|x| x["sceneName"].as_str().map(str::to_owned)).collect(); },
+        "GetSceneItemList" => if let (Some(name), Some(xs)) = (data["sceneName"].as_str(), data["sceneItems"].as_array()) { s.scene_items.insert(name.into(), xs.iter().filter_map(|x| x["sourceName"].as_str().map(str::to_owned)).collect()); },
         "GetInputList" => if let Some(xs) = data["inputs"].as_array() { s.inputs = xs.iter().filter_map(|x| x["inputName"].as_str().map(str::to_owned)).collect(); },
         _ => {}
     }
@@ -54,6 +56,11 @@ fn connected(settings: &ObsSettings, state: &Mutex<Snapshot>, rx: &Receiver<(Obs
     let mut next = Snapshot { status: format!("OBS : connecté {} / obs-websocket {}", version["obsVersion"].as_str().unwrap_or("?"), version["obsWebSocketVersion"].as_str().unwrap_or("?")), ..Default::default() };
     for kind in ["GetRecordStatus", "GetStreamStatus", "GetVirtualCamStatus", "GetReplayBufferStatus", "GetCurrentProgramScene", "GetSceneList", "GetInputList"] {
         if let Ok(data) = crate::obs::request(&mut ws, kind, kind, serde_json::json!({})) { apply(&mut next, kind, &data); }
+    }
+    for scene in next.scenes.clone() {
+        if let Ok(mut data) = crate::obs::request(&mut ws, &format!("items-{scene}"), "GetSceneItemList", serde_json::json!({"sceneName":scene})) {
+            data["sceneName"] = scene.into(); apply(&mut next, "GetSceneItemList", &data);
+        }
     }
     for input in next.inputs.clone() {
         if let Ok(mut data) = crate::obs::request(&mut ws, &format!("mute-{input}"), "GetInputMute", serde_json::json!({"inputName":input})) {
@@ -110,9 +117,54 @@ fn run(rx: Receiver<(ObsSettings, bool)>, state: std::sync::Arc<Mutex<Snapshot>>
 }
 #[cfg(test)] mod tests {
     use super::*;
+    #[test] fn fake_server_initial_state_and_record_event() {
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut ws = tungstenite::accept(stream).unwrap();
+            let send = |ws: &mut tungstenite::WebSocket<std::net::TcpStream>, packet: Value| {
+                ws.send(tungstenite::Message::Text(packet.to_string().into())).unwrap();
+            };
+            send(&mut ws, serde_json::json!({"op":0,"d":{"rpcVersion":1}}));
+            let identify: Value = serde_json::from_str(&ws.read().unwrap().into_text().unwrap()).unwrap();
+            assert_eq!(identify["d"]["eventSubscriptions"], 205);
+            send(&mut ws, serde_json::json!({"op":2,"d":{"negotiatedRpcVersion":1}}));
+            for _ in 0..9 {
+                let request: Value = serde_json::from_str(&ws.read().unwrap().into_text().unwrap()).unwrap();
+                let kind = request["d"]["requestType"].as_str().unwrap();
+                let data = match kind {
+                    "GetVersion" => serde_json::json!({"obsVersion":"31.0","obsWebSocketVersion":"5.5"}),
+                    "GetRecordStatus" => serde_json::json!({"outputActive":false}),
+                    "GetCurrentProgramScene" => serde_json::json!({"currentProgramSceneName":"Bureau"}),
+                    "GetSceneList" => serde_json::json!({"scenes":[{"sceneName":"Bureau"}]}),
+                    "GetInputList" => serde_json::json!({"inputs":[]}),
+                    "GetSceneItemList" => serde_json::json!({"sceneItems":[]}),
+                    _ => serde_json::json!({"outputActive":false}),
+                };
+                send(&mut ws, serde_json::json!({"op":7,"d":{"requestId":request["d"]["requestId"],"requestStatus":{"result":true},"responseData":data}}));
+            }
+            send(&mut ws, serde_json::json!({"op":5,"d":{"eventType":"RecordStateChanged","eventData":{"outputActive":true}}}));
+            std::thread::sleep(Duration::from_millis(250));
+        });
+        let state = Mutex::new(Snapshot::default());
+        let (tx, rx) = mpsc::channel();
+        let settings = ObsSettings { host:"127.0.0.1".into(), port, password:String::new() };
+        let task = std::thread::spawn(move || { let _ = connected(&settings, &state, &rx); state.into_inner().unwrap() });
+        std::thread::sleep(Duration::from_millis(80));
+        tx.send((ObsSettings { host:"127.0.0.1".into(), port, password:String::new() }, true)).unwrap();
+        let final_state = task.join().unwrap();
+        server.join().unwrap();
+        assert!(final_state.status.contains("31.0 / obs-websocket 5.5"));
+        assert_eq!(final_state.scene, "Bureau");
+        assert!(final_state.record);
+    }
     #[test] fn retry_intervals() { assert_eq!((0..5).map(|i|delay(i).as_secs()).collect::<Vec<_>>(), vec![2,5,10,30,30]); }
     #[test] fn event_updates_only_changed_state() {
         let mut s = Snapshot::default(); apply(&mut s,"RecordStateChanged",&serde_json::json!({"outputActive":true})); assert!(s.record);
         apply(&mut s,"InputMuteStateChanged",&serde_json::json!({"inputName":"Mic","inputMuted":true})); assert_eq!(s.muted.get("Mic"),Some(&true));
     }
 }
+
+

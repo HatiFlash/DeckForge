@@ -2398,9 +2398,9 @@ fn edit_step(
     let mut changed = false;
     match step {
         Step::Disabled { .. } => unreachable!("atelier passe une étape active"),
-        Step::ObsScene { name } => { ui.label("Scène OBS"); changed |= ui.text_edit_singleline(name).changed(); }
-        Step::ObsMute { input, mode } => { ui.label("Entrée audio OBS"); changed |= ui.text_edit_singleline(input).changed(); obs_choice(ui, mode, &["toggle", "mute", "unmute"], &mut changed); }
-        Step::ObsSourceVisibility { scene, source, mode } => { ui.label("Scène puis source OBS"); changed |= ui.text_edit_singleline(scene).changed(); changed |= ui.text_edit_singleline(source).changed(); obs_choice(ui, mode, &["toggle", "show", "hide"], &mut changed); }
+        Step::ObsScene { name } => { ui.label("Scène OBS"); changed |= obs_entry(ui, name, &crate::obs_monitor::snapshot().scenes); }
+        Step::ObsMute { input, mode } => { ui.label("Entrée audio OBS"); changed |= obs_entry(ui, input, &crate::obs_monitor::snapshot().inputs); obs_choice(ui, mode, &["toggle", "mute", "unmute"], &mut changed); }
+        Step::ObsSourceVisibility { scene, source, mode } => { ui.label("Scène puis source OBS"); changed |= obs_entry(ui, scene, &crate::obs_monitor::snapshot().scenes); changed |= obs_entry(ui, source, crate::obs_monitor::snapshot().scene_items.get(scene).map(Vec::as_slice).unwrap_or(&[])); obs_choice(ui, mode, &["toggle", "show", "hide"], &mut changed); }
         Step::ObsRecord { mode } => obs_choice(ui, mode, &["toggle", "start", "stop", "pause"], &mut changed),
         Step::ObsStream { mode } | Step::ObsVirtualCam { mode } => obs_choice(ui, mode, &["toggle", "start", "stop"], &mut changed),
         Step::ObsReplay { mode } => obs_choice(ui, mode, &["toggle", "start", "stop", "save"], &mut changed),
@@ -2711,4 +2711,16 @@ fn obs_choice(ui: &mut egui::Ui, mode: &mut String, options: &[&str], changed: &
     egui::ComboBox::from_id_salt(ui.next_auto_id()).selected_text(mode.as_str()).show_ui(ui, |ui| {
         for option in options { *changed |= ui.selectable_value(mode, (*option).to_owned(), *option).changed(); }
     });
+}
+
+fn obs_entry(ui: &mut egui::Ui, value: &mut String, options: &[String]) -> bool {
+    let mut changed = ui.text_edit_singleline(value).changed();
+    if !options.is_empty() {
+        egui::ComboBox::from_id_salt(ui.next_auto_id()).selected_text("Choisir…").show_ui(ui, |ui| {
+            for item in options {
+                if ui.selectable_label(value == item, item).clicked() { *value = item.clone(); changed = true; }
+            }
+        });
+    }
+    changed
 }
