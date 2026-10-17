@@ -9,6 +9,11 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify plugin fixture runtime
+        run: node -e "if (typeof WebSocket !== 'function') process.exit(1)"
       - name: Build native executables
         run: cargo build --release --locked
       - name: Rust and headless MCP tests

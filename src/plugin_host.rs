@@ -117,7 +117,11 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
  #[test] fn node_fixture_exchanges_key_messages(){
   let fixture=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sdplugin");
   let p=crate::plugins::parse(&fixture,&std::fs::read(fixture.join("manifest.json")).unwrap()).unwrap();
-  let Ok(host)=Host::start(&p) else {eprintln!("Node.js absent : fixture ignorée");return};
+  let node=node_executable().expect("Node.js required for the plugin fixture test");
+  let support=Command::new(&node).args(["-p","typeof WebSocket"]).output().expect("Node.js fixture preflight failed");
+  assert!(support.status.success() && support.stdout==b"function
+", "Node.js fixture needs global WebSocket: {} {}", String::from_utf8_lossy(&support.stdout), String::from_utf8_lossy(&support.stderr));
+  let host=Host::start(&p).expect("Failed to start plugin fixture");
   let register=host.incoming.recv_timeout(Duration::from_secs(15)).unwrap();
   assert_eq!(register["event"],"registerPlugin");
   let payload=json!({"settings":{},"coordinates":{"column":0,"row":0},"state":0,"isInMultiAction":false,"controller":"Keypad"});
