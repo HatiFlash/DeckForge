@@ -63,7 +63,7 @@ const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
     ("Clavier", &[0]),
     ("Streaming", &[19, 20, 21, 22, 23, 24, 25, 30, 31, 0, 4]), ("Système", &[0, 2, 4, 26, 27, 28, 29, 32, 33]),
     ("Texte", &[1]), ("Applications et sites", &[2, 3]),
-    ("Médias et audio", &[4, 13, 37]), ("Fenêtres", &[6]), ("Attendre", &[5]),
+    ("Médias et audio", &[4, 13, 37, 38]), ("Fenêtres", &[6]), ("Attendre", &[5]),
     ("Logique et répétitions", &[14, 15]), ("Variables", &[16, 17]),
     ("Navigation DeckForge", &[7, 8, 9, 10, 11]), ("Avancé / AutoHotkey", &[18]),
 ];
@@ -72,7 +72,7 @@ fn block_help(kind: usize) -> &'static str {
         0 => "Appuie sur une combinaison de touches.", 1 => "Écrit du texte dans la fenêtre active.",
         2 => "Démarre un programme Windows.", 3 => "Ouvre une adresse web.",
         4 => "Commande la lecture et le volume.", 5 => "Attend avant le bloc suivant.",
-        6 => "Attend et peut activer une fenêtre.", 13 => "Bascule entre deux appareils audio.", 37 => "Règle uniquement les sessions audio de l’application ciblée.",
+        6 => "Attend et peut activer une fenêtre.", 13 => "Bascule entre deux appareils audio.", 37 => "Règle uniquement les sessions audio de l’application ciblée.", 38 => "Règle le volume du périphérique (sortie ou microphone), et non celui d’une application.",
         14 => "Exécute des blocs si une fenêtre est ouverte.", 15 => "Rejoue plusieurs fois les blocs imbriqués.",
         16 => "Enregistre une valeur pour cette exécution.", 17 => "Choisit des blocs selon une valeur.",
         19..=25 => "Commande OBS Studio par WebSocket local (OBS 28 ou plus).",
@@ -121,6 +121,7 @@ fn simple_fields_visible(step: &Step, advanced: bool) -> bool {
 fn block_summary(step: &Step) -> String {
     match step.active() {
         Step::AppVolume { .. } => step.app_volume_summary().unwrap_or_default(),
+        Step::DeviceVolume { .. } => step.device_volume_summary().unwrap_or_default(),
         Step::ObsScene { name } => format!("OBS : scène {name}"),
         Step::ObsRecord { mode } | Step::ObsStream { mode } | Step::ObsVirtualCam { mode } | Step::ObsReplay { mode } => format!("{} : {mode}", step.name()),
         Step::ObsMute { input, mode } => format!("OBS : {input} ({mode})"),
@@ -335,7 +336,7 @@ pub(super) fn block_editor(
                     if !advanced { ui.label(RichText::new(block_help(match step.active() {
                         Step::Hotkey { .. } => 0, Step::Text { .. } => 1, Step::Launch { .. } => 2,
                         Step::Url { .. } => 3, Step::Media { .. } => 4, Step::Delay { .. } => 5,
-                        Step::WaitWindow { .. } => 6, Step::AudioSwitch { .. } => 13,
+                        Step::WaitWindow { .. } => 6, Step::AudioSwitch { .. } => 13, Step::DeviceVolume { .. } => 38,
                         Step::IfWindow { .. } => 14, Step::Repeat { .. } => 15,
                         Step::Toggle { .. } => 36,
                         Step::SetVariable { .. } => 16, Step::IfVariable { .. } => 17,

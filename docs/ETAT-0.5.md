@@ -4,6 +4,12 @@ Point de reprise après la session Claude du 17/10/2026. Version de travail : br
 
 Exécutables prêts sur le PC fixe : `Bureau\DeckForge-0.5-fusion\DeckForge.exe` (+ `deckforge-mcp.exe`, config, assets, `plugins\`). Version d'essai plugins seule : `Bureau\DeckForge-plugins-test`.
 
+## Blocs de l'Atelier — lot A
+
+- Livré et testé (automatique) : `device_volume`, contrôle du périphérique de sortie ou d'entrée Core Audio, liste des périphériques actifs, simulation sans effet, cinq modèles audio et schéma MCP.
+- À tester avec Hatim : régler le volume d'un microphone et d'une sortie réelle, muet / rétablissement, déconnexion d'un périphérique sélectionné. Aucun test automatisé ne modifie le son réel.
+- Non livré : `if_condition`, `wait_until`, `notify`, migration FocusAudio.
+
 ## Nouveautés 0.5
 
 | Domaine | Contenu | Vérifié |

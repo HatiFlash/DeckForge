@@ -196,7 +196,7 @@ fn run_steps(
             step.name()
         )));
         if dry {
-            if let Some(summary) = step.active().app_volume_summary() { let _ = tx.send(Event::Log(summary)); }
+            if let Some(summary) = step.active().app_volume_summary().or_else(|| step.active().device_volume_summary()) { let _ = tx.send(Event::Log(format!("Simulation : {summary}"))); }
             match step {
                 Step::IfWindow {
                     then_steps,
@@ -271,6 +271,10 @@ fn run_steps(
             Step::ObsScene { .. } | Step::ObsRecord { .. } | Step::ObsStream { .. }
             | Step::ObsVirtualCam { .. } | Step::ObsReplay { .. } | Step::ObsMute { .. }
             | Step::ObsSourceVisibility { .. } => crate::obs::execute(step, obs)?,
+            Step::DeviceVolume { input, device, action, step, level } => {
+                let message = crate::audio::device_volume(device, *input, action, *step, *level)?;
+                let _ = tx.send(Event::Log(message));
+            }
             Step::AppVolume { target, action, step, level, include_children } => {
                 let selected = if target == "foreground" {
                     foreground.context("Cible au premier plan non capturée")?.clone()

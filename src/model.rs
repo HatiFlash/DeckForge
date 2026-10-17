@@ -63,6 +63,13 @@ pub enum Step {
         #[serde(default = "default_background")]
         include_children: bool,
     },
+    DeviceVolume {
+        #[serde(default)] input: bool,
+        #[serde(default = "default_device")] device: String,
+        #[serde(default = "default_app_action")] action: String,
+        #[serde(default = "default_app_step")] step: u8,
+        #[serde(default = "default_device_level")] level: u8,
+    },
     IfWindow {
         title: String,
         then_steps: Vec<Step>,
@@ -109,10 +116,26 @@ pub enum Step {
     PageNext,
     PagePrevious,
 }
+fn default_device() -> String { "default".into() }
+fn default_device_level() -> u8 { 50 }
 fn default_app_target() -> String { "foreground".into() }
 fn default_app_action() -> String { "up".into() }
 fn default_app_step() -> u8 { 5 }
 impl Step {
+    pub fn device_volume_summary(&self) -> Option<String> {
+        let Self::DeviceVolume { input, device, action, step, level } = self else { return None };
+        let who = if *input { "microphone" } else { "sortie audio" };
+        let target = if device == "default" { format!("{who} par défaut") } else { format!("{who} ({device})") };
+        Some(match action.as_str() {
+            "up" => format!("Augmenter le volume du {target} de {step} points"),
+            "down" => format!("Diminuer le volume du {target} de {step} points"),
+            "set" => format!("Régler le volume du {target} à {level} %"),
+            "mute" => format!("Couper le son du {target}"),
+            "unmute" => format!("Rétablir le son du {target}"),
+            "toggle_mute" => format!("Basculer le muet du {target}"),
+            _ => format!("Action de volume inconnue pour {target}"),
+        })
+    }
     pub fn app_volume_summary(&self) -> Option<String> {
         let Self::AppVolume { target, action, step, level, .. } = self else { return None };
         let who = if target == "foreground" { "l’application active".to_owned() } else { target.clone() };
@@ -149,6 +172,7 @@ impl Step {
             Self::Folder { .. } => "Ouvrir un dossier",
             Self::AudioSwitch { .. } => "Basculer le périphérique audio",
             Self::AppVolume { .. } => "Volume d’une application",
+            Self::DeviceVolume { .. } => "Volume d’un périphérique",
             Self::IfWindow { .. } => "Si une fenêtre est ouverte",
             Self::Repeat { .. } => "Répéter des blocs",
             Self::SetVariable { .. } => "Définir une variable",
@@ -741,6 +765,10 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
                 if (target != "foreground" && (target.len() > 260 || !target.to_ascii_lowercase().ends_with(".exe") || target.contains(['/', '\\']) || target.chars().any(char::is_control) || target.trim() != target))
                     || !["up", "down", "set", "mute", "unmute", "toggle_mute"].contains(&action.as_str())
                     || !(1..=100).contains(step) || *level > 100 => bail!("Cible, action ou niveau de volume d’application invalide"),
+            Step::DeviceVolume { device, action, step, level, .. }
+                if device.trim().is_empty() || device.len() > 512 || device.chars().any(char::is_control)
+                    || !["up", "down", "set", "mute", "unmute", "toggle_mute"].contains(&action.as_str())
+                    || !(1..=100).contains(step) || *level > 100 => bail!("Périphérique, action ou niveau de volume invalide"),
             Step::AudioSwitch { first, second, .. }
                 if first.is_empty() || second.is_empty() || first == second =>
             {
@@ -864,6 +892,17 @@ fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn device_volume_defaults_roundtrip_and_validation() {
+        let s: Step = serde_json::from_str(r#"{"type":"device_volume"}"#).unwrap();
+        assert_eq!(s, Step::DeviceVolume { input: false, device: "default".into(), action: "up".into(), step: 5, level: 50 });
+        assert_eq!(serde_json::from_value::<Step>(serde_json::to_value(&s).unwrap()).unwrap(), s);
+        assert!(s.device_volume_summary().unwrap().contains("sortie audio"));
+        assert!(serde_json::from_str::<Step>(r#"{"type":"device_volume","surprise":1}"#).is_err());
+        for bad in [Step::DeviceVolume { input: false, device: "default".into(), action: "up".into(), step: 0, level: 50 }, Step::DeviceVolume { input: false, device: "".into(), action: "up".into(), step: 5, level: 50 }] {
+            assert!(validate_key(&Key { steps: vec![bad], ..Key::default() }, &Config::default()).is_err());
+        }
+    }
     #[test]
     fn d6_lighting_steps_validate_and_calculate() {
         assert_eq!(d6_brightness(95, "up", 20), 100);

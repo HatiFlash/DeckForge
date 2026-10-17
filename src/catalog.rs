@@ -52,6 +52,11 @@ pub fn presets() -> Vec<Preset> {
             target: "foreground".into(), action: action.into(), step: 5, level, include_children: true,
         }]);
     }
+    for (label, input, action) in [("Micro muet / rétabli", true, "toggle_mute"), ("Micro +5 %", true, "up"), ("Micro −5 %", true, "down"), ("Sortie +5 %", false, "up"), ("Sortie −5 %", false, "down")] {
+        add("Audio", label, "Volume du périphérique audio par défaut, différent du volume d'une application.", [76, 166, 137], vec![Step::DeviceVolume {
+            input, device: "default".into(), action: action.into(), step: 5, level: 50,
+        }]);
+    }
     for (label, keys, description) in [
         (
             "Copier",
@@ -442,7 +447,7 @@ mod tests {    #[test]
     #[test]
     fn every_preset_and_action_is_executable_with_valid_configuration() {
         let c = Config::default();
-        assert_eq!(presets().len(), 62);
+        assert_eq!(presets().len(), 67);
         for p in presets() {
             validate_key(&p.key, &c).unwrap();
             assert!(!p.key.steps.is_empty());

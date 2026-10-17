@@ -2689,6 +2689,33 @@ fn edit_step(
             });
             changed |= ui.add(egui::Slider::new(value, 0..=100).text("%" )).changed();
         }
+        Step::DeviceVolume { input, device, action, step, level } => {
+            ui.label("Volume du périphérique (pas celui d'une application)");
+            changed |= ui.checkbox(input, "Microphone (sinon sortie)").changed();
+            let options: Vec<_> = audio.devices.iter().filter(|d| d.input == *input).collect();
+            let selected = if device == "default" { "Par défaut".to_string() }
+                else { options.iter().find(|d| d.id == *device).map(|d| d.name.clone()).unwrap_or_else(|| device.clone()) };
+            egui::ComboBox::from_id_salt("device_volume_target").selected_text(selected).show_ui(ui, |ui| {
+                changed |= ui.selectable_value(device, "default".into(), "Par défaut").changed();
+                for endpoint in &options {
+                    changed |= ui.selectable_value(device, endpoint.id.clone(), &endpoint.name).changed();
+                }
+            });
+            ui.label("Action");
+            egui::ComboBox::from_id_salt("device_volume_action").selected_text(match action.as_str() {
+                "up" => "Augmenter", "down" => "Diminuer", "set" => "Régler à", "mute" => "Couper", "unmute" => "Rétablir", _ => "Basculer muet",
+            }).show_ui(ui, |ui| {
+                for (id, label) in [("up", "Augmenter"), ("down", "Diminuer"), ("set", "Régler à"), ("mute", "Couper"), ("unmute", "Rétablir"), ("toggle_mute", "Basculer muet")] {
+                    changed |= ui.selectable_value(action, id.into(), label).changed();
+                }
+            });
+            if action == "up" || action == "down" { changed |= ui.add(egui::Slider::new(step, 1..=100).text("Pas (points)")).changed(); }
+            if action == "set" { changed |= ui.add(egui::Slider::new(level, 0..=100).text("Niveau (%)")).changed(); }
+            egui::CollapsingHeader::new("Options avancées").id_salt("device_volume_advanced").show(ui, |ui| {
+                ui.label("ID du périphérique (ou default) :");
+                changed |= ui.text_edit_singleline(device).changed();
+            });
+        }
         Step::AppVolume { target, action, step, level, include_children } => {
             ui.label("Cible");
             let mut foreground = target == "foreground";
@@ -2926,6 +2953,7 @@ fn step_summary(step: &Step) -> String {
         Step::MouseScroll { amount } => format!("Défiler de {amount} crans"),
         Step::PlaySound { path, volume } => format!("Son : {path} ({volume} %)"),
         Step::AppVolume { .. } => step.app_volume_summary().unwrap_or_default(),
+        Step::DeviceVolume { .. } => step.device_volume_summary().unwrap_or_default(),
         Step::StopSounds => "Arrêter les sons".into(),
         Step::Toggle { a, b } => format!("Basculer 1 / 2 ({} / {} blocs)", a.len(), b.len()),
         Step::UdpSend { host, port, .. } => format!("UDP : {host}:{port}"),

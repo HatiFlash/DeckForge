@@ -160,6 +160,12 @@ Soundboard : deckforge_configure_key accepte play_sound avec path (fichier WAV/M
 
 Actions réseau : configure_key accepte udp_send (host, port, text) et http_request (method GET/POST/PUT, url http://, body, content_type). HTTPS est refusé explicitement faute de TLS ; validation locale avant proposition, aucune requête en simulation. La réponse HTTP est journalisée sur une longueur bornée ; l’export AutoHotkey refuse ces blocs.
 
+## Bloc `device_volume` — volume d'un périphérique
+
+`{"type":"device_volume","input":true,"device":"default","action":"toggle_mute","step":5,"level":50}`
+
+`input` choisit le microphone (`true`) ou la sortie (`false`). `device` désigne `default` (rôle eConsole) ou l'ID Core Audio d'un périphérique actif. Les actions `up`, `down`, `set`, `mute`, `unmute`, `toggle_mute` règlent le périphérique entier et non les sessions d'une application. Les champs omis reçoivent leurs valeurs par défaut.
+
 ## Bloc `app_volume` — volume d'une application
 
 `{"type":"app_volume","target":"foreground","action":"up","step":5,"level":0,"include_children":true}`

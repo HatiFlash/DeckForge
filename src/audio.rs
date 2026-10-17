@@ -74,6 +74,42 @@ pub fn snapshot() -> Result<Snapshot> {
         Ok(s)
     }
 }
+/// Volume du périphérique (capture ou rendu), jamais le volume d'une session.
+pub fn device_volume(device: &str, input: bool, action: &str, step: u8, level: u8) -> Result<String> {
+    let _com = Com::new()?;
+    unsafe {
+        let e = enumerator()?;
+        let flow = if input { eCapture } else { eRender };
+        let endpoint = if device == "default" {
+            e.GetDefaultAudioEndpoint(flow, eConsole).context("Aucun périphérique audio par défaut actif")?
+        } else {
+            let active = e.EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE)?;
+            let mut found = None;
+            for i in 0..active.GetCount()? {
+                let d = active.Item(i)?;
+                if id(&d)? == device { found = Some(d); break; }
+            }
+            found.context("Périphérique audio déconnecté ou indisponible")?
+        };
+        let volume: windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume = endpoint.Activate(CLSCTX_ALL, None)
+            .context("Contrôle du volume du périphérique indisponible")?;
+        let context = windows::core::GUID::from_u128(0xe11c6b19_89ea_441e_8911_1ee94a8ac463);
+        match action {
+            "up" | "down" | "set" => {
+                let current = volume.GetMasterVolumeLevelScalar().context("Lecture du volume impossible")?;
+                let value = crate::app_audio::adjust(current, action, step, level);
+                volume.SetMasterVolumeLevelScalar(value, &context).context("Réglage du volume impossible")?;
+                Ok(format!("Périphérique audio : {} %", (value * 100.0).round() as u8))
+            }
+            "mute" | "unmute" | "toggle_mute" => {
+                let muted = if action == "toggle_mute" { !volume.GetMute()?.as_bool() } else { action == "mute" };
+                volume.SetMute(muted, &context).context("Réglage du muet impossible")?;
+                Ok(format!("Périphérique audio : {}", if muted { "muet" } else { "son rétabli" }))
+            }
+            _ => anyhow::bail!("Action de volume de périphérique inconnue"),
+        }
+    }
+}
 /// IPolicyConfig's stable Windows desktop ABI (not part of the public SDK).
 /// Failures are surfaced to the user; no registry or elevated fallback is used.
 pub fn set_default(target: &str, input: bool) -> Result<()> {
