@@ -1,7 +1,8 @@
 //! Canonical LCD rendering. The editor previews the actual JPEG, in upright orientation.
 use ab_glyph::{Font, FontArc, PxScale, ScaleFont};
 use anyhow::{Context, Result};
-use image::{Rgb, RgbImage};
+use image::{AnimationDecoder, Rgb, RgbImage};
+use std::io::Cursor;
 use std::sync::OnceLock;
 
 pub fn font() -> Result<FontArc> {
@@ -99,17 +100,24 @@ pub fn for_device(
     }
 }
 pub fn jpeg(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8>> {
+    jpeg_with_frame(k, size, font, None)
+}
+
+fn jpeg_with_frame(k: &crate::model::Key, size: u32, font: &FontArc, frame: Option<&image::DynamicImage>) -> Result<Vec<u8>> {
     anyhow::ensure!((32..=512).contains(&size), "Taille LCD invalide");
     let background = if k.background { k.color } else { [0, 0, 0] };
     let mut image = RgbImage::from_pixel(size, size, Rgb(background));
     if !k.image.is_empty() {
         anyhow::ensure!(
-            std::fs::metadata(&k.image)?.len() <= 8_000_000,
+            std::fs::metadata(&k.image)?.len() <= if k.image.to_ascii_lowercase().ends_with(".gif") { 20_000_000 } else { 8_000_000 },
             "Image supérieure à 8 Mo"
         );
-        let icon = crate::assets::decode_image(&std::fs::read(&k.image)?, 512)
-            .with_context(|| format!("Image invalide pour {}", k.label))?
-            .resize_to_fill(size, size, image::imageops::FilterType::Lanczos3)
+        let source = match frame {
+            Some(frame) => frame.clone(),
+            None => crate::assets::decode_image(&std::fs::read(&k.image)?, 512)
+                .with_context(|| format!("Image invalide pour {}", k.label))?,
+        };
+        let icon = source.resize_to_fill(size, size, image::imageops::FilterType::Lanczos3)
             .into_rgba8();
         // At 100%, keep the original pixel path byte-for-byte identical.
         let scaled = if k.icon_scale == 100 { icon } else {
@@ -213,10 +221,67 @@ pub fn jpeg(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8>>
     Ok(bytes)
 }
 
+/// The same canonical JPEG path is used for the still preview, D6 upload and animation.
+pub struct AnimatedFrame {
+    pub jpeg: Vec<u8>,
+    pub delay: std::time::Duration,
+}
+pub fn animated(key: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<AnimatedFrame>> {
+    if !key.image.to_ascii_lowercase().ends_with(".gif") { return Ok(vec![]); }
+    let bytes = std::fs::read(&key.image)?;
+    anyhow::ensure!(bytes.len() <= 20_000_000, "GIF supérieur à 20 Mo");
+    let decoder = image::codecs::gif::GifDecoder::new(Cursor::new(bytes))?;
+    let mut frames = Vec::new();
+    let mut elapsed = 0u32;
+    let mut sampled = 0u32;
+    for frame in decoder.into_frames().take(151) {
+        let frame = frame?;
+        anyhow::ensure!(frames.len() < 150 || elapsed >= 10_000, "GIF supérieur à 150 images");
+        let (num, den) = frame.delay().numer_denom_ms();
+        let duration = if den == 0 { 100 } else { (num / den).max(20) };
+        if elapsed >= 10_000 { break; }
+        elapsed = elapsed.saturating_add(duration);
+        if frames.is_empty() || elapsed.saturating_sub(sampled) >= 50 {
+            sampled = elapsed;
+            frames.push(AnimatedFrame {
+                jpeg: jpeg_with_frame(key, size, font, Some(&image::DynamicImage::ImageRgba8(frame.into_buffer())))?,
+                delay: std::time::Duration::from_millis(duration.max(50) as u64),
+            });
+        }
+    }
+    if frames.len() < 2 { frames.clear(); }
+    Ok(frames)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::{Key, Step};
+    #[test]
+    fn animated_gif_uses_the_canonical_jpeg_and_bounded_frames() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("two.gif");
+        let mut bytes = Vec::new();
+        {
+            let mut encoder = image::codecs::gif::GifEncoder::new(&mut bytes);
+            encoder.set_repeat(image::codecs::gif::Repeat::Infinite).unwrap();
+            for color in [image::Rgba([255, 0, 0, 255]), image::Rgba([0, 255, 0, 255])] {
+                encoder.encode_frame(image::Frame::from_parts(
+                    image::RgbaImage::from_pixel(16, 16, color), 0, 0,
+                    image::Delay::from_numer_denom_ms(100, 1))).unwrap();
+            }
+        }
+        std::fs::write(&path, &bytes).unwrap();
+        let key = Key { image: path.to_string_lossy().into_owned(), icon_scale: 60, label: "GIF".into(), ..Key::default() };
+        let frames = animated(&key, 126, &font().unwrap()).unwrap();
+        assert_eq!(frames.len(), 2);
+        assert_ne!(frames[0].jpeg, frames[1].jpeg);
+        assert_eq!(frames[0].jpeg, jpeg(&key, 126, &font().unwrap()).unwrap());
+        let imported = crate::assets::import_image(&bytes, dir.path(), "two").unwrap();
+        assert_eq!(imported.extension().unwrap(), "gif");
+        assert_eq!(std::fs::read(imported).unwrap(), bytes);
+    }
+
     #[test]
     fn icon_scale_preserves_legacy_pixels_and_changes_image_and_symbol() {
         let dir = tempfile::tempdir().unwrap();

@@ -69,7 +69,7 @@ pub fn scan(extra: &[PathBuf]) -> Vec<Icon> {
                     .unwrap_or("")
                     .to_ascii_lowercase()
                     .as_str(),
-                "png" | "jpg" | "jpeg" | "svg"
+                "png" | "jpg" | "jpeg" | "svg" | "gif"
             ) {
                 continue;
             }
@@ -139,8 +139,9 @@ fn read_json(path: &Path) -> Option<serde_json::Value> {
     serde_json::from_slice(&std::fs::read(path).ok()?).ok()
 }
 pub fn import_image(bytes: &[u8], dest: &Path, name: &str) -> Result<PathBuf> {
-    ensure!(bytes.len() <= 8_000_000, "Image trop volumineuse");
-    let decoded = decode_image(bytes, 512)?;
+    ensure!(bytes.len() <= 20_000_000, "Image trop volumineuse");
+    let gif = bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a");
+    let decoded = if gif { None } else { Some(decode_image(bytes, 512)?) };
     let hash = bytes.iter().fold(0xcbf29ce484222325u64, |h, b| {
         (h ^ (*b as u64)).wrapping_mul(0x100000001b3)
     });
@@ -150,15 +151,16 @@ pub fn import_image(bytes: &[u8], dest: &Path, name: &str) -> Result<PathBuf> {
         .take(60)
         .collect();
     std::fs::create_dir_all(dest)?;
-    let path = dest.join(format!("{safe}-{hash:016x}.png"));
+    let path = dest.join(format!("{safe}-{hash:016x}.{}", if gif { "gif" } else { "png" }));
     if !path.exists() {
-        decoded.save_with_format(&path, image::ImageFormat::Png)?;
+        if let Some(decoded) = decoded { decoded.save_with_format(&path, image::ImageFormat::Png)?; }
+        else { let _ = image::load_from_memory_with_format(bytes, image::ImageFormat::Gif)?; std::fs::write(&path, bytes)?; }
     }
     Ok(path)
 }
 pub fn decode_image(bytes: &[u8], size: u32) -> Result<image::DynamicImage> {
     ensure!(
-        bytes.len() <= 8_000_000 && (1..=512).contains(&size),
+        bytes.len() <= 20_000_000 && (1..=512).contains(&size),
         "Image trop volumineuse"
     );
     let mut reader = image::ImageReader::new(Cursor::new(bytes)).with_guessed_format()?;
@@ -238,7 +240,7 @@ pub fn import_pack(path: &Path, dest: &Path) -> Result<(usize, usize)> {
             .and_then(|s| s.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "svg") {
+        if !matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "svg" | "gif") {
             if matches!(ext.as_str(), "gif" | "webp") {
                 skipped += 1;
             }
