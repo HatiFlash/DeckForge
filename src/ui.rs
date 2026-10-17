@@ -29,7 +29,31 @@ mod appearance;
 mod plugin_store_ui;
 
 #[derive(Default,Clone)]
-struct PluginFace { title:String, image_bytes:Option<Vec<u8>>, state:u8, flash:Option<(bool,Instant)> }
+struct PluginFace { title:String, image_bytes:Option<Vec<u8>>, state:u8, flash:Option<(bool,Instant)>, version:u64 }
+#[cfg(test)]
+#[test]
+fn plugin_image_formats_and_limits() {
+    assert_eq!(decode_plugin_image("").unwrap(),None);
+    assert_eq!(decode_plugin_image("<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><rect width='16' height='16'/></svg>").unwrap().unwrap()[0],b'<');
+    assert!(decode_plugin_image("data:image/png;base64,????").is_err());
+    assert!(decode_plugin_image("data:text/html;base64,PHA+").is_err());
+    assert!(decode_plugin_image(&"x".repeat(2_000_001)).is_err());
+}
+fn decode_plugin_image(value:&str)->anyhow::Result<Option<Vec<u8>>> {
+    use base64::Engine as _;
+    if value.is_empty() {return Ok(None);}
+    let bytes=if let Some((mime,payload))=value.split_once(",") {
+        anyhow::ensure!(matches!(mime,"data:image/png;base64"|"data:image/jpeg;base64"|"data:image/svg+xml;base64"),"Format d'image non pris en charge");
+        anyhow::ensure!(payload.len()<=2_000_000,"Image trop volumineuse");
+        base64::engine::general_purpose::STANDARD.decode(payload)?
+    }else{
+        anyhow::ensure!(value.trim_start().starts_with("<svg") && value.len()<=2_000_000,"SVG invalide");
+        value.as_bytes().to_vec()
+    };
+    anyhow::ensure!(bytes.len()<=1_500_000,"Image trop volumineuse");
+    crate::assets::decode_image(&bytes,512)?;
+    Ok(Some(bytes))
+}
 type DialogEffect = Box<dyn FnOnce(&mut App) + Send>;
 type StepTarget = (usize, String, usize, Vec<usize>);
 fn choose_step_file(tx: Sender<Option<DialogEffect>>, target: StepTarget, executable: bool) {
@@ -1804,13 +1828,13 @@ impl App {
                     let device=egui::Frame::new().fill(Color32::TRANSPARENT).stroke(egui::Stroke::NONE).shadow(egui::epaint::Shadow{offset:[0,12],blur:24,spread:0,color:Color32::from_black_alpha(75)}).corner_radius(20).inner_margin(egui::Margin{left:24,right:24,top:24,bottom:44}).show(ui,|ui| {
                         egui::Grid::new("deck_grid_v3").spacing([14.0,14.0]).show(ui,|ui| {
                             for i in 0..15 {
-                                let mut key=self.presented_key(i);if let Some(face)=self.plugin_face(i){if !face.title.is_empty(){key.label=face.title.clone();}}let selected=i==self.selected;
+                                let mut key=self.presented_key(i);let face=self.plugin_face(i).cloned();if let Some(face)=&face {key=self.plugin_render_key(i,key,face);}let selected=i==self.selected;
                                 let flashing=self.last_key.is_some_and(|(idx,t)|idx==i&&t.elapsed()<Duration::from_millis(350));
                                 let(r,response)=ui.allocate_exact_size(Vec2::splat(width),egui::Sense::click_and_drag());
                                 let hovering=self.drag.moving() && self.drag.position.is_some_and(|pos|r.contains(pos));
                                 theme::key_face(ui.painter(),r,selected||hovering,flashing);
                                 let lcd=r.shrink(5.0);
-                                match self.key_previews.texture(ctx,i,&key,self.config.image_size) {
+                                match self.key_previews.texture(ctx,i,&key,self.config.image_size,face.as_ref()) {
                                     Ok(texture)=>{ui.painter().image(texture.id(),lcd,egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(1.0,1.0)),Color32::WHITE);}
                                     Err(error)=>{ui.painter().text(lcd.center(),egui::Align2::CENTER_CENTER,"Aperçu indisponible",egui::FontId::proportional(9.0),p.muted); ui.painter().text(lcd.left_top(),egui::Align2::LEFT_TOP,"!",egui::FontId::proportional(12.0),Color32::LIGHT_RED);let _=error;}
                                 }
@@ -2312,6 +2336,28 @@ impl App {
         let id=manager.visible().values().find(|v|v.index==index)?.context.as_str();
         self.plugin_faces.get(id)
     }
+    fn plugin_render_key(&self,index:usize,mut key:Key,face:&PluginFace)->Key {
+        if !face.title.is_empty(){key.label=face.title.clone();}
+        if face.image_bytes.is_none() {
+            if let Some(v)=self.plugins.as_ref().and_then(|m|m.visible().values().find(|v|v.index==index)) {
+                if let Some(action)=self.plugins.as_ref().into_iter().flat_map(|m|m.catalog.iter()).find(|p|p.uuid==v.plugin).and_then(|p|p.actions.iter().find(|a|a.uuid==v.action)) {
+                    if let Some(icon)=action.states.get(face.state as usize).and_then(Option::as_ref).or(action.icon.as_ref()) {
+                        key.image=icon.to_string_lossy().into_owned();
+                    }
+                }
+            }
+        }
+        key
+    }
+    fn send_plugin_face(&self,index:usize){
+        let Some(face)=self.plugin_face(index) else {return};
+        let key=self.plugin_render_key(index,self.applied.keys()[index].clone(),face);
+        if let Ok(font)=crate::key_render::font(){
+            if let Ok(jpeg)=crate::key_render::for_plugin(&key,self.applied.image_size,&font,face.image_bytes.as_deref(),face.flash.filter(|(_,when)|when.elapsed()<Duration::from_secs(1)).map(|(ok,_)|ok)){
+                let _=self.device.send(Command::KeyImage(index,jpeg));
+            }
+        }
+    }
     fn plugin_events(&mut self){
         let mut messages=Vec::new();
         if let Some(manager)=&self.plugins {while let Ok(message)=manager.rx.try_recv(){messages.push(message);if messages.len()>=100 {break;}}}
@@ -2331,12 +2377,20 @@ impl App {
             "setTitle"|"setState"|"setImage"|"showOk"|"showAlert"=>{
                 if visible.is_none(){return;}
                 let face=self.plugin_faces.entry(context.to_owned()).or_default();
+                let previous=face.clone();
                 match name {
                     "setTitle"=>{if let Some(title)=message["payload"]["title"].as_str(){face.title=title.chars().take(100).collect();}},
                     "setState"=>{if let Some(state)=message["payload"]["state"].as_u64(){face.state=state.min(255) as u8;}},
                     "showOk"=>face.flash=Some((true,Instant::now())),
                     "showAlert"=>face.flash=Some((false,Instant::now())),
+                    "setImage"=>{if let Some(value)=message["payload"]["image"].as_str(){
+                        if let Ok(image)=decode_plugin_image(value){face.image_bytes=image;}
+                    }else if message["payload"]["image"].is_null(){face.image_bytes=None;}},
                     _=>{}
+                }
+                if face.title!=previous.title || face.image_bytes!=previous.image_bytes || face.state!=previous.state || face.flash.is_some() {
+                    face.version=face.version.wrapping_add(1);
+                    if let Some(v)=visible { self.send_plugin_face(v.index); }
                 }
             },
             "setSettings"=>{
@@ -2356,6 +2410,12 @@ impl App {
         }
     }
     fn background_tick(&mut self) {
+        let expired=self.plugin_faces.iter_mut().filter_map(|(context,face)|{
+            if face.flash.is_some_and(|(_,at)|at.elapsed()>=Duration::from_secs(1)){
+                face.flash=None; face.version=face.version.wrapping_add(1);Some(context.clone())
+            }else{None}
+        }).collect::<Vec<_>>();
+        for context in expired {if let Some(index)=self.plugins.as_ref().and_then(|m|m.visible().get(&context)).map(|v|v.index){self.send_plugin_face(index);}}
         if let Some(plugins)=&mut self.plugins { if !self.gate.dirty && self.pending.is_none() { plugins.sync(&self.applied); } }
         self.events();
         self.plugin_events();

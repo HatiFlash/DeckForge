@@ -591,6 +591,7 @@ version = "0.5.0"
 dependencies = [
  "ab_glyph",
  "anyhow",
+ "base64",
  "eframe",
  "getrandom 0.4.3",
  "hidapi",

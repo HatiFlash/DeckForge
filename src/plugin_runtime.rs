@@ -29,12 +29,12 @@ fn event(name:&str,v:&Visible)->Value {
 }
 enum Request { Sync(HashMap<String,Visible>), Key(String,bool), Send(String,Value), Stop }
 pub enum Reply { Message(String,Value), Error(String,String) }
-pub struct Manager { tx:Sender<Request>,pub rx:Receiver<Reply>,visible:HashMap<String,Visible> }
+pub struct Manager { tx:Sender<Request>,pub rx:Receiver<Reply>,visible:HashMap<String,Visible>,pub catalog:Vec<Plugin> }
 impl Manager {
     pub fn new(plugins:Vec<Plugin>)->Self {
         let (tx,requests)=mpsc::channel();let (reply,rx)=mpsc::channel();
-        thread::spawn(move||run(plugins,requests,reply));
-        Self{tx,rx,visible:HashMap::new()}
+        let catalog=plugins.clone();thread::spawn(move||run(plugins,requests,reply));
+        Self{tx,rx,visible:HashMap::new(),catalog}
     }
     pub fn sync(&mut self, config:&Config) {
         let next=visible(config);

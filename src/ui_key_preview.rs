@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 #[derive(Clone, PartialEq)]
 struct Signature {
+    face_version: u64,
     label: String,
     title_size: u8,
     icon_scale: u8,
@@ -16,8 +17,9 @@ struct Signature {
     file: Option<(u64, Option<std::time::SystemTime>)>,
 }
 impl Signature {
-    fn new(key: &Key, size: u32) -> Self {
+    fn new(key: &Key, size: u32, face: Option<&PluginFace>) -> Self {
         Self {
+            face_version: face.map_or(0,|f|f.version),
             label: key.label.clone(), title_size: key.title_size, icon_scale: key.icon_scale,
             color: key.color, background: key.background, image: key.image.clone(),
             kind: crate::icons::kind(key), has_actions: !key.steps.is_empty(), size,
@@ -76,16 +78,22 @@ impl Cache {
         if let Some(delay) = self.next_repaint { ctx.request_repaint_after(delay.max(Duration::from_millis(40))); }
     }
     pub(super) fn texture(
-        &mut self, ctx: &egui::Context, index: usize, key: &Key, size: u32,
+        &mut self, ctx: &egui::Context, index: usize, key: &Key, size: u32, face: Option<&PluginFace>,
     ) -> Result<egui::TextureHandle, String> {
-        let signature = Signature::new(key, size);
+        let signature = Signature::new(key, size, face);
         if self.entries.get(&index).is_none_or(|c| c.signature != signature) {
-            let texture = crate::key_render::preview(key, size)
+            let texture = (|| -> anyhow::Result<image::RgbImage> {
+                if let Some(face)=face {
+                    let jpeg=crate::key_render::for_plugin(key,size,&crate::key_render::font()?,face.image_bytes.as_deref(),face.flash.filter(|(_,when)|when.elapsed()<Duration::from_secs(1)).map(|(ok,_)|ok))?;
+                    return Ok(image::imageops::rotate180(&image::load_from_memory(&jpeg)?.into_rgb8()));
+                }
+                crate::key_render::preview(key,size)
+            })()
                 .map(|image| ctx.load_texture(format!("lcd-preview-{index}"),
                     egui::ColorImage::from_rgb([size as usize, size as usize], &image),
                     egui::TextureOptions::LINEAR))
                 .map_err(|e| e.to_string());
-            let loading = key.image.to_ascii_lowercase().ends_with(".gif") && texture.is_ok();
+            let loading = face.is_none() && key.image.to_ascii_lowercase().ends_with(".gif") && texture.is_ok();
             self.entries.insert(index, Cached {
                 signature: signature.clone(), texture, animation: Vec::new(),
                 started: Instant::now(), selected: None,
@@ -137,7 +145,7 @@ mod tests {
         let mut first_id = None;
         let first = ctx.run(Default::default(), |ctx| {
             cache.begin_frame();
-            let texture = cache.texture(ctx, 0, &key, 126).unwrap();
+            let texture = cache.texture(ctx, 0, &key, 126, None).unwrap();
             cache.end_frame(ctx);
             first_id = Some(texture.id());
         });
@@ -150,7 +158,7 @@ mod tests {
         let mut second_id = None;
         let second = ctx.run(Default::default(), |ctx| {
             cache.begin_frame();
-            let texture = cache.texture(ctx, 0, &key, 126).unwrap();
+            let texture = cache.texture(ctx, 0, &key, 126, None).unwrap();
             cache.end_frame(ctx);
             second_id = Some(texture.id());
         });
@@ -158,7 +166,7 @@ mod tests {
         assert_eq!(second.textures_delta.set.iter().filter(|(id, _)| Some(*id) == second_id).count(), 1);
         let third = ctx.run(Default::default(), |ctx| {
             cache.begin_frame();
-            let _ = cache.texture(ctx, 0, &key, 126).unwrap();
+            let _ = cache.texture(ctx, 0, &key, 126, None).unwrap();
             cache.end_frame(ctx);
         });
         assert!(third.textures_delta.set.iter().all(|(id, _)| Some(*id) != first_id));
