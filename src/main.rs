@@ -20,6 +20,8 @@ mod model;
 mod plugins;
 #[allow(dead_code)]
 mod plugin_host;
+#[allow(dead_code)]
+mod plugin_import;
 mod recorder;
 mod store;
 mod token_equal;
