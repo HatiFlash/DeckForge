@@ -23,6 +23,10 @@ pub fn tools() -> Value {
         json!({"type":"object","properties":{"type":{"const":"mouse_move"},"x":{"type":"integer","minimum":-32768,"maximum":32767},"y":{"type":"integer","minimum":-32768,"maximum":32767},"relative":{"type":"boolean"}},"required":["type","x","y","relative"],"additionalProperties":false}),
         json!({"type":"object","properties":{"type":{"const":"mouse_scroll"},"amount":{"type":"integer","minimum":-100,"maximum":100}},"required":["type","amount"],"additionalProperties":false}),
     ]);
+    step_schema["oneOf"].as_array_mut().unwrap().extend([
+        json!({"type":"object","properties":{"type":{"const":"play_sound"},"path":{"type":"string","minLength":1,"maxLength":1024},"volume":{"type":"integer","minimum":0,"maximum":100}},"required":["type","path","volume"],"additionalProperties":false}),
+        json!({"type":"object","properties":{"type":{"const":"stop_sounds"}},"required":["type"],"additionalProperties":false}),
+    ]);
     let nested = json!({"type":"array","items":{"$ref":"#/$defs/step"},"maxItems":256});
     step_schema["oneOf"].as_array_mut().unwrap().extend([
         json!({"type":"object","properties":{"type":{"const":"audio_switch"},"first":{"type":"string"},"second":{"type":"string"},"input":{"type":"boolean"},"first_label":{"type":"string"},"second_label":{"type":"string"},"first_icon":{"type":"string"},"second_icon":{"type":"string"}},"required":["type","first","second","input"],"additionalProperties":false}),
@@ -89,6 +93,19 @@ mod tests {
             assert_eq!(tool["inputSchema"]["additionalProperties"], false);
             assert!(tool["name"].as_str().unwrap().starts_with("deckforge_"));
         }
+    }
+    #[test]
+    fn soundboard_steps_are_advertised_without_secret_fields() {
+        let list = tools();
+        let configure = list["tools"].as_array().unwrap().iter()
+            .find(|tool| tool["name"] == "deckforge_configure_key").unwrap();
+        let variants = configure["inputSchema"]["$defs"]["step"]["oneOf"].as_array().unwrap();
+        for kind in ["play_sound", "stop_sounds"] {
+            let schema = variants.iter().find(|v| v["properties"]["type"]["const"] == kind).unwrap();
+            assert_eq!(schema["additionalProperties"], false);
+            assert_eq!(schema["required"][0], "type");
+        }
+        assert_eq!(variants.iter().find(|v| v["properties"]["type"]["const"] == "play_sound").unwrap()["properties"]["volume"]["maximum"], 100);
     }
     #[test]
     fn newer_clients_get_a_supported_protocol() {
