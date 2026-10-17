@@ -1,79 +1,39 @@
-# DeckForge — synthèse du projet
+# DeckForge — état du projet au 17 octobre 2026
 
-## But et matériel
+Version 0.4.1 de test. Dépôt privé : https://github.com/HatiFlash/DeckForge.
 
-Remplacer FIFINE Control Deck par une application Windows native en Rust pour
-le FIFINE AmpliGame D6 3142:0060, en donnant la priorité aux macros et à l’automatisation.
-Projet privé : [HatiFlash/DeckForge](https://github.com/HatiFlash/DeckForge).
-Version : [0.3.0](https://github.com/HatiFlash/DeckForge/releases/tag/v0.3.0).
+## Origine et base
 
-## Protocole et correction de la touche Lecture
+Remplacement Windows du logiciel FIFINE AmpliGame D6, construit en Rust avec eframe/egui, HIDAPI et les interfaces audio Windows. Le protocole USB a été étudié à partir de l’appareil, du logiciel FIFINE installé et de références publiques. Les binaires FIFINE ne sont pas intégrés à DeckForge.
 
-L’installation FIFINE et ses symboles ont été examinés pour recouper la lecture HID.
-Rapports Windows de 1024 octets, JPEG 126×126 tournés de 180°, inversion des lignes
-uniquement à l’affichage. Entrée ACK … OK : touche octet 9, état octet 10 ; appui 1,
-relâchement 0. L’affichage des 15 touches et les appuis 01,08,15 ont été confirmés.
-Aucun code ni binaire FIFINE n’est redistribué.
+Le D6 utilise des rapports HID de 1 024 octets et des images JPEG 126 × 126. Le décodage des appuis et le repérage des lignes ont été vérifiés lors des premiers essais matériels. Les dernières versions conservent des révisions de synchronisation pour empêcher l’exécution d’un ancien profil.
 
-La 0.1 démarrait en diagnostic : les touches sélectionnaient sans exécuter, tandis
-que le bouton de test logiciel fonctionnait. La 0.2 a rendu l’activation explicite,
-avec connexion automatique, sauvegarde valide et confirmation de synchronisation.
-Les anciens appuis et confirmations ne réactivent pas une configuration périmée.
+## Fonctions présentes
 
-## Version 0.3 — interface et organisation
+Synchronisation et brouillons par touche ; profils, pages et dossiers ; catalogue de 40 binds ; édition et échange des touches ; thèmes clair et sombre ; aperçu en relief ; galerie locale PNG/JPEG/SVG ; raccourcis enregistrés et déclencheurs globaux ; éditeur de blocs avec conditions, boucles et variables ; AutoHotkey v2 facultatif ; basculement audio à deux états ; arrière-plan et option de démarrage Windows ; MCP stdio et HTTP local avec propositions à valider ; import partiel des profils Stream Deck.
 
-Organisation inspirée du logiciel Stream Deck : aperçu du D6 à gauche, bibliothèque
-à droite et inspecteur redimensionnable en bas. Boîtier en relief, ombres, bords
-creusés, contrôles simples et thèmes clair/sombre mémorisés. Icônes vectorielles
-pour chaque type d’action ; les LCD reçoivent aussi une icône quand aucune image
-personnalisée n’est choisie.
+## Retour utilisateur et corrections 0.4.1
 
-Le magasin local contient 37 binds : média, Windows, édition, navigateur, sites et
-workflows. Recherche, filtres, détail et affectation par bouton ou glisser-déposer.
-Actions personnalisées combinables, bibliothèque Mes binds, packs JSON, échange
-de touches et annulation de la dernière affectation.
+L’utilisateur a confirmé la mise à jour en direct, le basculement audio et les blocs. Il a signalé une image audio qui restait fixe et l’absence de surbrillance après sélection d’une icône.
 
-Pages et dossiers imbriqués fonctionnent dans l’app et dans le moteur qui traite
-les touches du D6. Retour, précédente/suivante, création, renommage et suppression.
-Limites : 128 pages/dossiers par profil, 32 niveaux, 128 binds personnels.
-Les anciens profils sont lus sans perdre les touches ou images ; le format est
-migré vers le schéma 2, avec sauvegarde précédente à l’écriture.
+Cause audio reproduite dans sa configuration : une image générale du bouton masquait les icônes d’état. La présentation privilégie désormais les images propres à l’état et, à défaut, les deux symboles casque/enceintes. Deux cartes compactes exposent clairement leurs réglages indépendants. Le suivi fonctionne aussi si un délai précède le bloc audio.
 
-L’enregistrement d’un raccourci capture une combinaison reçue par la fenêtre,
-puis remplit l’action. Pas d’écoute en arrière-plan. Les touches physiques sont
-suspendues durant cette saisie. Les raccourcis réservés à Windows restent limités
-par ce que la fenêtre peut recevoir.
+La galerie affiche un contour bleu, une coche vectorielle et le nom de la destination. La destination est figée pendant le choix pour éviter de modifier une autre touche. Le même sélecteur permet de personnaliser séparément les deux états audio.
 
-## Import Elgato
+L’Atelier donne accès à une demande rédigée pour une IA connectée au MCP. Un test relie le véritable connecteur stdio à une application simulée, propose une macro audio avec blocs, valide la proposition au travers des widgets et vérifie que les blocs restent modifiables. Aucun modèle local n’a été ajouté.
 
-Un importeur de profils/actions exportés et manifests JSON propose un aperçu,
-puis ajoute un profil avec les touches en pause. Conversion des raccourcis Windows
-cohérents, textes, sites, certains lancements et multi-actions, pages/dossiers et
-images PNG/JPEG. Rapport des actions non convertibles ; une séquence partielle
-n’est jamais exécutée. Les plugins propriétaires et les comptes ne sont pas repris.
-Un profil Notion réel a fourni 27 actions et 29 icônes ; ses limites sont documentées
-dans [le guide d’import](https://github.com/HatiFlash/DeckForge/blob/main/docs/ELGATO.md).
+## Travail sans perturber le PC
 
-## Macros et assistant IA
+À la demande de l’utilisateur, aucune fenêtre native n’a été ouverte et aucun contrôle de son écran n’a été effectué pendant ces corrections. L’application en cours n’a été ni fermée ni remplacée. Les essais ont utilisé des configurations temporaires et un rendu logiciel des widgets.
 
-Étapes : pauses, raccourcis, texte Unicode, application/arguments, site, attente de
-fenêtre, média/volume, profil et navigation. Répétitions, réorganisation, simulation,
-test différé et arrêt Ctrl+Alt+F12. Les saisies visent la fenêtre active ; l’attente
-de fenêtre peut la mettre au premier plan.
+## Validation restante
 
-MCP optionnel, désactivé par défaut : 8 outils, transport stdio et HTTP localhost
-authentifié. L’IA lit, simule ou propose ; changements et exécutions réelles attendent
-une validation dans DeckForge. Les pages existantes sont adressables par identifiant.
-ChatGPT web exige une liaison distante sécurisée adaptée ; aucun compte IA n’est configuré.
+L’utilisateur doit encore vérifier les icônes sur son D6 avec la nouvelle version, le choix des deux icônes dans l’interface, la connexion réelle à son compte/client IA et le comportement complet de masquage/réouverture. Les tests logiciels et leurs limites sont détaillés dans [VALIDATION.md](VALIDATION.md).
 
-## Livraison et validation
+## Références
 
-Application portable, sources, documentation, notices de licences et empreintes SHA-256.
-Les profils personnels, images importées, préférences, clés MCP et SSH sont exclus
-du dépôt et des archives. Le code est MIT ; les références protocolaires sont
-mirajazz, duby, FifineControlDeck et opendeck-ampgd6, citées dans le README.
-
-46 tests Rust, 18 contrôles MCP, tests des widgets et rendu hors écran des deux thèmes.
-Le contrôle de l’écran a été arrêté avec Échap : les derniers changements matériels
-de navigation et d’icônes n’ont pas reçu de nouvel essai physique. Endurance et
-veille/reprise restent à éprouver. Détails : [validation](https://github.com/HatiFlash/DeckForge/blob/main/docs/VALIDATION.md).
+- https://github.com/TheBeardofKnowledge/StreamDeck : transfert des plugins/packs depuis Elgato vers FIFINE, sans moteur indépendant.
+- https://github.com/4ndv/mirajazz
+- https://github.com/fabiosammy/duby
+- https://github.com/ZoutMax/FifineControlDeck
+- Documentation officielle Windows Core Audio et RegisterHotKey ; SDK Elgato ; documentation officielle AutoHotkey v2.

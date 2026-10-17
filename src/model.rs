@@ -37,6 +37,43 @@ pub enum Step {
     Folder {
         id: String,
     },
+    AudioSwitch {
+        first: String,
+        second: String,
+        input: bool,
+        #[serde(default)]
+        first_label: String,
+        #[serde(default)]
+        second_label: String,
+        #[serde(default)]
+        first_icon: String,
+        #[serde(default)]
+        second_icon: String,
+    },
+    IfWindow {
+        title: String,
+        then_steps: Vec<Step>,
+        else_steps: Vec<Step>,
+    },
+    Repeat {
+        count: u32,
+        steps: Vec<Step>,
+    },
+    SetVariable {
+        name: String,
+        value: String,
+    },
+    IfVariable {
+        name: String,
+        value: String,
+        then_steps: Vec<Step>,
+        else_steps: Vec<Step>,
+    },
+    AutoHotkey {
+        executable: String,
+        script: String,
+        args: Vec<String>,
+    },
     Back,
     PageNext,
     PagePrevious,
@@ -44,7 +81,7 @@ pub enum Step {
 impl Step {
     pub fn name(&self) -> &'static str {
         match self {
-            Self::Delay { .. } => "Pause",
+            Self::Delay { .. } => "Attendre",
             Self::Hotkey { .. } => "Raccourci",
             Self::Text { .. } => "Saisir du texte",
             Self::Launch { .. } => "Lancer une application",
@@ -54,6 +91,12 @@ impl Step {
             Self::Profile { .. } => "Changer de profil",
             Self::Page { .. } => "Aller à une page",
             Self::Folder { .. } => "Ouvrir un dossier",
+            Self::AudioSwitch { .. } => "Basculer le périphérique audio",
+            Self::IfWindow { .. } => "Si une fenêtre est ouverte",
+            Self::Repeat { .. } => "Répéter des blocs",
+            Self::SetVariable { .. } => "Définir une variable",
+            Self::IfVariable { .. } => "Si une variable correspond",
+            Self::AutoHotkey { .. } => "Script AutoHotkey",
             Self::Back => "Retour au dossier précédent",
             Self::PageNext => "Page suivante",
             Self::PagePrevious => "Page précédente",
@@ -68,6 +111,8 @@ pub struct Key {
     pub image: String,
     pub repeat: u32,
     pub steps: Vec<Step>,
+    #[serde(skip)]
+    pub display_kind: Option<usize>,
 }
 impl Default for Key {
     fn default() -> Self {
@@ -77,6 +122,7 @@ impl Default for Key {
             image: String::new(),
             repeat: 1,
             steps: vec![],
+            display_kind: None,
         }
     }
 }
@@ -210,6 +256,61 @@ impl Default for Config {
     }
 }
 impl Config {
+    /// Drafts retain incomplete bindings; only a sanitized snapshot reaches USB.
+    pub fn validate_structure(&self) -> Result<()> {
+        let mut shape = self.clone();
+        for p in &mut shape.profiles {
+            for keys in std::iter::once(&mut p.keys).chain(p.pages.iter_mut().map(|p| &mut p.keys))
+            {
+                for key in keys {
+                    key.steps.clear();
+                    key.repeat = 1;
+                }
+            }
+        }
+        shape.validate()
+    }
+    pub fn binding_errors(&self) -> Vec<String> {
+        let mut errors = vec![];
+        for p in &self.profiles {
+            for (page, keys) in std::iter::once(("Page 1", &p.keys))
+                .chain(p.pages.iter().map(|p| (p.name.as_str(), &p.keys)))
+            {
+                for (i, key) in keys.iter().enumerate() {
+                    if let Err(e) = validate_key_in_profile(key, self, p) {
+                        errors.push(format!(
+                            "{} / {} / touche {:02} « {} » : {e}",
+                            p.name,
+                            page,
+                            i + 1,
+                            key.label
+                        ));
+                    }
+                }
+            }
+        }
+        errors
+    }
+    pub fn deployment(&self) -> Result<Self> {
+        self.validate_structure()?;
+        let mut next = self.clone();
+        for (pi, p) in next.profiles.iter_mut().enumerate() {
+            for keys in std::iter::once(&mut p.keys).chain(p.pages.iter_mut().map(|p| &mut p.keys))
+            {
+                for key in keys {
+                    if validate_key_in_profile(key, self, &self.profiles[pi]).is_err() {
+                        key.steps.clear();
+                        key.repeat = 1;
+                        key.image.clear();
+                        key.color = [110, 44, 49];
+                        key.label = "À compléter".into();
+                    }
+                }
+            }
+        }
+        next.validate()?;
+        Ok(next)
+    }
     pub fn validate(&self) -> Result<()> {
         if ![1, 2].contains(&self.schema) {
             bail!("Version de configuration non prise en charge");
@@ -345,6 +446,9 @@ pub fn media_vk(command: &str) -> Option<u16> {
     })
 }
 pub fn parse_hotkey(text: &str) -> Result<Vec<u16>> {
+    if text.trim().is_empty() {
+        bail!("Raccourci clavier vide : enregistre une combinaison");
+    }
     let mut keys = Vec::new();
     for part in text.split('+') {
         let p = part.trim().to_uppercase();
@@ -416,6 +520,8 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
     {
         bail!("Une touche de navigation contient une seule action, sans répétition");
     }
+    let mut total = 0;
+    validate_tree(&key.steps, 0, &mut total)?;
     for s in &key.steps {
         match s {
             Step::Delay { ms } if *ms > 3_600_000 => bail!("Pause supérieure à une heure"),
@@ -443,6 +549,99 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
             Step::Profile { name } if !config.profiles.iter().any(|p| p.name == *name) => {
                 bail!("Profil introuvable : {name}")
             }
+            Step::AudioSwitch { first, second, .. }
+                if first.is_empty() || second.is_empty() || first == second =>
+            {
+                bail!("Choisis deux périphériques audio différents")
+            }
+            Step::IfWindow { title, .. } if title.trim().is_empty() => {
+                bail!("Titre de fenêtre vide")
+            }
+            Step::SetVariable { name, value } | Step::IfVariable { name, value, .. }
+                if name.is_empty()
+                    || name.len() > 64
+                    || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                    || value.len() > 4096 =>
+            {
+                bail!("Variable invalide (nom : lettres, chiffres ou _)")
+            }
+            Step::AutoHotkey {
+                executable,
+                script,
+                args,
+            } if executable.trim().is_empty()
+                || !executable.to_ascii_lowercase().ends_with(".exe")
+                || script.trim().is_empty()
+                || script.len() > 200_000
+                || args.len() > 128 =>
+            {
+                bail!("Choisis AutoHotkey v2 et renseigne le script")
+            }
+            Step::IfWindow {
+                then_steps,
+                else_steps,
+                ..
+            }
+            | Step::IfVariable {
+                then_steps,
+                else_steps,
+                ..
+            } => {
+                for steps in [then_steps, else_steps] {
+                    validate_key(
+                        &Key {
+                            steps: steps.clone(),
+                            ..Key::default()
+                        },
+                        config,
+                    )?;
+                }
+            }
+            Step::Repeat { steps, .. } => validate_key(
+                &Key {
+                    steps: steps.clone(),
+                    ..Key::default()
+                },
+                config,
+            )?,
+            _ => {}
+        }
+    }
+    Ok(())
+}
+fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> {
+    anyhow::ensure!(depth <= 8, "8 niveaux de blocs maximum");
+    *total += steps.len();
+    anyhow::ensure!(*total <= 256, "256 blocs maximum par macro");
+    for s in steps {
+        match s {
+            Step::IfWindow {
+                then_steps,
+                else_steps,
+                ..
+            }
+            | Step::IfVariable {
+                then_steps,
+                else_steps,
+                ..
+            } => {
+                validate_tree(then_steps, depth + 1, total)?;
+                validate_tree(else_steps, depth + 1, total)?;
+            }
+            Step::Repeat { count, steps } => {
+                anyhow::ensure!((1..=100).contains(count), "1 à 100 répétitions par bloc");
+                validate_tree(steps, depth + 1, total)?;
+            }
+            Step::Page { .. }
+            | Step::Folder { .. }
+            | Step::Back
+            | Step::PageNext
+            | Step::PagePrevious
+            | Step::Profile { .. }
+                if depth > 0 =>
+            {
+                bail!("La navigation doit être une action principale")
+            }
             _ => {}
         }
     }
@@ -452,6 +651,33 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn nested_validation_rejects_bad_keys_deep_trees_and_nested_navigation() {
+        let c = Config::default();
+        let mut key = Key {
+            steps: vec![Step::Repeat {
+                count: 2,
+                steps: vec![Step::Hotkey {
+                    keys: String::new(),
+                }],
+            }],
+            ..Key::default()
+        };
+        assert!(validate_key(&key, &c).is_err());
+        key.steps = vec![Step::Repeat {
+            count: 2,
+            steps: vec![Step::PageNext],
+        }];
+        assert!(validate_key(&key, &c).is_err());
+        key.steps = vec![Step::Delay { ms: 10 }];
+        for _ in 0..10 {
+            key.steps = vec![Step::Repeat {
+                count: 2,
+                steps: key.steps,
+            }];
+        }
+        assert!(validate_key(&key, &c).is_err());
+    }
     #[test]
     fn pages_and_nested_folders_preserve_contents_and_return_to_origin() {
         let mut c = Config::default();

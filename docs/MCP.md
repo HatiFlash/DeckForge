@@ -1,6 +1,6 @@
 # Connecter une IA à DeckForge
 
-Le connecteur propose **8 outils MCP**, via stdio ou Streamable HTTP local.
+Le connecteur propose **11 outils MCP**, via stdio ou Streamable HTTP local.
 DeckForge valide les profils et exécute les actions. Il n’appelle aucun modèle
 lui-même et ne demande aucune clé OpenAI/Anthropic.
 
@@ -73,7 +73,10 @@ Ne publie ni `mcp-http-token.txt` ni `mcp-connection.json` dans un dépôt ou un
 |---|---|
 | `deckforge_get_state` | Lire la connexion, les profils et l’état des touches |
 | `deckforge_get_profile` | Lire les actions d’un profil |
+| `deckforge_get_audio_devices` | Lire les périphériques audio et la sélection active |
+| `deckforge_get_icons` | Chercher les icônes locales et les symboles audio intégrés |
 | `deckforge_create_profile` | Proposer un nouveau profil vide |
+| `deckforge_create_page` | Proposer une page ou un dossier |
 | `deckforge_configure_key` | Proposer la configuration d’une touche |
 | `deckforge_simulate_macro` | Simuler une itération sans effet sur le PC |
 | `deckforge_request_run` | Demander une exécution à confirmer dans l’app |
@@ -81,7 +84,9 @@ Ne publie ni `mcp-http-token.txt` ni `mcp-connection.json` dans un dépôt ou un
 | `deckforge_proposal_status` | Lire l’état d’une proposition |
 
 Positions : **1 à 15**, de gauche à droite et de haut en bas.
-Étapes : `delay`, `hotkey`, `text`, `launch`, `url`, `wait_window`, `media`, `profile`.
+Étapes : `delay`, `hotkey`, `text`, `launch`, `url`, `wait_window`, `media`, `profile`,
+`audio_switch`, `if_window`, `repeat`, `set_variable`, `if_variable`, `auto_hotkey`,
+ainsi que les actions de navigation décrites ci-dessous.
 Les schémas détaillés sont fournis par `tools/list`.
 
 Exemple de proposition pour `deckforge_configure_key` :
@@ -113,6 +118,18 @@ Les outils configure_key, simulate_macro et request_run acceptent le champ optio
 la page principale du profil. get_profile expose les contenus et identifiants.
 Les étapes `page` et `folder` prennent `id`; `back`, `page_next` et `page_previous`
 n’ont aucun autre champ. Une touche de navigation contient une seule étape, avec
-repeat=1. Les pages se créent dans l’app ; le connecteur ne propose pas encore
-un outil de création de page. Une demande d’exécution de navigation nécessite
+repeat=1. Les pages se créent dans l’app ou par une proposition
+`deckforge_create_page`. Une demande d’exécution de navigation nécessite
 que le profil et la page concernés soient déjà ouverts dans l’app.
+
+## Créer une automatisation avec les blocs (0.4.1)
+
+Dans l’Atelier, clique **Créer avec mon IA**. Le champ prépare une demande avec le profil, la page et la touche actuellement sélectionnés. Copie-la dans ton client IA connecté à DeckForge. Ce champ ne lance pas de modèle local.
+
+L’IA peut appeler `deckforge_get_audio_devices`, `deckforge_get_icons`, puis `deckforge_configure_key` pour proposer une macro avec des conditions, répétitions, variables et actions audio. `deckforge_create_page` propose une page ou un dossier. Les modifications attendent toujours **Valider cette proposition** dans DeckForge ; cette validation ne lance pas la macro.
+
+Pour chaque état audio, `first_icon` et `second_icon` acceptent un chemin PNG/JPEG/SVG ou `builtin:headphones`, `builtin:speakers`, `builtin:microphone`. Une chaîne vide sélectionne le symbole par défaut. `deckforge_get_icons` retourne au maximum 50 résultats, sans contenu des fichiers.
+
+Exemple de demande : « Crée sur cette touche un bouton qui bascule entre mon casque et mes enceintes, avec une icône et un titre pour chaque état. Utilise les identifiants audio réels retournés par DeckForge. Ne lance pas la macro. »
+
+Le guide de connexion ChatGPT est décrit dans [la documentation officielle OpenAI](https://developers.openai.com/plugins/deploy/connect-chatgpt). Pour un serveur privé local, voir [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels). La disponibilité et les autorisations dépendent du compte ; aucun compte ni tunnel n’est configuré automatiquement par DeckForge.

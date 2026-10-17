@@ -1,5 +1,8 @@
 use crate::model::{Key, Step};
 pub fn kind(key: &Key) -> usize {
+    if let Some(kind) = key.display_kind {
+        return kind;
+    }
     if key.steps.len() > 1 {
         25
     } else {
@@ -24,6 +27,17 @@ pub fn step_kind(step: &Step) -> usize {
             "stop" => 14,
             _ => 6,
         },
+        Step::AudioSwitch { input, .. } => {
+            if *input {
+                28
+            } else {
+                26
+            }
+        }
+        Step::IfWindow { .. } | Step::IfVariable { .. } => 29,
+        Step::Repeat { .. } => 30,
+        Step::SetVariable { .. } => 2,
+        Step::AutoHotkey { .. } => 1,
         Step::Folder { .. } => 15,
         Step::Back => 16,
         Step::Page { .. } => 17,
@@ -75,6 +89,46 @@ pub fn draw(image: &mut image::RgbImage, kind: usize) {
         ]);
     };
     match kind {
+        26 => {
+            rect(-1.0, -0.1, 0.4, 1.0);
+            rect(0.6, -0.1, 0.4, 1.0);
+            for i in 0..16 {
+                let a = std::f32::consts::PI + i as f32 * std::f32::consts::PI / 16.0;
+                let b = a + std::f32::consts::PI / 16.0;
+                segments.push(((a.cos(), a.sin()), (b.cos(), b.sin())));
+            }
+        }
+        27 => {
+            rect(-0.65, -1.0, 1.3, 2.0);
+            rect(-0.25, -0.6, 0.5, 0.3);
+            rect(-0.35, 0.15, 0.7, 0.7);
+        }
+        28 => {
+            rect(-0.35, -1.0, 0.7, 1.2);
+            segments.extend([
+                ((-0.7, -0.1), (-0.7, 0.5)),
+                ((-0.7, 0.5), (0.7, 0.5)),
+                ((0.7, 0.5), (0.7, -0.1)),
+                ((0.0, 0.5), (0.0, 1.0)),
+                ((-0.5, 1.0), (0.5, 1.0)),
+            ]);
+        }
+        29 => {
+            segments.extend([
+                ((0.0, -1.0), (1.0, 0.0)),
+                ((1.0, 0.0), (0.0, 1.0)),
+                ((0.0, 1.0), (-1.0, 0.0)),
+                ((-1.0, 0.0), (0.0, -1.0)),
+            ]);
+        }
+        30 => {
+            segments.extend([
+                ((-1.0, 0.0), (-1.0, -0.7)),
+                ((-1.0, -0.7), (1.0, -0.7)),
+                ((1.0, -0.7), (1.0, 0.7)),
+                ((1.0, 0.7), (-1.0, 0.7)),
+            ]);
+        }
         0 | 4 => {
             for i in 0..32 {
                 let a = i as f32 * std::f32::consts::TAU / 32.0;

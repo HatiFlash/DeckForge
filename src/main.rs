@@ -1,7 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod assets;
 mod assistant;
+mod audio;
+mod automation;
 mod catalog;
 mod control;
+mod desktop;
 mod device;
 mod elgato;
 mod engine;
@@ -19,6 +23,13 @@ mod ui;
 #[derive(Debug)]
 pub enum Event {
     Log(String),
+    Audio(audio::Snapshot),
+    Block(Vec<usize>),
+    Open,
+    TrayReady(bool),
+    Toggle,
+    Quit,
+    Hotkey(usize, std::time::Instant),
     Key(usize, std::time::Instant),
     Device(bool, String),
     Applied(u64),
@@ -27,6 +38,26 @@ pub enum Event {
 }
 
 fn main() -> eframe::Result<()> {
+    if std::env::args().any(|a| a == "--audio-roundtrip") {
+        if let Some(p) = std::env::args()
+            .skip_while(|a| a != "--audio-roundtrip")
+            .nth(1)
+        {
+            let result = audio::verify_roundtrip().map_err(|e| e.to_string());
+            let _ = std::fs::write(p, serde_json::to_vec_pretty(&result).unwrap());
+        }
+        return Ok(());
+    }
+    if std::env::args().any(|a| a == "--audio-diagnostic") {
+        if let Some(p) = std::env::args()
+            .skip_while(|a| a != "--audio-diagnostic")
+            .nth(1)
+        {
+            let data = audio::snapshot().map_err(|e| e.to_string());
+            let _ = std::fs::write(p, serde_json::to_vec_pretty(&data).unwrap());
+        }
+        return Ok(());
+    }
     if std::env::args().any(|a| a == "--diagnostic") {
         device::diagnostic();
         return Ok(());
@@ -51,6 +82,9 @@ fn main() -> eframe::Result<()> {
     if unsafe { windows_sys::Win32::Foundation::GetLastError() }
         == windows_sys::Win32::Foundation::ERROR_ALREADY_EXISTS
     {
+        if desktop::show_existing() {
+            return Ok(());
+        }
         let message = "DeckForge est déjà ouvert dans cette session.\0"
             .encode_utf16()
             .collect::<Vec<_>>();
@@ -77,6 +111,8 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("DeckForge · FIFINE D6")
+            .with_icon(theme::app_icon())
+            .with_visible(!std::env::args().any(|a| a == "--background"))
             .with_inner_size(size)
             .with_min_inner_size([1060.0, 720.0]),
         ..Default::default()

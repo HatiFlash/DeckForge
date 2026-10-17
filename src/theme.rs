@@ -1,6 +1,168 @@
 use eframe::egui::{self, Color32, Stroke, Vec2};
-pub const BLUE: Color32 = Color32::from_rgb(69, 143, 255);
+pub const BLUE: Color32 = Color32::from_rgb(64, 145, 255);
 pub const GREEN: Color32 = Color32::from_rgb(55, 181, 135);
+pub fn app_icon() -> egui::IconData {
+    let mut rgba = vec![0; 32 * 32 * 4];
+    for y in 0..32usize {
+        for x in 0..32usize {
+            let dx = if x < 7 { 7 - x } else { x.saturating_sub(24) };
+            let dy = if y < 7 { 7 - y } else { y.saturating_sub(24) };
+            if dx * dx + dy * dy <= 49 {
+                let p = (y * 32 + x) * 4;
+                rgba[p..p + 4].copy_from_slice(&[54, 139, 250, 255]);
+            }
+        }
+    }
+    for row in 0..3 {
+        for col in 0..5 {
+            for y in 0..3 {
+                for x in 0..3 {
+                    let p = ((9 + row * 6 + y) * 32 + 3 + col * 5 + x) * 4;
+                    rgba[p..p + 4].copy_from_slice(&[244, 249, 255, 255]);
+                }
+            }
+        }
+    }
+    egui::IconData {
+        rgba,
+        width: 32,
+        height: 32,
+    }
+}
+pub fn rounded_gradient(
+    p: &egui::Painter,
+    r: egui::Rect,
+    radius: f32,
+    top: Color32,
+    bottom: Color32,
+) {
+    let mut mesh = egui::Mesh::default();
+    let color = |y: f32| {
+        let t = ((y - r.top()) / r.height()).clamp(0.0, 1.0);
+        Color32::from_rgb(
+            (top.r() as f32 * (1.0 - t) + bottom.r() as f32 * t) as u8,
+            (top.g() as f32 * (1.0 - t) + bottom.g() as f32 * t) as u8,
+            (top.b() as f32 * (1.0 - t) + bottom.b() as f32 * t) as u8,
+        )
+    };
+    mesh.colored_vertex(r.center(), color(r.center().y));
+    for (center, start) in [
+        (r.left_top() + Vec2::splat(radius), std::f32::consts::PI),
+        (
+            r.right_top() + Vec2::new(-radius, radius),
+            std::f32::consts::PI * 1.5,
+        ),
+        (r.right_bottom() - Vec2::splat(radius), 0.0),
+        (
+            r.left_bottom() + Vec2::new(radius, -radius),
+            std::f32::consts::FRAC_PI_2,
+        ),
+    ] {
+        for i in 0..=8 {
+            let angle = start + i as f32 * std::f32::consts::FRAC_PI_2 / 8.0;
+            let pos = center + Vec2::angled(angle) * radius;
+            mesh.colored_vertex(pos, color(pos.y));
+        }
+    }
+    let n = mesh.vertices.len() as u32 - 1;
+    for i in 1..=n {
+        mesh.add_triangle(0, i, if i == n { 1 } else { i + 1 });
+    }
+    p.add(egui::Shape::mesh(mesh));
+}
+pub fn device_shell(p: &egui::Painter, r: egui::Rect) {
+    for offset in (1..=12).rev() {
+        p.rect_filled(
+            r.translate(Vec2::new(0.0, offset as f32)),
+            24.0,
+            Color32::from_rgb(9 + offset, 10 + offset, 12 + offset),
+        );
+    }
+    rounded_gradient(
+        p,
+        r,
+        24.0,
+        Color32::from_rgb(102, 106, 113),
+        Color32::from_rgb(38, 40, 46),
+    );
+    rounded_gradient(
+        p,
+        r.shrink(2.0),
+        23.0,
+        Color32::from_rgb(50, 53, 59),
+        Color32::from_rgb(20, 22, 27),
+    );
+    rounded_gradient(
+        p,
+        r.shrink(7.0),
+        19.0,
+        Color32::from_rgb(30, 32, 38),
+        Color32::from_rgb(24, 26, 31),
+    );
+    p.rect_stroke(
+        r.shrink(8.0),
+        19.0,
+        Stroke::new(1.0_f32, Color32::from_black_alpha(150)),
+        egui::StrokeKind::Inside,
+    );
+    p.line_segment(
+        [
+            r.left_top() + Vec2::new(27.0, 1.0),
+            r.right_top() + Vec2::new(-27.0, 1.0),
+        ],
+        Stroke::new(1.0_f32, Color32::from_white_alpha(110)),
+    );
+    for x in [r.left() + 13.0, r.right() - 13.0] {
+        for y in [r.top() + 14.0, r.bottom() - 14.0] {
+            p.circle_filled(egui::pos2(x, y), 1.5, Color32::from_rgb(15, 16, 19));
+        }
+    }
+}
+pub fn key_face(p: &egui::Painter, r: egui::Rect, selected: bool, flashing: bool) {
+    p.rect_filled(r.expand(3.0), 12.0, Color32::from_rgb(8, 9, 12));
+    p.rect_filled(
+        r.translate(Vec2::new(0.0, 4.0)),
+        10.0,
+        Color32::from_rgb(7, 8, 10),
+    );
+    rounded_gradient(
+        p,
+        r,
+        10.0,
+        Color32::from_rgb(74, 77, 85),
+        Color32::from_rgb(34, 36, 42),
+    );
+    rounded_gradient(
+        p,
+        r.shrink(2.0),
+        8.0,
+        if selected {
+            Color32::from_rgb(37, 64, 94)
+        } else {
+            Color32::from_rgb(40, 43, 51)
+        },
+        if selected {
+            Color32::from_rgb(25, 45, 67)
+        } else {
+            Color32::from_rgb(28, 31, 37)
+        },
+    );
+    p.line_segment(
+        [
+            r.left_top() + Vec2::new(10.0, 1.0),
+            r.right_top() + Vec2::new(-10.0, 1.0),
+        ],
+        Stroke::new(1.0_f32, Color32::from_white_alpha(65)),
+    );
+    if selected || flashing {
+        p.rect_stroke(
+            r,
+            10.0,
+            Stroke::new(2.0_f32, if flashing { GREEN } else { BLUE }),
+            egui::StrokeKind::Inside,
+        );
+    }
+}
 pub fn gradient(p: &egui::Painter, r: egui::Rect, top: Color32, bottom: Color32) {
     let mut mesh = egui::Mesh::default();
     mesh.colored_vertex(r.left_top(), top);
@@ -88,13 +250,13 @@ pub fn apply(ctx: &egui::Context, dark: bool) {
     style.visuals.faint_bg_color = p.bg;
     style.visuals.selection.bg_fill = p.wash;
     style.visuals.selection.stroke = Stroke::new(1.0_f32, BLUE);
-    style.visuals.window_corner_radius = 10.into();
+    style.visuals.window_corner_radius = 16.into();
     for widget in [
         &mut style.visuals.widgets.inactive,
         &mut style.visuals.widgets.hovered,
         &mut style.visuals.widgets.active,
     ] {
-        widget.corner_radius = 6.into();
+        widget.corner_radius = 9.into();
         widget.bg_stroke = Stroke::new(1.0_f32, p.line);
         widget.fg_stroke = Stroke::new(1.0_f32, p.ink);
     }
@@ -167,6 +329,29 @@ pub fn toggle(ui: &mut egui::Ui, value: &mut bool) -> egui::Response {
 pub fn symbol(p: &egui::Painter, c: egui::Pos2, size: f32, kind: usize, color: Color32) {
     let s = size * 0.5;
     let stroke = Stroke::new(1.8_f32, color);
+    if kind >= 26 {
+        let mut bitmap = image::RgbImage::new(80, 80);
+        crate::icons::draw(&mut bitmap, kind);
+        // The LCD icon renderer is shared with the desktop preview.
+        let mut mesh = egui::Mesh::default();
+        for y in 4..42 {
+            for x in 20..61 {
+                let alpha = bitmap.get_pixel(x, y).0[0];
+                if alpha > 0 {
+                    let pos = c + Vec2::new(
+                        (x as f32 - 40.0) * size / 25.0,
+                        (y as f32 - 23.2) * size / 25.0,
+                    );
+                    mesh.add_colored_rect(
+                        egui::Rect::from_min_size(pos, Vec2::splat(size / 25.0 + 0.2)),
+                        color.gamma_multiply(alpha as f32 / 255.0),
+                    );
+                }
+            }
+        }
+        p.add(egui::Shape::mesh(mesh));
+        return;
+    }
     match kind {
         25 => {
             p.rect_stroke(

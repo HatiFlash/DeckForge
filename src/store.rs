@@ -6,14 +6,14 @@ pub fn load(path: &Path) -> Result<Config> {
     let data = fs::read(path).context("Lecture de la configuration impossible")?;
     anyhow::ensure!(data.len() <= 8_000_000, "Configuration trop volumineuse");
     let mut c: Config = serde_json::from_slice(&data).context("Configuration JSON invalide")?;
-    c.validate()?;
+    c.validate_structure()?;
     if c.schema == 1 {
         c.schema = 2;
     }
     Ok(c)
 }
 pub fn save(path: &Path, c: &Config) -> Result<()> {
-    c.validate()?;
+    c.validate_structure()?;
     let parent = path.parent().context("Dossier de configuration invalide")?;
     fs::create_dir_all(parent)?;
     let bytes = serde_json::to_vec_pretty(c)?;

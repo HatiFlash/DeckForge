@@ -5,7 +5,7 @@ pub const MAX_FRAME: usize = 2_000_000;
 pub fn tools() -> Value {
     let profile = json!({"type":"string","minLength":1,"maxLength":128});
     let position = json!({"type":"integer","minimum":1,"maximum":15});
-    let step_schema = json!({"oneOf":[
+    let mut step_schema = json!({"oneOf":[
         {"type":"object","properties":{"type":{"const":"delay"},"ms":{"type":"integer","minimum":0,"maximum":3600000}},"required":["type","ms"],"additionalProperties":false},
         {"type":"object","properties":{"type":{"const":"hotkey"},"keys":{"type":"string"}},"required":["type","keys"],"additionalProperties":false},
         {"type":"object","properties":{"type":{"const":"text"},"text":{"type":"string","maxLength":100000}},"required":["type","text"],"additionalProperties":false},
@@ -17,8 +17,17 @@ pub fn tools() -> Value {
         {"type":"object","properties":{"type":{"enum":["page","folder"]},"id":{"type":"string","maxLength":160}},"required":["type","id"],"additionalProperties":false},
         {"type":"object","properties":{"type":{"enum":["back","page_next","page_previous"]}},"required":["type"],"additionalProperties":false}
     ]});
+    let nested = json!({"type":"array","items":{"$ref":"#/$defs/step"},"maxItems":256});
+    step_schema["oneOf"].as_array_mut().unwrap().extend([
+        json!({"type":"object","properties":{"type":{"const":"audio_switch"},"first":{"type":"string"},"second":{"type":"string"},"input":{"type":"boolean"},"first_label":{"type":"string"},"second_label":{"type":"string"},"first_icon":{"type":"string"},"second_icon":{"type":"string"}},"required":["type","first","second","input"],"additionalProperties":false}),
+        json!({"type":"object","properties":{"type":{"const":"if_window"},"title":{"type":"string"},"then_steps":nested,"else_steps":nested},"required":["type","title","then_steps","else_steps"],"additionalProperties":false}),
+        json!({"type":"object","properties":{"type":{"const":"repeat"},"count":{"type":"integer","minimum":1,"maximum":100},"steps":nested},"required":["type","count","steps"],"additionalProperties":false}),
+        json!({"type":"object","properties":{"type":{"const":"set_variable"},"name":{"type":"string"},"value":{"type":"string"}},"required":["type","name","value"],"additionalProperties":false}),
+        json!({"type":"object","properties":{"type":{"const":"if_variable"},"name":{"type":"string"},"value":{"type":"string"},"then_steps":nested,"else_steps":nested},"required":["type","name","value","then_steps","else_steps"],"additionalProperties":false}),
+        json!({"type":"object","properties":{"type":{"const":"auto_hotkey"},"executable":{"type":"string"},"script":{"type":"string","maxLength":200000},"args":{"type":"array","items":{"type":"string"},"maxItems":128}},"required":["type","executable","script","args"],"additionalProperties":false})
+    ]);
     let key_args = json!({"type":"object","properties":{"profile":profile,"page":{"type":"string","maxLength":160},"key":position},"required":["profile","key"],"additionalProperties":false});
-    let list=vec![
+    let mut list=vec![
         tool("deckforge_get_state","Read connection state and current profiles. Available only when Assistant IA is enabled.",json!({"type":"object","properties":{},"additionalProperties":false}),true),
         tool("deckforge_get_profile","Read one profile including its key bindings.",json!({"type":"object","properties":{"profile":profile},"required":["profile"],"additionalProperties":false}),true),
         tool("deckforge_create_profile","Propose a new empty profile. Requires approval in DeckForge; never overwrites an existing profile.",json!({"type":"object","properties":{"name":profile},"required":["name"],"additionalProperties":false}),false),
@@ -28,6 +37,14 @@ pub fn tools() -> Value {
         tool("deckforge_stop_macro","Immediately cancel the current macro and pause physical keys.",json!({"type":"object","properties":{},"additionalProperties":false}),false),
         tool("deckforge_proposal_status","Read whether a proposal is pending, approved, rejected or stale.",json!({"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}),true),
     ];
+    list.push(tool("deckforge_get_audio_devices","Read available Windows audio endpoints and their active IDs. No audio settings are changed.",json!({"type":"object","properties":{},"additionalProperties":false}),true));
+    list.push(tool("deckforge_get_icons","Search locally installed icon packs (no file contents returned). Audio icons accept builtin:headphones, builtin:speakers, builtin:microphone, or a returned PNG/JPEG/SVG path. Empty first_icon/second_icon use distinct default icons.",json!({"type":"object","properties":{"query":{"type":"string","maxLength":128},"limit":{"type":"integer","minimum":1,"maximum":50}},"additionalProperties":false}),true));
+    list.push(tool("deckforge_create_page","Propose a new page or folder in a profile. Requires approval in DeckForge. Folders have a Back key; use configure_key to link a folder after approval.",json!({"type":"object","properties":{"profile":profile,"id":{"type":"string","minLength":1,"maxLength":160},"name":{"type":"string","minLength":1,"maxLength":128},"folder":{"type":"boolean"}},"required":["profile","id","name","folder"],"additionalProperties":false}),false));
+    for tool in &mut list {
+        if tool["name"] == "deckforge_configure_key" {
+            tool["inputSchema"]["$defs"] = json!({"step":step_schema});
+        }
+    }
     json!({"tools":list})
 }
 fn tool(name: &str, description: &str, input_schema: Value, read: bool) -> Value {

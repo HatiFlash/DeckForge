@@ -20,6 +20,7 @@ pub struct Engine {
     pub running: Arc<AtomicBool>,
     cancel: Arc<AtomicBool>,
     tx: Sender<Event>,
+    last_finished: Arc<std::sync::Mutex<Instant>>,
 }
 impl Engine {
     pub fn new(tx: Sender<Event>) -> Self {
@@ -27,10 +28,19 @@ impl Engine {
             running: Arc::new(AtomicBool::new(false)),
             cancel: Arc::new(AtomicBool::new(false)),
             tx,
+            last_finished: Arc::new(std::sync::Mutex::new(
+                Instant::now() - Duration::from_secs(1),
+            )),
         }
     }
     pub fn stop(&self) {
         self.cancel.store(true, Ordering::SeqCst);
+    }
+    pub fn allows_global_press(&self, at: Instant) -> bool {
+        !self.running.load(Ordering::SeqCst)
+            && at
+                > *self.last_finished.lock().unwrap_or_else(|e| e.into_inner())
+                    + Duration::from_millis(150)
     }
     pub fn start(&self, key: Key, dry: bool, initial_delay: u64) {
         if self
@@ -47,6 +57,7 @@ impl Engine {
         let running = self.running.clone();
         let cancel = self.cancel.clone();
         let tx = self.tx.clone();
+        let last_finished = self.last_finished.clone();
         std::thread::spawn(move || {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if !dry {
@@ -60,6 +71,7 @@ impl Engine {
                 Err(_) => "Erreur interne : macro interrompue".into(),
             };
             let _ = tx.send(Event::Log(message));
+            *last_finished.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
             running.store(false, Ordering::SeqCst);
         });
     }
@@ -75,7 +87,7 @@ fn emergency() -> bool {
         GetAsyncKeyState(0x11) < 0 && GetAsyncKeyState(0x12) < 0 && GetAsyncKeyState(0x7B) < 0
     }
 }
-fn check(cancel: &AtomicBool) -> Result<()> {
+pub(crate) fn check(cancel: &AtomicBool) -> Result<()> {
     if cancel.load(Ordering::SeqCst) || emergency() {
         bail!("annulation demandée");
     }
@@ -99,88 +111,228 @@ fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>) -> Result<
         key.label,
         key.repeat
     )));
-    // Simulation previews one iteration even if the real macro repeats many times.
-    for cycle in 0..if dry { 1 } else { key.repeat } {
-        for (idx, step) in key.steps.iter().enumerate() {
-            check(cancel)?;
-            let _ = tx.send(Event::Log(format!(
-                "Tour {} · étape {} : {}",
-                cycle + 1,
-                idx + 1,
-                step.name()
-            )));
-            if dry {
-                continue;
-            }
+    let mut variables = std::collections::BTreeMap::new();
+    let mut budget = 10_000usize;
+    for _ in 0..if dry { 1 } else { key.repeat } {
+        run_steps(
+            &key.steps,
+            dry,
+            cancel,
+            tx,
+            &mut variables,
+            &mut budget,
+            &[],
+        )?;
+    }
+    let _ = tx.send(Event::Block(vec![]));
+    Ok(())
+}
+fn run_steps(
+    steps: &[Step],
+    dry: bool,
+    cancel: &AtomicBool,
+    tx: &Sender<Event>,
+    variables: &mut std::collections::BTreeMap<String, String>,
+    budget: &mut usize,
+    parent: &[usize],
+) -> Result<()> {
+    for (idx, step) in steps.iter().enumerate() {
+        check(cancel)?;
+        anyhow::ensure!(*budget > 0, "Limite de 10 000 blocs exécutés atteinte");
+        *budget -= 1;
+        let mut path = parent.to_vec();
+        path.push(idx);
+        let _ = tx.send(Event::Block(path.clone()));
+        let _ = tx.send(Event::Log(format!(
+            "Bloc {} : {}",
+            path.iter()
+                .map(|i| (i + 1).to_string())
+                .collect::<Vec<_>>()
+                .join("."),
+            step.name()
+        )));
+        if dry {
             match step {
-                Step::Delay { ms } => wait(*ms, cancel)?,
-                Step::Hotkey { keys } => hotkey(&parse_hotkey(keys)?)?,
-                Step::Text { text } => {
-                    for unit in text.encode_utf16() {
-                        check(cancel)?;
-                        input(0, unit, KEYEVENTF_UNICODE)?;
-                        input(0, unit, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP)?;
-                    }
+                Step::IfWindow {
+                    then_steps,
+                    else_steps,
+                    ..
                 }
-                Step::Launch { program, args } => {
-                    let mut child = std::process::Command::new(program).args(args).spawn()?;
-                    std::thread::spawn(move || {
-                        let _ = child.wait();
-                    });
-                }
-                Step::Url { url } => {
-                    let mut child = std::process::Command::new("explorer.exe")
-                        .arg(url)
-                        .spawn()?;
-                    std::thread::spawn(move || {
-                        let _ = child.wait();
-                    });
-                }
-                Step::Media { command } => {
-                    hotkey(&[media_vk(command)
-                        .ok_or_else(|| anyhow::anyhow!("Commande média invalide"))?])?
-                }
-                Step::WaitWindow {
-                    title,
-                    timeout_ms,
-                    focus,
+                | Step::IfVariable {
+                    then_steps,
+                    else_steps,
+                    ..
                 } => {
-                    let deadline = Instant::now() + Duration::from_millis(*timeout_ms);
-                    loop {
-                        check(cancel)?;
-                        if let Some(window) = find_window(title) {
-                            if *focus {
-                                unsafe {
-                                    if IsIconic(window) != 0 {
-                                        ShowWindow(window, SW_RESTORE);
-                                    }
-                                    if SetForegroundWindow(window) == 0 {
-                                        bail!("Windows a refusé la mise au premier plan");
-                                    }
+                    run_steps(
+                        then_steps,
+                        true,
+                        cancel,
+                        tx,
+                        variables,
+                        budget,
+                        &[path.clone(), vec![0]].concat(),
+                    )?;
+                    run_steps(
+                        else_steps,
+                        true,
+                        cancel,
+                        tx,
+                        variables,
+                        budget,
+                        &[path.clone(), vec![1]].concat(),
+                    )?;
+                }
+                Step::Repeat { steps, .. } => run_steps(
+                    steps,
+                    true,
+                    cancel,
+                    tx,
+                    variables,
+                    budget,
+                    &[path.clone(), vec![0]].concat(),
+                )?,
+                _ => {}
+            }
+            continue;
+        }
+        match step {
+            Step::AudioSwitch {
+                first,
+                second,
+                input,
+                ..
+            } => {
+                crate::audio::toggle(first, second, *input)?;
+            }
+            Step::SetVariable { name, value } => {
+                variables.insert(name.clone(), value.clone());
+            }
+            Step::IfWindow {
+                title,
+                then_steps,
+                else_steps,
+            } => {
+                let (branch, branch_id) = if find_window(title).is_some() {
+                    (then_steps, 0)
+                } else {
+                    (else_steps, 1)
+                };
+                run_steps(
+                    branch,
+                    dry,
+                    cancel,
+                    tx,
+                    variables,
+                    budget,
+                    &[path.clone(), vec![branch_id]].concat(),
+                )?;
+            }
+            Step::IfVariable {
+                name,
+                value,
+                then_steps,
+                else_steps,
+            } => {
+                let (branch, branch_id) = if variables.get(name) == Some(value) {
+                    (then_steps, 0)
+                } else {
+                    (else_steps, 1)
+                };
+                run_steps(
+                    branch,
+                    dry,
+                    cancel,
+                    tx,
+                    variables,
+                    budget,
+                    &[path.clone(), vec![branch_id]].concat(),
+                )?;
+            }
+            Step::Repeat { count, steps } => {
+                for _ in 0..*count {
+                    run_steps(
+                        steps,
+                        dry,
+                        cancel,
+                        tx,
+                        variables,
+                        budget,
+                        &[path.clone(), vec![0]].concat(),
+                    )?;
+                }
+            }
+            Step::AutoHotkey {
+                executable,
+                script,
+                args,
+            } => crate::automation::run_script(executable, script, args, cancel)?,
+            Step::Delay { ms } => wait(*ms, cancel)?,
+            Step::Hotkey { keys } => hotkey(&parse_hotkey(keys)?)?,
+            Step::Text { text } => {
+                for unit in text.encode_utf16() {
+                    check(cancel)?;
+                    input(0, unit, KEYEVENTF_UNICODE)?;
+                    input(0, unit, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP)?;
+                }
+            }
+            Step::Launch { program, args } => {
+                let mut child = std::process::Command::new(program).args(args).spawn()?;
+                std::thread::spawn(move || {
+                    let _ = child.wait();
+                });
+            }
+            Step::Url { url } => {
+                let mut child = std::process::Command::new("explorer.exe")
+                    .arg(url)
+                    .spawn()?;
+                std::thread::spawn(move || {
+                    let _ = child.wait();
+                });
+            }
+            Step::Media { command } => hotkey(&[
+                media_vk(command).ok_or_else(|| anyhow::anyhow!("Commande média invalide"))?
+            ])?,
+            Step::WaitWindow {
+                title,
+                timeout_ms,
+                focus,
+            } => {
+                let deadline = Instant::now() + Duration::from_millis(*timeout_ms);
+                loop {
+                    check(cancel)?;
+                    if let Some(window) = find_window(title) {
+                        if *focus {
+                            unsafe {
+                                if IsIconic(window) != 0 {
+                                    ShowWindow(window, SW_RESTORE);
+                                }
+                                if SetForegroundWindow(window) == 0 {
+                                    bail!("Windows a refusé la mise au premier plan");
                                 }
                             }
-                            break;
                         }
-                        if Instant::now() >= deadline {
-                            bail!("fenêtre introuvable après {timeout_ms} ms");
-                        }
-                        wait(50, cancel)?;
+                        break;
                     }
-                }
-                Step::Profile { name } => {
-                    let _ = tx.send(Event::Profile(name.clone()));
-                }
-                Step::Page { .. }
-                | Step::Folder { .. }
-                | Step::Back
-                | Step::PageNext
-                | Step::PagePrevious => {
-                    let _ = tx.send(Event::Navigate(step.clone()));
-                    return Ok(());
+                    if Instant::now() >= deadline {
+                        bail!("fenêtre introuvable après {timeout_ms} ms");
+                    }
+                    wait(50, cancel)?;
                 }
             }
-            wait(10, cancel)?;
+            Step::Profile { name } => {
+                let _ = tx.send(Event::Profile(name.clone()));
+            }
+            Step::Page { .. }
+            | Step::Folder { .. }
+            | Step::Back
+            | Step::PageNext
+            | Step::PagePrevious => {
+                let _ = tx.send(Event::Navigate(step.clone()));
+                return Ok(());
+            }
         }
+
+        wait(10, cancel)?;
     }
     Ok(())
 }
@@ -264,6 +416,93 @@ fn find_window(query: &str) -> Option<HWND> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn conditional_blocks_repeat_and_variables_choose_only_the_matching_branch() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut variables = std::collections::BTreeMap::new();
+        let mut budget = 100;
+        let steps = vec![
+            Step::SetVariable {
+                name: "mode".into(),
+                value: "travail".into(),
+            },
+            Step::Repeat {
+                count: 3,
+                steps: vec![Step::IfVariable {
+                    name: "mode".into(),
+                    value: "travail".into(),
+                    then_steps: vec![Step::SetVariable {
+                        name: "result".into(),
+                        value: "oui".into(),
+                    }],
+                    else_steps: vec![Step::AutoHotkey {
+                        executable: "missing.exe".into(),
+                        script: "This branch must not execute".into(),
+                        args: vec![],
+                    }],
+                }],
+            },
+        ];
+        run_steps(
+            &steps,
+            false,
+            &AtomicBool::new(false),
+            &tx,
+            &mut variables,
+            &mut budget,
+            &[],
+        )
+        .unwrap();
+        assert_eq!(variables["result"], "oui");
+        assert_eq!(budget, 92);
+        assert_eq!(
+            rx.try_iter()
+                .filter(|e| matches!(e,Event::Log(s) if s.contains("Script AutoHotkey")))
+                .count(),
+            0
+        );
+    }
+    #[test]
+    fn dry_nested_scripts_and_audio_have_no_side_effects() {
+        let (tx, _) = std::sync::mpsc::channel();
+        let key = Key {
+            steps: vec![Step::IfVariable {
+                name: "x".into(),
+                value: "y".into(),
+                then_steps: vec![crate::automation::step(13)],
+                else_steps: vec![crate::automation::step(18)],
+            }],
+            ..Key::default()
+        };
+        run(&key, true, &AtomicBool::new(false), &tx).unwrap();
+    }
+    #[test]
+    fn nested_execution_budget_stops_before_another_block_runs() {
+        let (tx, _) = std::sync::mpsc::channel();
+        let mut variables = std::collections::BTreeMap::new();
+        let mut budget = 1;
+        let err = run_steps(
+            &[
+                Step::SetVariable {
+                    name: "a".into(),
+                    value: "1".into(),
+                },
+                Step::SetVariable {
+                    name: "b".into(),
+                    value: "2".into(),
+                },
+            ],
+            false,
+            &AtomicBool::new(false),
+            &tx,
+            &mut variables,
+            &mut budget,
+            &[],
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("10 000"));
+        assert!(!variables.contains_key("b"));
+    }
     #[test]
     fn cancellation_interrupts_long_delay() {
         let cancelled = AtomicBool::new(true);

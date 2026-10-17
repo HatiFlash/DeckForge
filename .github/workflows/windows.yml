@@ -9,10 +9,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Rust tests
-        run: cargo test --locked
       - name: Build native executables
         run: cargo build --release --locked
+      - name: Rust and headless MCP tests
+        env:
+          DECKFORGE_MCP_EXE: ${{ github.workspace }}\target\release\deckforge-mcp.exe
+        run: cargo test --locked
       - name: MCP stdio transport
         run: node tests/mcp-transport.cjs
       - name: MCP HTTP transport

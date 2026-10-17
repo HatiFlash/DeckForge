@@ -81,6 +81,48 @@ impl Proposals {
             return Err("Dix propositions attendent déjà une validation dans DeckForge".into());
         }
         let (title, details, change) = match tool {
+            "deckforge_create_page" => {
+                #[derive(Deserialize)]
+                #[serde(deny_unknown_fields)]
+                struct NewPage {
+                    profile: String,
+                    id: String,
+                    name: String,
+                    folder: bool,
+                }
+                let a: NewPage = serde_json::from_value(args.clone()).map_err(|e| e.to_string())?;
+                if a.name.trim().is_empty()
+                    || a.name.len() > 128
+                    || a.id.is_empty()
+                    || a.id.len() > 160
+                {
+                    return Err("Nom ou identifiant de page invalide".into());
+                }
+                let mut next = c.clone();
+                let p = next
+                    .profiles
+                    .iter_mut()
+                    .find(|p| p.name == a.profile)
+                    .ok_or("Profil introuvable")?;
+                if p.pages.len() >= 128 || p.pages.iter().any(|p| p.id == a.id) {
+                    return Err("Identifiant déjà utilisé ou limite de pages atteinte".into());
+                }
+                p.pages.push(crate::model::Page::new(
+                    a.id.clone(),
+                    a.name.clone(),
+                    a.folder,
+                ));
+                next.validate_structure().map_err(|e| e.to_string())?;
+                (
+                    format!(
+                        "Créer {} « {} »",
+                        if a.folder { "le dossier" } else { "la page" },
+                        a.name
+                    ),
+                    format!("Profil : {} · identifiant : {}", a.profile, a.id),
+                    Change::Config(next),
+                )
+            }
             "deckforge_create_profile" => {
                 let a: Create = serde_json::from_value(args.clone()).map_err(|e| e.to_string())?;
                 if a.name.trim().is_empty() || a.name.len() > 128 {
@@ -96,7 +138,7 @@ impl Proposals {
                 next.profiles.push(Profile::new(a.name.clone()));
                 next.active = next.profiles.len() - 1;
                 next.reset_navigation();
-                next.validate().map_err(|e| e.to_string())?;
+                next.validate_structure().map_err(|e| e.to_string())?;
                 (
                     format!("Créer le profil « {} »", a.name),
                     "Un nouveau profil vide de 15 touches sera créé et sélectionné.".into(),
@@ -117,8 +159,15 @@ impl Proposals {
                     image: old.image.clone(),
                     repeat: a.repeat.unwrap_or(1),
                     steps: a.steps,
+                    display_kind: None,
                 };
-                next.validate().map_err(|e| e.to_string())?;
+                next.validate_structure().map_err(|e| e.to_string())?;
+                crate::model::validate_key_in_profile(
+                    &next.profiles[p].keys_at(&a.page).unwrap()[k],
+                    &next,
+                    &next.profiles[p],
+                )
+                .map_err(|e| e.to_string())?;
                 let details = describe(&next.profiles[p].keys_at(&a.page).unwrap()[k]);
                 (
                     format!(
@@ -219,7 +268,7 @@ fn describe(key: &Key) -> String {
         Step::Delay{ms}=>format!("Attendre {ms} ms"),Step::Hotkey{keys}=>format!("Raccourci : {keys}"),Step::Text{text}=>format!("Saisir ce texte :\n{text}"),
         Step::Launch{program,args}=>format!("Ouvrir : {program}\nArguments : {}",args.join(" | ")),Step::Url{url}=>format!("Ouvrir le site : {url}"),
         Step::WaitWindow{title,timeout_ms,focus}=>format!("Attendre une fenêtre contenant « {title} » ({timeout_ms} ms maximum)\nMettre au premier plan : {}",if *focus{"oui"}else{"non"}),
-        Step::Media{command}=>format!("Média / volume : {command}"),Step::Profile{name}=>format!("Passer au profil : {name}"),Step::Page{id}=>format!("Aller à la page : {id}"),Step::Folder{id}=>format!("Ouvrir le dossier : {id}"),Step::Back=>"Retour au dossier précédent".into(),Step::PageNext=>"Page suivante".into(),Step::PagePrevious=>"Page précédente".into()};
+        Step::Media{command}=>format!("Média / volume : {command}"),Step::Profile{name}=>format!("Passer au profil : {name}"),Step::Page{id}=>format!("Aller à la page : {id}"),Step::Folder{id}=>format!("Ouvrir le dossier : {id}"),Step::Back=>"Retour au dossier précédent".into(),Step::PageNext=>"Page suivante".into(),Step::PagePrevious=>"Page précédente".into(), _=>serde_json::to_string_pretty(step).unwrap_or_default()};
         text.push_str(&format!("{:02}. {detail}\n\n", i + 1));
     }
     text
@@ -227,6 +276,32 @@ fn describe(key: &Key) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ai_can_propose_pages_and_nested_blocks_without_applying_them() {
+        let mut c = Config::default();
+        let mut q = Proposals::default();
+        q.propose(
+            "deckforge_create_page",
+            &json!({"profile":"Bureau","id":"work","name":"Travail","folder":true}),
+            &c,
+        )
+        .unwrap();
+        assert!(c.profiles[0].pages.is_empty());
+        let Some(Change::Config(next)) = q.decide(true, &c).unwrap() else {
+            panic!()
+        };
+        c = next;
+        assert_eq!(c.profiles[0].pages[0].id, "work");
+        q.propose("deckforge_configure_key",&json!({"profile":"Bureau","page":"work","key":2,"label":"Boucle","steps":[{"type":"repeat","count":3,"steps":[{"type":"delay","ms":250}]}]}),&c).unwrap();
+        assert!(c.profiles[0].pages[0].keys[1].steps.is_empty());
+        let Some(Change::Config(next)) = q.decide(true, &c).unwrap() else {
+            panic!()
+        };
+        assert!(matches!(
+            next.profiles[0].pages[0].keys[1].steps[0],
+            Step::Repeat { count: 3, .. }
+        ));
+    }
     #[test]
     fn ai_changes_remain_drafts_until_user_approval() {
         let c = Config::default();

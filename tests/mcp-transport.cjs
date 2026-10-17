@@ -7,7 +7,7 @@ child=cp.spawn(process.env.DECKFORGE_MCP_EXE||path.join(root,'target/release/dec
 function send(v){return new Promise((resolve,reject)=>{const id=String(v.id);const timer=setTimeout(()=>reject(new Error('MCP response timeout')),5000);waiters.set(id,r=>{clearTimeout(timer);resolve(r);});child.stdin.write(JSON.stringify(v)+'\n');});}
 let r=await send({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'DeckForge integration test',version:'1'}}});assert.equal(r.result.protocolVersion,'2025-06-18');checks.push('initialize / version negotiation');
 child.stdin.write(JSON.stringify({jsonrpc:'2.0',method:'notifications/initialized'})+'\n');
-r=await send({jsonrpc:'2.0',id:2,method:'tools/list'});assert.equal(r.result.tools.length,8);checks.push('8 structured tools discovered');
+r=await send({jsonrpc:'2.0',id:2,method:'tools/list'});assert.equal(r.result.tools.length,11);checks.push('11 structured tools discovered');
 r=await send({jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'deckforge_get_state',arguments:{}}});assert.equal(r.result.isError,true);checks.push('disabled bridge returns tool error');
 enabled=true;r=await send({jsonrpc:'2.0',id:4,method:'tools/call',params:{name:'deckforge_get_state',arguments:{}}});assert.equal(r.result.structuredContent.connected,true);checks.push('stdio -> authenticated local bridge -> structured result');
 const request={jsonrpc:'2.0',id:5,method:'tools/call',params:{name:'deckforge_configure_key',arguments:{label:'Lecture éphémère',steps:[]}}};const before=calls;r=await send(request);assert.equal(r.result.structuredContent.received.label,'Lecture éphémère');await send(request);assert.equal(calls,before+1);checks.push('UTF-8 and duplicate request caching');

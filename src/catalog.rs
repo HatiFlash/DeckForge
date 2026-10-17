@@ -207,40 +207,64 @@ pub fn presets() -> Vec<Preset> {
         ],
     );
     add("Workflows", "Signature de message", "Insérer un texte personnalisable dans la fenêtre active. Modifie le texte dans l’inspecteur.", [203, 120, 143], vec![Step::Text { text: "Bonne journée !".into() }]);
+    add("Automatisations", "Condition sur une fenêtre", "Si une fenêtre contenant ce titre est ouverte, exécuter les blocs ALORS, sinon les blocs SINON. Personnalise dans l’Atelier.", [158,116,224], vec![Step::IfWindow{title:"Chrome".into(),then_steps:vec![Step::Delay{ms:250}],else_steps:vec![Step::Delay{ms:500}]}]);
+    add("Automatisations", "Boucle de blocs", "Répéter une séquence de blocs. Cet exemple attend deux fois 250 ms, sans action sur ton PC.", [224,161,84], vec![Step::Repeat{count:2,steps:vec![Step::Delay{ms:250}]}]);
+    add(
+        "Automatisations",
+        "Variable et condition",
+        "Définir une variable locale à l’exécution, puis choisir une branche selon sa valeur.",
+        [158, 116, 224],
+        vec![
+            Step::SetVariable {
+                name: "mode".into(),
+                value: "travail".into(),
+            },
+            Step::IfVariable {
+                name: "mode".into(),
+                value: "travail".into(),
+                then_steps: vec![Step::Delay { ms: 250 }],
+                else_steps: vec![],
+            },
+        ],
+    );
     items
 }
 
 pub fn action(kind: usize, profile: &str) -> Key {
-    let step = match kind {
-        0 => Step::Hotkey {
-            keys: "CTRL+C".into(),
-        },
-        1 => Step::Text {
-            text: "Mon texte".into(),
-        },
-        2 => Step::Launch {
-            program: "explorer.exe".into(),
-            args: vec![],
-        },
-        3 => Step::Url {
-            url: "https://example.com".into(),
-        },
-        4 => Step::Media {
-            command: "play_pause".into(),
-        },
-        5 => Step::Delay { ms: 500 },
-        6 => Step::WaitWindow {
-            title: "Mon application".into(),
-            timeout_ms: 10_000,
-            focus: true,
-        },
-        8 => Step::PageNext,
-        9 => Step::PagePrevious,
-        10 => Step::Back,
-        11 => Step::Page { id: String::new() },
-        _ => Step::Profile {
-            name: profile.into(),
-        },
+    let step = if kind >= 13 {
+        crate::automation::step(kind)
+    } else {
+        match kind {
+            0 => Step::Hotkey {
+                keys: "CTRL+C".into(),
+            },
+            1 => Step::Text {
+                text: "Mon texte".into(),
+            },
+            2 => Step::Launch {
+                program: "explorer.exe".into(),
+                args: vec![],
+            },
+            3 => Step::Url {
+                url: "https://example.com".into(),
+            },
+            4 => Step::Media {
+                command: "play_pause".into(),
+            },
+            5 => Step::Delay { ms: 500 },
+            6 => Step::WaitWindow {
+                title: "Mon application".into(),
+                timeout_ms: 10_000,
+                focus: true,
+            },
+            8 => Step::PageNext,
+            9 => Step::PagePrevious,
+            10 => Step::Back,
+            11 => Step::Page { id: String::new() },
+            _ => Step::Profile {
+                name: profile.into(),
+            },
+        }
     };
     Key {
         label: step.name().into(),
@@ -325,12 +349,18 @@ impl Library {
 pub struct Preferences {
     pub dark: bool,
     pub library: Library,
+    pub close_to_tray: bool,
+    pub start_with_windows: bool,
+    pub triggers: Vec<crate::desktop::Trigger>,
 }
 impl Default for Preferences {
     fn default() -> Self {
         Self {
             dark: true,
             library: Library::default(),
+            close_to_tray: true,
+            start_with_windows: false,
+            triggers: vec![],
         }
     }
 }
@@ -343,7 +373,7 @@ impl Preferences {
         ensure!(data.len() <= 8_000_000, "Préférences trop volumineuses");
         let p: Self = serde_json::from_slice(&data)?;
         ensure!(
-            p.library.schema == 1 && p.library.binds.len() <= 128,
+            p.library.schema == 1 && p.library.binds.len() <= 128 && p.triggers.len() <= 256,
             "Bibliothèque invalide"
         );
         Ok(p)
@@ -368,7 +398,7 @@ mod tests {
     #[test]
     fn every_preset_and_action_is_executable_with_valid_configuration() {
         let c = Config::default();
-        assert_eq!(presets().len(), 37);
+        assert_eq!(presets().len(), 40);
         for p in presets() {
             validate_key(&p.key, &c).unwrap();
             assert!(!p.key.steps.is_empty());

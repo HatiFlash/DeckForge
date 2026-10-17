@@ -359,3 +359,454 @@ fn imports_real_export_when_reference_is_provided() {
         }
     }
 }
+
+#[test]
+fn incomplete_shortcut_is_saved_as_draft_while_youtube_reaches_usb() {
+    let mut h = Harness::new();
+    let size = vec2(1380.0, 900.0);
+    let (tx, rx) = mpsc::channel();
+    h.app.device = tx;
+    h.app.wanted = true;
+    h.app.gate.connected = true;
+    h.app.gate.enabled = true;
+    h.app.config.keys_mut()[0].steps = vec![Step::Hotkey {
+        keys: String::new(),
+    }];
+    let youtube = catalog::presets()
+        .into_iter()
+        .find(|p| p.key.label == "YouTube")
+        .unwrap()
+        .key;
+    h.app.assign(DragItem::Bind(youtube), 5);
+    h.app
+        .assign(DragItem::Action(catalog::action(5, "Bureau")), 6);
+    h.app.last_edit = Instant::now() - Duration::from_secs(2);
+    h.frame(size, vec![]);
+    let saved = store::load(&h.app.path).unwrap();
+    assert!(matches!(&saved.keys()[0].steps[0],Step::Hotkey{keys} if keys.is_empty()));
+    assert_eq!(saved.keys()[5].label, "YouTube");
+    assert!(!h.app.gate.dirty);
+    let Command::Update(sent, revision) = rx.recv_timeout(Duration::from_secs(1)).unwrap() else {
+        panic!("USB update expected")
+    };
+    assert!(sent.keys()[0].steps.is_empty());
+    assert_eq!(sent.keys()[5].label, "YouTube");
+    assert_eq!(sent.keys()[6].steps, vec![Step::Delay { ms: 500 }]);
+    sent.validate().unwrap();
+    h.app.gate.applied(revision);
+    assert_eq!(h.app.gate.decision(), Decision::Execute);
+    assert!(saved.binding_errors()[0].contains("touche 01"));
+}
+
+#[test]
+fn nested_blocks_and_recorder_survive_restart_and_can_be_edited_in_workflow() {
+    let size = vec2(1380.0, 900.0);
+    let mut h = Harness::new();
+    h.app.config.keys_mut()[0].steps = vec![Step::Repeat {
+        count: 2,
+        steps: vec![Step::IfVariable {
+            name: "mode".into(),
+            value: "travail".into(),
+            then_steps: vec![Step::Hotkey {
+                keys: "CTRL+C".into(),
+            }],
+            else_steps: vec![],
+        }],
+    }];
+    h.app.show_workflow = true;
+    h.warm(size);
+    h.app.recording = Some((0, String::new(), 0, vec![0, 0, 0, 0, 0], false));
+    h.frame(
+        size,
+        vec![Input::Key {
+            key: egui::Key::S,
+            physical_key: Some(egui::Key::S),
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers {
+                ctrl: true,
+                shift: true,
+                ..Modifiers::NONE
+            },
+        }],
+    );
+    h.app.save();
+    let c = store::load(&h.app.path).unwrap();
+    assert!(serde_json::to_string(&c).unwrap().contains("CTRL+SHIFT+S"));
+    c.validate().unwrap();
+    assert!(!h.app.engine.running.load(Ordering::SeqCst));
+}
+
+#[test]
+fn audio_feedback_updates_lcd_presentation_without_overwriting_binding() {
+    let mut h = Harness::new();
+    let (tx, rx) = mpsc::channel();
+    h.app.device = tx;
+    h.app.wanted = true;
+    let mut key = catalog::action(13, "Bureau");
+    if let Step::AudioSwitch { first, second, .. } = &mut key.steps[0] {
+        *first = "headset".into();
+        *second = "speakers".into();
+    }
+    h.app.config.keys_mut()[5] = key;
+    h.app.audio.output = "headset".into();
+    h.app.upload(false);
+    let Command::Update(c, _) = rx.recv().unwrap() else {
+        panic!()
+    };
+    assert_eq!(c.keys()[5].label, "Casque");
+    assert_eq!(c.keys()[5].display_kind, Some(26));
+    h.app.audio.output = "speakers".into();
+    h.app.upload(false);
+    let Command::Update(c, _) = rx.recv().unwrap() else {
+        panic!()
+    };
+    assert_eq!(c.keys()[5].label, "Enceintes");
+    assert_eq!(c.keys()[5].display_kind, Some(27));
+    assert_eq!(
+        h.app.config.keys()[5].label,
+        "Basculer le périphérique audio"
+    );
+}
+#[test]
+fn background_tick_processes_physical_events_and_saves_without_drawing_a_frame() {
+    let mut h = Harness::new();
+    let (tx, rx) = mpsc::channel();
+    h.app.engine = Engine::new(tx.clone());
+    h.app.events = rx;
+    h.app.config.keys_mut()[6] = catalog::action(5, "Bureau");
+    h.app.applied = h.app.config.clone();
+    h.app.gate.enabled = true;
+    h.app.gate.connected = true;
+    let revision = h.app.gate.request_apply();
+    h.app.gate.applied(revision);
+    tx.send(Event::Key(6, Instant::now())).unwrap();
+    h.app.background_tick();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline {
+        h.app.background_tick();
+        if h.app.logs.iter().any(|s| s.contains("Macro terminée")) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(h.app.logs.iter().any(|s| s.contains("EXÉCUTION")));
+    assert!(h.app.logs.iter().any(|s| s.contains("Macro terminée")));
+    h.app.config.keys_mut()[6].label = "Attente locale".into();
+    h.app.edited();
+    h.app.last_edit = Instant::now() - Duration::from_secs(2);
+    h.app.background_tick();
+    assert_eq!(
+        store::load(&h.app.path).unwrap().keys()[6].label,
+        "Attente locale"
+    );
+}
+
+#[test]
+fn workflow_preview_shows_conditional_blocks() {
+    let mut h = Harness::new();
+    let size = vec2(1380.0, 900.0);
+    h.app.config.keys_mut()[0] = Key {
+        label: "Mode de travail".into(),
+        steps: vec![
+            Step::SetVariable {
+                name: "mode".into(),
+                value: "travail".into(),
+            },
+            Step::IfVariable {
+                name: "mode".into(),
+                value: "travail".into(),
+                then_steps: vec![Step::Repeat {
+                    count: 2,
+                    steps: vec![Step::Delay { ms: 250 }],
+                }],
+                else_steps: vec![],
+            },
+        ],
+        ..Key::default()
+    };
+    h.app.show_workflow = true;
+    let output = h.warm(size);
+    assert!(text_position(&output.shapes, "Construis ton automatisation").is_some());
+    if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        h.png(size, output, &PathBuf::from(dir).join("workflow.png"));
+    }
+}
+
+#[test]
+fn gallery_click_immediately_shows_selection_and_keeps_the_original_destination() {
+    let mut h = Harness::new();
+    let size = vec2(1380.0, 900.0);
+    let source = h.dir.path().join("demo.png");
+    image::RgbImage::from_pixel(8, 8, image::Rgb([30, 150, 220]))
+        .save(&source)
+        .unwrap();
+    h.app.selected = 6;
+    h.app.show_assets = true;
+    h.app.icon_target = Some(icon_ui::Target {
+        profile: 0,
+        page: String::new(),
+        key: 6,
+        destination: icon_ui::Destination::Key,
+    });
+    h.app.available_icons = vec![crate::assets::Icon {
+        pack: "Tests locaux".into(),
+        name: "Demo".into(),
+        path: source.clone(),
+    }];
+    let output = h.warm(size);
+    let pos = text_position(&output.shapes, "Demo").expect("Gallery tile visible");
+    h.app.selected = 7;
+    h.click(size, pos);
+    let output = h.warm(size);
+    assert_eq!(h.app.icon_selected.as_deref(), Some(source.as_path()));
+    assert!(!h.app.config.keys()[6].image.is_empty());
+    assert!(h.app.config.keys()[7].image.is_empty());
+    assert!(output
+        .shapes
+        .iter()
+        .any(|s| matches!(&s.shape,egui::Shape::Circle(c) if c.radius==8.0 && c.fill==BLUE)));
+    assert!(h.app.icon_notice.contains("appliquée"));
+    assert!(h.app.icon_notice.contains("07"));
+    if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        h.png(
+            size,
+            output,
+            &PathBuf::from(dir).join("gallery-selected.png"),
+        );
+    }
+}
+
+#[test]
+fn audio_state_gallery_assigns_only_the_selected_state_and_rejects_stale_blocks() {
+    let mut h = Harness::new();
+    h.app.config.keys_mut()[5] = crate::audio::tests::key();
+    h.app.selected = 5;
+    let target = icon_ui::Target {
+        profile: 0,
+        page: String::new(),
+        key: 5,
+        destination: icon_ui::Destination::Audio {
+            path: vec![0],
+            state: 1,
+        },
+    };
+    h.app.icon_target = Some(target.clone());
+    h.app
+        .choose_icon("builtin:microphone", "Microphone")
+        .unwrap();
+    let Step::AudioSwitch {
+        first_icon,
+        second_icon,
+        ..
+    } = &h.app.config.keys()[5].steps[0]
+    else {
+        panic!()
+    };
+    assert!(first_icon.is_empty());
+    assert_eq!(second_icon, "builtin:microphone");
+    h.app.save();
+    let loaded = store::load(&h.app.path).unwrap();
+    assert_eq!(target.image(&loaded).unwrap(), "builtin:microphone");
+    h.app.config.keys_mut()[5].steps[0] = Step::Delay { ms: 100 };
+    assert!(h.app.choose_icon("builtin:speakers", "Enceintes").is_err());
+    assert_eq!(h.app.config.keys()[5].steps, vec![Step::Delay { ms: 100 }]);
+}
+
+#[test]
+fn both_audio_state_previews_are_visible_in_the_compact_inspector() {
+    for (size, name) in [
+        (vec2(1380.0, 900.0), "audio-options.png"),
+        (vec2(1060.0, 720.0), "audio-options-small.png"),
+    ] {
+        let mut h = Harness::new();
+        h.app.config.keys_mut()[5] = crate::audio::tests::key();
+        h.app.selected = 5;
+        h.app.audio = crate::audio::Snapshot {
+            output: "headset".into(),
+            devices: vec![
+                crate::audio::Endpoint {
+                    id: "headset".into(),
+                    name: "Casque de test".into(),
+                    input: false,
+                },
+                crate::audio::Endpoint {
+                    id: "speakers".into(),
+                    name: "Enceintes de test".into(),
+                    input: false,
+                },
+            ],
+            ..Default::default()
+        };
+        let output = h.warm(size);
+        assert!(text_position(&output.shapes, "État 1 · Actif").is_some());
+        assert!(text_position(&output.shapes, "État 2").is_some());
+        let resets = output
+            .shapes
+            .iter()
+            .filter_map(|s| {
+                if let egui::Shape::Text(t) = &s.shape {
+                    let center = t.pos + t.galley.size() * 0.5;
+                    if t.galley.job.text == "Par défaut" && s.clip_rect.contains(center) {
+                        Some(center)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .count();
+        assert_eq!(
+            resets, 2,
+            "Both states' icon controls must be visible without scrolling"
+        );
+        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+            h.png(size, output, &PathBuf::from(dir).join(name));
+        }
+    }
+}
+
+#[test]
+fn ai_request_carries_the_selected_destination_and_does_not_start_a_model() {
+    let mut h = Harness::new();
+    h.app.selected = 8;
+    h.app.assistant_request = "Créer un bouton casque / enceintes".into();
+    let prompt = h.app.automation_prompt();
+    assert!(prompt.contains("\"key\":9"));
+    assert!(prompt.contains("deckforge_get_audio_devices"));
+    assert!(prompt.contains("deckforge_configure_key"));
+    assert!(prompt.contains("N’exécute aucune macro"));
+    assert!(h.app.proposals.pending.is_empty());
+    assert!(!h.app.engine.running.load(Ordering::SeqCst));
+}
+
+#[test]
+fn mcp_stdio_can_propose_real_audio_blocks_for_review_in_the_headless_app() {
+    let Some(binary) = std::env::var_os("DECKFORGE_MCP_EXE") else {
+        return;
+    };
+    use serde_json::{json, Value};
+    use std::{
+        io::{BufRead, BufReader, Write},
+        os::windows::process::CommandExt,
+        process::{Command, Stdio},
+    };
+    let mut h = Harness::new();
+    let descriptor = h.dir.path().join("test-connection.json");
+    h.app.assistant = Some(crate::mcp_server::Server::new(descriptor.clone()).unwrap());
+    h.app.assistant.as_ref().unwrap().set_enabled(true);
+    h.app.audio = crate::audio::Snapshot {
+        output: "headset".into(),
+        devices: vec![
+            crate::audio::Endpoint {
+                id: "headset".into(),
+                name: "Casque de test".into(),
+                input: false,
+            },
+            crate::audio::Endpoint {
+                id: "speakers".into(),
+                name: "Enceintes de test".into(),
+                input: false,
+            },
+        ],
+        ..Default::default()
+    };
+    h.app.available_icons = vec![crate::assets::Icon {
+        pack: "Fixture".into(),
+        name: "Fixture".into(),
+        path: h.dir.path().join("fixture.png"),
+    }];
+    let client = std::thread::spawn(move || {
+        struct Child(std::process::Child);
+        impl Drop for Child {
+            fn drop(&mut self) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let mut child = Child(
+            Command::new(binary)
+                .arg(descriptor)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .creation_flags(0x08000000)
+                .spawn()
+                .unwrap(),
+        );
+        let mut input = child.0.stdin.take().unwrap();
+        let mut output = BufReader::new(child.0.stdout.take().unwrap());
+        let mut rpc = |value: Value| {
+            writeln!(input, "{value}").unwrap();
+            input.flush().unwrap();
+            let mut line = String::new();
+            output.read_line(&mut line).unwrap();
+            serde_json::from_str::<Value>(&line).unwrap()
+        };
+        assert!(rpc(json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}))["result"].is_object());
+        let list = rpc(json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}));
+        assert_eq!(list["result"]["tools"].as_array().unwrap().len(), 11);
+        let endpoints = rpc(
+            json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"deckforge_get_audio_devices","arguments":{}}}),
+        );
+        assert_eq!(
+            endpoints["result"]["structuredContent"]["devices"][0]["id"],
+            "headset"
+        );
+        let icons = rpc(
+            json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"deckforge_get_icons","arguments":{"query":"Fixture","limit":1}}}),
+        );
+        assert_eq!(
+            icons["result"]["structuredContent"]["audio_defaults"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
+        assert_eq!(
+            icons["result"]["structuredContent"]["icons"][0]["name"],
+            "Fixture"
+        );
+        let proposal = rpc(
+            json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"deckforge_configure_key","arguments":{"profile":"Bureau","key":8,"label":"Audio créé par IA","steps":[{"type":"repeat","count":2,"steps":[{"type":"delay","ms":10}]},{"type":"audio_switch","first":"headset","second":"speakers","input":false,"first_icon":"builtin:headphones","second_icon":"builtin:speakers"}]}}}),
+        );
+        assert_eq!(proposal["result"]["isError"], false);
+        let id = proposal["result"]["structuredContent"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        drop(rpc);
+        drop(input);
+        let _ = child.0.wait();
+        id
+    });
+    let deadline = Instant::now() + Duration::from_secs(12);
+    while !client.is_finished() && Instant::now() < deadline {
+        h.app.background_tick();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(client.is_finished(), "MCP request timed out");
+    let id = client.join().unwrap();
+    assert!(h.app.config.keys()[7].steps.is_empty());
+    assert_eq!(h.app.proposals.pending.len(), 1);
+    assert!(!h.app.engine.running.load(Ordering::SeqCst));
+    let size = vec2(1380.0, 900.0);
+    let output = h.warm(size);
+    let pos = text_position(&output.shapes, "Valider cette proposition").unwrap();
+    h.click(size, pos);
+    assert_eq!(h.app.config.keys()[7].label, "Audio créé par IA");
+    assert!(matches!(
+        h.app.config.keys()[7].steps[0],
+        Step::Repeat { count: 2, .. }
+    ));
+    assert!(!h.app.engine.running.load(Ordering::SeqCst));
+    assert_eq!(
+        h.app.proposals.status(&json!({"id":id})).unwrap()["status"],
+        "approved"
+    );
+    h.app.selected = 7;
+    h.app.show_workflow = true;
+    let output = h.warm(size);
+    assert!(text_position(&output.shapes, "Construis ton automatisation").is_some());
+}

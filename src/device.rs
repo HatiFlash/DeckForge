@@ -75,12 +75,15 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
         if let Some(d) = &deck {
             if update {
                 match d.apply(&config) {
-                    Ok(()) => {
+                    Ok(warnings) => {
                         let _ = tx.send(Event::Device(
                             true,
                             format!("D6 connecté · 15 touches · rapports {} octets", d.packet),
                         ));
                         let _ = tx.send(Event::Applied(revision));
+                        for warning in warnings {
+                            let _ = tx.send(Event::Log(warning));
+                        }
                     }
                     Err(e) => failed = Some(e.to_string()),
                 }
@@ -267,20 +270,21 @@ impl Deck {
         data.extend(tail);
         self.report(&data)
     }
-    fn apply(&self, c: &Config) -> Result<()> {
+    fn apply(&self, c: &Config) -> Result<Vec<String>> {
         c.validate()?;
-        // Render everything first: a bad PNG leaves the device's previous screen intact.
+        // Prepare all images first; one broken file falls back to its built-in icon.
         let fontpath = std::path::PathBuf::from(
             std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into()),
         )
         .join("Fonts/segoeui.ttf");
         let font = FontArc::try_from_vec(std::fs::read(fontpath)?)
             .map_err(|_| anyhow::anyhow!("Police Windows illisible"))?;
-        let images = c
+        let rendered = c
             .keys()
             .iter()
-            .map(|k| render_key(k, c.image_size, &font))
+            .map(|k| render_key_or_default(k, c.image_size, &font))
             .collect::<Result<Vec<_>>>()?;
+        let (images, warnings): (Vec<_>, Vec<_>) = rendered.into_iter().unzip();
         self.command(b"DIS")?;
         self.command(&[b'L', b'I', b'G', 0, 0, c.brightness])?;
         self.report(b"HAN")?;
@@ -303,22 +307,38 @@ impl Deck {
         }
         self.command(b"ULEND")?;
         self.command(b"STP")?;
-        Ok(())
+        Ok(warnings.into_iter().flatten().collect())
+    }
+}
+fn render_key_or_default(
+    k: &crate::model::Key,
+    size: u32,
+    font: &FontArc,
+) -> Result<(Vec<u8>, Option<String>)> {
+    match render_key(k, size, font) {
+        Ok(data) => Ok((data, None)),
+        Err(e) => {
+            let mut fallback = k.clone();
+            fallback.image.clear();
+            Ok((
+                render_key(&fallback, size, font)?,
+                Some(format!(
+                    "Icône de « {} » indisponible : {e}. Icône intégrée utilisée.",
+                    k.label
+                )),
+            ))
+        }
     }
 }
 fn render_key(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8>> {
     let mut image = if k.image.is_empty() {
         RgbImage::from_pixel(size, size, Rgb(k.color))
     } else {
-        let reader = image::ImageReader::open(&k.image)?.with_guessed_format()?;
-        let mut reader = reader;
-        let mut limits = image::Limits::default();
-        limits.max_image_width = Some(8192);
-        limits.max_image_height = Some(8192);
-        limits.max_alloc = Some(64 * 1024 * 1024);
-        reader.limits(limits);
-        reader
-            .decode()
+        anyhow::ensure!(
+            std::fs::metadata(&k.image)?.len() <= 8_000_000,
+            "Image supérieure à 8 Mo"
+        );
+        crate::assets::decode_image(&std::fs::read(&k.image)?, 512)
             .with_context(|| format!("Image invalide pour {}", k.label))?
             .resize_to_fill(size, size, image::imageops::FilterType::Lanczos3)
             .into_rgb8()
@@ -498,6 +518,60 @@ pub fn hardware_test() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn audio_states_produce_distinct_lcd_jpegs_even_with_an_old_static_image() {
+        let mut key = crate::audio::tests::key();
+        if let crate::model::Step::AudioSwitch {
+            first_label,
+            second_label,
+            ..
+        } = &mut key.steps[0]
+        {
+            *first_label = "Audio".into();
+            *second_label = "Audio".into();
+        }
+        let windir = std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into());
+        let font = FontArc::try_from_vec(
+            std::fs::read(std::path::PathBuf::from(windir).join("Fonts/segoeui.ttf")).unwrap(),
+        )
+        .unwrap();
+        let a = crate::audio::present_key(
+            &key,
+            &crate::audio::Snapshot {
+                output: "headset".into(),
+                ..Default::default()
+            },
+        );
+        let b = crate::audio::present_key(
+            &key,
+            &crate::audio::Snapshot {
+                output: "speakers".into(),
+                ..Default::default()
+            },
+        );
+        let a = render_key(&a, 126, &font).unwrap();
+        let b = render_key(&b, 126, &font).unwrap();
+        assert_ne!(a, b);
+        assert_eq!(image::load_from_memory(&a).unwrap().width(), 126);
+        let dir = tempfile::tempdir().unwrap();
+        let svg = dir.path().join("custom.svg");
+        std::fs::write(&svg,br##"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="#00ff00"/></svg>"##).unwrap();
+        if let crate::model::Step::AudioSwitch { first_icon, .. } = &mut key.steps[0] {
+            *first_icon = svg.to_string_lossy().into_owned();
+        }
+        let custom = crate::audio::present_key(
+            &key,
+            &crate::audio::Snapshot {
+                output: "headset".into(),
+                ..Default::default()
+            },
+        );
+        let bitmap = image::load_from_memory(&render_key(&custom, 126, &font).unwrap())
+            .unwrap()
+            .to_rgb8();
+        let pixel = bitmap.get_pixel(63, 63);
+        assert!(pixel[1] > 200 && pixel[0] < 30);
+    }
     #[test]
     fn display_rows_and_input_are_independent() {
         assert_eq!(display_index(0), 10);

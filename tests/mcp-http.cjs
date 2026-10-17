@@ -12,7 +12,7 @@ let r=await post({jsonrpc:'2.0',id:1,method:'initialize',params:{}},{Authorizati
 r=await post({jsonrpc:'2.0',id:1,method:'initialize',params:{}},{Origin:'https://untrusted.example'});assert.equal(r.status,403);checks.push('HTTP Origin validation');
 r=await post({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'test',version:'1'}}});assert.equal(r.status,200);const session=r.headers.get('mcp-session-id');assert(session);assert.equal((await r.json()).result.protocolVersion,'2025-06-18');checks.push('HTTP initialization and session creation');
 const sessionHeaders={'Mcp-Session-Id':session,'MCP-Protocol-Version':'2025-06-18'};
-r=await post({jsonrpc:'2.0',id:2,method:'tools/list'},sessionHeaders);assert.equal((await r.json()).result.tools.length,8);checks.push('HTTP tools discovery');
+r=await post({jsonrpc:'2.0',id:2,method:'tools/list'},sessionHeaders);assert.equal((await r.json()).result.tools.length,11);checks.push('HTTP tools discovery');
 r=await post({jsonrpc:'2.0',method:'notifications/initialized'},sessionHeaders);assert.equal(r.status,202);assert.equal(await r.text(),'');checks.push('HTTP notifications use 202 without JSON body');
 const request={jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'deckforge_get_state',arguments:{}}};r=await post(request,sessionHeaders);assert.equal((await r.json()).result.structuredContent.connected,true);await post(request,sessionHeaders);assert.equal(calls,1);checks.push('HTTP -> local bridge and duplicate-write protection');
 r=await fetch(url,{headers:{...base,...sessionHeaders}});assert.equal(r.status,405);checks.push('GET correctly declines unsupported SSE');
