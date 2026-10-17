@@ -8,33 +8,28 @@ pub const CYAN: Color32 = Color32::from_rgb(34, 195, 238);
 pub const WARNING: Color32 = Color32::from_rgb(245, 173, 66);
 pub const DANGER: Color32 = Color32::from_rgb(242, 95, 112);
 
-pub fn app_icon() -> egui::IconData {
-    let mut rgba = vec![0; 32 * 32 * 4];
-    for y in 0..32usize {
-        for x in 0..32usize {
-            let dx = if x < 7 { 7 - x } else { x.saturating_sub(24) };
-            let dy = if y < 7 { 7 - y } else { y.saturating_sub(24) };
-            if dx * dx + dy * dy <= 49 {
-                let p = (y * 32 + x) * 4;
-                rgba[p..p + 4].copy_from_slice(&[52, 120, 246, 255]);
-            }
+fn decode_icon(bytes: &[u8]) -> egui::IconData {
+    match image::load_from_memory(bytes) {
+        Ok(image) => {
+            let rgba = image.to_rgba8();
+            egui::IconData { width: rgba.width(), height: rgba.height(), rgba: rgba.into_raw() }
         }
+        Err(_) => egui::IconData { rgba: vec![0; 32 * 32 * 4], width: 32, height: 32 },
     }
-    for row in 0..3 {
-        for col in 0..5 {
-            for y in 0..3 {
-                for x in 0..3 {
-                    let p = ((9 + row * 6 + y) * 32 + 3 + col * 5 + x) * 4;
-                    rgba[p..p + 4].copy_from_slice(&[241, 245, 251, 255]);
-                }
-            }
-        }
-    }
-    egui::IconData {
-        rgba,
-        width: 32,
-        height: 32,
-    }
+}
+/// 32 × 32 logo (notification-area icon expects exactly this size).
+pub fn app_icon() -> egui::IconData { decode_icon(include_bytes!("../res/branding/deckforge-32.png")) }
+/// Larger logo for the window and taskbar.
+pub fn window_icon() -> egui::IconData { decode_icon(include_bytes!("../res/branding/deckforge-64.png")) }
+/// Header logo, uploaded once and kept by egui.
+pub fn logo_texture(ctx: &egui::Context) -> egui::TextureHandle {
+    let id = egui::Id::new("deckforge_logo_texture");
+    if let Some(texture) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) { return texture; }
+    let icon = window_icon();
+    let image = egui::ColorImage::from_rgba_unmultiplied([icon.width as usize, icon.height as usize], &icon.rgba);
+    let texture = ctx.load_texture("deckforge-logo", image, egui::TextureOptions::LINEAR);
+    ctx.data_mut(|d| d.insert_temp(id, texture.clone()));
+    texture
 }
 
 pub fn rounded_gradient(

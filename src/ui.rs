@@ -1443,17 +1443,8 @@ impl App {
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    let (r, _) = ui.allocate_exact_size(Vec2::splat(28.0), egui::Sense::hover());
-                    ui.painter().rect_filled(r, 7.0, BLUE);
-                    for y in 0..2 {
-                        for x in 0..3 {
-                            ui.painter().circle_filled(
-                                r.min + Vec2::new(7.5 + x as f32 * 6.5, 9.5 + y as f32 * 8.0),
-                                1.8,
-                                Color32::WHITE,
-                            );
-                        }
-                    }
+                    let logo = theme::logo_texture(ctx);
+                    ui.add(egui::Image::new((logo.id(), Vec2::splat(34.0))));
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing.y = 0.0;
                         ui.label(RichText::new("DeckForge").size(18.0).strong());

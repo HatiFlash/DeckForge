@@ -135,7 +135,7 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("DeckForge · FIFINE D6")
-            .with_icon(theme::app_icon())
+            .with_icon(theme::window_icon())
             .with_visible(!std::env::args().any(|a| a == "--background"))
             .with_inner_size(size)
             .with_min_inner_size([1060.0, 720.0]),

@@ -2,6 +2,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
+    embed_icon();
     for path in [".git/HEAD", ".git/refs"] {
         if std::path::Path::new(path).exists() {
             println!("cargo:rerun-if-changed={path}");
@@ -31,4 +32,22 @@ fn main() {
     let month = mp + if mp < 10 { 3 } else { -9 };
     if month <= 2 { year += 1; }
     println!("cargo:rustc-env=DECKFORGE_BUILD_DATE={year:04}-{month:02}-{day:02}");
+}
+
+/// Embeds res/branding/deckforge.ico as the executable icon (Explorer, taskbar shortcut).
+/// Optional: without windres the build continues with the default icon.
+fn embed_icon() {
+    println!("cargo:rerun-if-changed=res/branding/deckforge.ico");
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") { return; }
+    let Ok(out) = std::env::var("OUT_DIR") else { return };
+    let icon = std::path::Path::new("res/branding/deckforge.ico");
+    let Ok(icon) = icon.canonicalize() else { return };
+    let rc = std::path::Path::new(&out).join("deckforge-icon.rc");
+    let obj = std::path::Path::new(&out).join("deckforge-icon.o");
+    let path = icon.to_string_lossy().trim_start_matches(r"\\?\").replace('\\', "/");
+    if std::fs::write(&rc, format!("1 ICON \"{path}\"\n")).is_err() { return; }
+    let ok = Command::new("windres").args(["-i"]).arg(&rc).args(["-O", "coff", "-o"]).arg(&obj).status().map(|s| s.success()).unwrap_or(false);
+    if ok {
+        println!("cargo:rustc-link-arg-bins={}", obj.display());
+    }
 }
