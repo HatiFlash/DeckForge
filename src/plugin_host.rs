@@ -62,7 +62,8 @@ fn socket_loop(listener:TcpListener,commands:Receiver<Value>,messages:Sender<Val
     let mut pending=Vec::new();
     let mut inspectors:HashMap<String,tungstenite::WebSocket<std::net::TcpStream>>=HashMap::new();
     while !stop.load(Ordering::Relaxed){
-        match listener.accept(){Ok((stream,_))=>{let _=stream.set_read_timeout(Some(Duration::from_secs(2)));let _=stream.set_write_timeout(Some(Duration::from_secs(1)));if let Ok(ws)=tungstenite::accept(stream){let _=ws.get_ref().set_read_timeout(Some(Duration::from_millis(50)));pending.push(ws);}},Err(e) if e.kind()==std::io::ErrorKind::WouldBlock=>{},Err(_)=>break}
+        match listener.accept(){Ok((stream,_))=>{let _=stream.set_nonblocking(false); // Windows : le socket accepté hérite du mode non bloquant de l'écouteur.
+            let _=stream.set_read_timeout(Some(Duration::from_secs(2)));let _=stream.set_write_timeout(Some(Duration::from_secs(1)));if let Ok(ws)=tungstenite::accept(stream){let _=ws.get_ref().set_read_timeout(Some(Duration::from_millis(50)));pending.push(ws);}},Err(e) if e.kind()==std::io::ErrorKind::WouldBlock=>{},Err(_)=>break}
         for i in (0..pending.len()).rev(){
             if let Ok(tungstenite::Message::Text(text))=pending[i].read(){
                 if let Ok(value)=serde_json::from_str::<Value>(&text){
@@ -94,6 +95,18 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
 }}
 #[cfg(windows)] use std::os::windows::process::CommandExt;
 #[cfg(test)] mod tests {use super::*;
+ #[test] fn slow_handshake_client_still_registers(){
+  // Régression : la poignée de main WebSocket arrivant après accept() était abandonnée (WouldBlock).
+  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let port=listener.local_addr().unwrap().port();
+  let (_tx,commands)=mpsc::channel::<Value>();let (messages,rx)=mpsc::channel();let stop=Arc::new(AtomicBool::new(false));let flag=stop.clone();
+  let worker=thread::spawn(move||socket_loop(listener,commands,messages,flag,None));
+  let stream=std::net::TcpStream::connect(("127.0.0.1",port)).unwrap();
+  thread::sleep(Duration::from_millis(300));
+  let (mut ws,_)=tungstenite::client(format!("ws://127.0.0.1:{port}"),stream).unwrap();
+  ws.send(tungstenite::Message::Text(json!({"event":"registerPlugin","uuid":"slow"}).to_string().into())).unwrap();
+  assert_eq!(rx.recv_timeout(Duration::from_secs(3)).unwrap()["event"],"registerPlugin");
+  stop.store(true,Ordering::Relaxed);worker.join().unwrap();
+ }
  #[test] fn two_websocket_clients_exchange_inspector_events(){
   let listener=TcpListener::bind("127.0.0.1:0").unwrap();let port=listener.local_addr().unwrap().port();
   let id="a".repeat(32);let registry=crate::plugin_http::Inspectors::default();registry.lock().unwrap().insert(id.clone(),"JSON.stringify({})".into());

@@ -45,6 +45,8 @@ impl Server {
             while !stopped.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
+                        // Windows : le socket accepté hérite du mode non bloquant ; le délai de lecture de handle() doit s'appliquer.
+                        let _ = stream.set_nonblocking(false);
                         let result = handle(&mut stream, &token, &on, &tx);
                         let response = match result {
                             Ok(v) => json!({"ok":true,"result":v}),

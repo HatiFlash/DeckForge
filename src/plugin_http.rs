@@ -61,6 +61,7 @@ fn response(root:&Path,uuid:&str,port:u16,info:&str,inspectors:&Inspectors,reque
     ("200 OK",content_type,html.into_bytes())
 }
 fn serve(mut stream:TcpStream,root:&Path,uuid:&str,port:u16,info:&str,inspectors:&Inspectors){
+      let _=stream.set_nonblocking(false); // Hérité de l'écouteur sous Windows : sinon une requête lente est perdue.
     let _=stream.set_read_timeout(Some(Duration::from_secs(2)));
     let _=stream.set_write_timeout(Some(Duration::from_secs(2)));
     let mut buf=[0u8;8192];let Ok(n)=stream.read(&mut buf) else{return};
@@ -89,5 +90,6 @@ impl Drop for HtmlServer {fn drop(&mut self){self.stop.store(true,Ordering::Rela
  for url in ["/p/../index.html","/p/%2e%2e/index.html","/p/","/another/index.html","/p/..\\index.html"] {assert_eq!(response(tmp.path(),"p",123,"{}",&inspectors,url).0,"404 Not Found", "{url}");}
  }
  #[test] fn spaces_in_path_are_decoded(){let tmp=tempfile::tempdir().unwrap();fs::create_dir(tmp.path().join("property inspector")).unwrap();fs::write(tmp.path().join("property inspector").join("pi.html"),"<body>x</body>").unwrap();let inspectors=Inspectors::default();assert_eq!(response(tmp.path(),"p",1,"{}",&inspectors,"/p/property%20inspector/pi.html").0,"200 OK");for bad in ["/p/property%20inspector/..%2fpi.html","/p/%2e%2e%2fx","/p/a%5cb","/p/%zz"]{assert_eq!(response(tmp.path(),"p",1,"{}",&inspectors,bad).0,"404 Not Found","{bad}");}}
+#[test] fn slow_client_request_is_still_served(){let tmp=tempfile::tempdir().unwrap();fs::write(tmp.path().join("index.html"),"hello").unwrap();let server=HtmlServer::start(tmp.path().to_owned(),"p".into(),"{}".into(),1).unwrap();let mut s=TcpStream::connect(("127.0.0.1",server.port)).unwrap();thread::sleep(Duration::from_millis(300));s.write_all(b"GET /p/index.html HTTP/1.1\r\nHost: x\r\n\r\n").unwrap();let mut out=String::new();s.read_to_string(&mut out).unwrap();assert!(out.starts_with("HTTP/1.1 200"),"{out}");}
 #[test] fn http_serves_without_listing(){let tmp=tempfile::tempdir().unwrap();fs::write(tmp.path().join("index.html"),"hello").unwrap();let server=HtmlServer::start(tmp.path().to_owned(),"p".into(),"{}".into(),123).unwrap();let mut stream=TcpStream::connect(("127.0.0.1",server.port)).unwrap();stream.write_all(b"GET /p/index.html HTTP/1.1\r\nHost: localhost\r\n\r\n").unwrap();let mut bytes=Vec::new();stream.read_to_end(&mut bytes).unwrap();assert!(String::from_utf8(bytes).unwrap().contains("HTTP/1.1 200 OK"));}
 }

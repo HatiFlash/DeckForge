@@ -136,6 +136,8 @@ fn main() -> eframe::Result<()> {
             .with_visible(!std::env::args().any(|a| a == "--background"))
             .with_inner_size(size)
             .with_min_inner_size([1060.0, 720.0]),
+        // wgpu (DirectX 12/Vulkan) : presentation en mode flip, sans images vides au survol.
+        renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
     eframe::run_native(
