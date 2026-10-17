@@ -161,6 +161,7 @@ impl Proposals {
                     background: a.background.unwrap_or(old.background),
                     image: old.image.clone(),
                     repeat: a.repeat.unwrap_or(1),
+                    title_size: old.title_size,
                     steps: a.steps,
                     display_kind: None,
                 };

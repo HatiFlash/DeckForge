@@ -121,6 +121,8 @@ pub struct Key {
     pub background: bool,
     pub image: String,
     pub repeat: u32,
+    #[serde(default = "default_title_size", skip_serializing_if = "is_default_title_size")]
+    pub title_size: u8,
     pub steps: Vec<Step>,
     #[serde(skip)]
     pub display_kind: Option<usize>,
@@ -133,11 +135,14 @@ impl Default for Key {
             background: true,
             image: String::new(),
             repeat: 1,
+            title_size: 14,
             steps: vec![],
             display_kind: None,
         }
     }
 }
+fn default_title_size() -> u8 { 14 }
+fn is_default_title_size(value: &u8) -> bool { *value == 14 }
 fn default_background() -> bool {
     true
 }
@@ -519,6 +524,7 @@ pub fn parse_hotkey(text: &str) -> Result<Vec<u16>> {
     Ok(keys)
 }
 pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
+    anyhow::ensure!((10..=20).contains(&key.title_size), "Taille du titre invalide");
     if !(1..=1000).contains(&key.repeat) || key.steps.len() > 256 {
         bail!("Limite : 1000 répétitions, 256 étapes");
     }

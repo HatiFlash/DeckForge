@@ -3,6 +3,7 @@ use super::*;
 #[derive(PartialEq)]
 struct Signature {
     label: String,
+    title_size: u8,
     color: [u8; 3],
     background: bool,
     image: String,
@@ -15,6 +16,7 @@ impl Signature {
     fn new(key: &Key, size: u32) -> Self {
         Self {
             label: key.label.clone(),
+            title_size: key.title_size,
             color: key.color,
             background: key.background,
             image: key.image.clone(),

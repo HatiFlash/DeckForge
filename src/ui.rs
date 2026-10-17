@@ -1532,6 +1532,11 @@ impl App {
                     egui::ScrollArea::vertical().id_salt("key_appearance").max_height(body_height).show(ui,|ui| {
                         ui.label(RichText::new("Titre sur le D6").small().color(p.muted));
                         changed|=ui.add(egui::TextEdit::singleline(&mut key.label).desired_width(200.0).hint_text("Nom de la touche")).changed();
+                        ui.horizontal(|ui| {
+                            ui.label("Taille du titre");
+                            changed |= ui.add(egui::Slider::new(&mut key.title_size, 10..=20).show_value(false)).changed();
+                            ui.label(format!("{} %", key.title_size));
+                        });
                         changed|=appearance::color(ui,key);
                         if crate::audio::single_switch(&key.steps).is_some(){if ui.button("Icônes par état →").on_hover_text("Choisir séparément les icônes des deux états audio").clicked(){open_icons=true;}}else{
                         let actions=appearance::icons(ui,!key.image.is_empty());

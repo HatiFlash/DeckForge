@@ -125,7 +125,7 @@ pub fn jpeg(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8>>
         crate::icons::draw(&mut image, crate::icons::kind(k));
     }
     if !k.label.is_empty() {
-        let scaled = font.as_scaled(PxScale::from(size as f32 * 0.14));
+        let scaled = font.as_scaled(PxScale::from(size as f32 * k.title_size as f32 / 100.0));
         let lines = label_lines(
             &k.label,
             &scaled,
@@ -193,6 +193,20 @@ pub fn jpeg(k: &crate::model::Key, size: u32, font: &FontArc) -> Result<Vec<u8>>
 mod tests {
     use super::*;
     use crate::model::{Key, Step};
+    #[test]
+    fn title_size_changes_canonical_jpeg_and_legacy_keeps_normal() {
+        let mut key = Key { label: "Titre D6".into(), ..Key::default() };
+        let legacy = serde_json::to_value(&key).unwrap();
+        assert!(legacy.get("title_size").is_none());
+        let loaded: Key = serde_json::from_value(legacy).unwrap();
+        assert_eq!(loaded.title_size, 14);
+        let normal = jpeg(&key, 126, &font().unwrap()).unwrap();
+        assert_eq!(normal, jpeg(&loaded, 126, &font().unwrap()).unwrap());
+        key.title_size = 20;
+        assert_ne!(normal, jpeg(&key, 126, &font().unwrap()).unwrap());
+        assert_eq!(preview(&key, 126).unwrap(), image::imageops::rotate180(&image::load_from_memory(&jpeg(&key, 126, &font().unwrap()).unwrap()).unwrap().into_rgb8()));
+    }
+
     #[test]
     fn black_background_and_transparent_images_use_the_saved_background_choice() {
         let dir = tempfile::tempdir().unwrap();
