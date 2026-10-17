@@ -2548,6 +2548,17 @@ impl App {
                         egui::ScrollArea::vertical().id_salt("inspector_advanced").max_height(body_height).show(ui,|ui|{
                             ui.label(RichText::new("Comportement").strong());
                             ui.horizontal(|ui|{ui.label("Répéter la macro");changed|=ui.add(egui::DragValue::new(&mut key.repeat).range(1..=1000)).changed();ui.label("fois à chaque appui");});
+                             ui.horizontal(|ui| {
+                                 ui.label("Si une macro est en cours");
+                                 egui::ComboBox::from_id_salt("key_run_mode").selected_text(match key.run_mode.unwrap_or_default() {
+                                     crate::model::RunMode::Ignore => "Ignorer", crate::model::RunMode::Restart => "Redémarrer", crate::model::RunMode::Queue => "Mettre en attente",
+                                 }).show_ui(ui, |ui| {
+                                     changed |= ui.selectable_value(&mut key.run_mode, None, "Ignorer (défaut)").changed();
+                                     changed |= ui.selectable_value(&mut key.run_mode, Some(crate::model::RunMode::Restart), "Redémarrer").changed();
+                                     changed |= ui.selectable_value(&mut key.run_mode, Some(crate::model::RunMode::Queue), "Mettre en attente (5 max)").changed();
+                                 });
+                             });
+                             ui.horizontal(|ui| { ui.label("Anti-rebond"); changed |= ui.add(egui::DragValue::new(&mut key.debounce_ms).range(0..=60_000)).changed(); ui.label("ms par touche"); });
                             ui.label(RichText::new(format!("Appui court : {} étape(s) · Appui long : {} étape(s)", key.steps.len(), key.long_steps.len())).color(p.muted));
                             ui.add_space(8.0);
                             ui.label(RichText::new("Touche").strong());

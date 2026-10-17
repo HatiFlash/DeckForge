@@ -43,6 +43,10 @@ struct Binding {
     background: Option<bool>,
     #[serde(default)]
     repeat: Option<u32>,
+    #[serde(default)]
+    run_mode: Option<crate::model::RunMode>,
+    #[serde(default)]
+    debounce_ms: Option<u32>,
     icon_scale: Option<u8>,
     #[serde(default)]
     state_display: Option<crate::model::StateDisplay>,
@@ -168,6 +172,8 @@ impl Proposals {
                     background: a.background.unwrap_or(old.background),
                     image: old.image.clone(),
                     repeat: a.repeat.unwrap_or(1),
+                    run_mode: a.run_mode.or(old.run_mode),
+                    debounce_ms: a.debounce_ms.unwrap_or(old.debounce_ms),
                     title_size: old.title_size,
                     icon_scale: a.icon_scale.unwrap_or(old.icon_scale),
                     plugin: a.plugin.or_else(|| old.plugin.clone()),

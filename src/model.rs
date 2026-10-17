@@ -375,6 +375,10 @@ pub struct PluginBinding {
     #[serde(default)] pub settings: serde_json::Value,
     #[serde(default)] pub state: u8,
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunMode { #[default] Ignore, Restart, Queue }
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Key {
     pub label: String,
@@ -383,6 +387,10 @@ pub struct Key {
     pub background: bool,
     pub image: String,
     pub repeat: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_mode: Option<RunMode>,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub debounce_ms: u32,
     #[serde(default = "default_title_size", skip_serializing_if = "is_default_title_size")]
     pub title_size: u8,
     #[serde(default = "default_icon_scale", skip_serializing_if = "is_default_icon_scale")]
@@ -401,6 +409,7 @@ pub struct Key {
     #[serde(skip)]
     pub runtime_id: Option<String>,
 }
+fn is_zero_u32(value: &u32) -> bool { *value == 0 }
 impl Default for Key {
     fn default() -> Self {
         Self {
@@ -409,6 +418,8 @@ impl Default for Key {
             background: true,
             image: String::new(),
             repeat: 1,
+            run_mode: None,
+            debounce_ms: 0,
             title_size: 14,
             icon_scale: 100,
             plugin: None,
@@ -941,6 +952,7 @@ pub fn parse_hotkey(text: &str) -> Result<Vec<u16>> {
     Ok(keys)
 }
 pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
+    anyhow::ensure!(key.debounce_ms <= 60_000, "Anti-rebond : 60 000 ms maximum");
     if let Some(display) = &key.state_display { display.validate()?; }
     if !key.long_steps.is_empty() {
         let mut long = key.clone();
@@ -1639,5 +1651,32 @@ mod clipboard_tests {
             let key = Key { steps: vec![Step::Clipboard { op: op.into(), value: value.into(), name: name.into() }], ..Key::default() };
             assert!(validate_key(&key, &config).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod execution_options_tests {
+    use super::*;
+    #[test]
+    fn options_json_legacy_roundtrip_and_validation() {
+        let legacy = serde_json::to_value(Key::default()).unwrap();
+        assert!(legacy.get("run_mode").is_none());
+        assert!(legacy.get("debounce_ms").is_none());
+        let loaded: Key = serde_json::from_value(legacy).unwrap();
+        assert_eq!(loaded.run_mode, None);
+        assert_eq!(loaded.debounce_ms, 0);
+        let mut configured = loaded;
+        configured.run_mode = Some(RunMode::Queue);
+        configured.debounce_ms = 250;
+        let value = serde_json::to_value(&configured).unwrap();
+        assert_eq!(value["run_mode"], "queue");
+        let copy: Key = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(copy.run_mode, Some(RunMode::Queue));
+        assert_eq!(copy.debounce_ms, 250);
+        assert!(validate_key(&copy, &Config::default()).is_ok());
+        assert!(serde_json::from_value::<Key>({ let mut v=value.clone(); v["run_mode"]="invalid".into(); v }).is_err());
+        let mut bad = configured;
+        bad.debounce_ms = 60_001;
+        assert!(validate_key(&bad, &Config::default()).is_err());
     }
 }

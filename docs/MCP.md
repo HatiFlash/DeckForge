@@ -1,5 +1,9 @@
 # Connecter une IA à DeckForge
 
+### Contrôle d’exécution par touche (E2)
+
+`deckforge_configure_key` accepte `run_mode` (`ignore`, `restart`, `queue`) et `debounce_ms` (0 à 60000). Absents : comportement historique, appui ignoré si une macro tourne et aucun anti-rebond. La file globale retient au maximum cinq macros ; Arrêter la vide. Ces paramètres concernent la touche entière, et non un bloc `Step`.
+
 ### Affichage selon l'état (`state_display`)
 
 Dans `deckforge_configure_key`, `state_display` est optionnel : `{"condition":{"kind":"device_muted","input":true},"on":{"label":"Micro coupé","color":[255,0,0]},"off":{"label":"Micro actif"},"poll_ms":1000}`. Chaque face peut préciser `label`, `image` (icône de la galerie) et `color` RGB ; les champs absents conservent l'apparence de la touche. Sondage 250–600000 ms, lecture seule et proposition validée localement avant application. Les anciennes touches sans ce champ restent inchangées.

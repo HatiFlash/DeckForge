@@ -72,12 +72,32 @@ fn hold_keys(keys: &[u16], action: &str, held: &std::sync::Mutex<KeyRegistry>, c
     }
     Ok(())
 }
+const MAX_PENDING: usize = 5;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PressDecision { Start, Ignore, Debounced, Restart, Queue, Full }
+fn press_decision(mode: Option<crate::model::RunMode>, running: bool, pending: usize, elapsed_ms: Option<u64>, debounce_ms: u32) -> PressDecision {
+    if debounce_ms > 0 && elapsed_ms.is_some_and(|ms| ms < u64::from(debounce_ms)) { return PressDecision::Debounced; }
+    if !running { return PressDecision::Start; }
+    match mode.unwrap_or_default() {
+        crate::model::RunMode::Ignore => PressDecision::Ignore,
+        crate::model::RunMode::Restart => PressDecision::Restart,
+        crate::model::RunMode::Queue if pending < MAX_PENDING => PressDecision::Queue,
+        crate::model::RunMode::Queue => PressDecision::Full,
+    }
+}
+type Job = (Key, bool, u64, crate::model::ObsSettings);
+#[derive(Default)]
+struct ExecutionState {
+    queue: std::collections::VecDeque<Job>,
+    presses: std::collections::HashMap<String, Instant>,
+}
 pub struct Engine {
     pub running: Arc<AtomicBool>,
     cancel: Arc<AtomicBool>,
     held: Arc<std::sync::Mutex<KeyRegistry>>,
     tx: Sender<Event>,
     last_finished: Arc<std::sync::Mutex<Instant>>,
+    state: Arc<std::sync::Mutex<ExecutionState>>,
 }
 impl Engine {
     pub fn new(tx: Sender<Event>) -> Self {
@@ -86,65 +106,96 @@ impl Engine {
             cancel: Arc::new(AtomicBool::new(false)),
             held: Arc::new(std::sync::Mutex::new(KeyRegistry::default())),
             tx,
-            last_finished: Arc::new(std::sync::Mutex::new(
-                Instant::now() - Duration::from_secs(1),
-            )),
+            last_finished: Arc::new(std::sync::Mutex::new(Instant::now() - Duration::from_secs(1))),
+            state: Arc::new(std::sync::Mutex::new(ExecutionState::default())),
         }
     }
     pub fn stop(&self) {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.queue.clear();
         self.cancel.store(true, Ordering::SeqCst);
+        drop(state);
         if let Err(e) = release_held(&self.held) { let _ = self.tx.send(Event::Log(format!("{e:#}"))); }
     }
     pub fn allows_global_press(&self, at: Instant) -> bool {
-        !self.running.load(Ordering::SeqCst)
-            && at
-                > *self.last_finished.lock().unwrap_or_else(|e| e.into_inner())
-                    + Duration::from_millis(150)
+        at > *self.last_finished.lock().unwrap_or_else(|e| e.into_inner()) + Duration::from_millis(150)
     }
     pub fn start(&self, key: Key, dry: bool, initial_delay: u64, obs: crate::model::ObsSettings) {
-        if self
-            .running
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_err()
-        {
-            let _ = self.tx.send(Event::Log(
-                "Macro déjà en cours : nouvel appui ignoré".into(),
-            ));
+        let now = Instant::now();
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let id = key.runtime_id.clone().unwrap_or_else(|| serde_json::to_string(&key).unwrap_or_default());
+        let elapsed = state.presses.get(&id).map(|t| now.saturating_duration_since(*t).as_millis() as u64);
+        let decision = press_decision(key.run_mode, self.running.load(Ordering::SeqCst), state.queue.len(), elapsed, key.debounce_ms);
+        match decision {
+            PressDecision::Ignore => { let _ = self.tx.send(Event::Log("Macro déjà en cours : nouvel appui ignoré".into())); return; }
+            PressDecision::Debounced => { let _ = self.tx.send(Event::Log("Appui ignoré : anti-rebond actif".into())); return; }
+            PressDecision::Full => { let _ = self.tx.send(Event::Log("File d'attente pleine (5 macros)".into())); return; }
+            _ => {}
+        }
+        if state.presses.len() > 2048 { state.presses.clear(); }
+        state.presses.insert(id, now);
+        if decision == PressDecision::Restart {
+            state.queue.clear();
+            self.cancel.store(true, Ordering::SeqCst);
+            state.queue.push_back((key, dry, initial_delay, obs));
+            let _ = self.tx.send(Event::Log("Macro relancée après interruption".into()));
             return;
         }
+        if decision == PressDecision::Queue {
+            state.queue.push_back((key, dry, initial_delay, obs));
+            let _ = self.tx.send(Event::Log(format!("Macro en attente ({}/5)", state.queue.len())));
+            return;
+        }
+        self.running.store(true, Ordering::SeqCst);
         self.cancel.store(false, Ordering::SeqCst);
+        drop(state);
         let running = self.running.clone();
         let cancel = self.cancel.clone();
         let held = self.held.clone();
         let tx = self.tx.clone();
         let last_finished = self.last_finished.clone();
-        // Physical press: capture before spawning; delayed test: capture after countdown.
-        let mouse_window = (!dry && initial_delay == 0).then(capture_mouse_window);
-        let captured = if !dry && initial_delay == 0 && has_app_volume(&key.steps) {
-            Some(crate::app_audio::capture("foreground", true))
-        } else { None };
+        let state = self.state.clone();
         std::thread::spawn(move || {
-            let cleanup = HoldCleanup(held.clone());
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                if !dry {
-                    wait(initial_delay, &cancel)?;
+            let mut job = (key, dry, initial_delay, obs);
+            loop {
+                let (key, dry, initial_delay, obs) = job;
+                // Physical press: capture before spawning; delayed test: capture after countdown.
+                let mouse_window = (!dry && initial_delay == 0).then(capture_mouse_window);
+                let captured = if !dry && initial_delay == 0 && has_app_volume(&key.steps) {
+                    Some(crate::app_audio::capture("foreground", true))
+                } else { None };
+                let cleanup = HoldCleanup(held.clone());
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    if !dry { wait(initial_delay, &cancel)?; }
+                    MOUSE_WINDOW.with(|area| area.set(if dry { None } else { mouse_window.unwrap_or_else(capture_mouse_window) }));
+                    ACTIVE_KEY.with(|id| *id.borrow_mut() = key.runtime_id.clone().unwrap_or_else(|| serde_json::to_string(&key).unwrap_or_default()));
+                    let foreground = if dry || !has_app_volume(&key.steps) { None }
+                        else if let Some(captured) = captured { Some(captured?) }
+                        else { Some(crate::app_audio::capture("foreground", true)?) };
+                    run(&key, dry, &cancel, &tx, &obs, foreground.as_ref(), &held)
+                }));
+                drop(cleanup);
+                let message = match result {
+                    Ok(Ok(())) => "Macro terminée".into(),
+                    Ok(Err(e)) => format!("Macro arrêtée : {e}"),
+                    Err(_) => "Erreur interne : macro interrompue".into(),
+                };
+                let _ = tx.send(Event::Log(message));
+                let mut guard = state.lock().unwrap_or_else(|e| e.into_inner());
+                if cancel.load(Ordering::SeqCst) && guard.queue.is_empty() {
+                    *last_finished.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
+                    running.store(false, Ordering::SeqCst);
+                    break;
                 }
-                MOUSE_WINDOW.with(|area| area.set(if dry { None } else { mouse_window.unwrap_or_else(capture_mouse_window) }));
-                ACTIVE_KEY.with(|id| *id.borrow_mut() = key.runtime_id.clone().unwrap_or_else(|| serde_json::to_string(&key).unwrap_or_default()));
-                let foreground = if dry || !has_app_volume(&key.steps) { None }
-                    else if let Some(captured) = captured { Some(captured?) }
-                    else { Some(crate::app_audio::capture("foreground", true)?) };
-                run(&key, dry, &cancel, &tx, &obs, foreground.as_ref(), &held)
-            }));
-            drop(cleanup);
-            let message = match result {
-                Ok(Ok(())) => "Macro terminée".into(),
-                Ok(Err(e)) => format!("Macro arrêtée : {e}"),
-                Err(_) => "Erreur interne : macro interrompue".into(),
-            };
-            let _ = tx.send(Event::Log(message));
-            *last_finished.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
-            running.store(false, Ordering::SeqCst);
+                if let Some(next) = guard.queue.pop_front() {
+                    cancel.store(false, Ordering::SeqCst);
+                    job = next;
+                } else {
+                    *last_finished.lock().unwrap_or_else(|e| e.into_inner()) = Instant::now();
+                    running.store(false, Ordering::SeqCst);
+                    break;
+                }
+            }
         });
     }
 }
@@ -297,6 +348,23 @@ fn interpolate_runtime(text: &str, vars: &std::collections::BTreeMap<String, Str
         &format!("{:02}:{:02}:{:02}", now.wHour, now.wMinute, now.wSecond), timestamp, &clipboard))
 }
 
+#[cfg(test)]
+mod execution_decision_tests {
+    use super::*;
+    use crate::model::RunMode;
+    #[test]
+    fn new_press_while_running_and_debounce() {
+        use PressDecision::*;
+        assert_eq!(press_decision(None, false, 0, None, 0), Start);
+        assert_eq!(press_decision(None, true, 0, None, 0), Ignore);
+        assert_eq!(press_decision(Some(RunMode::Restart), true, 2, Some(100), 0), Restart);
+        assert_eq!(press_decision(Some(RunMode::Queue), true, 4, Some(100), 0), Queue);
+        assert_eq!(press_decision(Some(RunMode::Queue), true, 5, Some(100), 0), Full);
+        assert_eq!(press_decision(Some(RunMode::Queue), true, 0, Some(99), 100), Debounced);
+        assert_eq!(press_decision(Some(RunMode::Queue), true, 0, Some(100), 100), Queue);
+        assert_eq!(press_decision(Some(RunMode::Restart), true, 0, Some(0), 100), Debounced);
+    }
+}
 #[cfg(test)]
 mod interpolation_tests {
     use super::*;

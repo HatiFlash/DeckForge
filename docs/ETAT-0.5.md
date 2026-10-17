@@ -10,6 +10,12 @@ Exécutables prêts sur le PC fixe : `Bureau\DeckForge-0.5-fusion\DeckForge.exe`
 - Testé automatiquement : transitions pures et compatibilité des anciennes préférences ; build complet Windows.
 - À tester avec Hatim : vrais lancements/fermetures d’application, connexion/déconnexion d’un périphérique audio, heure locale et passage de minute, pause globale et fonctionnement sans D6. Aucun test automatisé ne déclenche de macro réelle.
 
+## E2 — Contrôle d’exécution par touche (17/10/2026)
+
+- Livré : `run_mode` facultatif (`ignore`, `restart`, `queue`) et `debounce_ms` (défaut 0) sur chaque touche ; inspecteur Avancé, file globale bornée à cinq macros, arrêt et redémarrage annulables.
+- Testé automatiquement : décision pure en cours/nouvel appui/anti-rebond, compatibilité JSON et build Windows complet.
+- À tester avec Hatim : appuis physiques répétés et enchaînement de macros longues, touche Arrêter, raccourcis globaux et déclencheurs automatiques. Aucun test automatisé ne lance de macro réelle.
+
 ## Blocs de l'Atelier — lot A
 
 - Livré et testé (automatique) : `device_volume`, contrôle du périphérique de sortie ou d'entrée Core Audio, liste des périphériques actifs, simulation sans effet, cinq modèles audio et schéma MCP.
