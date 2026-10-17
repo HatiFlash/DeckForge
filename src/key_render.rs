@@ -486,3 +486,30 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod merged_face_tests {
+    use super::*;
+    use crate::model::{Key, Step};
+    #[test]
+    fn plugin_pixels_override_builtin_face_but_preserve_native_badge() {
+        let font = font().unwrap();
+        let key = Key {
+            label: "Studio".into(),
+            steps: vec![Step::Delay { ms: 1 }],
+            runtime_badge: Some("REC".into()),
+            ..Key::default()
+        };
+        let plain = for_device(&key, 126, &font).unwrap().0;
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgb8(RgbImage::from_pixel(32, 32, Rgb([30, 210, 60])))
+            .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        let face = for_plugin(&key, 126, &font, Some(&png), None).unwrap();
+        assert_ne!(plain, face);
+        let without_badge = for_plugin(&Key { runtime_badge: None, ..key }, 126, &font, Some(&png), None).unwrap();
+        assert_ne!(face, without_badge);
+        let image = image::load_from_memory(&face).unwrap().to_rgb8();
+        let center = image.get_pixel(63, 63).0;
+        assert!(center[1] > center[0] && center[1] > center[2]);
+    }
+}

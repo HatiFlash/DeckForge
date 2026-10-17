@@ -94,3 +94,10 @@ Tests exécutés : Build-Windows.ps1 -Action All : 86 tests application, 5 tests
 - GIF de plus de 2048 px refusés pour l'animation (image fixe) ; à l'import, un GIF de plus de 512 px est réduit automatiquement à 256 px.
 - Mesure après correctif, configuration de l'utilisateur avec deux GIF : 0 image vide sur 658 captures, environ 19 % d'un cœur (0.4.3 : 21 %). Animation visible dans l'aperçu et sur le D6.
 - Reste possible : mettre en cache les trames D6 entre deux synchronisations (non nécessaire à ce stade).
+## Fusion 0.5 — actions natives et plugins Stream Dock
+
+- Fusion de `claude/native` et `claude/plugins` dans `claude/0.5` : OBS, son, souris, réseau, Toggle et plugins avec Property Inspector, sans retirer les 11 outils MCP.
+- Conflits résolus dans Cargo.lock, main.rs, model.rs, key_render.rs, ui.rs, ui_key_preview.rs et ui_tests.rs. L'affichage conserve les états audio/OBS et le badge Toggle sur les touches à étapes ; la face du plugin prime pour une touche liée à un plugin. Le rendu du badge est partagé avec la face plugin.
+- Test de régression ajouté : la face plugin remplace l'icône native tout en conservant le badge d'état. Test ciblé exécuté et réussi.
+- Vérifications exécutées : `Build-Windows.ps1 -Action All -PreviewDirectory %TEMP%\df-merge05` (160 tests application, 6 tests MCP, transports MCP stdio/HTTP validés, aucune alerte de compilation) ; `cargo clippy --locked --all-targets` (code 0, 29 avertissements uniques dans la cible tests et 23 doublons pour la cible application, sous le plafond de 30). La suite complète sera relancée après ce test de régression.
+- À vérifier sur le matériel : LCD et appuis physiques du D6, états OBS, son, réseau, Toggle et Property Inspector des plugins ; aucun lancement de fenêtre ni commande USB réelle pendant la fusion.
