@@ -501,6 +501,9 @@ impl App {
                         if let Some((r, c)) = self.pending.take() {
                             if r == revision {
                                 self.applied = c;
+                                if self.sleep.sleeping {
+                                    let _ = self.device.send(Command::Brightness(self.config.sleep_brightness));
+                                }
                             }
                         }
                         self.log(
@@ -706,9 +709,7 @@ impl App {
     fn housekeeping(&mut self) {
         self.update_auto_profile();
         if self.wanted && self.gate.connected && self.sleep.due(Instant::now(), self.config.sleep_after_min) {
-            if self.wanted && self.gate.connected {
-                let _ = self.device.send(Command::Brightness(self.config.sleep_brightness));
-            }
+            let _ = self.device.send(Command::Brightness(self.config.sleep_brightness));
         }
     }
     fn add_profile(&mut self, duplicate: bool) {
@@ -2526,6 +2527,24 @@ mod dialog_tests {
 #[cfg(test)]
 mod automatic_profile_sleep_tests {
     use super::*;
+    #[test]
+    fn legacy_config_defaults_and_new_fields_round_trip() {
+        let old = serde_json::to_value(Config::default()).unwrap();
+        let mut old = old;
+        for field in ["auto_profile", "sleep_after_min", "sleep_brightness"] { old.as_object_mut().unwrap().remove(field); }
+        old["profiles"][0].as_object_mut().unwrap().remove("apps");
+        let mut loaded: Config = serde_json::from_value(old).unwrap();
+        assert!(!loaded.auto_profile);
+        assert_eq!(loaded.sleep_after_min, 0);
+        assert_eq!(loaded.sleep_brightness, 0);
+        assert!(loaded.profiles[0].apps.is_empty());
+        loaded.profiles[0].apps.push("OBS64.EXE".into());
+        loaded.auto_profile = true;
+        loaded.sleep_after_min = 15;
+        assert_eq!(serde_json::from_str::<Config>(&serde_json::to_string(&loaded).unwrap()).unwrap().profiles[0].apps, vec!["OBS64.EXE"]);
+        loaded.sleep_after_min = 241;
+        assert!(loaded.validate().is_err());
+    }
     #[test]
     fn matching_and_base_fallback() {
         let mut c = Config::default();
