@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 #[derive(Clone, PartialEq)]
 struct Signature {
     label: String,
+    runtime_badge: Option<String>,
     title_size: u8,
     icon_scale: u8,
     color: [u8; 3],
@@ -18,7 +19,7 @@ struct Signature {
 impl Signature {
     fn new(key: &Key, size: u32) -> Self {
         Self {
-            label: key.label.clone(), title_size: key.title_size, icon_scale: key.icon_scale,
+            label: key.label.clone(), runtime_badge: key.runtime_badge.clone(), title_size: key.title_size, icon_scale: key.icon_scale,
             color: key.color, background: key.background, image: key.image.clone(),
             kind: crate::icons::kind(key), has_actions: !key.steps.is_empty(), size,
             file: if key.image.is_empty() { None } else {

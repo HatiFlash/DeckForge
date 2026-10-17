@@ -144,6 +144,8 @@ pub struct Key {
     pub long_steps: Vec<Step>,
     #[serde(skip)]
     pub display_kind: Option<usize>,
+    #[serde(skip)]
+    pub runtime_badge: Option<String>,
 }
 impl Default for Key {
     fn default() -> Self {
@@ -158,6 +160,7 @@ impl Default for Key {
             steps: vec![],
             long_steps: vec![],
             display_kind: None,
+            runtime_badge: None,
         }
     }
 }

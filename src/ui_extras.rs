@@ -449,7 +449,7 @@ impl App {
         format!("Utilise le connecteur MCP DeckForge pour proposer cette automatisation :\n{}\n\nDestination exacte : {destination}\nLis d’abord deckforge_get_state et deckforge_get_profile. Si la demande concerne l’audio, utilise deckforge_get_audio_devices pour récupérer les identifiants réels. Tu peux utiliser deckforge_get_icons ; pour audio_switch, first_icon/second_icon acceptent builtin:headphones, builtin:speakers et builtin:microphone. Crée les étapes avec deckforge_configure_key (conditions, répétitions et variables possibles). Si une information manque, demande-la-moi au lieu d’inventer un périphérique, un programme ou un script. N’exécute aucune macro. Attends la validation de la proposition dans DeckForge ; les blocs resteront ensuite modifiables dans l’Atelier.",self.assistant_request.trim())
     }
     pub(super) fn presented_key(&self, index: usize) -> Key {
-        crate::audio::present_key(&self.config.keys()[index], &self.audio)
+        crate::obs_monitor::present_key(&crate::audio::present_key(&self.config.keys()[index], &self.audio), &self.obs_state)
     }
     pub(super) fn refresh_hotkeys(&self) {
         if let Some(desktop) = &self.desktop {

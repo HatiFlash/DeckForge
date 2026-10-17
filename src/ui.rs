@@ -133,6 +133,7 @@ pub struct App {
     delete_page: Option<String>,
     desktop: Option<crate::desktop::Desktop>,
     audio: crate::audio::Snapshot,
+    obs_state: crate::obs_monitor::Snapshot,
     running_block: Vec<usize>,
     open_requested: bool,
     tray_ready: bool,
@@ -293,6 +294,7 @@ impl App {
             delete_page: None,
             desktop,
             audio: Default::default(),
+            obs_state: Default::default(),
             running_block: vec![],
             open_requested: false,
             tray_ready: false,
@@ -360,7 +362,7 @@ impl App {
             for keys in std::iter::once(&mut p.keys).chain(p.pages.iter_mut().map(|p| &mut p.keys))
             {
                 for key in keys {
-                    *key = crate::audio::present_key(key, &self.audio);
+                    *key = crate::obs_monitor::present_key(&crate::audio::present_key(key, &self.audio), &self.obs_state);
                 }
             }
         }
@@ -2344,6 +2346,11 @@ impl Runner {
 impl App {
     fn background_tick(&mut self) {
         crate::obs_monitor::update(&self.config.obs, false);
+        let obs_state = crate::obs_monitor::snapshot();
+        if obs_state != self.obs_state {
+            self.obs_state = obs_state;
+            if self.wanted && !self.gate.dirty && !self.gate.invalid { self.upload(false); }
+        }
         self.events();
         self.housekeeping();
         let due = self.long_press.due(Instant::now(), self.applied.long_press_ms);

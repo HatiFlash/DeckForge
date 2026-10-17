@@ -210,6 +210,39 @@ fn jpeg_with_frame(k: &crate::model::Key, size: u32, font: &FontArc, frame: Opti
             }
         }
     }
+    if let Some(badge) = &k.runtime_badge {
+        // Device pixels are composed here, before the transport rotation; preview uses this JPEG.
+        let red = !matches!(badge.as_str(), "SCÈNE" | "×");
+        let color = if red { Rgb([220, 40, 53]) } else { Rgb([40, 146, 192]) };
+        let radius = (size / 13).max(4) as i32;
+        let cx = size as i32 - radius - 6;
+        let cy = radius + 6;
+        for y in (cy-radius).max(0)..(cy+radius).min(size as i32) {
+            for x in (cx-radius).max(0)..(cx+radius).min(size as i32) {
+                if (x-cx).pow(2)+(y-cy).pow(2) <= radius.pow(2) { image.put_pixel(x as u32,y as u32,color); }
+            }
+        }
+        let text = if badge == "SCÈNE" { "SCENE" } else { badge.as_str() };
+        let scaled = font.as_scaled(PxScale::from((size as f32 * 0.12).max(9.0)));
+        let mut x = 6.0;
+        let y = 5.0 + scaled.ascent();
+        for c in text.chars() {
+            let id = scaled.glyph_id(c);
+            let glyph = id.with_scale_and_position(scaled.scale(), ab_glyph::point(x, y));
+            if let Some(outline) = font.outline_glyph(glyph) {
+                let bounds = outline.px_bounds();
+                outline.draw(|gx, gy, coverage| {
+                    let px = bounds.min.x as i32 + gx as i32;
+                    let py = bounds.min.y as i32 + gy as i32;
+                    if px >= 0 && py >= 0 && px < size as i32 && py < size as i32 {
+                        let p = image.get_pixel_mut(px as u32, py as u32);
+                        for ch in &mut p.0 { *ch = (*ch as f32 * (1.0 - coverage) + 255.0 * coverage) as u8; }
+                    }
+                });
+            }
+            x += scaled.h_advance(id);
+        }
+    }
     let image = image::imageops::rotate180(&image);
     let mut bytes = Vec::new();
     image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, 88).encode(

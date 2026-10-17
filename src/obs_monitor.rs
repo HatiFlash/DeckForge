@@ -168,3 +168,33 @@ fn run(rx: Receiver<(ObsSettings, bool)>, state: std::sync::Arc<Mutex<Snapshot>>
 }
 
 
+
+/// Only the transient presentation changes; configured actions and serialised profiles stay intact.
+pub fn present_key(key: &crate::model::Key, state: &Snapshot) -> crate::model::Key {
+    let mut shown = key.clone();
+    if key.steps.len() != 1 { return shown; }
+    let active = match key.steps[0].active() {
+        crate::model::Step::ObsRecord { .. } if state.record => Some("REC"),
+        crate::model::Step::ObsStream { .. } if state.stream => Some("LIVE"),
+        crate::model::Step::ObsVirtualCam { .. } if state.cam => Some("CAM"),
+        crate::model::Step::ObsReplay { .. } if state.replay => Some("REPLAY"),
+        crate::model::Step::ObsScene { name } if !state.scene.is_empty() && *name == state.scene => Some("SCÈNE"),
+        crate::model::Step::ObsMute { input, .. } if state.muted.get(input) == Some(&true) => Some("×"),
+        _ => None,
+    };
+    if let Some(badge) = active { shown.runtime_badge = Some(badge.into()); }
+    shown
+}
+#[cfg(test)] mod presentation_tests {
+    use super::*;
+    #[test] fn record_badge_follows_event_and_never_serializes() {
+        let key = crate::model::Key { label:"Studio".into(), steps: vec![crate::model::Step::ObsRecord { mode:"toggle".into() }], ..Default::default() };
+        let mut state = Snapshot::default();
+        assert!(present_key(&key, &state).runtime_badge.is_none());
+        apply(&mut state,"RecordStateChanged", &serde_json::json!({"outputActive":true}));
+        let shown = present_key(&key, &state);
+        assert_eq!(shown.runtime_badge.as_deref(), Some("REC"));
+        assert_eq!(shown.label, "Studio");
+        assert!(!serde_json::to_string(&shown).unwrap().contains("runtime_badge"));
+    }
+}
