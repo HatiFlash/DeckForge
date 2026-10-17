@@ -1,8 +1,21 @@
-# DeckForge 0.4.3 — version de test Windows
+# DeckForge 0.5.0 — version de test Windows
 
 Application Rust indépendante pour le FIFINE AmpliGame D6 (USB 3142:0060), avec macros, pages, dossiers et connecteur MCP optionnel. Le logiciel FIFINE doit être fermé pour laisser DeckForge accéder au D6.
 
 ![Interface](docs/interface.png)
+
+## Nouveautés 0.5.0
+
+- **Édition plus sûre** : Annuler / Rétablir sur 50 étapes (Ctrl+Z / Ctrl+Y), copier / coller / dupliquer une touche par clic droit ou Ctrl+C / Ctrl+V, même entre pages et profils.
+- **Atelier de blocs repensé** : il s'ouvre en grand à la place du deck ; palette de blocs par catégories avec recherche ; « + Insérer ici » entre deux blocs ; cartes repliables avec une phrase résumée ; dupliquer, désactiver ou retirer un bloc ; blocs incomplets signalés en orange ; six modèles prêts à personnaliser ; mode Simple (champs essentiels et aide) ou Avancé (tous les réglages) ; déroulé lisible de la simulation ; raccourcis Ctrl+D, Suppr, Alt+↑/↓.
+- **Appui long** : chaque touche peut avoir une seconde série d'actions déclenchée en la maintenant (seuil réglable, 500 ms par défaut). Sans appui long, la touche réagit toujours immédiatement.
+- **Icônes animées** : GIF animés et vidéos (MP4, WebM, MOV, MKV, AVI, converties en GIF à l'import avec FFmpeg, 10 s maximum, sans son). Curseur **Taille de l'icône** (20 à 200 %) et taille du titre par touche.
+- **Profil automatique** selon l'application au premier plan (Applications associées dans le menu du profil, interrupteur dans Réglages) et **veille de l'écran** du D6 après inactivité ; le premier appui réveille sans lancer la macro.
+- **Fiabilité** : le D6 reste réactif pendant les boîtes « Ouvrir un fichier », sauvegarde de secours `config.json.bak` atomique avec reprise automatique, erreurs de sauvegarde consignées dans `deckforge-error.log`, MCP HTTP concurrent borné.
+
+Détails, tests réalisés et points restant à vérifier : [journal 0.5](docs/CHANGELOG-0.5.md) et [essais manuels 0.5.0](docs/TEST-0.5.0.md).
+
+**Retour en 0.4.3** : garder une copie de `config.json`. La 0.4.3 refuse une configuration contenant un bloc désactivé et ignore (puis efface en réenregistrant) les nouveaux réglages : appui long, tailles, profils associés, veille, animations.
 
 ## Nouveautés 0.4.3
 
@@ -35,7 +48,7 @@ Les profils restent dans `config.json`, les préférences dans `preferences.json
 
 ## Validation et limites
 
-Version de test : voir [les contrôles réalisés](docs/VALIDATION.md) et [les essais manuels](docs/TEST-0.4.3.md). Cette correction a été développée et vérifiée sans ouvrir d’application sur l’écran de l’utilisateur et sans modifier ses périphériques audio.
+Version de test : voir [les contrôles réalisés](docs/VALIDATION.md) et [les essais manuels](docs/TEST-0.5.0.md). Cette correction a été développée et vérifiée sans ouvrir d’application sur l’écran de l’utilisateur et sans modifier ses périphériques audio.
 
 Les plugins tiers Elgato/FIFINE sont inventoriés, mais leur moteur d’exécution n’est pas encore implémenté. L’import de profils ne convertit que les actions reconnues ; voir [compatibilité Elgato](docs/ELGATO.md).
 

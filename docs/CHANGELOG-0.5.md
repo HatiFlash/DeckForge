@@ -37,3 +37,36 @@ Tests exécutés : Build-Windows.ps1 -Action All : 81 tests application, 5 tests
 - Simuler les blocs est le bouton principal.
 
 Tests exécutés : Build-Windows.ps1 -Action All : 86 tests application, 5 tests connecteur, MCP stdio/HTTP OK ; workflow.png contrôlé.
+## Lot 3c - Atelier : guider le débutant, peaufiner pour l'expert
+
+- Six modèles prêts à personnaliser (application puis site, copier puis coller, signature, casque / enceintes, mode travail, répéter une touche) ; remplacer ou ajouter à la fin.
+- Mode Simple / Avancé mémorisé dans `preferences.json` : le mode Simple montre les champs essentiels et une phrase d'aide sous chaque bloc ; aucun réglage n'est perdu en changeant de mode.
+- Déroulé de la simulation : chaque bloc simulé, durée, branche prise, itérations, blocs désactivés sautés ; clic = carte surlignée. Aucune action réelle.
+- Raccourcis : Ctrl+D dupliquer, Suppr retirer (annulable), Alt+↑/↓ déplacer. En-tête de l'atelier sur une ligne.
+
+## Lot 4a - Appui long et taille du titre
+
+- Le D6 envoie aussi les relâchements : ils sont maintenant décodés. Nouveau champ par touche `long_steps` et réglage global `long_press_ms` (250 à 2000, défaut 500).
+- Sans `long_steps` : exécution immédiate à l'appui, aucune latence ajoutée. Avec : relâchement avant le seuil = actions courtes ; seuil atteint = actions longues une seule fois ; le relâchement ensuite ne déclenche rien. Révision synchronisée et filtre de rebond respectés.
+- Si un firmware n'envoyait jamais de relâchement, une touche avec appui long déclencherait toujours l'action longue au seuil (à vérifier sur le D6).
+- Inspecteur : sélecteur Appui court / Appui long ; MCP `deckforge_configure_key` accepte `long_steps`.
+- Taille du titre par touche (`title_size`), appliquée au rendu canonique partagé aperçu / D6.
+
+## Lot 4b - Profil automatique et veille
+
+- `Profile.apps` (exécutables associés, ex. `obs64.exe`) et `Config.auto_profile` : bascule selon l'application au premier plan, retour au profil choisi manuellement, pas de bascule pendant une macro, fenêtre DeckForge ignorée.
+- Veille : `sleep_after_min` (0 = jamais) et `sleep_brightness` ; luminosité envoyée seule (LIG) sans redessiner ; l'appui de réveil n'exécute pas la macro.
+
+## Lot 4c - Icônes animées et taille d'icône
+
+- `icon_scale` (20 à 200 %, défaut 100 = rendu 0.4.3) avec curseur et réinitialisation ; mouvements regroupés dans l'historique ; MCP `configure_key` accepte `icon_scale`.
+- GIF animés bornés (10 s, 150 images, 20 Mo) pré-rendus image par image par le rendu canonique ; aperçu animé à partir des mêmes JPEG.
+- D6 : mise à jour d'une seule touche par trame (BAT + données + STP), débit global ≤ 30 images/s, cadence par touche ≤ `animation_fps` (défaut réglable, 1 à 15), jamais pendant un envoi complet, appuis lus entre les trames. Réglages `d6_animations` et `animation_fps`. Variante de terminaison BAT + ULEND + STP via la variable d'environnement `DECKFORGE_D6_FRAME_ULEND` si le firmware l'exige.
+- Vidéos MP4 / WebM / MOV / MKV / AVI converties en GIF dans `assets/mes-icones` via FFmpeg (PATH, à côté de l'exe ou installation winget Gyan.FFmpeg), hors du fil d'interface, sans console, délai 60 s ; message clair si FFmpeg est absent. Badge « GIF » dans la galerie.
+- Dépendance ajoutée : feature `gif` du crate `image`.
+
+## État final de la branche claude/0.5
+
+- `tools/Build-Windows.ps1 -Action All` : 102 tests de l'application, 5 tests du connecteur MCP, contrôles MCP stdio et HTTP réussis ; aucun avertissement de compilation.
+- Clippy installé : 30 avertissements au plus (33 au départ), tous de style.
+- Aperçus de l'interface régénérés sans fenêtre native et contrôlés visuellement à chaque lot.
