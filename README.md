@@ -4,6 +4,8 @@ Application Rust indépendante pour le FIFINE AmpliGame D6 (USB 3142:0060), avec
 
 ![Interface](docs/interface.png)
 
+Pour connecter Claude Desktop, Claude Code, Codex CLI ou Cursor sans éditer de fichier : bouton **IA** dans la barre → **Connecter une IA**. Voir [le guide MCP](docs/MCP.md).
+
 ## Nouveautés 0.5.0
 
 - **Édition plus sûre** : Annuler / Rétablir sur 50 étapes (Ctrl+Z / Ctrl+Y), copier / coller / dupliquer une touche par clic droit ou Ctrl+C / Ctrl+V, même entre pages et profils.

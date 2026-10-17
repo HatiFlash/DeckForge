@@ -4,6 +4,15 @@ Le connecteur propose **11 outils MCP**, via stdio ou Streamable HTTP local.
 DeckForge valide les profils et exécute les actions. Il n’appelle aucun modèle
 lui-même et ne demande aucune clé OpenAI/Anthropic.
 
+## Connecter en 1 clic
+
+Dans DeckForge, clique **IA : désactivée** dans la barre, active **Autoriser les IA connectées**, puis **Connecter une IA**. Ce choix est conservé dans `preferences.json` ; par défaut l'assistant reste désactivé. **IA : connectée** permet de le désactiver en un clic. La clé locale change à chaque lancement ; la validation des propositions et l'attente de trois secondes avant une exécution restent obligatoires.
+
+Choisis une carte : Claude Desktop, Claude Code, Codex CLI ou Cursor. **Configurer automatiquement** ne remplace que l'entrée DeckForge ; les autres réglages sont conservés. Une sauvegarde `.bak-deckforge` est créée avant chaque modification. **Retirer** supprime uniquement l'entrée DeckForge. Redémarre le client après configuration. Pour Claude Code, si la CLI est trouvée, DeckForge lance `claude mcp add --scope user` (et retire l'ancienne entrée si elle existe) ; sinon, il fusionne `%USERPROFILE%\.claude.json`. Aucun jeton ni clé n'est copié vers ces fichiers. Le connecteur lit son descripteur à côté de `deckforge-mcp.exe`, même lancé depuis un autre dossier.
+
+**Tester la connexion** interroge le connecteur stdio (`initialize` puis `tools/list`) et attend 11 outils. Ce test n'exécute aucune macro. La carte **Autre client** copie le JSON standard.
+
+Pour ChatGPT, la carte décrit le tunnel sécurisé : ouvrir la documentation, copier le chemin du connecteur stdio, puis ChatGPT → Plugins → Ajouter un serveur MCP → Tunnel. Ce parcours dépend du compte ChatGPT et reste à vérifier ; DeckForge n'expose pas son port HTTP sur le réseau.
 ## Client local : Claude, Codex et autres clients stdio
 
 1. Ouvre DeckForge, puis **Réglages → Assistant IA / MCP**, et active l’assistant.
@@ -27,7 +36,7 @@ Exemple ; le bouton de l’app fournit le chemin réel :
 Le client lance le connecteur, qui parle JSON-RPC sur stdin/stdout et rejoint
 l’app par un pont local authentifié. L’app doit rester ouverte. Tant que
 l’assistant est désactivé, les appels aux outils sont refusés.
-Les fichiers des comptes IA ne sont pas modifiés automatiquement.
+Seule une action explicite sur une carte modifie le fichier du client correspondant.
 
 Exemple de demande :
 
