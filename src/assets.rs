@@ -138,9 +138,36 @@ fn read_json(path: &Path) -> Option<serde_json::Value> {
     }
     serde_json::from_slice(&std::fs::read(path).ok()?).ok()
 }
+fn normalized_gif(bytes: &[u8]) -> Result<Option<Vec<u8>>> {
+    use image::{AnimationDecoder, ImageDecoder};
+    let decoder = image::codecs::gif::GifDecoder::new(Cursor::new(bytes))?;
+    let (width, height) = decoder.dimensions();
+    if width <= 512 && height <= 512 { return Ok(None); }
+    ensure!(width <= 4096 && height <= 4096, "GIF trop grand pour une conversion sûre");
+    let mut output = Vec::new();
+    {
+        let mut encoder = image::codecs::gif::GifEncoder::new(&mut output);
+        encoder.set_repeat(image::codecs::gif::Repeat::Infinite)?;
+        let mut count = 0;
+        let mut elapsed = 0u32;
+        for frame in decoder.into_frames().take(151) {
+            let frame = frame?;
+            count += 1;
+            ensure!(count <= 150, "GIF supérieur à 150 images");
+            let (num, den) = frame.delay().numer_denom_ms();
+            elapsed = elapsed.saturating_add(num.checked_div(den).unwrap_or(100).max(20));
+            ensure!(elapsed <= 10_000, "GIF supérieur à 10 secondes");
+            let image = image::DynamicImage::ImageRgba8(frame.buffer().clone()).thumbnail(256, 256).into_rgba8();
+            encoder.encode_frame(image::Frame::from_parts(image, 0, 0, frame.delay()))?;
+        }
+    }
+    ensure!(output.len() <= 20_000_000, "GIF converti trop volumineux");
+    Ok(Some(output))
+}
 pub fn import_image(bytes: &[u8], dest: &Path, name: &str) -> Result<PathBuf> {
     ensure!(bytes.len() <= 20_000_000, "Image trop volumineuse");
     let gif = bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a");
+    let normalized = if gif { normalized_gif(bytes)? } else { None };
     let decoded = if gif { None } else { Some(decode_image(bytes, 512)?) };
     let hash = bytes.iter().fold(0xcbf29ce484222325u64, |h, b| {
         (h ^ (*b as u64)).wrapping_mul(0x100000001b3)
@@ -154,7 +181,7 @@ pub fn import_image(bytes: &[u8], dest: &Path, name: &str) -> Result<PathBuf> {
     let path = dest.join(format!("{safe}-{hash:016x}.{}", if gif { "gif" } else { "png" }));
     if !path.exists() {
         if let Some(decoded) = decoded { decoded.save_with_format(&path, image::ImageFormat::Png)?; }
-        else { let _ = image::load_from_memory_with_format(bytes, image::ImageFormat::Gif)?; std::fs::write(&path, bytes)?; }
+        else { let _ = image::load_from_memory_with_format(bytes, image::ImageFormat::Gif)?; std::fs::write(&path, normalized.as_deref().unwrap_or(bytes))?; }
     }
     Ok(path)
 }
@@ -433,5 +460,29 @@ mod tests {
         let icons = scan(&[dest.clone()]);
         assert!(icons.iter().any(|i| i.path.starts_with(&dest)));
         assert!(!d.path().join("escape.png").exists());
+    }
+}
+
+#[cfg(test)]
+mod gif_size_tests {
+    use super::*;
+    use image::ImageDecoder;
+    #[test]
+    fn large_gif_is_reencoded_at_256_preserving_animation() {
+        let mut bytes = Vec::new();
+        {
+            let mut writer = image::codecs::gif::GifEncoder::new(&mut bytes);
+            for c in [image::Rgba([255, 0, 0, 255]), image::Rgba([0, 255, 0, 255])] {
+                writer.encode_frame(image::Frame::from_parts(image::RgbaImage::from_pixel(600, 520, c), 0, 0, image::Delay::from_numer_denom_ms(100, 1))).unwrap();
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = import_image(&bytes, dir.path(), "large").unwrap();
+        let stored = std::fs::read(path).unwrap();
+        assert_ne!(stored, bytes);
+        let decoded = image::codecs::gif::GifDecoder::new(Cursor::new(stored)).unwrap();
+        let (w,h) = decoded.dimensions();
+        assert!(w <= 256 && h <= 256);
+        assert_eq!(image::AnimationDecoder::into_frames(decoded).collect_frames().unwrap().len(), 2);
     }
 }

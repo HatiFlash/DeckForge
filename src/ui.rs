@@ -1643,6 +1643,12 @@ impl App {
                                     if video { let _ = tx.send(Some(Box::new(|app: &mut App| app.log("Conversion de la vidéo…".into())) as DialogEffect)); }
                                     let result = if video {
                                         crate::assets::import_video(&path, &assets, size).map_err(|e| e.to_string())
+                                    } else if path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("gif")) {
+                                        std::fs::read(&path).map_err(|e| e.to_string()).and_then(|bytes| {
+                                            let oversized = image::image_dimensions(&path).map(|(w,h)| w > 512 || h > 512).unwrap_or(false);
+                                            if oversized { let _ = tx.send(Some(Box::new(|app: &mut App| app.log("GIF trop grand : réduction automatique à 256 px.".into())) as DialogEffect)); }
+                                            crate::assets::import_image(&bytes, &assets, path.file_stem().and_then(|s| s.to_str()).unwrap_or("gif")).map_err(|e| e.to_string())
+                                        })
                                     } else { Ok(path) };
                                     let _=tx.send(Some(Box::new(move |app: &mut App| match result {
                                         Ok(path) => {
@@ -1651,7 +1657,7 @@ impl App {
                                                 if video { app.log("Vidéo convertie en GIF animé.".into()); }
                                             }
                                         }
-                                        Err(e) => app.fail(format!("Import vidéo impossible : {e}")),
+                                        Err(e) => app.fail(format!("Import image ou vidéo impossible : {e}")),
                                     }) as DialogEffect));
                                 }
                             });
