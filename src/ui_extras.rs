@@ -39,7 +39,8 @@ pub(super) fn step_mut<'a>(steps: &'a mut [Step], path: &[usize]) -> Option<&'a 
     let children = match step {
         Step::Repeat { steps, .. } if branch == 0 => steps,
         Step::Toggle { a, b } => if branch == 0 { a } else { b },
-        Step::IfWindow {
+        Step::IfCondition { then_steps, else_steps, .. }
+        | Step::IfWindow {
             then_steps,
             else_steps,
             ..
@@ -64,7 +65,7 @@ const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
     ("Streaming", &[19, 20, 21, 22, 23, 24, 25, 30, 31, 0, 4]), ("Système", &[0, 2, 4, 26, 27, 28, 29, 32, 33]),
     ("Texte", &[1]), ("Applications et sites", &[2, 3]),
     ("Médias et audio", &[4, 13, 37, 38]), ("Fenêtres", &[6]), ("Attendre", &[5]),
-    ("Logique et répétitions", &[14, 15]), ("Variables", &[16, 17]),
+    ("Logique et répétitions", &[14, 15, 39]), ("Variables", &[16, 17]),
     ("Navigation DeckForge", &[7, 8, 9, 10, 11]), ("Avancé / AutoHotkey", &[18]),
 ];
 fn block_help(kind: usize) -> &'static str {
@@ -73,6 +74,7 @@ fn block_help(kind: usize) -> &'static str {
         2 => "Démarre un programme Windows.", 3 => "Ouvre une adresse web.",
         4 => "Commande la lecture et le volume.", 5 => "Attend avant le bloc suivant.",
         6 => "Attend et peut activer une fenêtre.", 13 => "Bascule entre deux appareils audio.", 37 => "Règle uniquement les sessions audio de l’application ciblée.", 38 => "Règle le volume du périphérique (sortie ou microphone), et non celui d’une application.",
+        39 => "Évalue une condition en lecture seule ; exécute ALORS ou SINON.",
         14 => "Exécute des blocs si une fenêtre est ouverte.", 15 => "Rejoue plusieurs fois les blocs imbriqués.",
         16 => "Enregistre une valeur pour cette exécution.", 17 => "Choisit des blocs selon une valeur.",
         19..=25 => "Commande OBS Studio par WebSocket local (OBS 28 ou plus).",
@@ -136,6 +138,7 @@ fn block_summary(step: &Step) -> String {
         Step::UdpSend { host, port, .. } => format!("UDP : {host}:{port}"),
         Step::HttpRequest { method, url, .. } => format!("HTTP {method} : {url}"),
         Step::D6Brightness { mode, value } => format!("Luminosité D6 : {mode} {value} %"),
+        Step::IfCondition { condition, .. } => format!("Si {}", condition.summary()),
         Step::IfWindow { title, .. } => format!("Si la fenêtre {title} est ouverte"),
         Step::IfVariable { name, value, .. } => format!("Si {name} vaut {value}"),
         Step::SetVariable { name, value } => format!("Mémoriser {name} = {value}"),
@@ -203,6 +206,7 @@ fn simulation_trace(steps: &[Step]) -> Vec<TraceLine> {
             let detail = match step {
                 Step::Delay { ms } => format!("{ms} ms simulées"),
                 Step::WaitWindow { timeout_ms, .. } => format!("jusqu'à {timeout_ms} ms (sans attendre)"),
+                Step::IfCondition { .. } => "ALORS et SINON explorés ; condition lue sans effet".into(),
                 Step::IfWindow { .. } => "ALORS et SINON explorés (fenêtre non évaluée)".into(),
                 Step::IfVariable { .. } => "ALORS et SINON explorés (valeur non évaluée)".into(),
                 Step::Repeat { count, .. } => format!("1 itération simulée sur {count} prévues"),
@@ -211,7 +215,7 @@ fn simulation_trace(steps: &[Step]) -> Vec<TraceLine> {
             };
             out.push(TraceLine { path: path.clone(), text: format!("{prefix} · {} — {detail}", block_summary(step)) });
             match step {
-                Step::IfWindow { then_steps, else_steps, .. } | Step::IfVariable { then_steps, else_steps, .. } => {
+                Step::IfCondition { then_steps, else_steps, .. } | Step::IfWindow { then_steps, else_steps, .. } | Step::IfVariable { then_steps, else_steps, .. } => {
                     let mut p = path.clone(); p.push(0); walk(then_steps, &p, out, limit);
                     p.pop(); p.push(1); walk(else_steps, &p, out, limit);
                 }
@@ -272,7 +276,7 @@ pub(super) fn block_editor(
                 });
             }
             let disabled = step.is_disabled();
-            let color = if matches!(step.active(), Step::IfWindow { .. } | Step::IfVariable { .. }) {
+            let color = if matches!(step.active(), Step::IfWindow { .. } | Step::IfVariable { .. } | Step::IfCondition { .. }) {
                 Color32::from_rgb(164, 123, 239)
             } else if matches!(step.active(), Step::Repeat { .. }) {
                 Color32::from_rgb(239, 169, 83)
@@ -337,7 +341,7 @@ pub(super) fn block_editor(
                         Step::Hotkey { .. } => 0, Step::Text { .. } => 1, Step::Launch { .. } => 2,
                         Step::Url { .. } => 3, Step::Media { .. } => 4, Step::Delay { .. } => 5,
                         Step::WaitWindow { .. } => 6, Step::AudioSwitch { .. } => 13, Step::DeviceVolume { .. } => 38,
-                        Step::IfWindow { .. } => 14, Step::Repeat { .. } => 15,
+                        Step::IfWindow { .. } => 14, Step::IfCondition { .. } => 39, Step::Repeat { .. } => 15,
                         Step::Toggle { .. } => 36,
                         Step::SetVariable { .. } => 16, Step::IfVariable { .. } => 17,
                         Step::AutoHotkey { .. } => 18, _ => 7,
@@ -370,7 +374,8 @@ pub(super) fn block_editor(
                         *record = Some(path.clone());
                     }
                     match step.active_mut() {
-                        Step::IfWindow {
+                        Step::IfCondition { then_steps, else_steps, .. }
+                        | Step::IfWindow {
                             then_steps,
                             else_steps,
                             ..

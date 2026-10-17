@@ -6,6 +6,7 @@ mod app_audio;
 mod automation;
 mod network_actions;
 mod catalog;
+mod conditions;
 mod control;
 mod desktop;
 mod device;

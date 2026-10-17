@@ -42,7 +42,7 @@ pub fn step_kind(step: &Step) -> usize {
                 26
             }
         }
-        Step::IfWindow { .. } | Step::IfVariable { .. } => 29,
+        Step::IfWindow { .. } | Step::IfVariable { .. } | Step::IfCondition { .. } => 29,
         Step::Repeat { .. } => 30,
         Step::SetVariable { .. } => 2,
         Step::AutoHotkey { .. } => 1,

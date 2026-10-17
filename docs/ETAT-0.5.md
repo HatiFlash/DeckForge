@@ -8,7 +8,13 @@ Exécutables prêts sur le PC fixe : `Bureau\DeckForge-0.5-fusion\DeckForge.exe`
 
 - Livré et testé (automatique) : `device_volume`, contrôle du périphérique de sortie ou d'entrée Core Audio, liste des périphériques actifs, simulation sans effet, cinq modèles audio et schéma MCP.
 - À tester avec Hatim : régler le volume d'un microphone et d'une sortie réelle, muet / rétablissement, déconnexion d'un périphérique sélectionné. Aucun test automatisé ne modifie le son réel.
-- Non livré : `if_condition`, `wait_until`, `notify`, migration FocusAudio.
+- Non livré dans le lot A : `notify`, migration FocusAudio. Les conditions et l'attente font partie du lot A2 ci-dessous.
+
+## Blocs de l'Atelier — lot A2
+
+- Livré et testé automatiquement : « Si… sinon » (`if_condition`), conditions Windows en lecture seule et logique booléenne/variables ; les deux branches sont simulées sans effet.
+- À tester avec Hatim : application ouverte par rapport au premier plan, titre de fenêtre, sessions audio actives et muettes, périphériques branchés/débranchés, branches de macro sur le D6. Aucun test automatisé n'agit sur le son ou le clavier.
+- Non livré dans ce premier groupe : « Attendre que… » (`wait_until`).
 
 ## Nouveautés 0.5
 

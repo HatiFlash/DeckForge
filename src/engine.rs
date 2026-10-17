@@ -139,7 +139,7 @@ fn has_app_volume(steps: &[Step]) -> bool {
         Step::AppVolume { target, .. } => target == "foreground",
         Step::Repeat { steps, .. } => has_app_volume(steps),
         Step::Toggle { a, b } => has_app_volume(a) || has_app_volume(b),
-        Step::IfWindow { then_steps, else_steps, .. } | Step::IfVariable { then_steps, else_steps, .. } => has_app_volume(then_steps) || has_app_volume(else_steps),
+        Step::IfWindow { then_steps, else_steps, .. } | Step::IfVariable { then_steps, else_steps, .. } | Step::IfCondition { then_steps, else_steps, .. } => has_app_volume(then_steps) || has_app_volume(else_steps),
         _ => false,
     })
 }
@@ -198,6 +198,13 @@ fn run_steps(
         if dry {
             if let Some(summary) = step.active().app_volume_summary().or_else(|| step.active().device_volume_summary()) { let _ = tx.send(Event::Log(format!("Simulation : {summary}"))); }
             match step {
+                Step::IfCondition { condition, then_steps, else_steps } => {
+                    let result = condition.evaluate(variables)?;
+                    let _ = tx.send(Event::Log(format!("Simulation : {} = {result} ; ALORS et SINON explorés sans effet", condition.summary())));
+                    for (branch_id, branch) in [then_steps, else_steps].into_iter().enumerate() {
+                        run_steps(branch, true, cancel, tx, variables, budget, &[path.clone(), vec![branch_id]].concat(), obs, foreground)?;
+                    }
+                }
                 Step::IfWindow {
                     then_steps,
                     else_steps,
@@ -292,6 +299,12 @@ fn run_steps(
             }
             Step::SetVariable { name, value } => {
                 variables.insert(name.clone(), value.clone());
+            }
+            Step::IfCondition { condition, then_steps, else_steps } => {
+                let result = condition.evaluate(variables)?;
+                let _ = tx.send(Event::Log(format!("{} : {}", condition.summary(), if result { "ALORS" } else { "SINON" })));
+                let branch_id = usize::from(!result);
+                run_steps(if result { then_steps } else { else_steps }, false, cancel, tx, variables, budget, &[path.clone(), vec![branch_id]].concat(), obs, foreground)?;
             }
             Step::IfWindow {
                 title,
@@ -537,7 +550,7 @@ unsafe extern "system" fn enum_window(hwnd: HWND, data: LPARAM) -> BOOL {
     }
     1
 }
-fn find_window(query: &str) -> Option<HWND> {
+pub(crate) fn find_window(query: &str) -> Option<HWND> {
     let mut search = Search {
         query: query.to_lowercase(),
         found: None,

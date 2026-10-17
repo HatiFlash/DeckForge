@@ -70,6 +70,11 @@ pub enum Step {
         #[serde(default = "default_app_step")] step: u8,
         #[serde(default = "default_device_level")] level: u8,
     },
+    IfCondition {
+        #[serde(default)] condition: crate::conditions::Condition,
+        #[serde(default)] then_steps: Vec<Step>,
+        #[serde(default)] else_steps: Vec<Step>,
+    },
     IfWindow {
         title: String,
         then_steps: Vec<Step>,
@@ -173,6 +178,7 @@ impl Step {
             Self::AudioSwitch { .. } => "Basculer le périphérique audio",
             Self::AppVolume { .. } => "Volume d’une application",
             Self::DeviceVolume { .. } => "Volume d’un périphérique",
+            Self::IfCondition { .. } => "Si… sinon",
             Self::IfWindow { .. } => "Si une fenêtre est ouverte",
             Self::Repeat { .. } => "Répéter des blocs",
             Self::SetVariable { .. } => "Définir une variable",
@@ -718,6 +724,7 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
     validate_tree(&key.steps, 0, &mut total)?;
     for s in &key.steps {
         if s.is_disabled() { continue; }
+        if let Step::IfCondition { condition, .. } = s { condition.validate()?; }
         match s {
             Step::MouseClick { button, .. } if !["left", "right", "middle"].contains(&button.as_str()) => bail!("Bouton souris invalide"),
             Step::MouseMove { x, y, .. } if !(-32768..=32767).contains(x) || !(-32768..=32767).contains(y) => bail!("Position souris hors limites"),
@@ -797,7 +804,8 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
             {
                 bail!("Choisis AutoHotkey v2 et renseigne le script")
             }
-            Step::IfWindow {
+            Step::IfCondition { then_steps, else_steps, .. }
+            | Step::IfWindow {
                 then_steps,
                 else_steps,
                 ..
@@ -855,7 +863,8 @@ fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> 
     for s in steps {
         if s.is_disabled() { continue; }
         match s {
-            Step::IfWindow {
+            Step::IfCondition { then_steps, else_steps, .. }
+            | Step::IfWindow {
                 then_steps,
                 else_steps,
                 ..
@@ -887,6 +896,22 @@ fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> 
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod condition_step_tests {
+    use super::*;
+    #[test]
+    fn defaults_roundtrip_validation_and_summary() {
+        let s: Step = serde_json::from_str(r#"{"type":"if_condition"}"#).unwrap();
+        assert!(matches!(&s, Step::IfCondition { then_steps, else_steps, .. } if then_steps.is_empty() && else_steps.is_empty()));
+        assert_eq!(s, serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap());
+        assert!(validate_key(&Key { steps: vec![s.clone()], ..Key::default() }, &Config::default()).is_ok());
+        assert!(matches!(s, Step::IfCondition { condition, .. } if condition.summary().contains("premier plan")));
+        assert!(serde_json::from_str::<Step>(r#"{"type":"if_condition","unknown":3}"#).is_err());
+        let bad = Step::IfCondition { condition: crate::conditions::Condition::All { conditions: vec![] }, then_steps: vec![], else_steps: vec![] };
+        assert!(validate_key(&Key { steps: vec![bad], ..Key::default() }, &Config::default()).is_err());
+    }
 }
 
 #[cfg(test)]

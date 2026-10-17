@@ -47,6 +47,22 @@ pub fn tools() -> Value {
         json!({"type":"object","properties":{"type":{"const":"if_variable"},"name":{"type":"string"},"value":{"type":"string"},"then_steps":nested,"else_steps":nested},"required":["type","name","value","then_steps","else_steps"],"additionalProperties":false}),
         json!({"type":"object","properties":{"type":{"const":"auto_hotkey"},"executable":{"type":"string"},"script":{"type":"string","maxLength":200000},"args":{"type":"array","items":{"type":"string"},"maxItems":128}},"required":["type","executable","script","args"],"additionalProperties":false})
     ]);
+    let condition_schema = json!({"oneOf":[
+        {"type":"object","properties":{"kind":{"const":"foreground_app"},"exe":{"type":"string"}},"required":["kind"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"const":"app_running"},"exe":{"type":"string"}},"required":["kind"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"const":"window_open"},"title":{"type":"string"}},"required":["kind"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"enum":["app_audio_playing","app_muted"]},"exe":{"type":"string"}},"required":["kind"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"const":"app_volume_compare"},"exe":{"type":"string"},"op":{"enum":["above","below"]},"value":{"type":"integer","minimum":0,"maximum":100}},"required":["kind"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"const":"device_muted"},"input":{"type":"boolean"},"device":{"type":"string"}},"required":["kind"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"const":"device_volume_compare"},"input":{"type":"boolean"},"device":{"type":"string"},"op":{"enum":["above","below"]},"value":{"type":"integer","minimum":0,"maximum":100}},"required":["kind"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"const":"audio_device_present"},"name_contains":{"type":"string"},"input":{"type":"boolean"}},"required":["kind"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"const":"default_output_is"},"name_contains":{"type":"string"}},"required":["kind"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"const":"variable_compare"},"name":{"type":"string"},"op":{"enum":["equals","not_equals","contains","greater","less"]},"value":{"type":"string"}},"required":["kind"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"const":"not"},"condition":{"$ref":"#/$defs/condition"}},"required":["kind","condition"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"const":"all"},"conditions":{"type":"array","items":{"$ref":"#/$defs/condition"},"minItems":1,"maxItems":32}},"required":["kind"],"additionalProperties":false},
+        {"type":"object","properties":{"kind":{"const":"any"},"conditions":{"type":"array","items":{"$ref":"#/$defs/condition"},"minItems":1,"maxItems":32}},"required":["kind"],"additionalProperties":false}
+    ]});
+    step_schema["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"type":{"const":"if_condition"},"condition":{"$ref":"#/$defs/condition"},"then_steps":nested.clone(),"else_steps":nested.clone()},"required":["type"],"additionalProperties":false}));
     step_schema["oneOf"].as_array_mut().unwrap().push(json!({"type":"object","properties":{"type":{"const":"disabled"},"step":{"$ref":"#/$defs/step"}},"required":["type","step"],"additionalProperties":false}));
     let key_args = json!({"type":"object","properties":{"profile":profile,"page":{"type":"string","maxLength":160},"key":position},"required":["profile","key"],"additionalProperties":false});
     let mut list=vec![
@@ -64,7 +80,7 @@ pub fn tools() -> Value {
     list.push(tool("deckforge_create_page","Propose a new page or folder in a profile. Requires approval in DeckForge. Folders have a Back key; use configure_key to link a folder after approval.",json!({"type":"object","properties":{"profile":profile,"id":{"type":"string","minLength":1,"maxLength":160},"name":{"type":"string","minLength":1,"maxLength":128},"folder":{"type":"boolean"}},"required":["profile","id","name","folder"],"additionalProperties":false}),false));
     for tool in &mut list {
         if tool["name"] == "deckforge_configure_key" {
-            tool["inputSchema"]["$defs"] = json!({"step":step_schema});
+            tool["inputSchema"]["$defs"] = json!({"step":step_schema,"condition":condition_schema});
         }
     }
     json!({"tools":list})

@@ -2651,6 +2651,132 @@ impl Drop for Runner {
         self.stop.store(true, Ordering::SeqCst);
     }
 }
+fn edit_condition(ui: &mut egui::Ui, condition: &mut crate::conditions::Condition, audio: &crate::audio::Snapshot, depth: usize) -> bool {
+    use crate::conditions::Condition as C;
+    let mut changed = false;
+    let variants = [
+        ("foreground_app", "Application au premier plan"), ("app_running", "Application ouverte (arrière-plan inclus)"),
+        ("window_open", "Fenêtre ouverte"), ("app_audio_playing", "Session audio active"),
+        ("app_muted", "Application muette"), ("app_volume_compare", "Volume d’application"),
+        ("device_muted", "Périphérique muet"), ("device_volume_compare", "Volume du périphérique"),
+        ("audio_device_present", "Périphérique audio actif"), ("default_output_is", "Sortie par défaut"),
+        ("variable_compare", "Variable"), ("not", "NON"), ("all", "Toutes (ET)"), ("any", "Au moins une (OU)")
+    ];
+    let mut selected = condition.kind().to_owned();
+    egui::ComboBox::from_id_salt(("condition_kind", depth)).selected_text(condition.label()).show_ui(ui, |ui| {
+        for (id, label) in variants { if depth < 8 || !["not", "all", "any"].contains(&id) {
+            changed |= ui.selectable_value(&mut selected, id.into(), label).changed();
+        } }
+    });
+    if selected != condition.kind() {
+        *condition = match selected.as_str() {
+            "foreground_app" => C::ForegroundApp { exe: "explorer.exe".into() },
+            "app_running" => C::AppRunning { exe: "explorer.exe".into() },
+            "window_open" => C::WindowOpen { title: "Chrome".into() },
+            "app_audio_playing" => C::AppAudioPlaying { exe: "foreground".into() },
+            "app_muted" => C::AppMuted { exe: "foreground".into() },
+            "app_volume_compare" => C::AppVolumeCompare { exe: "foreground".into(), op: "above".into(), value: 50 },
+            "device_muted" => C::DeviceMuted { input: false, device: "default".into() },
+            "device_volume_compare" => C::DeviceVolumeCompare { input: false, device: "default".into(), op: "above".into(), value: 50 },
+            "audio_device_present" => C::AudioDevicePresent { name_contains: "Casque".into(), input: false },
+            "default_output_is" => C::DefaultOutputIs { name_contains: "Casque".into() },
+            "variable_compare" => C::VariableCompare { name: "mode".into(), op: "equals".into(), value: String::new() },
+            "not" => C::Not { condition: Box::new(C::default()) },
+            "all" => C::All { conditions: vec![C::default()] },
+            "any" => C::Any { conditions: vec![C::default()] },
+            _ => unreachable!(),
+        };
+    }
+    match condition {
+        C::ForegroundApp { exe } | C::AppRunning { exe } => {
+            ui.label("Nom d’exécutable (.exe) :");
+            changed |= condition_exe(ui, exe);
+        }
+        C::WindowOpen { title } => { ui.label("Le titre contient :"); changed |= ui.text_edit_singleline(title).changed(); }
+        C::AppAudioPlaying { exe } | C::AppMuted { exe } => { changed |= condition_audio_exe(ui, exe); }
+        C::AppVolumeCompare { exe, op, value } => {
+            changed |= condition_audio_exe(ui, exe);
+            changed |= condition_operator(ui, op);
+            changed |= ui.add(egui::Slider::new(value, 0..=100).text("%" )).changed();
+        }
+        C::DeviceMuted { input, device } | C::DeviceVolumeCompare { input, device, .. } => {
+            changed |= ui.checkbox(input, "Microphone (sinon sortie)").changed();
+            egui::ComboBox::from_id_salt("condition_device").selected_text(if device == "default" { "Par défaut" } else { device.as_str() }).show_ui(ui, |ui| {
+                changed |= ui.selectable_value(device, "default".into(), "Par défaut").changed();
+                for endpoint in audio.devices.iter().filter(|d| d.input == *input) {
+                    changed |= ui.selectable_value(device, endpoint.id.clone(), &endpoint.name).changed();
+                }
+            });
+            egui::CollapsingHeader::new("Options avancées").id_salt("condition_device_id").show(ui, |ui| {
+                changed |= ui.text_edit_singleline(device).changed();
+            });
+        }
+        C::AudioDevicePresent { name_contains, input } => {
+            changed |= ui.checkbox(input, "Microphone (sinon sortie)").changed();
+            let options: Vec<_> = audio.devices.iter().filter(|d| d.input == *input).collect();
+            egui::ComboBox::from_id_salt("condition_device_name").selected_text(name_contains.as_str()).show_ui(ui, |ui| {
+                for endpoint in options { changed |= ui.selectable_value(name_contains, endpoint.name.clone(), &endpoint.name).changed(); }
+            });
+            ui.label("Le nom contient :"); changed |= ui.text_edit_singleline(name_contains).changed();
+        }
+        C::DefaultOutputIs { name_contains } => {
+            egui::ComboBox::from_id_salt("condition_default_output").selected_text(name_contains.as_str()).show_ui(ui, |ui| {
+                for endpoint in audio.devices.iter().filter(|d| !d.input) { changed |= ui.selectable_value(name_contains, endpoint.name.clone(), &endpoint.name).changed(); }
+            });
+            ui.label("Le nom contient :"); changed |= ui.text_edit_singleline(name_contains).changed();
+        }
+        C::VariableCompare { name, op, value } => {
+            ui.label("Nom de variable"); changed |= ui.text_edit_singleline(name).changed();
+            egui::ComboBox::from_id_salt("variable_operator").selected_text(op.as_str()).show_ui(ui, |ui| {
+                for (id, label) in [("equals", "Égale"), ("not_equals", "Différente"), ("contains", "Contient"), ("greater", "Supérieure"), ("less", "Inférieure")] {
+                    changed |= ui.selectable_value(op, id.into(), label).changed();
+                }
+            });
+            ui.label("Valeur"); changed |= ui.text_edit_singleline(value).changed();
+        }
+        C::Not { condition } => { ui.indent("not_condition", |ui| { changed |= edit_condition(ui, condition, audio, depth + 1); }); }
+        C::All { conditions } | C::Any { conditions } => {
+            let mut remove = None;
+            for (i, child) in conditions.iter_mut().enumerate() {
+                ui.push_id(i, |ui| { ui.horizontal(|ui| { ui.label(format!("Condition {}", i + 1));
+                    if ui.small_button("Retirer").clicked() { remove = Some(i); }
+                });
+                ui.indent(i, |ui| { changed |= edit_condition(ui, child, audio, depth + 1); }); });
+            }
+            if let Some(i) = remove { if conditions.len() > 1 { conditions.remove(i); changed = true; } }
+            if depth < 8 && conditions.len() < 32 && ui.button("+ Ajouter une condition").clicked() { conditions.push(C::default()); changed = true; }
+        }
+    }
+    if let C::DeviceVolumeCompare { op, value, .. } = condition {
+        changed |= condition_operator(ui, op);
+        changed |= ui.add(egui::Slider::new(value, 0..=100).text("%" )).changed();
+    }
+    changed
+}
+fn condition_exe(ui: &mut egui::Ui, exe: &mut String) -> bool {
+    let mut changed = false;
+    egui::ComboBox::from_id_salt("exe_suggestions").selected_text(exe.as_str()).show_ui(ui, |ui| {
+        for name in crate::conditions::running_exes() { changed |= ui.selectable_value(exe, name.clone(), name).changed(); }
+    });
+    changed | ui.text_edit_singleline(exe).changed()
+}
+fn condition_audio_exe(ui: &mut egui::Ui, exe: &mut String) -> bool {
+    let mut changed = false;
+    egui::ComboBox::from_id_salt("condition_audio_exe").selected_text(if exe == "foreground" { "Application au premier plan" } else { exe.as_str() }).show_ui(ui, |ui| {
+        changed |= ui.selectable_value(exe, "foreground".into(), "Application au premier plan").changed();
+        for name in crate::conditions::running_exes() { changed |= ui.selectable_value(exe, name.clone(), name).changed(); }
+    });
+    ui.label("Ou saisir un exécutable (.exe) :");
+    changed | ui.text_edit_singleline(exe).changed()
+}
+fn condition_operator(ui: &mut egui::Ui, op: &mut String) -> bool {
+    let mut changed = false;
+    egui::ComboBox::from_id_salt("volume_operator").selected_text(if op == "above" { "Au-dessus de" } else { "En dessous de" }).show_ui(ui, |ui| {
+        changed |= ui.selectable_value(op, "above".into(), "Au-dessus de").changed();
+        changed |= ui.selectable_value(op, "below".into(), "En dessous de").changed();
+    });
+    changed
+}
 #[allow(clippy::too_many_arguments)] // UI editor must carry the stable dialog destination through nested steps.
 fn edit_step(
     ui: &mut egui::Ui,
@@ -2878,6 +3004,10 @@ fn edit_step(
         step @ Step::AudioSwitch { .. } => {
             changed |= icon_ui::audio_options(ui, step, audio, pick_audio_icon, tx, target);
         }
+        Step::IfCondition { condition, .. } => {
+            changed |= edit_condition(ui, condition, audio, 0);
+            ui.label("Configure ALORS et SINON dans l’Atelier blocs.");
+        }
         Step::IfWindow { title, .. } => {
             ui.label("Le titre de la fenêtre contient");
             changed |= ui.text_edit_singleline(title).changed();
@@ -2952,6 +3082,7 @@ fn step_summary(step: &Step) -> String {
         Step::MouseMove { x, y, relative } => format!("Souris {x}, {y} ({})", if *relative { "relatif" } else { "absolu" }),
         Step::MouseScroll { amount } => format!("Défiler de {amount} crans"),
         Step::PlaySound { path, volume } => format!("Son : {path} ({volume} %)"),
+        Step::IfCondition { condition, .. } => format!("Si {}", condition.summary()),
         Step::AppVolume { .. } => step.app_volume_summary().unwrap_or_default(),
         Step::DeviceVolume { .. } => step.device_volume_summary().unwrap_or_default(),
         Step::StopSounds => "Arrêter les sons".into(),
