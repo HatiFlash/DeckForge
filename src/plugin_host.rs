@@ -22,7 +22,8 @@ impl Host {
    _=>anyhow::bail!("Plugin protégé ou type non pris en charge"),
   };
   let info=json!({"application":{"font":"","language":"fr","platform":"windows","platformVersion":"10","version":"6.9.0"},"plugin":{"uuid":plugin.uuid,"version":plugin.version},"devicePixelRatio":1,"colors":{},"devices":[{"id":"deckforge-d6","name":"FIFINE D6","size":{"columns":5,"rows":3},"type":0}]});
-  let http=if matches!(plugin.runtime,Runtime::Html(_)){Some(crate::plugin_http::HtmlServer::start(plugin.folder.clone(),plugin.uuid.clone(),info.to_string(),port)?)}else{None};
+  let needs_http=matches!(plugin.runtime,Runtime::Html(_)) || plugin.inspector.is_some() || plugin.actions.iter().any(|a|a.inspector.is_some());
+  let http=if needs_http {Some(crate::plugin_http::HtmlServer::start(plugin.folder.clone(),plugin.uuid.clone(),info.to_string(),port)?)}else{None};
   if let (Runtime::Html(path),Some(server))=(&plugin.runtime,&http){let name=path.strip_prefix(&plugin.folder)?.to_string_lossy().replace(std::path::MAIN_SEPARATOR,"/");let profile=std::env::current_exe()?.parent().ok_or_else(||anyhow::anyhow!("Dossier exécutable absent"))?.join("plugin-browser").join(plugin.uuid.chars().map(|c|if c.is_ascii_alphanumeric()||c=='-'||c=='_'{c}else{'_'}).collect::<String>());process.arg("--headless=new").arg("--disable-gpu").arg("--no-first-run").arg("--no-default-browser-check").arg(format!("--user-data-dir={}",profile.display())).arg(format!("http://127.0.0.1:{}/{}/{}",server.port,plugin.uuid,name));}
   if !matches!(plugin.runtime,Runtime::Html(_)){process.arg("-port").arg(port.to_string()).arg("-pluginUUID").arg(&plugin.uuid).arg("-registerEvent").arg("registerPlugin").arg("-info").arg(info.to_string());}
   let child=process.current_dir(&plugin.folder).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).creation_flags(0x08000000).spawn()?;
@@ -93,6 +94,26 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
 }}
 #[cfg(windows)] use std::os::windows::process::CommandExt;
 #[cfg(test)] mod tests {use super::*;
+ #[test] fn two_websocket_clients_exchange_inspector_events(){
+  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let port=listener.local_addr().unwrap().port();
+  let id="a".repeat(32);let registry=crate::plugin_http::Inspectors::default();registry.lock().unwrap().insert(id.clone(),"JSON.stringify({})".into());
+  let (tx,commands)=mpsc::channel();let (messages,rx)=mpsc::channel();let stop=Arc::new(AtomicBool::new(false));let flag=stop.clone();
+  let worker=thread::spawn(move||socket_loop(listener,commands,messages,flag,Some(registry)));
+  let (mut plugin,_)=tungstenite::connect(format!("ws://127.0.0.1:{port}")).unwrap();
+  plugin.send(tungstenite::Message::Text(json!({"event":"registerPlugin","uuid":"p"}).to_string().into())).unwrap();
+  assert_eq!(rx.recv_timeout(Duration::from_secs(3)).unwrap()["event"],"registerPlugin");
+  let (mut pi,_)=tungstenite::connect(format!("ws://127.0.0.1:{port}")).unwrap();
+  pi.send(tungstenite::Message::Text(json!({"event":"registerPropertyInspector","uuid":id}).to_string().into())).unwrap();
+  assert_eq!(rx.recv_timeout(Duration::from_secs(3)).unwrap()["event"],"propertyInspectorDidAppear");
+  pi.send(tungstenite::Message::Text(json!({"event":"sendToPlugin","payload":{"hello":1}}).to_string().into())).unwrap();
+  let mut from_pi=rx.recv_timeout(Duration::from_secs(3)).unwrap();assert_eq!(from_pi["payload"]["hello"],1);assert_eq!(from_pi["__pi"],id);
+  from_pi.as_object_mut().unwrap().remove("__pi");tx.send(from_pi).unwrap();
+  assert_eq!(serde_json::from_str::<Value>(&plugin.read().unwrap().to_string()).unwrap()["event"],"sendToPlugin");
+  plugin.send(tungstenite::Message::Text(json!({"event":"sendToPropertyInspector","context":"ctx","payload":{"ok":true}}).to_string().into())).unwrap();
+  let mut from_plugin=rx.recv_timeout(Duration::from_secs(3)).unwrap();assert_eq!(from_plugin["event"],"sendToPropertyInspector");from_plugin["__pi"]=json!(id);tx.send(from_plugin).unwrap();
+  assert_eq!(serde_json::from_str::<Value>(&pi.read().unwrap().to_string()).unwrap()["payload"]["ok"],true);
+  stop.store(true,Ordering::Relaxed);worker.join().unwrap();
+ }
  #[test] fn node_fixture_exchanges_key_messages(){
   let fixture=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sdplugin");
   let p=crate::plugins::parse(&fixture,&std::fs::read(fixture.join("manifest.json")).unwrap()).unwrap();
