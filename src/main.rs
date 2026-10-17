@@ -15,6 +15,7 @@ mod key_render;
 #[allow(dead_code)]
 mod mcp_protocol;
 mod mcp_server;
+mod mcp_connect;
 mod model;
 mod recorder;
 mod store;

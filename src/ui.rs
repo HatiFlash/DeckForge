@@ -104,6 +104,7 @@ pub struct App {
     proposals: crate::assistant::Proposals,
     assistant_cache: HashMap<String, Result<serde_json::Value, String>>,
     assistant_settings: bool,
+    connect_window: bool,
     http_child: Option<std::process::Child>,
     preferences: Preferences,
     preferences_valid: bool,
@@ -263,6 +264,7 @@ impl App {
             proposals: Default::default(),
             assistant_cache: HashMap::new(),
             assistant_settings: false,
+            connect_window: false,
             http_child: None,
             preferences,
             preferences_valid,
@@ -956,6 +958,47 @@ impl App {
         self.preferences.allow_connected_ai=enabled;
         self.save_preferences();
     }
+    fn connect_ai_window(&mut self, ctx: &egui::Context) {
+        if !self.connect_window { return; }
+        let mut open=true;
+        egui::Window::new("Connecter une IA").open(&mut open).default_width(530.0).resizable(true).vscroll(true).show(ctx,|ui|{
+            ui.label("Choisis ton application IA. DeckForge n'écrit jamais de clé dans ses réglages.");
+            let locations=crate::mcp_connect::Locations::system();
+            let exe=crate::mcp_connect::connector(&self.path);
+            for client in [crate::mcp_connect::Client::Desktop,crate::mcp_connect::Client::Code,crate::mcp_connect::Client::Codex,crate::mcp_connect::Client::Cursor] {
+                egui::Frame::group(ui.style()).show(ui,|ui|{
+                    ui.label(RichText::new(client.name()).strong().size(17.0));
+                    let configured=locations.as_ref().is_ok_and(|loc|crate::mcp_connect::configured(client,loc));
+                    ui.label(if configured {"Configuré sur ce PC"} else {"Pas encore configuré"});
+                    ui.horizontal(|ui|{
+                        if ui.add_enabled(exe.is_ok() && locations.is_ok(),egui::Button::new("Configurer automatiquement")).clicked() {
+                            match if client==crate::mcp_connect::Client::Code {crate::mcp_connect::configure_code(locations.as_ref().unwrap(),exe.as_ref().unwrap(),false)} else {crate::mcp_connect::configure(client,locations.as_ref().unwrap(),exe.as_ref().unwrap(),false)}{Ok(msg)=>self.log(msg),Err(err)=>self.fail(err)}
+                        }
+                        if ui.add_enabled(configured,egui::Button::new("Retirer")).clicked() {
+                            match if client==crate::mcp_connect::Client::Code {crate::mcp_connect::configure_code(locations.as_ref().unwrap(),&self.path,true)} else {crate::mcp_connect::configure(client,locations.as_ref().unwrap(),&self.path,true)}{Ok(msg)=>self.log(msg),Err(err)=>self.fail(err)}
+                        }
+                    });
+                });ui.add_space(8.0);
+            }
+            if let Err(e)=&exe { ui.colored_label(Color32::DARK_RED,e); }
+            egui::Frame::group(ui.style()).show(ui,|ui|{
+                ui.label(RichText::new("ChatGPT : Secure MCP Tunnel").strong());
+                ui.label("1. Ouvre la documentation du tunnel. 2. Copie le chemin du connecteur stdio à fournir au tunnel. 3. Dans ChatGPT : Plugins → Ajouter un serveur MCP → Tunnel. Disponibilité à vérifier selon ton compte. Le port HTTP reste local.");
+                if ui.button("Ouvrir la page du tunnel").clicked(){let _={ui.ctx().open_url(egui::OpenUrl::new_tab("https://developers.openai.com/api/docs/guides/secure-mcp-tunnels"));Ok::<(),String>(())};}
+                if ui.button("Copier la commande stdio").clicked(){ui.ctx().copy_text(self.path.with_file_name("deckforge-mcp.exe").to_string_lossy().into_owned());}
+            });
+            if ui.button("Autre client : copier le JSON standard").clicked(){
+                let config=serde_json::json!({"mcpServers":{"deckforge":{"command":self.path.with_file_name("deckforge-mcp.exe").to_string_lossy(),"args":[]}}});
+                ui.ctx().copy_text(serde_json::to_string_pretty(&config).unwrap());
+            }
+            if ui.button("Tester la connexion").clicked(){
+                let result=if !self.assistant.as_ref().is_some_and(|s|s.enabled()) {Err("Assistant désactivé : active d'abord Autoriser les IA connectées".into())} else {crate::mcp_connect::test_connection(&self.path)};
+                match result {Ok(msg)=>self.log(msg),Err(e)=>self.fail(e)}
+            }
+            ui.label(&self.notice);
+        });
+        self.connect_window=open;
+    }
     fn assistant_window(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
         if self.assistant_settings {
@@ -973,6 +1016,7 @@ impl App {
             ui.separator();
             if self.assistant.is_none(){ui.colored_label(Color32::DARK_RED,"Le connecteur local n’a pas pu démarrer.");}
             ui.label(RichText::new("Connexion locale MCP · Claude, Codex et clients compatibles stdio. Aucune clé d’IA à saisir dans DeckForge.").small().color(p.muted));
+            if ui.button("Connecter une IA").clicked(){self.connect_window=true;}
             if ui.button("Copier la configuration MCP").clicked(){let exe=self.path.with_file_name("deckforge-mcp.exe");let config=serde_json::json!({"mcpServers":{"deckforge":{"command":exe.to_string_lossy(),"args":[]}}});ui.ctx().copy_text(serde_json::to_string_pretty(&config).unwrap());self.log("Configuration MCP copiée.".into());}
             ui.label(RichText::new("Le guide MCP fourni avec l’application détaille la connexion à ChatGPT et aux autres clients.").small().color(p.muted));
             ui.add_space(14.0);ui.separator();ui.label(RichText::new("ChatGPT web / clients HTTP").strong());
@@ -982,6 +1026,7 @@ impl App {
         });
             self.assistant_settings = open;
         }
+        self.connect_ai_window(ctx);
         let mut decision = None;
         if let Some(p) = self.proposals.pending.front() {
             egui::Window::new("Proposition de ton assistant").id(egui::Id::new("ai_review")).collapsible(false).resizable(true).default_width(570.0).show(ctx,|ui|{
