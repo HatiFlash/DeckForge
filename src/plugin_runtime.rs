@@ -83,6 +83,11 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
             if let Some(id)=value["__pi"].as_str().map(str::to_owned){
                 let Some(v)=inspectors.get(&id).filter(|v|v.plugin==*plugin).cloned() else {continue};
                 if name=="propertyInspectorDidDisappear" {inspectors.remove(&id);}
+                if name=="propertyInspectorDidAppear" {
+                    // Comme Stream Dock/Stream Deck : le PI reçoit tout de suite les réglages de sa touche.
+                    let _=host.send(json!({"event":"didReceiveSettings","action":v.action,"context":v.context,"device":"deckforge-d6","__pi":id,
+                        "payload":{"settings":v.settings,"coordinates":{"column":v.index%5,"row":v.index/5},"isInMultiAction":false}}));
+                }
                 if !matches!(name.as_str(),"setSettings"|"getSettings"|"setGlobalSettings"|"getGlobalSettings"|"sendToPlugin"|"propertyInspectorDidAppear"|"propertyInspectorDidDisappear"){continue;}
                 value["context"]=json!(v.context);value["action"]=json!(v.action);
                 if name=="sendToPlugin" || name.starts_with("propertyInspectorDid"){

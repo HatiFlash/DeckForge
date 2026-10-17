@@ -10,6 +10,26 @@ fn percent_decode(s:&str)->Option<String>{
     while i<b.len(){ if b[i]==b'%' { let h=std::str::from_utf8(b.get(i+1..i+3)?).ok()?; out.push(u8::from_str_radix(h,16).ok()?); i+=3; } else { out.push(b[i]); i+=1; } }
     String::from_utf8(out).ok()
 }
+/// Habillage DeckForge des pages de réglages (Property Inspector) : mêmes couleurs que l'application,
+/// champs plus lisibles. Purement visuel, injecté après les styles du plugin.
+const PI_THEME:&str=r#"<style id="deckforge-pi-theme">
+:root{color-scheme:dark}
+html,body{background:#171a21!important;color:#e7e9ee!important;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif!important;font-size:14px!important}
+body{padding:14px 16px!important;margin:0!important}
+.sdpi-wrapper{max-width:none!important;padding:0!important}
+.sdpi-item{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:6px!important;margin:0 0 14px!important;min-height:0!important}
+.sdpi-item-label{width:auto!important;min-width:0!important;max-width:none!important;text-align:left!important;padding:0!important;color:#9aa3b2!important;font-size:12px!important;font-weight:600!important;letter-spacing:.02em!important;text-transform:uppercase!important}
+.sdpi-item-value,.sdpi-item>*:not(.sdpi-item-label){width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
+select,input[type=text],input[type=number],input[type=password],textarea{background:#232835!important;color:#e7e9ee!important;border:1px solid #343b4c!important;border-radius:8px!important;padding:8px 10px!important;min-height:36px!important;font-size:14px!important;width:100%!important;box-sizing:border-box!important;outline:none!important}
+select:focus,input:focus,textarea:focus{border-color:#4f8cff!important}
+option{background:#232835;color:#e7e9ee}
+input[type=radio],input[type=checkbox]{accent-color:#4f8cff}
+input[type=range]{accent-color:#4f8cff;width:100%!important}
+label{color:#e7e9ee!important}
+button,.sdpi-item-value button{background:#4f8cff!important;color:#fff!important;border:0!important;border-radius:8px!important;padding:8px 14px!important;cursor:pointer}
+a{color:#7aa7ff!important}
+::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:#343b4c;border-radius:6px}
+</style>"#;
 fn safe_file(root:&Path,request:&str,uuid:&str)->Option<PathBuf>{
     let url=request.split('?').next()?;
     let rel=percent_decode(url.strip_prefix('/')?.strip_prefix(uuid)?.strip_prefix('/')?)?;
@@ -31,7 +51,7 @@ fn response(root:&Path,uuid:&str,port:u16,info:&str,inspectors:&Inspectors,reque
         .and_then(|id|inspectors.lock().ok()?.get(id).cloned().map(|data|(id.to_owned(),data)));
     let script=if let Some((pi_id,data))=pi {
         let pi_id=serde_json::to_string(&pi_id).unwrap_or_default();
-        format!(r#"<script>window.addEventListener('load',function(){{var f=window.connectElgatoSdkSocket||window.connectSocket;if(typeof f==='function')f({port},{pi_id},'registerPropertyInspector',{info},{data});}});</script>"#,
+        format!(r#"<script>window.addEventListener('load',function(){{var f=window.connectElgatoStreamDeckSocket||window.connectElgatoSdkSocket||window.connectSocket;if(typeof f==='function')f({port},{pi_id},'registerPropertyInspector',{info},{data});}});</script>{PI_THEME}"#,
             info=serde_json::to_string(info).unwrap_or_default())
     }else{
         format!(r#"<script>window.addEventListener('load',function(){{var f=window.connectElgatoStreamDeckSocket||window.connectSocket;if(typeof f==='function')f({port},{uuid},'registerPlugin',{info});}});</script>"#,
