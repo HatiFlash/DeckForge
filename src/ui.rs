@@ -2003,8 +2003,12 @@ impl App {
         self.header(ctx);
         self.footer(ctx);
         self.catalog(ctx);
-        self.editor(ctx);
-        self.deck(ctx);
+        if !self.show_workflow {
+            self.editor(ctx);
+            self.deck(ctx);
+        } else {
+            self.workflow(ctx);
+        }
         if self.drag.moving() {
             if let (Some((item, _)), Some(pos)) = (&self.drag.active, self.drag.position) {
                 let label = match item {

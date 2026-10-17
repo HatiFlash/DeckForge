@@ -239,15 +239,13 @@ impl App {
         if self.quitting {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
-        self.workflow(ctx);
         self.asset_browser(ctx);
         self.desktop_settings(ctx);
     }
-    fn workflow(&mut self, ctx: &egui::Context) {
+    pub(super) fn workflow(&mut self, ctx: &egui::Context) {
         if !self.show_workflow {
             return;
         }
-        let mut open = true;
         let mut record = None;
         let mut pick_audio = None;
         let mut changed = false;
@@ -257,13 +255,16 @@ impl App {
             self.selected + 1,
             self.config.keys()[self.selected].label
         );
-        egui::Window::new(title).id(egui::Id::new("workflow04")).open(&mut open).default_width(800.0).default_height(610.0).min_width(520.0).show(ctx,|ui|{
+        egui::CentralPanel::default().show(ctx, |ui| {
+            if ui.button(format!("< Retour au deck · {title}")).clicked() {
+                self.show_workflow = false;
+            }
             ui.label(RichText::new("Construis ton automatisation").size(23.0).strong());
             ui.label("Assemble les blocs de haut en bas. Les variables sont propres à chaque exécution.");
             ui.horizontal(|ui|{if ui.button("Créer avec mon IA").clicked(){self.assistant_settings=true;}if ui.button("Simuler les blocs").clicked(){self.preview(true);}if ui.button("Tester dans 3 s").clicked(){self.preview(false);}if ui.button("Exporter en AutoHotkey v2…").clicked(){export=true;}});
             if !self.engine.running.load(Ordering::SeqCst){self.running_block.clear();}
             let profiles=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();let pages=self.config.profiles[self.config.active].pages.clone();let selected=self.selected;let target=(self.config.active,self.config.page.clone(),selected);let dialog_tx=self.dialog_tx.clone();
-            egui::ScrollArea::vertical().id_salt("workflow_scroll").max_height(470.0).show(ui,|ui|{
+            egui::ScrollArea::vertical().id_salt("workflow_scroll").show(ui,|ui|{
                 changed=block_editor(ui,&mut self.config.keys_mut()[selected].steps,&profiles,&pages,&self.audio,&[],&mut record,0,&self.running_block,&mut pick_audio,&dialog_tx,&target);
             });
             if let Err(e)=validate_key(&self.config.keys()[selected],&self.config){ui.colored_label(Color32::LIGHT_RED,format!("Brouillon : {e}"));}
@@ -271,7 +272,6 @@ impl App {
         if let Some(target) = pick_audio {
             self.open_icon_gallery(Some(target));
         }
-        self.show_workflow = open;
         if changed {
             self.edited();
         }
