@@ -25,8 +25,8 @@ pub const NAMES: &[&str] = &[
 ];
 pub fn step(kind: usize) -> Step {
     match kind {
-        43 => Step::TextOp { name: "texte".into(), op: "upper".into(), value: String::new(), find: String::new() },
-        42 => Step::Math { name: "compteur".into(), op: "add".into(), value: "1".into(), min: 0.0, max: 100.0 },
+        43 => Step::TextOp { name: "texte".into(), op: "upper".into(), value: String::new(), find: String::new(), persistent: false, },
+        42 => Step::Math { name: "compteur".into(), op: "add".into(), value: "1".into(), min: 0.0, max: 100.0, persistent: false, },
         41 => Step::Notify { title: "DeckForge".into(), message: "Bonjour {nom}".into() },
         40 => Step::WaitUntil { condition: crate::conditions::Condition::default(), timeout_ms: 5000, poll_ms: 200 },
         39 => Step::IfCondition { condition: crate::conditions::Condition::default(), then_steps: vec![], else_steps: vec![] },
@@ -53,6 +53,7 @@ pub fn step(kind: usize) -> Step {
         16 => Step::SetVariable {
             name: "mode".into(),
             value: "travail".into(),
+            persistent: false,
         },
         17 => Step::IfVariable {
             name: "mode".into(),
@@ -147,7 +148,8 @@ pub fn export(key: &Key) -> Result<String> {
                             .ok_or_else(|| anyhow::anyhow!("Commande média inconnue"))?
                     ))
                 ),
-                Step::SetVariable { name, value } => {
+                Step::SetVariable { name, value, persistent } => {
+                    anyhow::ensure!(!persistent, "Export AutoHotkey : variables enregistrées non prises en charge");
                     format!("vars[{}] := {}", literal(name), literal(value))
                 }
                 Step::Repeat {

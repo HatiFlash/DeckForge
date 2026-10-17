@@ -149,7 +149,7 @@ fn block_summary(step: &Step) -> String {
         Step::IfVariable { name, value, .. } => format!("Si {name} vaut {value}"),
         Step::Math { .. } => step.math_summary().unwrap_or_default(),
         Step::TextOp { .. } => step.text_op_summary().unwrap_or_default(),
-        Step::SetVariable { name, value } => format!("Mémoriser {name} = {value}"),
+        Step::SetVariable { name, value, persistent } => format!("Mémoriser {name} = {value}{}", if *persistent { " (enregistrée)" } else { "" }),
         Step::WaitWindow { title, .. } => format!("Attendre la fenêtre {title}"),
         _ => step.name().to_owned(),
     }
@@ -169,7 +169,7 @@ mod workshop_summary_tests {
         let step = Step::Delay { ms: 250 };
         assert_eq!(block_summary(&step), "Attendre 250 ms");
         assert_eq!(block_summary(&Step::Disabled { step: Box::new(step) }), "Attendre 250 ms");
-        assert_eq!(block_summary(&Step::SetVariable { name: "mode".into(), value: "travail".into() }), "Mémoriser mode = travail");
+        assert_eq!(block_summary(&Step::SetVariable { name: "mode".into(), value: "travail".into(), persistent: false, }), "Mémoriser mode = travail");
     }
 }
 const TEMPLATE_NAMES: &[&str] = &[
@@ -183,7 +183,7 @@ fn template(index: usize) -> Vec<Step> {
         1 => vec![Step::Hotkey { keys: "CTRL+C".into() }, Step::Hotkey { keys: "CTRL+V".into() }],
         2 => vec![Step::Text { text: String::new() }],
         3 => vec![crate::automation::step(13)],
-        4 => vec![Step::SetVariable { name: "mode".into(), value: "travail".into() },
+        4 => vec![Step::SetVariable { name: "mode".into(), value: "travail".into(), persistent: false, },
             Step::IfVariable { name: "mode".into(), value: "travail".into(),
                 then_steps: vec![Step::Text { text: String::new() }], else_steps: vec![] }],
         5 => vec![Step::Repeat { count: 3, steps: vec![Step::Hotkey { keys: "F13".into() }] }],
@@ -545,6 +545,33 @@ impl App {
         }
         self.asset_browser(ctx);
         self.desktop_settings(ctx);
+        self.saved_variables_window(ctx);
+    }
+    fn saved_variables_window(&mut self, ctx: &egui::Context) {
+        if !self.show_saved_variables { return; }
+        let mut open = self.show_saved_variables;
+        egui::Window::new("Variables enregistrées").open(&mut open).resizable(true).show(ctx, |ui| {
+            ui.label("Conservées dans variables.json ; {nom} les utilise dans les macros suivantes.");
+            let mut remove = None;
+            for (name, original) in crate::persistent_variables::snapshot() {
+                ui.horizontal(|ui| {
+                    ui.label(format!("{name} :"));
+                    let mut value = original.clone();
+                    if ui.text_edit_singleline(&mut value).changed() && value != original {
+                        if let Err(e) = crate::persistent_variables::set(&name, &value) {
+                            self.fail(format!("Variable non enregistrée : {e}"));
+                        }
+                    }
+                    if ui.add(theme::danger_button("Supprimer")).clicked() { remove = Some(name); }
+                });
+            }
+            if let Some(name) = remove {
+                if let Err(e) = crate::persistent_variables::remove(&name) {
+                    self.fail(format!("Variable non supprimée : {e}"));
+                }
+            }
+        });
+        self.show_saved_variables = open;
     }
     pub(super) fn workflow(&mut self, ctx: &egui::Context) {
         if !self.show_workflow {
@@ -592,7 +619,7 @@ impl App {
                 self.show_workflow = false;
             }
             ui.label(RichText::new("Construis ton automatisation").size(23.0).strong());
-            ui.label("Assemble les blocs de haut en bas. Les variables sont propres à chaque exécution.");
+            ui.label("Assemble les blocs de haut en bas. Les variables enregistrées sont réutilisables entre les macros.");
             ui.horizontal_wrapped(|ui| {
                 ui.label("Mode :");
                 if ui.selectable_value(&mut self.preferences.workshop_advanced, false, "Simple").changed() { self.save_preferences(); }
@@ -814,7 +841,7 @@ mod workshop_tests {
     use super::*;
     #[test]
     fn trace_respects_disabled_branches_and_one_iteration_without_actions() {
-        let steps = vec![Step::SetVariable { name: "mode".into(), value: "travail".into() },
+        let steps = vec![Step::SetVariable { name: "mode".into(), value: "travail".into(), persistent: false, },
             Step::IfVariable { name: "mode".into(), value: "travail".into(),
                 then_steps: vec![Step::Repeat { count: 4, steps: vec![Step::Delay { ms: 250 }] }],
                 else_steps: vec![Step::Disabled { step: Box::new(Step::Text { text: "secret".into() }) }] }];

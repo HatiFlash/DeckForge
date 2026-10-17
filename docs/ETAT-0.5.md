@@ -108,3 +108,7 @@ Non livré dans le premier passage : opérations texte, persistance des variable
 - Livré : bloc Texte dans l’Atelier et MCP ; opérations définir, ajouter, préfixer, majuscules, minuscules, rogner, remplacer et compter les caractères. Modèle « Mettre en majuscules » dans le magasin après les médias ; variables locales à la macro, interpolation des valeurs et recherches, simulation sans effet.
 - Testé automatiquement : sérialisation, valeurs par défaut, refus des champs inconnus et des opérations invalides, résumés et calculs purs Unicode ; build complet Windows vert : 191 tests Rust et 6 MCP, zéro warning.
 - À tester avec Hatim : enchaîner des blocs Texte avec les variables d’une macro et contrôler l’ergonomie de l’Atelier. Aucun test automatique ne saisit au clavier ni n’utilise le presse-papiers.
+
+## B3 — variables persistantes
+
+Livré : option « Conserver entre les macros » pour Définir une variable (`set_variable`), Calculer (`math`) et Texte (`text_op`) ; fichier atomique `variables.json`, limite 256 noms et 4 Ko par valeur ; fenêtre Réglages → Variables enregistrées (édition/suppression). Les valeurs sont chargées au démarrage et accessibles par `{nom}`. Tests automatiques : compatibilité JSON, limites et persistance sur disque ; simulation sans écriture. À tester avec Hatim : enchaînement de deux macros, redémarrage puis modification/suppression depuis les Réglages.

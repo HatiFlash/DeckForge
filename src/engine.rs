@@ -150,7 +150,7 @@ fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>, obs: &crat
         key.label,
         key.repeat
     )));
-    let mut variables = std::collections::BTreeMap::new();
+    let mut variables = crate::persistent_variables::snapshot();
     let mut budget = 10_000usize;
     for _ in 0..if dry { 1 } else { key.repeat } {
         run_steps(
@@ -293,7 +293,7 @@ fn run_steps(
                 Step::TextOp { .. } => {
                     let _ = tx.send(Event::Log(format!("Simulation : {} (aucune variable modifiée)", step.text_op_summary().unwrap_or_default())));
                 }
-                Step::Math { name, op, value, min, max } => {
+                Step::Math { name, op, value, min, max, .. } => {
                     let _ = tx.send(Event::Log(format!("Simulation : {} (aucune variable modifiée)", step.math_summary().unwrap_or_default())));
                     let _ = (name, op, value, min, max);
                 }
@@ -405,15 +405,16 @@ fn run_steps(
                 let message = interpolate(message, variables);
                 let _ = tx.send(Event::Notification(title, message));
             }
-            Step::TextOp { name, op, value, find } => {
+            Step::TextOp { name, op, value, find, persistent } => {
                 let current = variables.get(name).map(String::as_str).unwrap_or("");
                 let value = interpolate(value, variables);
                 let find = interpolate(find, variables);
                 let result = text_operation(current, op, &value, &find)?;
+                if *persistent { crate::persistent_variables::set(name, &result)?; }
                 variables.insert(name.clone(), result.clone());
                 let _ = tx.send(Event::Log(format!("Texte : {name} = {} caractères", result.chars().count())));
             }
-            Step::Math { name, op, value, min, max } => {
+            Step::Math { name, op, value, min, max, persistent } => {
                 let current = variables.get(name).map(|s| s.parse::<f64>()).transpose()
                     .map_err(|_| anyhow::anyhow!("Calcul : variable « {name} » non numérique"))?.unwrap_or(0.0);
                 let operand = if op == "random" { 0.0 } else { interpolate(value, variables).trim().parse::<f64>()
@@ -422,11 +423,14 @@ fn run_steps(
                     .map_err(|_| anyhow::anyhow!("Horloge système indisponible"))?.subsec_nanos();
                 let result = calculate(current, op, operand, *min, *max, f64::from(nanos) / 1_000_000_000.0)?;
                 let value = result.to_string();
+                if *persistent { crate::persistent_variables::set(name, &value)?; }
                 variables.insert(name.clone(), value.clone());
                 let _ = tx.send(Event::Log(format!("Calcul : {name} = {value}")));
             }
-            Step::SetVariable { name, value } => {
-                variables.insert(name.clone(), value.clone());
+            Step::SetVariable { name, value, persistent } => {
+                let value = interpolate(value, variables);
+                if *persistent { crate::persistent_variables::set(name, &value)?; }
+                variables.insert(name.clone(), value);
             }
             Step::WaitUntil { condition, timeout_ms, poll_ms } => {
                 let start = Instant::now();
@@ -783,8 +787,8 @@ mod tests {
             let mut budget = 10;
             let steps = vec![Step::Repeat { count: 1, steps: vec![
                 Step::Disabled { step: Box::new(Step::AutoHotkey { executable: "missing.exe".into(), script: "fail".into(), args: vec![] }) },
-                Step::Disabled { step: Box::new(Step::SetVariable { name: "bad".into(), value: "yes".into() }) },
-                Step::SetVariable { name: "good".into(), value: "yes".into() },
+                Step::Disabled { step: Box::new(Step::SetVariable { name: "bad".into(), value: "yes".into(), persistent: false, }) },
+                Step::SetVariable { name: "good".into(), value: "yes".into(), persistent: false, },
             ] }];
             run_steps(&steps, dry, &AtomicBool::new(false), &tx, &mut vars, &mut budget, &[], &crate::model::ObsSettings::default(), None).unwrap();
             assert!(!vars.contains_key("bad"));
@@ -803,7 +807,8 @@ mod tests {
             Step::SetVariable {
                 name: "mode".into(),
                 value: "travail".into(),
-            },
+                    persistent: false,
+                },
             Step::Repeat {
                 count: 3,
                 steps: vec![Step::IfVariable {
@@ -812,7 +817,7 @@ mod tests {
                     then_steps: vec![Step::SetVariable {
                         name: "result".into(),
                         value: "oui".into(),
-                    }],
+                   persistent: false, }],
                     else_steps: vec![Step::AutoHotkey {
                         executable: "missing.exe".into(),
                         script: "This branch must not execute".into(),
@@ -866,11 +871,11 @@ mod tests {
                 Step::SetVariable {
                     name: "a".into(),
                     value: "1".into(),
-                },
+               persistent: false, },
                 Step::SetVariable {
                     name: "b".into(),
                     value: "2".into(),
-                },
+               persistent: false, },
             ],
             false,
             &AtomicBool::new(false),

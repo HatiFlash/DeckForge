@@ -127,6 +127,7 @@ pub struct App {
     show_apps: bool,
     show_logs: bool,
     settings: bool,
+    show_saved_variables: bool,
     show_about: bool,
     update_result: Option<String>,
     update_rx: Option<Receiver<String>>,
@@ -239,6 +240,9 @@ impl App {
         } else {
             Config::default()
         };
+        if let Err(e) = crate::persistent_variables::configure(&path.with_file_name("variables.json")) {
+            load_error = Some(format!("Variables enregistrées illisibles : {e}"));
+        }
         let smoke = !isolated && std::env::args().any(|a| a == "--ui-smoke");
         let preferences_result = Preferences::load(&path.with_file_name("preferences.json"));
         let preferences_valid = preferences_result.is_ok();
@@ -301,6 +305,7 @@ impl App {
             last_edit: Instant::now(),
             show_logs: false,
             settings: false,
+            show_saved_variables: false,
             show_about: false,
             update_result: None,
             update_rx: None,
@@ -1538,6 +1543,10 @@ impl App {
                             }
                             if ui.button("Importer depuis Stream Deck…").clicked() {
                                 self.import_elgato();
+                                ui.close_menu();
+                            }
+                            if ui.button("Variables enregistrées…").clicked() {
+                                self.show_saved_variables = true;
                                 ui.close_menu();
                             }
                             if ui.button("Réglages du D6").clicked() {
@@ -3434,6 +3443,7 @@ impl App {
             || self.recording.is_some()
             || self.import_report.is_some()
             || self.settings
+            || self.show_saved_variables
             || self.show_about
             || self.rename
             || self.save_bind
@@ -4060,7 +4070,7 @@ fn edit_step(
         step @ Step::AudioSwitch { .. } => {
             changed |= icon_ui::audio_options(ui, step, audio, pick_audio_icon, tx, target);
         }
-        Step::TextOp { name, op, value, find } => {
+        Step::TextOp { name, op, value, find, persistent } => {
             ui.label("Variable texte");
             changed |= ui.text_edit_singleline(name).changed();
             let choices = [("set", "Définir"), ("append", "Ajouter à la fin"), ("prepend", "Ajouter au début"),
@@ -4077,6 +4087,7 @@ fn edit_step(
                 if op == "replace" { ui.label("Texte recherché (accepte {variable}, non vide après interpolation)"); changed |= ui.text_edit_singleline(find).changed(); }
                 else { ui.label("Remplacer : sélectionner l’opération pour préciser le texte recherché."); }
                 ui.label("Longueur : nombre de caractères Unicode ; le résultat est stocké dans la même variable.");
+                changed |= ui.checkbox(persistent, "Conserver entre les macros").changed();
             });
         }
         Step::Notify { title, message } => {
@@ -4108,7 +4119,7 @@ fn edit_step(
                 ui.label("fois les blocs de l’Atelier");
             });
         }
-        Step::Math { name, op, value, min, max } => {
+        Step::Math { name, op, value, min, max, persistent } => {
             ui.label("Variable numérique"); changed |= ui.text_edit_singleline(name).changed();
             ui.label("Opération");
             egui::ComboBox::from_id_salt("math_op").selected_text(match op.as_str() {
@@ -4123,12 +4134,22 @@ fn edit_step(
                 }
             });
             if op != "random" { ui.label("Valeur (nombre ou {variable})"); changed |= ui.text_edit_singleline(value).changed(); }
-            else { egui::CollapsingHeader::new("Options avancées").show(ui, |ui| {
-                ui.label("Minimum"); changed |= ui.add(egui::DragValue::new(min)).changed();
-                ui.label("Maximum"); changed |= ui.add(egui::DragValue::new(max)).changed();
-            }); }
+            egui::CollapsingHeader::new("Options avancées").id_salt("math_advanced").show(ui, |ui| {
+                if op == "random" {
+                    ui.label("Minimum"); changed |= ui.add(egui::DragValue::new(min)).changed();
+                    ui.label("Maximum"); changed |= ui.add(egui::DragValue::new(max)).changed();
+                }
+                changed |= ui.checkbox(persistent, "Conserver entre les macros").changed();
+            });
         }
-        Step::SetVariable { name, value } | Step::IfVariable { name, value, .. } => {
+        Step::SetVariable { name, value, persistent } => {
+            ui.label("Variable"); changed |= ui.text_edit_singleline(name).changed();
+            ui.label("Valeur (accepte {variable})"); changed |= ui.text_edit_singleline(value).changed();
+            egui::CollapsingHeader::new("Options avancées").id_salt("set_variable_advanced").show(ui, |ui| {
+                changed |= ui.checkbox(persistent, "Conserver entre les macros").changed();
+            });
+        }
+        Step::IfVariable { name, value, .. } => {
             ui.horizontal(|ui| {
                 ui.label("Variable");
                 changed |= ui.text_edit_singleline(name).changed();
@@ -4195,6 +4216,7 @@ fn step_summary(step: &Step) -> String {
         Step::Notify { title, message } => format!("Notification « {title} » : {}", message.chars().take(50).collect::<String>()),
         Step::Math { .. } => step.math_summary().unwrap_or_default(),
         Step::TextOp { .. } => step.text_op_summary().unwrap_or_default(),
+        Step::SetVariable { name, persistent, .. } => format!("Définir {name}{}", if *persistent { " (enregistrée)" } else { "" }),
         Step::AppVolume { .. } => step.app_volume_summary().unwrap_or_default(),
         Step::DeviceVolume { .. } => step.device_volume_summary().unwrap_or_default(),
         Step::StopSounds => "Arrêter les sons".into(),

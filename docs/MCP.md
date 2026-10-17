@@ -202,3 +202,7 @@ Transforme une variable de macro (vide si absente) sans clavier ni presse-papier
 ## Bloc Calculer (`math`)
 
 Le bloc `math` accepte `name`, `op` (`set`, `add`, `subtract`, `multiply`, `divide`, `modulo`, `min`, `max`, `random`), `value` (nombre ou `{variable}`), `min` et `max` pour le tirage aléatoire. Les champs sont facultatifs avec leurs valeurs par défaut ; les champs inconnus sont refusés. La simulation ne modifie aucune variable.
+
+## Variables enregistrées (B3)
+
+Les blocs `set_variable`, `math` et `text_op` acceptent `persistent` (booléen, défaut `false`). Avec `true`, la valeur est enregistrée dans `variables.json` près de `config.json` et disponible via `{nom}` dans les macros suivantes. La simulation ne modifie jamais ce fichier. Limites : 256 noms, 4 Ko UTF-8 par valeur. Menu Réglages → Variables enregistrées pour les modifier ou les supprimer.

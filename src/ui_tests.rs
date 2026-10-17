@@ -699,7 +699,8 @@ fn workflow_preview_shows_conditional_blocks() {
             Step::SetVariable {
                 name: "mode".into(),
                 value: "travail".into(),
-            },
+                    persistent: false,
+                },
             Step::IfVariable {
                 name: "mode".into(),
                 value: "travail".into(),

@@ -49,9 +49,9 @@ pub fn presets() -> Vec<Preset> {
     }
     add("Variables", "Mettre en majuscules", "Met en majuscules la variable texte pendant cette macro.", [108, 135, 236], vec![Step::TextOp {
         name: "texte".into(), op: "upper".into(), value: String::new(), find: String::new(),
-    }]);
+   persistent: false, }]);
     for (label, op, value) in [("Compteur +1", "add", "1"), ("Compteur −1", "subtract", "1"), ("Compteur à 0", "set", "0")] {
-        add("Variables", label, "Calcule la valeur numérique du compteur pendant cette macro.", [108, 135, 236], vec![Step::Math { name: "compteur".into(), op: op.into(), value: value.into(), min: 0.0, max: 100.0 }]);
+        add("Variables", label, "Calcule la valeur numérique du compteur pendant cette macro.", [108, 135, 236], vec![Step::Math { name: "compteur".into(), op: op.into(), value: value.into(), min: 0.0, max: 100.0, persistent: false, }]);
     }
     for (label, action, level) in [("App +5 %", "up", 0), ("App −5 %", "down", 0), ("App muette", "toggle_mute", 0), ("App à 50 %", "set", 50)] {
         add("Audio", label, "Volume de l’application active, sans modifier le volume général.", [76, 166, 137], vec![Step::AppVolume {
@@ -238,7 +238,8 @@ pub fn presets() -> Vec<Preset> {
             Step::SetVariable {
                 name: "mode".into(),
                 value: "travail".into(),
-            },
+                    persistent: false,
+                },
             Step::IfVariable {
                 name: "mode".into(),
                 value: "travail".into(),

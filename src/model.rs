@@ -100,16 +100,19 @@ pub enum Step {
         #[serde(default = "default_math_value")] value: String,
         #[serde(default)] min: f64,
         #[serde(default = "default_math_max")] max: f64,
+        #[serde(default)] persistent: bool,
     },
     TextOp {
         #[serde(default = "default_text_name")] name: String,
         #[serde(default = "default_text_op")] op: String,
         #[serde(default)] value: String,
         #[serde(default)] find: String,
+        #[serde(default)] persistent: bool,
     },
     SetVariable {
-        name: String,
-        value: String,
+        #[serde(default = "default_set_name")] name: String,
+        #[serde(default)] value: String,
+        #[serde(default)] persistent: bool,
     },
     IfVariable {
         name: String,
@@ -152,6 +155,7 @@ fn default_math_op() -> String { "add".into() }
 fn default_math_value() -> String { "1".into() }
 fn default_math_max() -> f64 { 100.0 }
 fn valid_math_name(name: &str) -> bool { !name.is_empty() && name.len() <= 64 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') }
+fn default_set_name() -> String { "mode".into() }
 fn default_notify_title() -> String { "DeckForge".into() }
 fn default_wait_timeout() -> u64 { 5000 }
 fn default_wait_poll() -> u64 { 200 }
@@ -162,7 +166,7 @@ fn default_app_action() -> String { "up".into() }
 fn default_app_step() -> u8 { 5 }
 impl Step {
     pub fn text_op_summary(&self) -> Option<String> {
-        let Self::TextOp { name, op, value, find } = self else { return None };
+        let Self::TextOp { name, op, value, find, .. } = self else { return None };
         Some(match op.as_str() {
             "set" => format!("Définir {name} à « {} »", value.chars().take(40).collect::<String>()),
             "append" => format!("Ajouter « {} » à la fin de {name}", value.chars().take(40).collect::<String>()),
@@ -176,7 +180,7 @@ impl Step {
         })
     }
     pub fn math_summary(&self) -> Option<String> {
-        let Self::Math { name, op, value, min, max } = self else { return None };
+        let Self::Math { name, op, value, min, max, .. } = self else { return None };
         Some(match op.as_str() {
             "set" => format!("Définir {name} à {value}"),
             "add" => format!("Ajouter {value} à {name}"),
@@ -947,15 +951,15 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
             Step::IfWindow { title, .. } if title.trim().is_empty() => {
                 bail!("Titre de fenêtre vide")
             }
-            Step::TextOp { name, op, value, find } => {
+            Step::TextOp { name, op, value, find, .. } => {
                 anyhow::ensure!(valid_math_name(name) && valid_text_op(op) && value.len() <= 4096 && find.len() <= 4096
                     && (op != "replace" || !find.is_empty()), "Bloc Texte : nom, opération ou texte de recherche invalide");
             }
-            Step::Math { name, op, value, min, max } => {
+            Step::Math { name, op, value, min, max, .. } => {
                 anyhow::ensure!(valid_math_name(name) && value.len() <= 4096 && min.is_finite() && max.is_finite() && min <= max
                     && ["set", "add", "subtract", "multiply", "divide", "modulo", "min", "max", "random"].contains(&op.as_str()), "Bloc Calculer : nom, opération ou bornes invalides");
             }
-            Step::SetVariable { name, value } | Step::IfVariable { name, value, .. }
+            Step::SetVariable { name, value, .. } | Step::IfVariable { name, value, .. }
                 if name.is_empty()
                     || name.len() > 64
                     || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
@@ -1105,10 +1109,10 @@ mod math_step_tests {
         assert_eq!(step.math_summary().as_deref(), Some("Ajouter 1 à compteur"));
         assert!(serde_json::from_str::<Step>(r#"{"type":"math","unexpected":1}"#).is_err());
         for op in ["bad", "divide"] {
-            let bad = Step::Math { name: "x".into(), op: op.into(), value: "1".into(), min: 2.0, max: 1.0 };
+            let bad = Step::Math { name: "x".into(), op: op.into(), value: "1".into(), min: 2.0, max: 1.0, persistent: false, };
             assert!(validate_key(&Key { steps: vec![bad], ..Key::default() }, &Config::default()).is_err());
         }
-        let bad = Step::Math { name: "bad name".into(), op: "add".into(), value: "1".into(), min: 0.0, max: 1.0 };
+        let bad = Step::Math { name: "bad name".into(), op: "add".into(), value: "1".into(), min: 0.0, max: 1.0, persistent: false, };
         assert!(validate_key(&Key { steps: vec![bad], ..Key::default() }, &Config::default()).is_err());
     }
 }
@@ -1146,15 +1150,28 @@ mod condition_step_tests {
 mod tests {
     use super::*;
     #[test]
+    fn persisted_variable_flags_default_roundtrip_and_reject_unknown() {
+        for kind in ["set_variable", "math", "text_op"] {
+            let plain: Step = serde_json::from_value(serde_json::json!({"type":kind})).unwrap();
+            assert_eq!(serde_json::to_value(&plain).unwrap()["persistent"], false);
+            let saved: Step = serde_json::from_value(serde_json::json!({"type":kind,"persistent":true})).unwrap();
+            assert_eq!(serde_json::to_value(&saved).unwrap()["persistent"], true);
+            assert_eq!(saved, serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap());
+            assert!(serde_json::from_value::<Step>(serde_json::json!({"type":kind,"persistent":"oui"})).is_err());
+            assert!(serde_json::from_value::<Step>(serde_json::json!({"type":kind,"extra":false})).is_err());
+            assert!(validate_key(&Key { steps: vec![saved], ..Key::default() }, &Config::default()).is_ok());
+        }
+    }
+    #[test]
     fn text_op_serde_validation_and_summary() {
         let step: Step = serde_json::from_str(r#"{"type":"text_op"}"#).unwrap();
-        assert_eq!(step, Step::TextOp { name: "texte".into(), op: "upper".into(), value: String::new(), find: String::new() });
+        assert_eq!(step, Step::TextOp { name: "texte".into(), op: "upper".into(), value: String::new(), find: String::new(), persistent: false, });
         let round: Step = serde_json::from_value(serde_json::to_value(&step).unwrap()).unwrap();
         assert_eq!(round, step);
         assert_eq!(step.text_op_summary().unwrap(), "Mettre texte en majuscules");
         assert!(serde_json::from_str::<Step>(r#"{"type":"text_op","surprise":1}"#).is_err());
         for (name, op, value, find) in [("", "upper", "", ""), ("avec espace", "set", "", ""), ("ok", "invalid", "", ""), ("ok", "replace", "x", "")] {
-            let bad = Step::TextOp { name: name.into(), op: op.into(), value: value.into(), find: find.into() };
+            let bad = Step::TextOp { name: name.into(), op: op.into(), value: value.into(), find: find.into(), persistent: false, };
             assert!(validate_key(&Key { steps: vec![bad], ..Key::default() }, &Config::default()).is_err());
         }
         assert!(validate_key(&Key { steps: vec![step], ..Key::default() }, &Config::default()).is_ok());

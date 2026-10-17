@@ -34,6 +34,7 @@ mod plugin_import;
 mod recorder;
 mod soundboard;
 mod store;
+mod persistent_variables;
 mod token_equal;
 mod theme;
 mod ui;
