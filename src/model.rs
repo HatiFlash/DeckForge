@@ -883,3 +883,16 @@ mod tests {
         assert!(c.validate().is_err());
     }
 }
+
+#[cfg(test)] mod plugin_compatibility_tests {
+    use super::*;
+    #[test] fn legacy_key_and_plugin_binding_roundtrip() {
+        let original = serde_json::to_value(Key::default()).unwrap();
+        assert!(original.get("plugin").is_none());
+        let mut key: Key = serde_json::from_value(original).unwrap();
+        assert!(key.plugin.is_none() && key.background);
+        key.plugin = Some(PluginBinding {plugin:"example.plugin".into(), action:"example.action".into(),settings:serde_json::json!({"mode":1}),state:2});
+        let loaded: Key = serde_json::from_value(serde_json::to_value(&key).unwrap()).unwrap();
+        assert_eq!(loaded.plugin.unwrap().settings["mode"],1);
+    }
+}
