@@ -1199,3 +1199,15 @@ fn flicker_ui_start_mouse_transition_stop_writes_real_trace() {
     assert!(text.len()<6*1024*1024);
     if let Some(out)=std::env::var_os("DECKFORGE_FLICKER_TEST_OUTPUT") {std::fs::copy(path,out).unwrap();}
 }
+
+#[test]
+fn about_dialog_shows_cargo_version_without_network() {
+    let size = vec2(1380.0, 900.0);
+    let mut h = Harness::new();
+    h.app.show_about = true;
+    let output = h.warm(size);
+    assert!(text_position(&output.shapes, "À propos de DeckForge").is_some());
+    assert!(text_position(&output.shapes, &format!("Version : {}", env!("CARGO_PKG_VERSION"))).is_some());
+    assert!(text_position(&output.shapes, "Vérifier les mises à jour").is_some());
+    assert!(h.app.update_rx.is_none());
+}

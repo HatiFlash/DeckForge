@@ -19,6 +19,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "ui_about.rs"]
+mod about;
+
 #[path = "ui_key_preview.rs"]
 mod key_preview;
 
@@ -121,6 +124,9 @@ pub struct App {
     show_apps: bool,
     show_logs: bool,
     settings: bool,
+    show_about: bool,
+    update_result: Option<String>,
+    update_rx: Option<Receiver<String>>,
     rename: bool,
     notice: String,
     error: bool,
@@ -290,6 +296,9 @@ impl App {
             last_edit: Instant::now(),
             show_logs: false,
             settings: false,
+            show_about: false,
+            update_result: None,
+            update_rx: None,
             rename: false,
             notice: "Tout est prêt.".into(),
             error: false,
@@ -1227,6 +1236,10 @@ impl App {
                                 self.settings = true;
                                 ui.close_menu();
                             }
+                            if ui.button("À propos de DeckForge").clicked() {
+                                self.show_about = true;
+                                ui.close_menu();
+                            }
                             if ui.button("Assistant IA / MCP").clicked() {
                                 self.assistant_settings = true;
                                 ui.close_menu();
@@ -2141,6 +2154,40 @@ impl App {
             }
             self.save_bind = open;
         }
+        if let Some(rx) = &self.update_rx {
+            if let Ok(message) = rx.try_recv() {
+                self.update_result = Some(message);
+                self.update_rx = None;
+            }
+        }
+        if self.show_about {
+            let mut open = true;
+            egui::Window::new("À propos de DeckForge")
+                .open(&mut open).collapsible(false).resizable(false).default_width(370.0)
+                .show(ctx, |ui| {
+                    ui.label(RichText::new("DeckForge").size(20.0).strong());
+                    ui.label(format!("Version : {}", env!("CARGO_PKG_VERSION")));
+                    ui.label(format!("Compilation : {} ({})", about::HASH, about::DATE));
+                    if ui.button("Copier ces informations").clicked() {
+                        ui.ctx().copy_text(about::information());
+                    }
+                    if ui.button("Ouvrir la page GitHub").clicked() {
+                        ui.ctx().open_url(egui::OpenUrl::new_tab("https://github.com/HatiFlash/DeckForge"));
+                    }
+                    if ui.add_enabled(self.update_rx.is_none(), egui::Button::new("Vérifier les mises à jour")).clicked() {
+                        self.update_result = Some("Vérification en cours…".into());
+                        let (tx, rx) = mpsc::channel();
+                        self.update_rx = Some(rx);
+                        let context = ctx.clone();
+                        std::thread::spawn(move || {
+                            let _ = tx.send(about::check());
+                            context.request_repaint();
+                        });
+                    }
+                    if let Some(message) = &self.update_result { ui.label(message); }
+                });
+            self.show_about = open;
+        }
         if self.show_apps {
             let mut open = true;
             egui::Window::new("Applications associées").open(&mut open).show(ctx, |ui| {
@@ -2329,6 +2376,7 @@ impl App {
             || self.recording.is_some()
             || self.import_report.is_some()
             || self.settings
+            || self.show_about
             || self.rename
             || self.save_bind
             || self.assistant_settings
