@@ -18,6 +18,12 @@ Exécutables prêts sur le PC fixe : `Bureau\DeckForge-0.5-fusion\DeckForge.exe`
 - Livré et testé automatiquement : « Attendre que… » (`wait_until`), sondage annulable, délai borné et simulation en lecture seule.
 - À tester avec Hatim : attente d’une condition réelle, expiration et bouton Arrêter pendant une attente.
 
+## Lot C3 — opérations sur les fenêtres (17/10/2026)
+
+- Livré : « Opération sur une fenêtre » (`window_op`) : activation, réduction, maximisation, restauration, déplacement, redimensionnement, changement d’écran et fenêtre toujours au premier plan. Cibles premier plan, fragment de titre ou exécutable ; protection de DeckForge sauf recherche explicite par titre. Atelier, trois modèles et schéma MCP inclus ; simulation sans effet.
+- Testé automatiquement : défauts et aller-retour JSON, validation, résumé et calcul pur multi-écrans ; build Windows complet. Aucun test ne touche aux fenêtres réelles.
+- À tester avec Hatim : ciblage d’une application non élevée, activation refusée par Windows, écran secondaire débranché, maximisation/restauration et bascule toujours au premier plan.
+
 ## Lot C2 — souris avancée (17/10/2026)
 
 - Livré : « Clic souris » (`mouse_click`) avec coordonnées facultatives et « Déplacer la souris » (`mouse_move`) avec origine `screen`, `window` (zone client capturée au déclenchement) ou `cursor` ; « Défilement souris » (`mouse_scroll`) horizontal ou vertical. Coordonnées bornées aux écrans virtuels ; anciennes macros `relative` acceptées. Atelier et MCP inclus.

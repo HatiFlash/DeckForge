@@ -64,7 +64,7 @@ const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
     ("Clavier", &[0, 45]),
     ("Streaming", &[19, 20, 21, 22, 23, 24, 25, 30, 31, 0, 4]), ("Système", &[0, 2, 4, 26, 27, 28, 29, 32, 33]),
     ("Texte", &[1, 43, 44]), ("Applications et sites", &[2, 3]),
-    ("Médias et audio", &[4, 13, 37, 38]), ("Fenêtres", &[6]), ("Attendre", &[5, 40]), ("Notifications", &[41]),
+    ("Médias et audio", &[4, 13, 37, 38]), ("Fenêtres", &[6, 46]), ("Attendre", &[5, 40]), ("Notifications", &[41]),
     ("Logique et répétitions", &[14, 15, 39]), ("Variables", &[16, 17, 42]),
     ("Navigation DeckForge", &[7, 8, 9, 10, 11]), ("Avancé / AutoHotkey", &[18]),
 ];
@@ -73,6 +73,7 @@ fn block_help(kind: usize) -> &'static str {
         27 => "Clique à la position actuelle, ou à des coordonnées écran, zone client ou curseur.",
         28 => "Déplace la souris dans l’écran, depuis le curseur ou dans la zone client capturée au déclenchement.",
         29 => "Défile verticalement ou horizontalement ; simulation sans effet.",
+        46 => "Active, déplace ou redimensionne une fenêtre ; jamais DeckForge sauf ciblage explicite par titre.",
         45 => "Maintient des touches ; 0 ms jusqu’au bloc Relâcher, fin ou annulation de la macro.",
         0 => "Appuie sur une combinaison de touches.", 1 => "Écrit du texte dans la fenêtre active ; accepte {nom} et les variables spéciales.",
         2 => "Démarre un programme Windows (arguments interpolés).", 3 => "Ouvre une adresse web (gabarit interpolé).",
@@ -133,6 +134,7 @@ fn block_summary(step: &Step) -> String {
     match step.active() {
         Step::MouseClick { .. } | Step::MouseMove { .. } | Step::MouseScroll { .. } => super::step_summary(step),
         Step::Clipboard { .. } => step.clipboard_summary().unwrap_or_default(),
+        Step::WindowOp { .. } => step.window_op_summary().unwrap_or_default(),
         Step::AppVolume { .. } => step.app_volume_summary().unwrap_or_default(),
         Step::DeviceVolume { .. } => step.device_volume_summary().unwrap_or_default(),
         Step::ObsScene { name } => format!("OBS : scène {name}"),

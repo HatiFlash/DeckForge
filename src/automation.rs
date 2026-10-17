@@ -21,10 +21,11 @@ pub const NAMES: &[&str] = &[
     "Si une variable correspond",
     "Script AutoHotkey",
     "OBS : scène", "OBS : enregistrement", "OBS : diffusion", "OBS : caméra",
-    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active", "Clic souris", "Déplacer la souris", "Défilement souris", "Jouer un son", "Arrêter les sons", "Luminosité du D6", "Veille du D6", "Envoyer en UDP", "Requête HTTP", "Touche à deux états", "Volume d’une application", "Volume d’un périphérique", "Si… sinon", "Attendre que…", "Notification", "Calculer", "Texte", "Presse-papiers", "Maintenir une touche",
+    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active", "Clic souris", "Déplacer la souris", "Défilement souris", "Jouer un son", "Arrêter les sons", "Luminosité du D6", "Veille du D6", "Envoyer en UDP", "Requête HTTP", "Touche à deux états", "Volume d’une application", "Volume d’un périphérique", "Si… sinon", "Attendre que…", "Notification", "Calculer", "Texte", "Presse-papiers", "Maintenir une touche", "Opération sur une fenêtre",
 ];
 pub fn step(kind: usize) -> Step {
     match kind {
+        46 => Step::WindowOp { target: "foreground".into(), value: String::new(), op: "maximize".into(), x: 0, y: 0, w: 800, h: 600, monitor: 2 },
         45 => Step::KeyHold { keys: "CTRL".into(), action: "down".into(), hold_ms: 500 },
         44 => Step::Clipboard { op: "copy_text".into(), value: "Bonjour".into(), name: "texte".into() },
         43 => Step::TextOp { name: "texte".into(), op: "upper".into(), value: String::new(), find: String::new(), persistent: false, },
@@ -362,6 +363,13 @@ mod native_close_tests {
 #[cfg(test)]
 mod clipboard_export_tests {
     use super::*;
+    #[test]
+    fn window_op_is_last_and_ahk_export_refuses_it() {
+        assert_eq!(NAMES.len(), 47);
+        let key = Key { steps: vec![step(46)], ..Key::default() };
+        assert_eq!(NAMES[46], key.steps[0].name());
+        assert!(export(&key).unwrap_err().to_string().contains("Opération sur une fenêtre"));
+    }
     #[test]
     fn clipboard_is_in_palette_and_refused_by_ahk_export() {
         assert!(NAMES.len() >= 45);

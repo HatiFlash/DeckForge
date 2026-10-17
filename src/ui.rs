@@ -3953,6 +3953,25 @@ fn edit_step(
                 if op != "read_to_variable" { ui.label("Nom de variable (utilisé seulement par Lire)"); changed |= ui.text_edit_singleline(name).changed(); }
             });
         }
+        Step::WindowOp { target, value, op, x, y, w, h, monitor } => {
+            ui.label("Fenêtre ciblée");
+            egui::ComboBox::from_id_salt("window_op_target").selected_text(match target.as_str() { "title" => "Titre", "exe" => "Exécutable", _ => "Fenêtre active" }).show_ui(ui, |ui| {
+                for (id, label) in [("foreground", "Fenêtre active"), ("title", "Titre"), ("exe", "Exécutable")] { changed |= ui.selectable_value(target, id.into(), label).changed(); }
+            });
+            if target != "foreground" { ui.label(if target == "title" { "Titre contenant" } else { "Nom .exe" }); changed |= ui.text_edit_singleline(value).changed(); }
+            ui.label("Action");
+            egui::ComboBox::from_id_salt("window_op_action").selected_text(match op.as_str() {
+                "activate" => "Activer", "minimize" => "Réduire", "maximize" => "Maximiser", "restore" => "Restaurer", "move" => "Déplacer", "resize" => "Redimensionner", "move_to_monitor" => "Changer d’écran", "toggle_always_on_top" => "Basculer toujours au premier plan", "always_on_top_on" => "Toujours au premier plan", _ => "Retirer du premier plan permanent"
+            }).show_ui(ui, |ui| {
+                for (id, label) in [("activate", "Activer"), ("minimize", "Réduire"), ("maximize", "Maximiser"), ("restore", "Restaurer"), ("move", "Déplacer"), ("resize", "Redimensionner"), ("move_to_monitor", "Changer d’écran"), ("toggle_always_on_top", "Basculer toujours au premier plan"), ("always_on_top_on", "Toujours au premier plan"), ("always_on_top_off", "Retirer du premier plan permanent")] { changed |= ui.selectable_value(op, id.into(), label).changed(); }
+            });
+            if op == "move_to_monitor" { changed |= ui.add(egui::DragValue::new(monitor).range(1..=16).prefix("Écran ")).changed(); }
+            egui::CollapsingHeader::new("Options avancées").id_salt("window_op_advanced").show(ui, |ui| {
+                if op == "move" { changed |= ui.add(egui::DragValue::new(x).range(-32768..=32767).prefix("X ")).changed(); changed |= ui.add(egui::DragValue::new(y).range(-32768..=32767).prefix("Y ")).changed(); }
+                if op == "resize" { changed |= ui.add(egui::DragValue::new(w).range(1..=32767).prefix("Largeur ")).changed(); changed |= ui.add(egui::DragValue::new(h).range(1..=32767).prefix("Hauteur ")).changed(); }
+                ui.label("Écran 1 = écran principal ; autres écrans triés de gauche à droite, puis de haut en bas.");
+            });
+        }
         Step::AppVolume { target, action, step, level, include_children } => {
             ui.label("Cible");
             let mut foreground = target == "foreground";
@@ -4273,6 +4292,7 @@ fn step_summary(step: &Step) -> String {
         Step::TextOp { .. } => step.text_op_summary().unwrap_or_default(),
         Step::SetVariable { name, persistent, .. } => format!("Définir {name}{}", if *persistent { " (enregistrée)" } else { "" }),
         Step::Clipboard { .. } => step.clipboard_summary().unwrap_or_default(),
+        Step::WindowOp { .. } => step.window_op_summary().unwrap_or_default(),
         Step::AppVolume { .. } => step.app_volume_summary().unwrap_or_default(),
         Step::DeviceVolume { .. } => step.device_volume_summary().unwrap_or_default(),
         Step::StopSounds => "Arrêter les sons".into(),

@@ -17,7 +17,7 @@ pub fn step_kind(step: &Step) -> usize {
         Step::Toggle { .. } => 30,
         Step::UdpSend { .. } | Step::HttpRequest { .. } => 4,
         Step::D6Brightness { .. } | Step::D6Sleep => 9,
-        Step::CloseWindow => 5,
+        Step::CloseWindow | Step::WindowOp { .. } => 5,
         Step::Delay { .. } => 0,
         Step::Hotkey { .. } | Step::KeyHold { .. } => 1,
         Step::Text { .. } | Step::Clipboard { .. } => 2,

@@ -47,6 +47,11 @@ pub fn presets() -> Vec<Preset> {
             }],
         );
     }
+    for (label, op, monitor) in [("Fenêtre sur l'écran 2", "move_to_monitor", 2), ("Toujours au premier plan", "toggle_always_on_top", 2), ("Maximiser", "maximize", 2)] {
+        add("Fenêtres", label, "Opération sur la fenêtre active, sauf DeckForge ; écran 1 = principal.", [73, 160, 217], vec![Step::WindowOp {
+            target: "foreground".into(), value: String::new(), op: op.into(), x: 0, y: 0, w: 800, h: 600, monitor,
+        }]);
+    }
     add("Clavier", "Maintenir Ctrl 500 ms", "Maintient Ctrl puis le relâche après une demi-seconde ; Arrêter relâche immédiatement.", [73, 160, 217], vec![Step::KeyHold { keys: "CTRL".into(), action: "down".into(), hold_ms: 500 }]);
     add("Texte", "Coller sans mise en forme", "Lit le texte Unicode, le recopie sans formatage puis colle dans la fenêtre active.", [108, 135, 236], vec![
         Step::Clipboard { op: "read_to_variable".into(), value: String::new(), name: "texte_colle".into() },
@@ -478,7 +483,7 @@ mod tests {    #[test]
     #[test]
     fn every_preset_and_action_is_executable_with_valid_configuration() {
         let c = Config::default();
-        assert_eq!(presets().len(), 79);
+        assert_eq!(presets().len(), 82);
         for p in presets() {
             validate_key(&p.key, &c).unwrap();
             assert!(!p.key.steps.is_empty());

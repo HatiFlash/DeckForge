@@ -69,6 +69,16 @@ pub enum Step {
         #[serde(default = "default_background")]
         include_children: bool,
     },
+    WindowOp {
+        #[serde(default = "default_app_target")] target: String,
+        #[serde(default)] value: String,
+        #[serde(default = "default_window_op")] op: String,
+        #[serde(default)] x: i32,
+        #[serde(default)] y: i32,
+        #[serde(default = "default_window_width")] w: i32,
+        #[serde(default = "default_window_height")] h: i32,
+        #[serde(default = "default_window_monitor")] monitor: u32,
+    },
     Clipboard {
         #[serde(default = "default_clipboard_op")] op: String,
         #[serde(default)] value: String,
@@ -187,6 +197,20 @@ fn default_wait_timeout() -> u64 { 5000 }
 fn default_wait_poll() -> u64 { 200 }
 fn default_device() -> String { "default".into() }
 fn default_device_level() -> u8 { 50 }
+fn default_window_op() -> String { "maximize".into() }
+fn default_window_width() -> i32 { 800 }
+fn default_window_height() -> i32 { 600 }
+fn default_window_monitor() -> u32 { 2 }
+fn valid_window_op(target: &str, value: &str, op: &str, x: i32, y: i32, w: i32, h: i32, monitor: u32) -> bool {
+    ["foreground", "title", "exe"].contains(&target)
+        && value.len() <= 260 && !value.chars().any(char::is_control)
+        && (target == "foreground" || !value.trim().is_empty() && value.trim() == value)
+        && (target != "exe" || value.to_ascii_lowercase().ends_with(".exe") && !value.contains(['/', '\\']))
+        && ["activate", "minimize", "maximize", "restore", "move", "resize", "move_to_monitor", "toggle_always_on_top", "always_on_top_on", "always_on_top_off"].contains(&op)
+        && (-32768..=32767).contains(&x) && (-32768..=32767).contains(&y)
+        && (1..=32767).contains(&w) && (1..=32767).contains(&h)
+        && (1..=16).contains(&monitor)
+}
 fn default_app_target() -> String { "foreground".into() }
 fn default_app_action() -> String { "up".into() }
 fn default_app_step() -> u8 { 5 }
@@ -257,6 +281,21 @@ impl Step {
             _ => format!("Action de maintien inconnue : {keys}"),
         })
     }
+    pub fn window_op_summary(&self) -> Option<String> {
+        let Self::WindowOp { target, value, op, x, y, w, h, monitor } = self else { return None };
+        let who = if target == "foreground" { "la fenêtre active".to_owned() } else { format!("la fenêtre {value}") };
+        Some(match op.as_str() {
+            "activate" => format!("Activer {who}"), "minimize" => format!("Réduire {who}"),
+            "maximize" => format!("Maximiser {who}"), "restore" => format!("Restaurer {who}"),
+            "move" => format!("Déplacer {who} à {x}, {y}"),
+            "resize" => format!("Redimensionner {who} à {w} × {h}"),
+            "move_to_monitor" => format!("Déplacer {who} sur l’écran {monitor}"),
+            "toggle_always_on_top" => format!("Basculer toujours au premier plan pour {who}"),
+            "always_on_top_on" => format!("Garder {who} toujours au premier plan"),
+            "always_on_top_off" => format!("Désactiver toujours au premier plan pour {who}"),
+            _ => format!("Opération de fenêtre inconnue : {who}"),
+        })
+    }
     pub fn clipboard_summary(&self) -> Option<String> {
         let Self::Clipboard { op, value, name } = self else { return None };
         Some(match op.as_str() {
@@ -291,6 +330,7 @@ impl Step {
             Self::Folder { .. } => "Ouvrir un dossier",
             Self::AudioSwitch { .. } => "Basculer le périphérique audio",
             Self::AppVolume { .. } => "Volume d’une application",
+            Self::WindowOp { .. } => "Opération sur une fenêtre",
             Self::Clipboard { .. } => "Presse-papiers",
             Self::DeviceVolume { .. } => "Volume d’un périphérique",
             Self::IfCondition { .. } => "Si… sinon",
@@ -991,6 +1031,8 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
                 if (target != "foreground" && (target.len() > 260 || !target.to_ascii_lowercase().ends_with(".exe") || target.contains(['/', '\\']) || target.chars().any(char::is_control) || target.trim() != target))
                     || !["up", "down", "set", "mute", "unmute", "toggle_mute"].contains(&action.as_str())
                     || !(1..=100).contains(step) || *level > 100 => bail!("Cible, action ou niveau de volume d’application invalide"),
+            Step::WindowOp { target, value, op, x, y, w, h, monitor }
+                if !valid_window_op(target, value, op, *x, *y, *w, *h, *monitor) => bail!("Fenêtre : cible, opération, dimensions ou écran invalide"),
             Step::Clipboard { op, value, name } if !["copy_text", "read_to_variable", "clear", "save", "restore"].contains(&op.as_str())
                 || value.len() > 100_000 || value.contains('\0') || !valid_math_name(name) => bail!("Presse-papiers : opération, texte ou nom de variable invalide"),
             Step::DeviceVolume { device, action, step, level, .. }
@@ -1132,6 +1174,24 @@ fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> 
     Ok(())
 }
 
+#[cfg(test)]
+mod window_op_tests {
+    use super::*;
+    #[test]
+    fn defaults_roundtrip_validation_and_unknown_fields() {
+        let step: Step = serde_json::from_str(r#"{"type":"window_op"}"#).unwrap();
+        assert!(step.window_op_summary().unwrap().contains("Maximiser"));
+        assert_eq!(step, serde_json::from_str(&serde_json::to_string(&step).unwrap()).unwrap());
+        let c = Config::default();
+        let valid = |s: Step| validate_key(&Key { steps: vec![s], ..Key::default() }, &c).is_ok();
+        assert!(valid(step.clone()));
+        for field in [r#""op":"wrong""#, r#""target":"exe","value":"bad/path.exe""#, r#""target":"title","value":"""#, r#""w":0"#, r#""monitor":17"#] {
+            let s: Step = serde_json::from_str(&format!("{{\"type\":\"window_op\",{field}}}")).unwrap();
+            assert!(!valid(s), "{field}");
+        }
+        assert!(serde_json::from_str::<Step>(r#"{"type":"window_op","surprise":1}"#).is_err());
+    }
+}
 #[cfg(test)]
 mod state_display_tests {
     use super::*;

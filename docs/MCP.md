@@ -8,6 +8,10 @@ Dans `deckforge_configure_key`, `state_display` est optionnel : `{"condition":{"
 
 Les blocs `text` (texte saisi), `url`, `http_request` (`url` et `body`), `udp_send` (`text`) et `launch` (`args`) acceptent `{nom}` ; les gabarits restent inchangés dans la configuration et les propositions MCP. Variables spéciales en lecture : `{date}` (AAAA-MM-JJ locale), `{heure}` (HH:MM:SS locale), `{horodatage}` (secondes Unix), `{presse_papiers}` (texte Unicode du presse-papiers Windows). `{{` donne une accolade littérale. Les noms spéciaux sont réservés ; une variable ordinaire homonyme ne les remplace pas. L'adresse résolue est revalidée avant ouverture/requête. La simulation n'envoie ni texte, ni requête, ni lancement et ne lit pas le presse-papiers.
 
+### Opération sur une fenêtre (`window_op`)
+
+`{"type":"window_op","target":"foreground","op":"move_to_monitor","monitor":2}` déplace la fenêtre active sur l’écran 2 (1 = principal, les autres de gauche à droite puis de haut en bas). `target` accepte `foreground`, `title` (fragment du titre dans `value`) et `exe` (nom du programme `.exe` dans `value`). `op` : `activate`, `minimize`, `maximize`, `restore`, `move` (`x`,`y` absolus), `resize` (`w`,`h`), `move_to_monitor`, `toggle_always_on_top`, `always_on_top_on`, `always_on_top_off`. DeckForge est exclu sauf recherche explicite par titre contenant « DeckForge ». La simulation ne modifie aucune fenêtre ; export AutoHotkey refusé.
+
 ### Maintenir une touche (`key_hold`)
 
 `{"type":"key_hold","keys":"CTRL+SHIFT","action":"down","hold_ms":500}` maintient les touches au format Raccourci, puis les relâche après 500 ms. Avec `hold_ms:0`, elles restent enfoncées jusqu’à un bloc `{"type":"key_hold","keys":"CTRL+SHIFT","action":"up"}`, la fin de la macro ou son annulation. `up` exige une durée nulle. Simulation sans saisie réelle ; export AutoHotkey non disponible.

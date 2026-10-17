@@ -11,7 +11,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITOR_DEFAULTTONEAREST, MONITORINFO};
+use windows_sys::Win32::Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, MONITOR_DEFAULTTONEAREST, MONITORINFO};
 use windows_sys::Win32::{
     Foundation::{BOOL, HWND, LPARAM, RECT},
     UI::{Input::KeyboardAndMouse::*, WindowsAndMessaging::*},
@@ -448,6 +448,7 @@ fn run_steps(
             if let Step::Notify { title, message } = step { let _ = tx.send(Event::Log(format!("Simulation : notification « {} » — {} (non envoyée)", interpolate(title, variables), interpolate(message, variables)))); }
             if let Some(summary) = step.active().app_volume_summary().or_else(|| step.active().device_volume_summary()) { let _ = tx.send(Event::Log(format!("Simulation : {summary}"))); }
             match step {
+                Step::WindowOp { .. } => { let _ = tx.send(Event::Log(format!("Simulation : {} (aucune fenêtre modifiée)", step.window_op_summary().unwrap_or_default()))); }
                 Step::KeyHold { .. } => { let _ = tx.send(Event::Log(format!("Simulation : {} (aucune touche enfoncée)", step.key_hold_summary().unwrap_or_default()))); }
                 Step::Clipboard { .. } => {
                     let _ = tx.send(Event::Log(format!("Simulation : {} (presse-papiers non consulté ni modifié)", step.clipboard_summary().unwrap_or_default())));
@@ -543,6 +544,10 @@ fn run_steps(
             Step::D6Brightness { mode, value } => { let _ = tx.send(Event::D6Brightness(mode.clone(), *value)); },
             Step::D6Sleep => { let _ = tx.send(Event::D6Sleep); },
             Step::CloseWindow => close_foreground_window()?,
+            Step::WindowOp { target, value, op, x, y, w, h, monitor } => {
+                let message = window_operation(target, value, op, *x, *y, *w, *h, *monitor, cancel)?;
+                let _ = tx.send(Event::Log(message));
+            },
             Step::MouseClick { button, double, x, y, relative_to } => {
                 if let (Some(x), Some(y)) = (x, y) { mouse_move(*x, *y, relative_to)?; }
                 mouse_click(button, *double)?;
@@ -872,6 +877,117 @@ fn mouse_move(x: i32, y: i32, relative_to: &str) -> Result<()> {
         assert!(mouse_target(50, 0, "window", (0, 0), window, screen).is_err());
         assert!(mouse_target(1, 1, "window", (0, 0), None, screen).is_err());
         assert!(mouse_target(0, 0, "other", (0, 0), window, screen).is_err());
+    }
+}
+// Keep screen 1 stable as the primary monitor. Other screens follow desktop geometry.
+fn ordered_monitors(mut screens: Vec<(bool, RECT)>) -> Vec<RECT> {
+    screens.sort_by_key(|(primary, r)| (!*primary, r.left, r.top));
+    screens.into_iter().map(|(_, r)| r).collect()
+}
+fn relocate_window(rect: RECT, from: RECT, to: RECT) -> (i32, i32, i32, i32) {
+    let width = (rect.right - rect.left).max(1).min((to.right - to.left).max(1));
+    let height = (rect.bottom - rect.top).max(1).min((to.bottom - to.top).max(1));
+    let x = (to.left + rect.left.saturating_sub(from.left)).clamp(to.left, to.right - width);
+    let y = (to.top + rect.top.saturating_sub(from.top)).clamp(to.top, to.bottom - height);
+    (x, y, width, height)
+}
+unsafe extern "system" fn collect_monitor(monitor: windows_sys::Win32::Graphics::Gdi::HMONITOR, _: windows_sys::Win32::Graphics::Gdi::HDC, _: *mut RECT, data: LPARAM) -> BOOL {
+    let screens = &mut *(data as *mut Vec<(bool, RECT)>);
+    let mut info = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, rcMonitor: std::mem::zeroed(), rcWork: std::mem::zeroed(), dwFlags: 0 };
+    if GetMonitorInfoW(monitor, &mut info) != 0 { screens.push((info.dwFlags & 1 != 0, info.rcWork)); }
+    1
+}
+fn monitor_areas() -> Vec<RECT> {
+    let mut screens = Vec::new();
+    unsafe { EnumDisplayMonitors(std::ptr::null_mut(), std::ptr::null(), Some(collect_monitor), &mut screens as *mut _ as isize); }
+    ordered_monitors(screens)
+}
+struct WindowSearch { query: String, by_title: bool, explicit_self: bool, found: Option<HWND> }
+unsafe extern "system" fn find_op_window(hwnd: HWND, data: LPARAM) -> BOOL {
+    let search = &mut *(data as *mut WindowSearch);
+    if IsWindowVisible(hwnd) == 0 || GetWindow(hwnd, GW_OWNER) != std::ptr::null_mut() { return 1; }
+    let mut pid = 0;
+    GetWindowThreadProcessId(hwnd, &mut pid);
+    if pid == 0 || pid == std::process::id() && !search.explicit_self { return 1; }
+    let matched = if search.by_title {
+        let mut text = [0u16; 2048];
+        let size = GetWindowTextW(hwnd, text.as_mut_ptr(), text.len() as i32);
+        size > 0 && String::from_utf16_lossy(&text[..size as usize]).to_lowercase().contains(&search.query)
+    } else {
+        use windows_sys::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION};
+        use windows_sys::Win32::Foundation::CloseHandle;
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if process.is_null() { return 1; }
+        let mut text = [0u16; 32768];
+        let mut size = text.len() as u32;
+        let ok = QueryFullProcessImageNameW(process, 0, text.as_mut_ptr(), &mut size) != 0
+            && executable_name(&String::from_utf16_lossy(&text[..size as usize])).as_deref() == Some(search.query.as_str());
+        CloseHandle(process);
+        ok
+    };
+    if matched { search.found = Some(hwnd); 0 } else { 1 }
+}
+fn window_operation(target: &str, value: &str, op: &str, x: i32, y: i32, w: i32, h: i32, monitor: u32, cancel: &AtomicBool) -> Result<String> {
+    check(cancel)?;
+    let hwnd = if target == "foreground" { unsafe { GetForegroundWindow() } } else {
+        let mut search = WindowSearch { query: value.to_lowercase(), by_title: target == "title", explicit_self: target == "title" && value.to_lowercase().contains("deckforge"), found: None };
+        unsafe { EnumWindows(Some(find_op_window), &mut search as *mut _ as isize); }
+        search.found.unwrap_or(std::ptr::null_mut())
+    };
+    anyhow::ensure!(!hwnd.is_null() && unsafe { IsWindow(hwnd) } != 0, "Fenêtre introuvable : {target} {value}");
+    let mut pid = 0;
+    unsafe { GetWindowThreadProcessId(hwnd, &mut pid); }
+    anyhow::ensure!(pid != std::process::id() || target == "title" && value.to_lowercase().contains("deckforge"), "DeckForge ne peut être ciblé que par son titre explicite");
+    check(cancel)?;
+    unsafe {
+        match op {
+            "activate" => activate_window(hwnd)?,
+            "minimize" => { ShowWindow(hwnd, SW_SHOWMINNOACTIVE); anyhow::ensure!(IsIconic(hwnd) != 0, "Windows a refusé de réduire la fenêtre"); },
+            "maximize" => { ShowWindow(hwnd, SW_MAXIMIZE); anyhow::ensure!(IsZoomed(hwnd) != 0, "Windows a refusé de maximiser la fenêtre"); },
+            "restore" => { ShowWindow(hwnd, SW_RESTORE); anyhow::ensure!(IsIconic(hwnd) == 0 && IsZoomed(hwnd) == 0, "Windows a refusé de restaurer la fenêtre"); },
+            "move" | "resize" | "move_to_monitor" => {
+                let mut rect: RECT = std::mem::zeroed();
+                anyhow::ensure!(GetWindowRect(hwnd, &mut rect) != 0, "Impossible de lire la position de la fenêtre");
+                let screens = if op == "move_to_monitor" { monitor_areas() } else { Vec::new() };
+                if op == "move_to_monitor" {
+                    anyhow::ensure!(screens.get(monitor as usize - 1).is_some(), "Écran {monitor} introuvable ({} écran(s) connecté(s))", screens.len());
+                }
+                if IsIconic(hwnd) != 0 || IsZoomed(hwnd) != 0 {
+                    ShowWindow(hwnd, SW_RESTORE);
+                    anyhow::ensure!(GetWindowRect(hwnd, &mut rect) != 0, "Impossible de lire la position restaurée de la fenêtre");
+                }
+                let (nx, ny, nw, nh) = if op == "move_to_monitor" {
+                    let destination = &screens[monitor as usize - 1];
+                    let origin = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                    let mut info = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, rcMonitor: std::mem::zeroed(), rcWork: std::mem::zeroed(), dwFlags: 0 };
+                    anyhow::ensure!(!origin.is_null() && GetMonitorInfoW(origin, &mut info) != 0, "Écran d’origine introuvable");
+                    relocate_window(rect, info.rcWork, *destination)
+                } else if op == "move" { (x, y, (rect.right - rect.left).max(1), (rect.bottom - rect.top).max(1)) }
+                else { (rect.left, rect.top, w, h) };
+                anyhow::ensure!(SetWindowPos(hwnd, std::ptr::null_mut(), nx, ny, nw, nh, SWP_NOZORDER | SWP_NOACTIVATE) != 0, "Windows a refusé de déplacer ou redimensionner la fenêtre");
+            },
+            "toggle_always_on_top" | "always_on_top_on" | "always_on_top_off" => {
+                let top = op == "always_on_top_on" || op == "toggle_always_on_top" && (GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOPMOST == 0);
+                anyhow::ensure!(SetWindowPos(hwnd, if top { HWND_TOPMOST } else { HWND_NOTOPMOST }, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) != 0, "Windows a refusé le changement de premier plan permanent");
+            },
+            _ => bail!("Opération de fenêtre inconnue"),
+        }
+    }
+    Ok(format!("Fenêtre : {}", (Step::WindowOp { target: target.into(), value: value.into(), op: op.into(), x, y, w, h, monitor }).window_op_summary().unwrap_or_default()))
+}
+#[cfg(test)]
+mod window_op_tests {
+    use super::*;
+    fn r(left: i32, top: i32, right: i32, bottom: i32) -> RECT { RECT { left, top, right, bottom } }
+    #[test]
+    fn position_on_another_monitor_preserves_offset_and_clamps() {
+        let from = r(0, 0, 1920, 1040);
+        let to = r(-1600, 0, 0, 900);
+        assert_eq!(relocate_window(r(100, 60, 900, 660), from, to), (-1500, 60, 800, 600));
+        assert_eq!(relocate_window(r(1800, 900, 2600, 1500), from, to), (-800, 300, 800, 600));
+        let sorted = ordered_monitors(vec![(false, to), (true, from)]);
+        assert_eq!(sorted[0].left, 0);
+        assert_eq!(sorted[1].left, -1600);
     }
 }
 fn close_foreground_window() -> Result<()> {
