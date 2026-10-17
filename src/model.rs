@@ -494,6 +494,9 @@ pub fn validate_key_in_profile(key: &Key, c: &Config, p: &Profile) -> Result<()>
 }
 pub fn media_vk(command: &str) -> Option<u16> {
     Some(match command {
+        "browser_back" => 0xA6,
+        "browser_forward" => 0xA7,
+        "browser_refresh" => 0xA8,
         "play_pause" => 0xB3,
         "next" => 0xB0,
         "previous" => 0xB1,
@@ -542,6 +545,9 @@ pub fn parse_hotkey(text: &str) -> Result<Vec<u16>> {
             "LBRACKET" => 0xDB,
             "RBRACKET" => 0xDD,
             "BACKTICK" => 0xC0,
+            "BROWSER_BACK" => 0xA6,
+            "BROWSER_FORWARD" => 0xA7,
+            "BROWSER_REFRESH" => 0xA8,
             _ if p.len() == 1 && p.as_bytes()[0].is_ascii_alphanumeric() => p.as_bytes()[0] as u16,
             _ if p.starts_with('F') => {
                 let n = p[1..].parse::<u16>().unwrap_or(0);
@@ -719,6 +725,13 @@ fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn browser_virtual_keys_are_distinct_and_validated() {
+        for (name, vk) in [("BROWSER_BACK", 0xA6), ("BROWSER_FORWARD", 0xA7), ("BROWSER_REFRESH", 0xA8)] {
+            assert_eq!(parse_hotkey(name).unwrap(), vec![vk]);
+        }
+        assert!(parse_hotkey("BROWSER_UNKNOWN").is_err());
+    }
     #[test]
     fn long_press_config_and_actions_keep_legacy_compatible() {
         let mut c = Config::default();

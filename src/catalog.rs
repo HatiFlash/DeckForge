@@ -227,6 +227,20 @@ pub fn presets() -> Vec<Preset> {
             },
         ],
     );
+    for (label, keys, description) in [
+        ("Discord : Micro", "CTRL+SHIFT+F13", "Définis le même raccourci dans Discord > Paramètres > Raccourcis clavier > Couper le micro. État non synchronisé."),
+        ("Discord : Casque", "CTRL+SHIFT+F14", "Définis le même raccourci dans Discord > Paramètres > Raccourcis clavier > Couper le son. État non synchronisé."),
+        ("Navigateur : Retour", "BROWSER_BACK", "Revenir à la page précédente (touche navigateur Windows)."),
+        ("Navigateur : Suivant", "BROWSER_FORWARD", "Aller à la page suivante (touche navigateur Windows)."),
+        ("Navigateur : Actualiser", "BROWSER_REFRESH", "Actualiser la page (touche navigateur Windows)."),
+        ("Fermer la fenêtre", "ALT+F4", "Fermer la fenêtre active ; attention aux modifications non enregistrées."),
+        ("Afficher le bureau", "WIN+D", "Afficher ou masquer le bureau Windows."),
+        ("Reconnaissance vocale", "WIN+H", "Ouvrir la saisie vocale Windows."),
+        ("Changer d’écran", "WIN+P", "Ouvrir les options de projection Windows."),
+    ] {
+        let category = if label.starts_with("Discord") { "Streaming" } else { "Système" };
+        add(category, label, description, [108, 154, 218], vec![Step::Hotkey { keys: keys.into() }]);
+    }
     items
 }
 
@@ -414,13 +428,23 @@ mod tests {    #[test]
     #[test]
     fn every_preset_and_action_is_executable_with_valid_configuration() {
         let c = Config::default();
-        assert_eq!(presets().len(), 40);
+        assert_eq!(presets().len(), 49);
         for p in presets() {
             validate_key(&p.key, &c).unwrap();
             assert!(!p.key.steps.is_empty());
         }
         for i in 0..12 {
             validate_key(&action(i, "Bureau"), &c).unwrap();
+        }
+    }
+    #[test]
+    fn native_browser_and_discord_presets_are_serializable_and_valid() {
+        let presets = presets();
+        for label in ["Discord : Micro", "Discord : Casque", "Navigateur : Retour", "Navigateur : Suivant", "Navigateur : Actualiser"] {
+            let p = presets.iter().find(|p| p.key.label == label).unwrap();
+            validate_key(&p.key, &Config::default()).unwrap();
+            let json = serde_json::to_string(&p.key).unwrap();
+            assert_eq!(serde_json::from_str::<Key>(&json).unwrap().steps, p.key.steps);
         }
     }
     #[test]
