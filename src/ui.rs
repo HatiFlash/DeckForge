@@ -2222,6 +2222,9 @@ impl App {
     }
 }
 impl eframe::App for App {
+    fn clear_color(&self, _: &egui::Visuals) -> [f32; 4] {
+        clear_background(self.preferences.dark)
+    }
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         if ctx.input(|i| i.viewport().close_requested())
             && self.preferences.close_to_tray
@@ -2288,7 +2291,14 @@ impl App {
         }
     }
 }
+fn clear_background(dark: bool) -> [f32; 4] {
+    let c = if dark { [24, 26, 31] } else { [237, 240, 245] };
+    [c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, 1.0]
+}
 impl eframe::App for Runner {
+    fn clear_color(&self, _: &egui::Visuals) -> [f32; 4] {
+        clear_background(self.app.lock().unwrap_or_else(|e| e.into_inner()).preferences.dark)
+    }
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         eframe::App::update(
             &mut *self.app.lock().unwrap_or_else(|e| e.into_inner()),

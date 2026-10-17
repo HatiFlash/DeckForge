@@ -1131,3 +1131,14 @@ fn workshop_entry_points_and_idle_viewport_commands() {
     assert!(text_position(&output.shapes, "Modèles").is_some(), "model button opens workshop templates");
 
 }
+
+#[test]
+fn theme_clear_color_is_opaque_and_matches_background() {
+    let h = Harness::new();
+    for dark in [true, false] {
+        let actual = clear_background(dark);
+        assert_eq!(actual[3], 1.0);
+        assert_eq!(actual, if dark { [24.0/255.0,26.0/255.0,31.0/255.0,1.0] } else { [237.0/255.0,240.0/255.0,245.0/255.0,1.0] });
+    }
+    assert_eq!(eframe::App::clear_color(&h.app, &egui::Visuals::default()), clear_background(h.app.preferences.dark));
+}

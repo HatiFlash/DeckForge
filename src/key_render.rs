@@ -231,6 +231,8 @@ pub fn animated(key: &crate::model::Key, size: u32, font: &FontArc) -> Result<Ve
     let bytes = std::fs::read(&key.image)?;
     anyhow::ensure!(bytes.len() <= 20_000_000, "GIF supérieur à 20 Mo");
     let decoder = image::codecs::gif::GifDecoder::new(Cursor::new(bytes))?;
+    let (width, height) = image::ImageDecoder::dimensions(&decoder);
+    anyhow::ensure!(width <= 2048 && height <= 2048, "GIF trop grand : réimporter pour réduire à 256 px");
     let mut frames = Vec::new();
     let mut elapsed = 0u32;
     let mut sampled = 0u32;
