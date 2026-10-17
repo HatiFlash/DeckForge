@@ -96,11 +96,11 @@ pub fn configure(client: Client, locations: &Locations, exe: &Path, remove: bool
     if old==next { return Ok(format!("{} : aucun changement",client.name())); }
     if remove && old.is_empty() { return Ok(format!("{} : rien à retirer",client.name())); }
     atomic_save(&path,&next)?;
-    Ok(format!("{} : {}. Sauvegarde : {}. Redémarre le client.",client.name(),if remove {"retiré"} else {"configuré"},path.with_file_name(format!("{}.bak-deckforge",path.file_name().unwrap().to_string_lossy())).display()))
+    Ok(format!("{} : {}. {} Redémarre le client.",client.name(),if remove {"retiré"} else {"configuré"},if old.is_empty() {"Nouveau fichier.".to_string()} else {format!("Sauvegarde : {}.",path.with_file_name(format!("{}.bak-deckforge",path.file_name().unwrap().to_string_lossy())).display())}))
 }
 fn toml_literal(path: &str) -> String {
     if !path.contains('\'') && !path.contains('\n') && !path.contains('\r') { format!("'{path}'") }
-    else { format!("{}",serde_json::to_string(path).unwrap_or_default()) }
+    else { serde_json::to_string(path).unwrap_or_default() }
 }
 
 pub fn find_claude(locations: &Locations, path_env: Option<&std::ffi::OsStr>) -> Option<PathBuf> {
@@ -130,6 +130,8 @@ fn claude_cli(cli: &Path, args: &[&str]) -> Result<String,String> {
 }
 pub fn configure_code(locations: &Locations, exe: &Path, remove: bool) -> Result<String,String> {
     if let Some(cli)=find_claude(locations,std::env::var_os("PATH").as_deref()) {
+        let config=locations.path(Client::Code);
+        if config.exists(){std::fs::copy(&config,config.with_file_name(".claude.json.bak-deckforge")).map_err(|e|e.to_string())?;}
         if remove {return claude_cli(&cli,&["mcp","remove","--scope","user","deckforge"]);}
         if !exe.is_file(){return Err("Connecteur introuvable".into());}
         if configured(Client::Code,locations) {let _=claude_cli(&cli,&["mcp","remove","--scope","user","deckforge"])?;}

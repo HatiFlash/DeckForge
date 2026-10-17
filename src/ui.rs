@@ -983,7 +983,7 @@ impl App {
             if let Err(e)=&exe { ui.colored_label(Color32::DARK_RED,e); }
             egui::Frame::group(ui.style()).show(ui,|ui|{
                 ui.label(RichText::new("ChatGPT : Secure MCP Tunnel").strong());
-                ui.label("1. Ouvre la documentation du tunnel. 2. Copie le chemin du connecteur stdio à fournir au tunnel. 3. Dans ChatGPT : Plugins → Ajouter un serveur MCP → Tunnel. Disponibilité à vérifier selon ton compte. Le port HTTP reste local.");
+                ui.label("1. Ouvre la documentation du tunnel. 2. Copie le chemin du connecteur stdio à fournir au tunnel. 3. Dans ChatGPT : Plugins, Ajouter un serveur MCP, puis Tunnel. Disponibilité à vérifier selon ton compte. Le port HTTP reste local.");
                 if ui.button("Ouvrir la page du tunnel").clicked(){let _={ui.ctx().open_url(egui::OpenUrl::new_tab("https://developers.openai.com/api/docs/guides/secure-mcp-tunnels"));Ok::<(),String>(())};}
                 if ui.button("Copier la commande stdio").clicked(){ui.ctx().copy_text(self.path.with_file_name("deckforge-mcp.exe").to_string_lossy().into_owned());}
             });
@@ -1200,6 +1200,7 @@ impl App {
                         });
                         let ai_on=self.assistant.as_ref().is_some_and(|s|s.enabled());
                         let ai_label=if ai_on {"IA : connectée"} else if self.preferences.allow_connected_ai {"IA : en attente"} else {"IA : désactivée"};
+                        if ui.button("Connecter une IA").clicked() { self.connect_window=true; }
                         if ui.button(ai_label).on_hover_text("Connecter une IA ou désactiver le pont local").clicked() {
                             if ai_on { self.set_ai_enabled(false); } else { self.assistant_settings=true; }
                         }

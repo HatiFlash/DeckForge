@@ -1142,3 +1142,17 @@ fn theme_clear_color_is_opaque_and_matches_background() {
     }
     assert_eq!(eframe::App::clear_color(&h.app, &egui::Visuals::default()), clear_background(h.app.preferences.dark));
 }
+#[test]
+fn mcp_connect_window_previews_all_clients_without_touching_real_settings() {
+    let mut h=Harness::new();
+    h.app.connect_window=true;
+    let size=vec2(1280.0,850.0);
+    let output=h.warm(size);
+    let text=output.shapes.iter().filter_map(|shape| {
+        if let egui::Shape::Text(t)=&shape.shape {Some(t.galley.job.text.as_str())}else{None}
+    }).collect::<Vec<_>>().join(" ");
+    for client in ["Claude Desktop","Claude Code","Codex CLI","Cursor","ChatGPT"] {assert!(text.contains(client),"Carte manquante : {client}");}
+    if let Some(dir)=std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        h.png(size,output,&PathBuf::from(dir).join("mcp-connect.png"));
+    }
+}
