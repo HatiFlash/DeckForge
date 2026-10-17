@@ -12,7 +12,20 @@ fn copy_tree(source:&Path,target:&Path,total:&mut u64,depth:usize)->anyhow::Resu
  for item in fs::read_dir(source)?.take(4097){let item=item?;let ty=item.file_type()?;anyhow::ensure!(!ty.is_symlink(),"Lien symbolique refusé");let dst=target.join(item.file_name());if ty.is_dir(){copy_tree(&item.path(),&dst,total,depth+1)?;}else if ty.is_file(){let len=item.metadata()?.len();*total=total.saturating_add(len);anyhow::ensure!(*total<=LIMIT,"Plugin trop volumineux");fs::copy(item.path(),dst)?;}else{anyhow::bail!("Type de fichier refusé");}}Ok(())
 }
 pub fn import_folder(folder:&Path,dest:&Path)->anyhow::Result<bool>{let plugin=plugins::parse(folder,&fs::read(folder.join("manifest.json"))?)?;anyhow::ensure!(matches!(plugin.runtime,Runtime::Exe(_)|Runtime::Node(_)|Runtime::Html(_)),"Plugin non exécutable ou protégé");let name=allowed_name(&plugin)?;fs::create_dir_all(dest)?;let final_path=dest.join(name);if final_path.exists(){return Ok(false);}let staging=tempfile::Builder::new().prefix(".import-").tempdir_in(dest)?;let copy=staging.path().join(name);let mut total=0;copy_tree(folder,&copy,&mut total,0)?;let verified=plugins::parse(&copy,&fs::read(copy.join("manifest.json"))?)?;anyhow::ensure!(verified.runtime!=Runtime::Unsupported,"CodePath manquant après copie");fs::rename(copy,final_path)?;Ok(true)}
-pub fn import_sources(dest:&Path)->Report{let mut report=Report::default();for root in sources(){for p in inventory(&root){match p.runtime {Runtime::Protected=>report.protected+=1,Runtime::Unsupported=>report.built_in+=1,_=>match import_folder(&p.folder,dest){Ok(true)=>report.copied+=1,Ok(false)=>report.existing+=1,Err(_)=>report.skipped+=1}}}}report}
+#[derive(Clone,Copy,Debug,PartialEq,Eq)] pub enum Category { Available, BuiltIn, NonExecutable, Protected }
+pub fn category(plugin:&Plugin)->Category {
+ match plugin.runtime {
+  Runtime::Exe(_)|Runtime::Node(_)|Runtime::Html(_)=>Category::Available,
+  Runtime::Protected=>Category::Protected,
+  Runtime::Unsupported=>{
+   let parent=plugin.folder.parent();
+   let fifine=parent.and_then(Path::file_name).and_then(|n|n.to_str()).is_some_and(|n|n.eq_ignore_ascii_case("plugins"))
+    && parent.and_then(Path::parent).and_then(Path::file_name).and_then(|n|n.to_str()).is_some_and(|n|n.eq_ignore_ascii_case("fifine Control Deck"));
+   if fifine { Category::BuiltIn } else { Category::NonExecutable }
+  }
+ }
+}
+pub fn import_sources(dest:&Path)->Report{let mut report=Report::default();for root in sources(){for p in inventory(&root){match p.runtime {Runtime::Protected=>report.protected+=1,Runtime::Unsupported=>{if category(&p)==Category::BuiltIn {report.built_in+=1}else{report.skipped+=1}},_=>match import_folder(&p.folder,dest){Ok(true)=>report.copied+=1,Ok(false)=>report.existing+=1,Err(_)=>report.skipped+=1}}}}report}
 pub fn import_archive(archive:&Path,dest:&Path)->anyhow::Result<bool>{let file=fs::File::open(archive)?;anyhow::ensure!(file.metadata()?.len()<=LIMIT,"Archive trop volumineuse");let mut zip=zip::ZipArchive::new(file)?;anyhow::ensure!(zip.len()<=4096,"Archive trop fournie");let staging=tempfile::tempdir()?;let mut total=0u64;
  for i in 0..zip.len(){let entry=zip.by_index(i)?;let name=entry.enclosed_name().ok_or_else(||anyhow::anyhow!("Chemin non confiné dans l'archive"))?.to_path_buf();anyhow::ensure!(!entry.is_symlink(),"Lien refusé");total=total.saturating_add(entry.size());anyhow::ensure!(total<=LIMIT,"Archive décompressée trop volumineuse");let path=staging.path().join(name);if entry.is_dir(){fs::create_dir_all(path)?;}else{fs::create_dir_all(path.parent().unwrap())?;let mut output=fs::File::create(path)?;let size=io::copy(&mut entry.take(LIMIT+1),&mut output)?;anyhow::ensure!(size<=LIMIT,"Fichier trop volumineux");}}
  let candidates=inventory(staging.path());if candidates.len()==1{return import_folder(&candidates[0].folder,dest)}
@@ -25,4 +38,14 @@ pub fn action_name(plugin:&Plugin,action:&crate::plugins::Action)->String{for la
  #[test] fn import_is_confined_and_idempotent(){let d=tempfile::tempdir().unwrap();let source=d.path().join("sample.sdPlugin");fs::create_dir(&source).unwrap();fixture(&source,"app.exe");fs::write(source.join("app.exe"),b"fake").unwrap();let dst=d.path().join("installed");assert!(import_folder(&source,&dst).unwrap());assert!(!import_folder(&source,&dst).unwrap());assert!(dst.join("sample.sdPlugin/app.exe").is_file());}
  #[test] fn rejects_zip_slip_and_bombs(){use std::io::Write;let d=tempfile::tempdir().unwrap();let path=d.path().join("bad.streamDeckPlugin");{let mut w=zip::ZipWriter::new(fs::File::create(&path).unwrap());w.start_file("../escape",zip::write::SimpleFileOptions::default()).unwrap();w.write_all(b"bad").unwrap();w.finish().unwrap();}assert!(import_archive(&path,&d.path().join("out")).is_err());assert!(!d.path().join("escape").exists());}
  #[test] fn localization_prefers_french(){let d=tempfile::tempdir().unwrap();fixture(d.path(),"app.exe");fs::write(d.path().join("app.exe"),b"fake").unwrap();fs::create_dir(d.path().join("localization")).unwrap();fs::write(d.path().join("localization/fr.json"),br#"{"Actions":{"test.action":{"Name":"Bonjour"}}}"#).unwrap();let p=plugins::parse(d.path(),&fs::read(d.path().join("manifest.json")).unwrap()).unwrap();assert_eq!(action_name(&p,&p.actions[0]),"Bonjour");}
+}
+
+#[cfg(test)] mod category_tests {use super::*;
+ #[test] fn sources_are_classified_by_runtime_and_origin(){
+ let d=tempfile::tempdir().unwrap();let fifine=d.path().join("fifine Control Deck/plugins");let external=d.path().join("StreamDock/plugins");fs::create_dir_all(&fifine).unwrap();fs::create_dir_all(&external).unwrap();
+ for (root,code,expected) in [(&fifine,"",Category::BuiltIn),(&external,"",Category::NonExecutable),(&external,"SignalRGB-Deck",Category::Available),(&external,"page.html",Category::Available),(&external,"main.js",Category::Available)] {
+ let folder=root.join(format!("plugin-{code}"));fs::create_dir_all(&folder).unwrap();if !code.is_empty(){fs::write(folder.join(if code=="SignalRGB-Deck"{"SignalRGB-Deck.exe"}else{code}),b"x").unwrap();}
+ let p=plugins::parse(&folder,format!(r#"{{"UUID":"x","CodePath":"{code}"}}"#).as_bytes()).unwrap();assert_eq!(category(&p),expected,"{code}");
+ }
+ }
 }

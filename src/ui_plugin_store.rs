@@ -1,6 +1,6 @@
 //! Vue de la bibliothèque consacrée aux plugins (aucun plugin externe n'est lancé ici).
 use super::{App,DragItem};
-use crate::{model::{Key,PluginBinding},plugins::Runtime,plugin_import};
+use crate::{model::{Key,PluginBinding},plugins::{Plugin,Runtime},plugin_import::{self,Category}};
 use eframe::egui::{self,RichText};
 impl App {
  pub(super) fn plugin_store(&mut self,ui:&mut egui::Ui,search:&str){
@@ -15,9 +15,9 @@ impl App {
   egui::ScrollArea::vertical().id_salt("plugin_store").show(ui,|ui|{
    ui.separator();ui.label(RichText::new("Installés dans DeckForge").strong());
    if let Some(root)=&root{for plugin in plugin_import::inventory(root){
-    if !format!("{} {}",plugin.name,plugin.uuid).to_lowercase().contains(search) && !plugin.actions.iter().any(|a|a.name.to_lowercase().contains(search)){continue;}
+    if !format!("{} {}",plugin.display_name(),plugin.uuid).to_lowercase().contains(search) && !plugin.actions.iter().any(|a|a.name.to_lowercase().contains(search)){continue;}
     let ty=match plugin.runtime{Runtime::Exe(_)|Runtime::Node(_)=>"programme",Runtime::Html(_)=>"web",Runtime::Protected=>"protégé",Runtime::Unsupported=>"indisponible"};
-    ui.group(|ui|{ui.label(RichText::new(format!("{} · v{}",plugin.name,plugin.version)).strong());ui.label(format!("{} actions · {} · arrêté",plugin.actions.len(),ty));
+    ui.group(|ui|{ui.label(RichText::new(format!("{} · v{}",plugin.display_name(),plugin.version)).strong());ui.label(format!("{} actions · {} · arrêté",plugin.actions.len(),ty));
      for action in &plugin.actions{
       let name=plugin_import::action_name(&plugin,action);
       let mut key=Key{label:name.clone(),..Key::default()};
@@ -30,15 +30,37 @@ impl App {
      }
     });
    }}
-   ui.separator();ui.label(RichText::new("Disponibles depuis FIFINE / StreamDock").strong());
+   ui.separator();
+   ui.label(RichText::new("Disponibles depuis FIFINE / StreamDock").strong());
+   let mut available=Vec::new();let mut built_in=Vec::new();let mut protected=Vec::new();let mut unavailable=Vec::new();
    for source in plugin_import::sources(){for plugin in plugin_import::inventory(&source){
-    if !format!("{} {}",plugin.name,plugin.uuid).to_lowercase().contains(search){continue;}
-    match plugin.runtime{
-     Runtime::Protected=>{ui.label(format!("Protégé par Elgato : {}",plugin.uuid));},
-     Runtime::Unsupported=>{ui.label(format!("Intégré à FIFINE (à recréer nativement) : {}",plugin.name));},
-     _=>{ui.horizontal(|ui|{ui.label(format!("{} · {} actions",plugin.name,plugin.actions.len()));if ui.small_button("Importer").clicked(){self.plugin_import_request(Some(plugin.folder.clone()));}});}
-    }
+    if !format!("{} {}",plugin.display_name(),plugin.uuid).to_lowercase().contains(search){continue;}
+    match plugin_import::category(&plugin){Category::Available=>available.push(plugin),Category::BuiltIn=>built_in.push(plugin),Category::Protected=>protected.push(plugin),Category::NonExecutable=>unavailable.push(plugin)}
    }}
+   if !available.is_empty(){ui.horizontal(|ui|{
+    ui.heading(format!("Disponibles ({})",available.len()));
+    if ui.button(format!("Importer tout ({})",available.len())).clicked(){self.plugin_import_request(None);}
+   });}
+   for plugin in &available {ui.group(|ui|{
+    ui.horizontal(|ui|{
+     plugin_icon(ui,plugin);
+     ui.vertical(|ui|{
+      ui.label(RichText::new(plugin.display_name()).strong());
+      ui.label(format!("{} · v{}",if plugin.author.trim().is_empty(){"Auteur inconnu"}else{&plugin.author},plugin.version));
+      ui.label(format!("{} action(s) · {}",plugin.actions.len(),plugin_type(&plugin.runtime)));
+     });
+     if ui.button("Importer").clicked(){self.plugin_import_request(Some(plugin.folder.clone()));}
+    });
+   });}
+   ui.collapsing(format!("Intégrés à FIFINE, à recréer nativement ({})",built_in.len()),|ui|{
+    for plugin in &built_in{ui.label(plugin.display_name());}
+   });
+   ui.collapsing(format!("Non exécutables ({})",unavailable.len()),|ui|{
+    for plugin in &unavailable{ui.label(plugin.display_name());}
+   });
+   ui.collapsing(format!("Protégés ({})",protected.len()),|ui|{
+    for plugin in &protected{ui.label(plugin.display_name());}
+   });
   });
  }
  fn plugin_import_request(&mut self,source:Option<std::path::PathBuf>){
@@ -51,6 +73,12 @@ impl App {
   let result=plugin_import::installed_root().and_then(|root|if archive{plugin_import::import_archive(&path,&root)}else{plugin_import::import_folder(&path,&root)});
   Some(Box::new(move |app:&mut App|match result{Ok(copied)=>{app.notice=if copied{"Plugin importé"}else{"Plugin déjà présent"}.into();},Err(e)=>app.fail(format!("Import plugin impossible : {e}"))}))
  });}
+}
+fn plugin_type(runtime:&Runtime)->&'static str{match runtime{Runtime::Exe(_)|Runtime::Node(_)=>"Programme",Runtime::Html(_)=>"Web",_=>"Non exécutable"}}
+fn plugin_icon(ui:&mut egui::Ui,plugin:&Plugin){
+ if let Some(texture)=plugin.icon.as_ref().and_then(|p|super::icon_ui::texture(ui.ctx(),&p.to_string_lossy())){
+  ui.image((texture.id(),egui::vec2(42.0,42.0)));
+ }
 }
 fn egui_file_dialog_archive()->Option<std::path::PathBuf>{rfd::FileDialog::new().add_filter("Plugin Stream Deck", &["streamDeckPlugin","zip"]).pick_file()}
 #[cfg(test)] mod tests {use super::*;
