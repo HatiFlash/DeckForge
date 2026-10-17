@@ -668,9 +668,8 @@ impl App {
             changed |= ui.text_edit_singleline(&mut self.config.obs.host).changed();
             changed |= ui.add(egui::DragValue::new(&mut self.config.obs.port).range(1..=65535)).changed();
             changed |= ui.add(egui::TextEdit::singleline(&mut self.config.obs.password).password(true).hint_text("Mot de passe OBS")).changed();
-            if ui.button("Tester la connexion OBS").clicked() {
-                match crate::obs::test_connection(&self.config.obs) { Ok(version) => { ui.label(format!("OBS {version}")); }, Err(_) => { ui.label("Connexion OBS impossible : vérifie OBS et le mot de passe"); } };
-            }
+            ui.label(crate::obs_monitor::snapshot().status);
+            if ui.button("Tester la connexion").clicked() { crate::obs_monitor::update(&self.config.obs, true); }
             ui.separator();ui.label(RichText::new(format!("Raccourci global · touche {:02}",self.selected+1)).strong());
             ui.label("Actif sur la page actuellement ouverte. Les raccourcis restent disponibles sans D6 branché.");
             let name=self.config.profiles[self.config.active].name.clone();let page=self.config.page.clone();let key=self.selected;

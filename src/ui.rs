@@ -2343,6 +2343,7 @@ impl Runner {
 }
 impl App {
     fn background_tick(&mut self) {
+        crate::obs_monitor::update(&self.config.obs, false);
         self.events();
         self.housekeeping();
         let due = self.long_press.due(Instant::now(), self.applied.long_press_ms);

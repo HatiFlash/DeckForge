@@ -18,6 +18,7 @@ mod mcp_server;
 mod mcp_connect;
 mod model;
 mod obs;
+mod obs_monitor;
 mod recorder;
 mod store;
 mod token_equal;

@@ -12,7 +12,7 @@ fn authentication(password: &str, salt: &str, challenge: &str) -> String {
     let secret = base64::engine::general_purpose::STANDARD.encode(first);
     base64::engine::general_purpose::STANDARD.encode(Sha256::digest(format!("{secret}{challenge}").as_bytes()))
 }
-fn socket(settings: &ObsSettings) -> Result<WebSocket<TcpStream>> {
+pub(crate) fn socket(settings: &ObsSettings) -> Result<WebSocket<TcpStream>> {
     anyhow::ensure!(settings.host == "localhost" || settings.host == "127.0.0.1", "OBS local uniquement");
     let stream = TcpStream::connect_timeout(&format!("127.0.0.1:{}", settings.port).parse()?, Duration::from_secs(2)).context("OBS inaccessible")?;
     stream.set_read_timeout(Some(Duration::from_secs(3)))?;
@@ -20,7 +20,7 @@ fn socket(settings: &ObsSettings) -> Result<WebSocket<TcpStream>> {
     let (mut ws, _) = client(format!("ws://127.0.0.1:{}", settings.port), stream).context("WebSocket OBS")?;
     let hello = receive(&mut ws)?;
     anyhow::ensure!(hello["op"] == 0, "OBS n'a pas envoyé Hello");
-    let mut identify = json!({"rpcVersion": 1, "eventSubscriptions": 0});
+    let mut identify = json!({"rpcVersion": 1, "eventSubscriptions": 205});
     if let Some(auth) = hello["d"].get("authentication") {
         let salt = auth["salt"].as_str().context("sel OBS absent")?;
         let challenge = auth["challenge"].as_str().context("défi OBS absent")?;
@@ -41,7 +41,7 @@ fn receive(ws: &mut WebSocket<TcpStream>) -> Result<Value> {
         }
     }
 }
-fn request(ws: &mut WebSocket<TcpStream>, id: &str, kind: &str, data: Value) -> Result<Value> {
+pub(crate) fn request(ws: &mut WebSocket<TcpStream>, id: &str, kind: &str, data: Value) -> Result<Value> {
     ws.send(Message::Text(json!({"op":6,"d":{"requestType":kind,"requestId":id,"requestData":data}}).to_string().into()))?;
     loop {
         let response = receive(ws)?;
@@ -93,10 +93,6 @@ pub fn execute(step: &Step, settings: &ObsSettings) -> Result<()> {
         request(ws,"deckforge-1",kind,data)?;
         Ok(())
     })
-}
-pub fn test_connection(settings: &ObsSettings) -> Result<String> {
-    let response = with_session(settings, |ws| request(ws,"deckforge-version","GetVersion",json!({})))?;
-    Ok(response["obsVersion"].as_str().context("version OBS absente")?.to_owned())
 }
 #[cfg(test)]
 mod tests {
