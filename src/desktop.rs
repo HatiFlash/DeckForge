@@ -142,6 +142,27 @@ pub fn show_existing() -> bool {
         !h.is_null() && PostMessageW(h, SHOW, 0, 0) != 0
     }
 }
+/// None on inaccessible windows; DeckForge itself is ignored instead of losing the base profile.
+pub fn foreground_exe() -> Option<String> {
+    use windows_sys::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION};
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.is_null() { return None; }
+        let mut pid = 0;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        if pid == 0 || pid == std::process::id() { return None; }
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if process.is_null() { return None; }
+        let mut buffer = [0u16; 32768];
+        let mut len = buffer.len() as u32;
+        let result = if QueryFullProcessImageNameW(process, 0, buffer.as_mut_ptr(), &mut len) == 0 { None } else {
+            std::path::Path::new(&String::from_utf16_lossy(&buffer[..len as usize]))
+                .file_name().map(|s| s.to_string_lossy().to_string())
+        };
+        CloseHandle(process);
+        result
+    }
+}
 pub fn spawn(tx: Sender<Event>, ctx: eframe::egui::Context) -> Desktop {
     let (cmd, rx) = mpsc::channel();
     std::thread::spawn(move || unsafe {
@@ -212,6 +233,8 @@ pub fn spawn(tx: Sender<Event>, ctx: eframe::egui::Context) -> Desktop {
             ));
         }
         let mut registered = Vec::new();
+        let mut last_foreground = None;
+        let mut last_scan = Instant::now() - Duration::from_secs(1);
         let mut stop = false;
         while !stop {
             while let Ok(command) = rx.try_recv() {
@@ -235,6 +258,15 @@ pub fn spawn(tx: Sender<Event>, ctx: eframe::egui::Context) -> Desktop {
                                 Err(e) => state.send(Event::Log(format!("Raccourci {text} : {e}"))),
                             }
                         }
+                    }
+                }
+            }
+            if last_scan.elapsed() >= Duration::from_millis(500) {
+                last_scan = Instant::now();
+                if let Some(exe) = foreground_exe() {
+                    if last_foreground.as_ref() != Some(&exe) {
+                        last_foreground = Some(exe.clone());
+                        state.send(Event::Foreground(Some(exe)));
                     }
                 }
             }

@@ -47,6 +47,27 @@ fn choose_step_file(tx: Sender<Option<DialogEffect>>, target: StepTarget, execut
     });
 }
 
+fn choose_profile(config: &Config, exe: Option<&str>, base: usize) -> usize {
+    if !config.auto_profile { return base; }
+    exe.and_then(|exe| config.profiles.iter().position(|profile|
+        profile.apps.iter().any(|name| !name.trim().is_empty() && name.trim().eq_ignore_ascii_case(exe))))
+        .unwrap_or(base)
+}
+struct SleepState { last: Instant, sleeping: bool }
+impl SleepState {
+    fn new(now: Instant) -> Self { Self { last: now, sleeping: false } }
+    fn activity(&mut self, now: Instant) { self.last = now; self.sleeping = false; }
+    fn due(&mut self, now: Instant, minutes: u16) -> bool {
+        if minutes == 0 || self.sleeping || now.saturating_duration_since(self.last) < Duration::from_secs(u64::from(minutes) * 60) { return false; }
+        self.sleeping = true; true
+    }
+    fn press(&mut self, now: Instant) -> bool {
+        let wake = self.sleeping;
+        self.activity(now);
+        wake
+    }
+}
+
 pub struct App {
     config: Config,
     applied: Config,
@@ -64,6 +85,11 @@ pub struct App {
     logs: VecDeque<String>,
     started: Instant,
     last_edit: Instant,
+    base_profile: usize,
+    foreground: Option<String>,
+    auto_active: bool,
+    sleep: SleepState,
+    show_apps: bool,
     show_logs: bool,
     settings: bool,
     rename: bool,
@@ -200,7 +226,12 @@ impl App {
         let (dialog_tx, dialog_rx) = mpsc::channel();
         let mut app = Self {
             applied: config.clone(),
+            base_profile: config.active,
             config,
+            foreground: None,
+            auto_active: false,
+            sleep: SleepState::new(Instant::now()),
+            show_apps: false,
             pending: None,
             path,
             selected: 0,
@@ -306,6 +337,9 @@ impl App {
         self.long_press.clear();
         self.gate.dirty = true;
         self.last_edit = Instant::now();
+        let was_sleeping = self.sleep.sleeping;
+        self.sleep.activity(self.last_edit);
+        if was_sleeping { self.wake_display(); }
     }
     fn upload(&mut self, connect: bool) {
         self.long_press.clear();
@@ -409,6 +443,7 @@ impl App {
             match event {
                 Event::Log(s) => self.log(s),
                 Event::Block(path) => self.running_block = path,
+                Event::Foreground(exe) => { self.foreground = exe; self.update_auto_profile(); }
                 Event::Open => self.open_requested = true,
                 Event::TrayReady(ready) => {
                     self.tray_ready = ready;
@@ -474,6 +509,8 @@ impl App {
                     }
                 }
                 Event::Key(index, at) => {
+                    let wake = self.sleep.press(Instant::now());
+                    if wake { self.wake_display(); self.long_press.clear(); continue; }
                     self.last_key = Some((index, Instant::now()));
                     match if self.trigger_recording {
                         Decision::Blocked("Enregistrement du raccourci en cours")
@@ -509,11 +546,7 @@ impl App {
                     self.navigate(step);
                 }
                 Event::Profile(name) => {
-                    if let Some(index) = self.config.profiles.iter().position(|p| p.name == name) {
-                        self.config.active = index;
-                        self.config.reset_navigation();
-                        self.save();
-                    }
+                    if let Some(index) = self.config.profiles.iter().position(|p| p.name == name) { self.select_profile(index); }
                 }
             }
         }
@@ -642,6 +675,8 @@ impl App {
         }
     }
     fn select_profile(&mut self, index: usize) {
+        self.base_profile = index;
+        self.auto_active = false;
         if index != self.config.active {
             self.last_field = None;
             self.engine.stop();
@@ -649,6 +684,31 @@ impl App {
             self.config.reset_navigation();
             self.selected = 0;
             self.save();
+        }
+    }
+    fn update_auto_profile(&mut self) {
+        if self.engine.running.load(Ordering::SeqCst) { return; }
+        let target = choose_profile(&self.config, self.foreground.as_deref(), self.base_profile);
+        self.auto_active = self.config.auto_profile && target != self.base_profile;
+        if target != self.config.active {
+            self.last_field = None;
+            self.config.active = target;
+            self.config.reset_navigation();
+            self.selected = 0;
+            self.save();
+        }
+    }
+    fn wake_display(&mut self) {
+        if self.wanted && self.gate.connected {
+            let _ = self.device.send(Command::Brightness(self.config.brightness));
+        }
+    }
+    fn housekeeping(&mut self) {
+        self.update_auto_profile();
+        if self.wanted && self.gate.connected && self.sleep.due(Instant::now(), self.config.sleep_after_min) {
+            if self.wanted && self.gate.connected {
+                let _ = self.device.send(Command::Brightness(self.config.sleep_brightness));
+            }
         }
     }
     fn add_profile(&mut self, duplicate: bool) {
@@ -669,6 +729,8 @@ impl App {
         p.name = format!("Profil {n}");
         self.config.profiles.push(p);
         self.config.active = self.config.profiles.len() - 1;
+        self.base_profile = self.config.active;
+        self.auto_active = false;
         self.config.reset_navigation();
         self.selected = 0;
         self.edited();
@@ -695,6 +757,8 @@ impl App {
             Some(Box::new(move |app| match loaded {
                 Ok(c) => {
                     app.config = c;
+                    app.base_profile = app.config.active;
+                    app.auto_active = false;
                     app.selected = 0;
                     app.gate.invalid = false;
                     app.edited();
@@ -1633,9 +1697,11 @@ impl App {
                 let mut active=self.config.active;
                 egui::ComboBox::from_id_salt("active_profile").width(175.0).selected_text(&self.config.profiles[active].name).show_ui(ui,|ui|{for(i,profile)in self.config.profiles.iter().enumerate(){ui.selectable_value(&mut active,i,&profile.name);}});
                 if active!=self.config.active{self.select_profile(active);}
+                if self.auto_active { ui.label(RichText::new(format!("Auto : {}", self.config.profiles[self.config.active].name)).small().color(p.muted)); }
                 ui.menu_button("•••",|ui| {
                     if ui.add_enabled(self.config.profiles.len()<64,egui::Button::new("Nouveau profil")).clicked(){self.add_profile(false);ui.close_menu();}
                     if ui.button("Renommer / dupliquer").clicked(){self.rename=true;ui.close_menu();}
+                    if ui.button("Applications associées").clicked(){self.show_apps=true;ui.close_menu();}
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{ui.label(RichText::new("FIFINE D6 · 15 touches").size(11.0).color(p.muted));});
             });
@@ -1890,6 +1956,37 @@ impl App {
             }
             self.save_bind = open;
         }
+        if self.show_apps {
+            let mut open = true;
+            egui::Window::new("Applications associées").open(&mut open).show(ctx, |ui| {
+                ui.label("Noms d'exécutables (ex. obs64.exe) associés à ce profil.");
+                let apps = &mut self.config.profiles[self.config.active].apps;
+                let mut changed = false;
+                let mut remove = None;
+                for (i, name) in apps.iter_mut().enumerate() {
+                    ui.horizontal(|ui| {
+                        changed |= ui.text_edit_singleline(name).changed();
+                        if ui.small_button("Supprimer").clicked() { remove = Some(i); }
+                    });
+                }
+                if let Some(i) = remove { apps.remove(i); changed = true; }
+                if ui.button("Ajouter une application").clicked() { apps.push(String::new()); changed = true; }
+                if ui.button("Ajouter l'application au premier plan dans 3 s").clicked() {
+                    let profile = self.config.active;
+                    self.start_dialog(move || {
+                        std::thread::sleep(Duration::from_secs(3));
+                        let exe = crate::desktop::foreground_exe()?;
+                        Some(Box::new(move |app: &mut App| {
+                            if let Some(p) = app.config.profiles.get_mut(profile) {
+                                if !p.apps.iter().any(|name| name.eq_ignore_ascii_case(&exe)) { p.apps.push(exe); app.edited(); }
+                            }
+                        }))
+                    });
+                }
+                if changed { self.edited(); }
+            });
+            self.show_apps = open;
+        }
         if self.settings {
             let mut open = true;
             egui::Window::new("Réglages du D6")
@@ -1909,6 +2006,9 @@ impl App {
                     {
                         self.edited();
                     }
+                    if ui.add(egui::Slider::new(&mut self.config.sleep_after_min, 0..=240).text("Veille après (min, 0 = jamais)")).changed() { self.edited(); }
+                    if ui.add(egui::Slider::new(&mut self.config.sleep_brightness, 0..=100).text("Luminosité en veille")).changed() { self.edited(); }
+                    if ui.checkbox(&mut self.config.auto_profile, "Changer de profil selon l'application").changed() { self.edited(); self.update_auto_profile(); }
                     ui.add_space(8.0);
                     if ui.add(egui::Slider::new(&mut self.config.long_press_ms, 250..=2000).text("Appui long (ms)")).changed() { self.edited(); }
                     ui.label(RichText::new("Une touche avec appui long attend ce délai ; sans relâchement détecté, elle lance l’action longue.").small().color(p.muted));
@@ -2012,6 +2112,7 @@ impl App {
         self.record_trigger(ctx);
         self.record_events(ctx);
         self.events();
+        self.housekeeping();
         self.assistant_events();
         let modal = self.show_workflow
             || self.show_assets
@@ -2137,6 +2238,7 @@ impl Runner {
 impl App {
     fn background_tick(&mut self) {
         self.events();
+        self.housekeeping();
         let due = self.long_press.due(Instant::now(), self.applied.long_press_ms);
         for index in due { self.execute_physical(index, true); }
         self.assistant_events();
@@ -2418,5 +2520,51 @@ mod dialog_tests {
         app.dialog_results();
         assert!(!app.dialog_pending);
         assert_eq!(app.config.brightness,17);
+    }
+}
+
+#[cfg(test)]
+mod automatic_profile_sleep_tests {
+    use super::*;
+    #[test]
+    fn matching_and_base_fallback() {
+        let mut c = Config::default();
+        c.profiles.push(Profile::new("OBS".into()));
+        c.profiles[1].apps.push("obs64.exe".into());
+        c.auto_profile = true;
+        assert_eq!(choose_profile(&c, Some("OBS64.EXE"), 0), 1);
+        assert_eq!(choose_profile(&c, Some("other.exe"), 0), 0);
+        assert_eq!(choose_profile(&c, None, 0), 0);
+        c.auto_profile = false;
+        assert_eq!(choose_profile(&c, Some("obs64.exe"), 0), 0);
+    }
+    #[test]
+    fn macro_blocks_auto_switch_until_finished() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = App::init(&egui::Context::default(), Some(dir.path().join("config.json")));
+        app.config.profiles.push(Profile::new("OBS".into()));
+        app.config.profiles[1].apps.push("obs64.exe".into());
+        app.config.auto_profile = true;
+        app.foreground = Some("obs64.exe".into());
+        app.engine.running.store(true, Ordering::SeqCst);
+        app.update_auto_profile();
+        assert_eq!(app.config.active, 0);
+        app.engine.running.store(false, Ordering::SeqCst);
+        app.update_auto_profile();
+        assert_eq!(app.config.active, 1);
+        app.foreground = Some("other.exe".into());
+        app.update_auto_profile();
+        assert_eq!(app.config.active, 0);
+    }
+    #[test]
+    fn sleep_timer_and_first_press_is_swallowed() {
+        let now = Instant::now();
+        let mut sleep = SleepState::new(now);
+        assert!(!sleep.due(now + Duration::from_secs(59), 1));
+        assert!(sleep.due(now + Duration::from_secs(60), 1));
+        assert!(!sleep.due(now + Duration::from_secs(61), 1));
+        assert!(sleep.press(now + Duration::from_secs(62)));
+        assert!(!sleep.press(now + Duration::from_secs(63)));
+        assert!(!sleep.due(now + Duration::from_secs(999), 0));
     }
 }

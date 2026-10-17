@@ -37,6 +37,7 @@ pub enum Event {
     Device(bool, String),
     Applied(u64),
     Profile(String),
+    Foreground(Option<String>),
     Navigate(model::Step),
 }
 

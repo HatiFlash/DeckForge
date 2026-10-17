@@ -14,6 +14,7 @@ use std::{
 pub enum Command {
     Connect(Config, u64),
     Update(Config, u64),
+    Brightness(u8),
     Disconnect,
 }
 pub fn spawn(tx: Sender<Event>) -> Sender<Command> {
@@ -31,6 +32,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
     let mut last_press = [Instant::now() - Duration::from_secs(1); 15];
     loop {
         let mut update = false;
+        let mut brightness = None;
         loop {
             match rx.try_recv() {
                 Ok(Command::Connect(c, r)) => {
@@ -45,6 +47,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
                     revision = r;
                     update = true;
                 }
+                Ok(Command::Brightness(value)) => brightness = Some(value.min(100)),
                 Ok(Command::Disconnect) => {
                     wanted = false;
                     deck = None;
@@ -89,6 +92,13 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
                         }
                     }
                     Err(e) => failed = Some(e.to_string()),
+                }
+            }
+            if failed.is_none() {
+                if let Some(value) = brightness {
+                    if let Err(e) = d.command(&[b'L', b'I', b'G', 0, 0, value]) {
+                        failed = Some(e.to_string());
+                    }
                 }
             }
             if failed.is_none() && beat.elapsed() >= Duration::from_secs(8) {

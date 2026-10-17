@@ -156,6 +156,8 @@ pub struct Profile {
     pub keys: Vec<Key>,
     #[serde(default)]
     pub pages: Vec<Page>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub apps: Vec<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Page {
@@ -189,6 +191,7 @@ impl Profile {
             name,
             keys: vec![Key::default(); 15],
             pages: vec![],
+            apps: vec![],
         }
     }
     pub fn keys_at(&self, id: &str) -> Option<&Vec<Key>> {
@@ -213,6 +216,12 @@ impl Profile {
 pub struct Config {
     pub schema: u32,
     pub brightness: u8,
+    #[serde(default)]
+    pub auto_profile: bool,
+    #[serde(default)]
+    pub sleep_after_min: u16,
+    #[serde(default)]
+    pub sleep_brightness: u8,
     #[serde(default = "default_long_press_ms")]
     pub long_press_ms: u64,
     pub active: usize,
@@ -272,6 +281,9 @@ impl Default for Config {
         Self {
             schema: 2,
             brightness: 70,
+            auto_profile: false,
+            sleep_after_min: 0,
+            sleep_brightness: 0,
             long_press_ms: 500,
             active: 0,
             profiles: vec![profile],
@@ -352,6 +364,9 @@ impl Config {
         }
         if !(250..=2000).contains(&self.long_press_ms) {
             bail!("Seuil de l’appui long invalide (250 à 2000 ms)");
+        }
+        if self.sleep_after_min > 240 || self.sleep_brightness > 100 {
+            bail!("Réglages de veille invalides");
         }
         if self.brightness > 100 || ![112, 126].contains(&self.image_size) {
             bail!("Réglages du D6 invalides");
