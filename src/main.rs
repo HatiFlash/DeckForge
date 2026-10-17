@@ -18,6 +18,8 @@ mod mcp_server;
 mod model;
 #[allow(dead_code)]
 mod plugins;
+#[allow(dead_code)]
+mod plugin_host;
 mod recorder;
 mod store;
 mod token_equal;
