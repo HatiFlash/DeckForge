@@ -2,7 +2,7 @@ use crate::model::Config;
 use anyhow::{Context, Result};
 use std::{fs, io::Write, path::Path};
 
-pub fn load(path: &Path) -> Result<Config> {
+fn load_one(path: &Path) -> Result<Config> {
     let data = fs::read(path).context("Lecture de la configuration impossible")?;
     anyhow::ensure!(data.len() <= 8_000_000, "Configuration trop volumineuse");
     let mut c: Config = serde_json::from_slice(&data).context("Configuration JSON invalide")?;
@@ -11,6 +11,21 @@ pub fn load(path: &Path) -> Result<Config> {
         c.schema = 2;
     }
     Ok(c)
+}
+pub fn load(path: &Path) -> Result<Config> {
+    match load_one(path) {
+        Ok(config) => Ok(config),
+        Err(error) if path.extension().is_some_and(|e| e == "json") => {
+            let backup = path.with_extension("json.bak");
+            let config = load_one(&backup).with_context(|| format!("{error}; sauvegarde {} inutilisable", backup.display()))?;
+            let message = format!("DeckForge : configuration illisible ({error}); sauvegarde {} restaurée en mémoire (fichier original conservé)\n", backup.display());
+            eprintln!("{message}");
+            let _ = fs::OpenOptions::new().create(true).append(true).open(path.with_file_name("deckforge-error.log"))
+                .and_then(|mut file| file.write_all(message.as_bytes()));
+            Ok(config)
+        }
+        Err(error) => Err(error),
+    }
 }
 pub fn save(path: &Path, c: &Config) -> Result<()> {
     c.validate_structure()?;
@@ -22,7 +37,13 @@ pub fn save(path: &Path, c: &Config) -> Result<()> {
     tmp.write_all(&bytes)?;
     tmp.as_file().sync_all()?;
     if path.exists() {
-        fs::copy(path, path.with_extension("json.bak"))?;
+        // Ne jamais remplacer une sauvegarde saine par un fichier source corrompu.
+        if load_one(path).is_ok() {
+            let mut backup = tempfile::NamedTempFile::new_in(parent)?;
+            backup.write_all(&fs::read(path)?)?;
+            backup.as_file().sync_all()?;
+            backup.persist(path.with_extension("json.bak")).map_err(|e| e.error)?;
+        }
     }
     tmp.persist(path).map_err(|e| e.error)?;
     Ok(())
@@ -82,6 +103,22 @@ mod tests {
             load(&path.with_extension("json.bak")).unwrap().brightness,
             70
         );
+    }
+    #[test]
+    fn corrupted_main_recovers_backup_and_never_overwrites_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let mut c = Config::default();
+        save(&path, &c).unwrap();
+        c.brightness = 42;
+        save(&path, &c).unwrap();
+        let backup = path.with_extension("json.bak");
+        let original_backup = fs::read(&backup).unwrap();
+        fs::write(&path, b"{invalid").unwrap();
+        assert_eq!(load(&path).unwrap().brightness, 70);
+        save(&path, &c).unwrap();
+        assert_eq!(fs::read(&backup).unwrap(), original_backup);
+        assert_eq!(load(&path).unwrap().brightness, 42);
     }
     #[test]
     fn invalid_save_leaves_good_config_untouched() {

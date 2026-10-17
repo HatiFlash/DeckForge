@@ -28,6 +28,7 @@ pub(super) fn step_mut<'a>(steps: &'a mut [Step], path: &[usize]) -> Option<&'a 
     };
     step_mut(children, &path[2..])
 }
+#[allow(clippy::too_many_arguments)] // Recursive editor forwards selection and async dialog context.
 pub(super) fn block_editor(
     ui: &mut egui::Ui,
     steps: &mut Vec<Step>,
@@ -39,6 +40,8 @@ pub(super) fn block_editor(
     depth: usize,
     running: &[usize],
     pick_audio: &mut Option<(Vec<usize>, usize)>,
+    tx: &Sender<Option<DialogEffect>>,
+    target: &(usize,String,usize),
 ) -> bool {
     let p = theme::palette(ui.ctx());
     let mut changed = false;
@@ -98,7 +101,7 @@ pub(super) fn block_editor(
                     ui.add_space(6.0);
                     let mut capture = false;
                     let mut icon = None;
-                    changed |= edit_step(ui, step, profiles, pages, &mut capture, audio, &mut icon);
+                    changed |= edit_step(ui, step, profiles, pages, &mut capture, audio, &mut icon, tx, &(target.0,target.1.clone(),target.2,path.clone()));
                     if let Some(state) = icon {
                         *pick_audio = Some((path.clone(), state));
                     }
@@ -135,6 +138,8 @@ pub(super) fn block_editor(
                                         depth + 1,
                                         running,
                                         pick_audio,
+                                        tx,
+                                        target,
                                     );
                                 });
                             }
@@ -154,6 +159,8 @@ pub(super) fn block_editor(
                                     depth + 1,
                                     running,
                                     pick_audio,
+                                    tx,
+                                    target,
                                 );
                             });
                         }
@@ -255,9 +262,9 @@ impl App {
             ui.label("Assemble les blocs de haut en bas. Les variables sont propres à chaque exécution.");
             ui.horizontal(|ui|{if ui.button("Créer avec mon IA").clicked(){self.assistant_settings=true;}if ui.button("Simuler les blocs").clicked(){self.preview(true);}if ui.button("Tester dans 3 s").clicked(){self.preview(false);}if ui.button("Exporter en AutoHotkey v2…").clicked(){export=true;}});
             if !self.engine.running.load(Ordering::SeqCst){self.running_block.clear();}
-            let profiles=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();let pages=self.config.profiles[self.config.active].pages.clone();let selected=self.selected;
+            let profiles=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();let pages=self.config.profiles[self.config.active].pages.clone();let selected=self.selected;let target=(self.config.active,self.config.page.clone(),selected);let dialog_tx=self.dialog_tx.clone();
             egui::ScrollArea::vertical().id_salt("workflow_scroll").max_height(470.0).show(ui,|ui|{
-                changed=block_editor(ui,&mut self.config.keys_mut()[selected].steps,&profiles,&pages,&self.audio,&[],&mut record,0,&self.running_block,&mut pick_audio);
+                changed=block_editor(ui,&mut self.config.keys_mut()[selected].steps,&profiles,&pages,&self.audio,&[],&mut record,0,&self.running_block,&mut pick_audio,&dialog_tx,&target);
             });
             if let Err(e)=validate_key(&self.config.keys()[selected],&self.config){ui.colored_label(Color32::LIGHT_RED,format!("Brouillon : {e}"));}
         });
@@ -284,16 +291,16 @@ impl App {
         if export {
             match crate::automation::export(&self.config.keys()[self.selected]) {
                 Ok(text) => {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .set_file_name("automatisation.ahk")
-                        .add_filter("Script AutoHotkey v2", &["ahk"])
-                        .save_file()
-                    {
-                        match std::fs::write(path, text) {
-                            Ok(()) => self.log("Script AutoHotkey exporté.".into()),
-                            Err(e) => self.fail(e.to_string()),
-                        }
-                    }
+                    let tx=self.dialog_tx.clone();
+                    std::thread::spawn(move || {
+                        let Some(path)=rfd::FileDialog::new().set_file_name("automatisation.ahk")
+                            .add_filter("Script AutoHotkey v2", &["ahk"]).save_file() else {return};
+                        let result=std::fs::write(path,text);
+                        let _=tx.send(Some(Box::new(move |app: &mut App| match result {
+                            Ok(())=>app.log("Script AutoHotkey exporté.".into()),
+                            Err(e)=>app.fail(e.to_string()),
+                        }) as DialogEffect));
+                    });
                 }
                 Err(e) => self.fail(e.to_string()),
             }

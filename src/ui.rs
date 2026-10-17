@@ -25,6 +25,28 @@ mod key_preview;
 #[path = "ui_appearance.rs"]
 mod appearance;
 
+type DialogEffect = Box<dyn FnOnce(&mut App) + Send>;
+type StepTarget = (usize, String, usize, Vec<usize>);
+fn choose_step_file(tx: Sender<Option<DialogEffect>>, target: StepTarget, executable: bool) {
+    std::thread::spawn(move || {
+        let path = rfd::FileDialog::new().add_filter(if executable {"AutoHotkey"} else {"Application"},
+            if executable { &["exe"][..] } else { &["exe", "com"][..] }).pick_file();
+        let _ = tx.send(path.map(|path| Box::new(move |app: &mut App| {
+            let (profile,page,key,step_path)=target;
+            if let Some(step)=app.config.profiles.get_mut(profile)
+                .and_then(|p|p.keys_at_mut(&page)).and_then(|keys|keys.get_mut(key))
+                .and_then(|key|extras::step_mut(&mut key.steps,&step_path)) {
+                match step {
+                    Step::Launch {program,..} if !executable => *program=path.to_string_lossy().into_owned(),
+                    Step::AutoHotkey {executable: file,..} if executable => *file=path.to_string_lossy().into_owned(),
+                    _ => return,
+                }
+                app.edited();
+            }
+        }) as DialogEffect));
+    });
+}
+
 pub struct App {
     config: Config,
     applied: Config,
@@ -70,6 +92,9 @@ pub struct App {
     recording: Option<(usize, String, usize, Vec<usize>, bool)>,
     recording_error: String,
     import_report: Option<crate::elgato::Report>,
+    dialog_tx: Sender<Option<DialogEffect>>,
+    dialog_rx: Receiver<Option<DialogEffect>>,
+    dialog_pending: bool,
     page_manager: bool,
     delete_page: Option<String>,
     desktop: Option<crate::desktop::Desktop>,
@@ -165,6 +190,7 @@ impl App {
         } else {
             crate::mcp_server::Server::new(path.with_file_name("mcp-connection.json")).ok()
         };
+        let (dialog_tx, dialog_rx) = mpsc::channel();
         let mut app = Self {
             applied: config.clone(),
             config,
@@ -210,6 +236,9 @@ impl App {
             recording: None,
             recording_error: String::new(),
             import_report: None,
+            dialog_tx,
+            dialog_rx,
+            dialog_pending: false,
             page_manager: false,
             delete_page: None,
             desktop,
@@ -612,42 +641,49 @@ impl App {
         self.selected = 0;
         self.edited();
     }
+    fn start_dialog(&mut self, task: impl FnOnce() -> Option<DialogEffect> + Send + 'static) {
+        if self.dialog_pending { return; }
+        self.dialog_pending = true;
+        let tx = self.dialog_tx.clone();
+        std::thread::spawn(move || { let _ = tx.send(task()); });
+    }
+    fn dialog_results(&mut self) {
+        while let Ok(result) = self.dialog_rx.try_recv() {
+            self.dialog_pending = false;
+            if let Some(effect) = result { effect(self); }
+        }
+    }
     fn import(&mut self) {
         self.gate.enabled = false;
         self.engine.stop();
-        if let Some(path) = rfd::FileDialog::new()
-            .add_filter("Configuration DeckForge", &["json", "bak"])
-            .pick_file()
-        {
-            match store::load(&path) {
+        self.start_dialog(|| {
+            let path = rfd::FileDialog::new()
+                .add_filter("Configuration DeckForge", &["json", "bak"]).pick_file()?;
+            let loaded = store::load(&path);
+            Some(Box::new(move |app| match loaded {
                 Ok(c) => {
-                    self.config = c;
-                    self.selected = 0;
-                    self.gate.invalid = false;
-                    self.edited();
-                    self.log(
-                        "Profils importés. Les touches restent en pause jusqu’à leur réactivation."
-                            .into(),
-                    );
+                    app.config = c;
+                    app.selected = 0;
+                    app.gate.invalid = false;
+                    app.edited();
+                    app.log("Profils importés. Les touches restent en pause jusqu'à leur réactivation.".into());
                 }
-                Err(e) => self.fail(format!("Import impossible : {e}")),
-            }
-        }
+                Err(e) => app.fail(format!("Import impossible : {e}")),
+            }))
+        });
     }
     fn export(&mut self) {
         self.gate.enabled = false;
-        if let Some(path) = rfd::FileDialog::new()
-            .set_file_name("deckforge-profils.json")
-            .add_filter("JSON", &["json"])
-            .save_file()
-        {
-            match store::save(&path, &self.config) {
-                Ok(()) => {
-                    self.log("Profils exportés. Réactive les touches quand tu es prêt.".into())
-                }
-                Err(e) => self.fail(format!("Export impossible : {e}")),
-            }
-        }
+        let config = self.config.clone();
+        self.start_dialog(move || {
+            let path = rfd::FileDialog::new().set_file_name("deckforge-profils.json")
+                .add_filter("JSON", &["json"]).save_file()?;
+            let result = store::save(&path, &config);
+            Some(Box::new(move |app| match result {
+                Ok(()) => app.log("Profils exportés. Réactive les touches quand tu es prêt.".into()),
+                Err(e) => app.fail(format!("Export impossible : {e}")),
+            }))
+        });
     }
     fn assistant_events(&mut self) {
         if self
@@ -1023,9 +1059,10 @@ impl App {
                         }
                         if ui
                             .button(
-                                RichText::new("Tout arrêter")
+                                RichText::new("Arrêter les macros en cours")
                                     .color(Color32::from_rgb(238, 106, 115)),
                             )
+                            .on_hover_text("Arrête les macros en cours et met les touches en pause. Les applications déjà ouvertes restent ouvertes.")
                             .clicked()
                         {
                             self.engine.stop();
@@ -1162,18 +1199,16 @@ impl App {
     fn import_elgato(&mut self) {
         self.gate.enabled = false;
         self.engine.stop();
-        if let Some(path) = rfd::FileDialog::new()
-            .add_filter(
-                "Profil ou action Stream Deck",
-                &["streamDeckProfile", "streamDeckAction", "json"],
-            )
-            .pick_file()
-        {
-            match crate::elgato::load(&path) {
-                Ok(report) => self.import_report = Some(report),
-                Err(e) => self.fail(format!("Import Stream Deck impossible : {e}")),
-            }
-        }
+        self.start_dialog(|| {
+            let path = rfd::FileDialog::new()
+                .add_filter("Profil ou action Stream Deck",
+                    &["streamDeckProfile", "streamDeckAction", "json"]).pick_file()?;
+            let result = crate::elgato::load(&path);
+            Some(Box::new(move |app| match result {
+                Ok(report) => app.import_report = Some(report),
+                Err(e) => app.fail(format!("Import Stream Deck impossible : {e}")),
+            }))
+        });
     }
     fn apply_elgato(&mut self) {
         let Some(mut report) = self.import_report.take() else {
@@ -1241,45 +1276,49 @@ impl App {
     fn import_binds(&mut self) {
         self.gate.enabled = false;
         self.engine.stop();
-        if let Some(path) = rfd::FileDialog::new()
-            .add_filter("Pack DeckForge", &["json"])
-            .pick_file()
-        {
-            let result = (|| -> anyhow::Result<usize> {
+        self.start_dialog(|| {
+            let path = rfd::FileDialog::new().add_filter("Pack DeckForge", &["json"]).pick_file()?;
+            let pack = (|| -> anyhow::Result<Library> {
                 let bytes = std::fs::read(path)?;
                 anyhow::ensure!(bytes.len() <= 8_000_000, "Pack trop volumineux");
-                let pack: Library = serde_json::from_slice(&bytes)?;
-                let mut next = self.preferences.library.clone();
-                let count = next.merge(pack, &self.config)?;
-                let previous = std::mem::replace(&mut self.preferences.library, next);
-                if !self.save_preferences() {
-                    self.preferences.library = previous;
-                    anyhow::bail!("Pack non enregistré");
-                }
-                Ok(count)
+                Ok(serde_json::from_slice(&bytes)?)
             })();
-            match result {
-                Ok(n) => self.log(format!("{n} binds importés. Les touches sont en pause.")),
-                Err(e) => self.fail(format!("Import refusé : {e}")),
-            }
-        }
+            Some(Box::new(move |app| match pack {
+                Ok(pack) => {
+                    let result = (|| -> anyhow::Result<usize> {
+                        let mut next = app.preferences.library.clone();
+                        let count = next.merge(pack, &app.config)?;
+                        let previous = std::mem::replace(&mut app.preferences.library, next);
+                        if !app.save_preferences() {
+                            app.preferences.library = previous;
+                            anyhow::bail!("Pack non enregistré");
+                        }
+                        Ok(count)
+                    })();
+                    match result {
+                        Ok(n) => app.log(format!("{n} binds importés. Les touches sont en pause.")),
+                        Err(e) => app.fail(format!("Import refusé : {e}")),
+                    }
+                }
+                Err(e) => app.fail(format!("Import refusé : {e}")),
+            }))
+        });
     }
     fn export_binds(&mut self) {
         self.gate.enabled = false;
         self.engine.stop();
-        if let Some(path) = rfd::FileDialog::new()
-            .set_file_name("mes-binds-deckforge.json")
-            .add_filter("Pack DeckForge", &["json"])
-            .save_file()
-        {
-            match serde_json::to_vec_pretty(&self.preferences.library)
+        let library = self.preferences.library.clone();
+        self.start_dialog(move || {
+            let path = rfd::FileDialog::new().set_file_name("mes-binds-deckforge.json")
+                .add_filter("Pack DeckForge", &["json"]).save_file()?;
+            let result = serde_json::to_vec_pretty(&library)
                 .map_err(anyhow::Error::from)
-                .and_then(|b| std::fs::write(path, b).map_err(Into::into))
-            {
-                Ok(()) => self.log("Pack exporté. Les touches sont en pause.".into()),
-                Err(e) => self.fail(format!("Export impossible : {e}")),
-            }
-        }
+                .and_then(|b| std::fs::write(path, b).map_err(Into::into));
+            Some(Box::new(move |app| match result {
+                Ok(()) => app.log("Pack exporté. Les touches sont en pause.".into()),
+                Err(e) => app.fail(format!("Export impossible : {e}")),
+            }))
+        });
     }
     fn catalog(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
@@ -1455,7 +1494,7 @@ impl App {
             });
             ui.separator();
             let active=self.config.active; let names=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
-            let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let key=&mut self.config.keys_mut()[selected];
+            let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let key=&mut self.config.keys_mut()[selected];
             let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut pick_audio=None;
             let width=ui.available_width(); let body_height=ui.available_height();
             ui.horizontal_top(|ui| {
@@ -1467,7 +1506,18 @@ impl App {
                         if crate::audio::single_switch(&key.steps).is_some(){if ui.button("Icônes par état →").on_hover_text("Choisir séparément les icônes des deux états audio").clicked(){open_icons=true;}}else{
                         let actions=appearance::icons(ui,!key.image.is_empty());
                         open_icons|=actions.gallery;
-                        if actions.pick_file { if let Some(path)=rfd::FileDialog::new().add_filter("Image",&["png","jpg","jpeg","svg"]).pick_file(){key.image=path.to_string_lossy().into_owned();changed=true;} }
+                        if actions.pick_file {
+                            let profile=active;let page=page_id.clone();let index=selected;
+                            let tx=self.dialog_tx.clone();
+                            std::thread::spawn(move || {
+                                let path=rfd::FileDialog::new().add_filter("Image", &["png","jpg","jpeg","svg"]).pick_file();
+                                let _=tx.send(path.map(|path| Box::new(move |app: &mut App| {
+                                    if let Some(key)=app.config.profiles.get_mut(profile).and_then(|p|p.keys_at_mut(&page)).and_then(|keys|keys.get_mut(index)) {
+                                        key.image=path.to_string_lossy().into_owned();app.edited();
+                                    }
+                                }) as DialogEffect));
+                            });
+                        }
                         if actions.clear {key.image.clear();changed=true;}
 
                         }
@@ -1479,7 +1529,7 @@ impl App {
                 ui.separator();
                 ui.allocate_ui_with_layout(Vec2::new((width-240.0).max(200.0),body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
                     if key.steps.len()==1 && matches!(key.steps[0],Step::AudioSwitch{..}) {
-                        egui::ScrollArea::vertical().id_salt("compact_audio").max_height(body_height).show(ui,|ui|{let mut state=None;changed|=icon_ui::audio_options(ui,&mut key.steps[0],&self.audio,&mut state);if let Some(state)=state{pick_audio=Some((vec![0],state));}});
+                        egui::ScrollArea::vertical().id_salt("compact_audio").max_height(body_height).show(ui,|ui|{let mut state=None;changed|=icon_ui::audio_options(ui,&mut key.steps[0],&self.audio,&mut state,&dialog_tx,&(active,page_id.clone(),selected,vec![0]));if let Some(state)=state{pick_audio=Some((vec![0],state));}});
                         return;
                     }
                     ui.horizontal(|ui|{
@@ -1493,7 +1543,7 @@ impl App {
                         for(i,step) in key.steps.iter_mut().enumerate(){ui.push_id(i,|ui|{
                             egui::Frame::new().fill(p.bg).corner_radius(6).inner_margin(10).show(ui,|ui| {
                                 ui.horizontal(|ui|{ui.label(RichText::new(format!("{:02}",i+1)).color(BLUE).size(11.0));ui.label(RichText::new(step.name()).strong().size(12.0));ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{if ui.small_button("×").on_hover_text("Supprimer cette étape").clicked(){remove=Some(i);}if ui.add_enabled(i+1<count,egui::Button::new("↓").small()).clicked(){movement=Some((i,i+1));}if ui.add_enabled(i>0,egui::Button::new("↑").small()).clicked(){movement=Some((i,i-1));}});});
-                                let mut record=false;let mut audio_icon=None;changed|=edit_step(ui,step,&names,&pages,&mut record,&self.audio,&mut audio_icon);if let Some(state)=audio_icon{pick_audio=Some((vec![i],state));}if record{record_step=Some(i);}
+                                let mut record=false;let mut audio_icon=None;changed|=edit_step(ui,step,&names,&pages,&mut record,&self.audio,&mut audio_icon,&dialog_tx,&(active,page_id.clone(),selected,vec![i]));if let Some(state)=audio_icon{pick_audio=Some((vec![i],state));}if record{record_step=Some(i);}
                             });
                         });}
                     });
@@ -1878,6 +1928,7 @@ impl App {
         }
     }
     fn frame(&mut self, ctx: &egui::Context) {
+        self.dialog_results();
         self.record_trigger(ctx);
         self.record_events(ctx);
         self.events();
@@ -1962,7 +2013,13 @@ impl eframe::App for App {
     fn on_exit(&mut self, _: Option<&eframe::glow::Context>) {
         self.stop_http();
         if self.gate.dirty && !self.gate.invalid {
-            let _ = store::save(&self.path, &self.config);
+            if let Err(e) = store::save(&self.path, &self.config) {
+                let message = format!("Échec de sauvegarde à la fermeture : {e}\n");
+                eprintln!("{message}");
+                let log = self.path.with_file_name("deckforge-error.log");
+                let _ = std::fs::OpenOptions::new().create(true).append(true).open(log)
+                    .and_then(|mut file| std::io::Write::write_all(&mut file, message.as_bytes()));
+            }
         }
         self.engine.stop();
         let _ = self.device.send(Command::Disconnect);
@@ -2022,6 +2079,7 @@ impl Drop for Runner {
         self.stop.store(true, Ordering::SeqCst);
     }
 }
+#[allow(clippy::too_many_arguments)] // UI editor must carry the stable dialog destination through nested steps.
 fn edit_step(
     ui: &mut egui::Ui,
     step: &mut Step,
@@ -2030,6 +2088,8 @@ fn edit_step(
     record: &mut bool,
     audio: &crate::audio::Snapshot,
     pick_audio_icon: &mut Option<usize>,
+    tx: &Sender<Option<DialogEffect>>,
+    target: &StepTarget,
 ) -> bool {
     let mut changed = false;
     match step {
@@ -2063,13 +2123,7 @@ fn edit_step(
             ui.horizontal(|ui| {
                 changed |= ui.text_edit_singleline(program).changed();
                 if ui.small_button("…").clicked() {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("Application", &["exe", "com"])
-                        .pick_file()
-                    {
-                        *program = path.to_string_lossy().into_owned();
-                        changed = true;
-                    }
+                    choose_step_file(tx.clone(),target.clone(),false);
                 }
             });
             ui.label(RichText::new("Arguments : un par ligne, sans guillemets ajoutés").small());
@@ -2164,7 +2218,7 @@ fn edit_step(
                 });
         }
         step @ Step::AudioSwitch { .. } => {
-            changed |= icon_ui::audio_options(ui, step, audio, pick_audio_icon);
+            changed |= icon_ui::audio_options(ui, step, audio, pick_audio_icon, tx, target);
         }
         Step::IfWindow { title, .. } => {
             ui.label("Le titre de la fenêtre contient");
@@ -2197,13 +2251,7 @@ fn edit_step(
                 ui.label("AutoHotkey v2");
                 changed |= ui.text_edit_singleline(executable).changed();
                 if ui.button("Parcourir…").clicked() {
-                    if let Some(p) = rfd::FileDialog::new()
-                        .add_filter("AutoHotkey", &["exe"])
-                        .pick_file()
-                    {
-                        *executable = p.to_string_lossy().into_owned();
-                        changed = true;
-                    }
+                    choose_step_file(tx.clone(),target.clone(),true);
                 }
             });
             changed |= ui
@@ -2266,3 +2314,20 @@ mod extras;
 
 #[path = "ui_icons.rs"]
 mod icon_ui;
+
+#[cfg(test)]
+mod dialog_tests {
+    use super::*;
+    #[test]
+    fn dialog_worker_result_applies_on_the_next_ui_tick_without_native_window() {
+        let dir=tempfile::tempdir().unwrap();
+        let mut app=App::init(&egui::Context::default(),Some(dir.path().join("config.json")));
+        app.start_dialog(|| Some(Box::new(|app: &mut App| app.config.brightness=17)));
+        assert!(app.dialog_pending);
+        let result=app.dialog_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        app.dialog_tx.send(result).unwrap();
+        app.dialog_results();
+        assert!(!app.dialog_pending);
+        assert_eq!(app.config.brightness,17);
+    }
+}

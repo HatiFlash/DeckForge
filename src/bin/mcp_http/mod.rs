@@ -1,4 +1,4 @@
-use super::{forward, mcp_protocol};
+use super::{forward, mcp_protocol, token_equal};
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
@@ -6,6 +6,7 @@ use std::{
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
     time::{Duration, Instant},
+    sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}},
 };
 struct Session {
     last: Instant,
@@ -35,24 +36,31 @@ pub fn run(address: &str, connection: PathBuf) -> anyhow::Result<()> {
         "DeckForge MCP HTTP: http://{address}/mcp (Bearer token in {})",
         token_path.display()
     );
-    let mut sessions = HashMap::<String, Session>::new();
+    let sessions = Arc::new(Mutex::new(HashMap::<String, Session>::new()));
+    let active = Arc::new(AtomicUsize::new(0));
     for stream in listener.incoming() {
         let mut stream = stream?;
-        let response = handle(
-            &mut stream,
-            &token,
-            &connection,
-            address.port(),
-            &mut sessions,
-        );
-        if let Err(e) = response {
-            let _ = reply(
-                &mut stream,
-                400,
-                &[],
-                &json!({"error":e.to_string()}).to_string(),
-            );
+        if active.fetch_add(1, Ordering::AcqRel) >= 8 {
+            active.fetch_sub(1, Ordering::AcqRel);
+            stream.set_write_timeout(Some(Duration::from_secs(3)))?;
+            let _ = reply(&mut stream, 503, &[], "{\"error\":\"Server busy\"}");
+            continue;
         }
+        let sessions = sessions.clone();
+        let active = active.clone();
+        let token = token.clone();
+        let connection = connection.clone();
+        std::thread::spawn(move || {
+            struct Slot(Arc<AtomicUsize>);
+            impl Drop for Slot {
+                fn drop(&mut self) { self.0.fetch_sub(1, Ordering::AcqRel); }
+            }
+            let _slot = Slot(active);
+            let response = handle(&mut stream, &token, &connection, address.port(), &sessions);
+            if let Err(e) = response {
+                let _ = reply(&mut stream, 400, &[], &json!({"error":e.to_string()}).to_string());
+            }
+        });
     }
     Ok(())
 }
@@ -60,12 +68,6 @@ fn random() -> anyhow::Result<String> {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes).map_err(|_| anyhow::anyhow!("Random generation failed"))?;
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
-}
-fn equal(a: &str, b: &str) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.bytes().zip(b.bytes()).fold(0u8, |v, (a, b)| v | (a ^ b)) == 0
 }
 fn reply(
     stream: &mut TcpStream,
@@ -82,6 +84,7 @@ fn reply(
         404 => "Not Found",
         405 => "Method Not Allowed",
         413 => "Payload Too Large",
+        503 => "Service Unavailable",
         _ => "Bad Request",
     };
     write!(stream,"HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\n",body.len())?;
@@ -96,14 +99,14 @@ fn handle(
     token: &str,
     connection: &Path,
     port: u16,
-    sessions: &mut HashMap<String, Session>,
+    sessions: &Arc<Mutex<HashMap<String, Session>>>,
 ) -> anyhow::Result<()> {
     stream.set_read_timeout(Some(Duration::from_secs(3)))?;
     stream.set_write_timeout(Some(Duration::from_secs(3)))?;
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut line = String::new();
     (&mut reader).take(16385).read_line(&mut line)?;
-    let first = line.trim().split_whitespace().collect::<Vec<_>>();
+    let first = line.split_whitespace().collect::<Vec<_>>();
     anyhow::ensure!(first.len() == 3, "Invalid request line");
     let method = first[0].to_string();
     let path = first[1].to_string();
@@ -138,7 +141,7 @@ fn handle(
     }
     if !headers
         .get("authorization")
-        .is_some_and(|h| equal(h, &format!("Bearer {token}")))
+        .is_some_and(|h| token_equal::equal(h, &format!("Bearer {token}")))
     {
         return reply(
             stream,
@@ -153,6 +156,7 @@ fn handle(
     if method == "GET" {
         return reply(stream, 405, &[("Allow", "POST, DELETE".into())], "{}");
     }
+    let mut sessions = sessions.lock().unwrap_or_else(|e| e.into_inner());
     sessions.retain(|_, s| s.last.elapsed() < Duration::from_secs(900));
     if method == "DELETE" {
         if let Some(id) = headers.get("mcp-session-id") {
@@ -269,9 +273,16 @@ fn handle(
 mod tests {
     use super::*;
     #[test]
+    fn bounded_slot_count_recovers_after_busy_request() {
+        let active = AtomicUsize::new(8);
+        assert!(active.fetch_add(1, Ordering::AcqRel) >= 8);
+        active.fetch_sub(1, Ordering::AcqRel);
+        assert_eq!(active.load(Ordering::Acquire), 8);
+    }
+    #[test]
     fn bearer_comparison_checks_full_value() {
-        assert!(equal("Bearer abc", "Bearer abc"));
-        assert!(!equal("Bearer abc", "Bearer abd"));
-        assert!(!equal("Bearer abc", "abc"));
+        assert!(token_equal::equal("Bearer abc", "Bearer abc"));
+        assert!(!token_equal::equal("Bearer abc", "Bearer abd"));
+        assert!(!token_equal::equal("Bearer abc", "abc"));
     }
 }

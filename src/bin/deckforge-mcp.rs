@@ -1,4 +1,6 @@
 mod mcp_http;
+#[path = "../token_equal.rs"]
+mod token_equal;
 #[path = "../mcp_protocol.rs"]
 mod mcp_protocol;
 use serde_json::{json, Value};
@@ -24,8 +26,7 @@ fn run() -> anyhow::Result<()> {
         return mcp_http::run(address, connection);
     }
     let path = std::env::args()
-        .skip(1)
-        .next()
+        .nth(1)
         .map(std::path::PathBuf::from)
         .unwrap_or(std::env::current_exe()?.with_file_name("mcp-connection.json"));
     let mut session = [0u8; 16];

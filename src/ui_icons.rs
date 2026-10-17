@@ -293,30 +293,30 @@ impl App {
             self.reload_icons();
         }
         if folder {
-            if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                self.available_icons =
-                    crate::assets::scan(&[path, self.path.parent().unwrap().join("assets")]);
-            }
+            let tx=self.dialog_tx.clone();let assets=self.path.parent().unwrap().join("assets");
+            std::thread::spawn(move || {
+                if let Some(path)=rfd::FileDialog::new().pick_folder() {
+                    let icons=crate::assets::scan(&[path,assets]);
+                    let _=tx.send(Some(Box::new(move |app: &mut App| app.available_icons=icons) as DialogEffect));
+                }
+            });
         }
         if import {
-            if let Some(path) = rfd::FileDialog::new()
-                .add_filter(
-                    "Pack d’icônes",
-                    &["zip", "streamDeckIconPack", "sdIconPack"],
-                )
-                .pick_file()
-            {
-                match crate::assets::import_pack(&path, &self.path.parent().unwrap().join("assets"))
-                {
-                    Ok((count, skipped)) => {
-                        self.reload_icons();
-                        self.log(format!(
-                            "{count} icônes importées · {skipped} images non prises en charge."
-                        ));
+            let tx=self.dialog_tx.clone();let assets=self.path.parent().unwrap().join("assets");
+            std::thread::spawn(move || {
+                let Some(path)=rfd::FileDialog::new()
+                    .add_filter("Pack d'icônes", &["zip","streamDeckIconPack","sdIconPack"])
+                    .pick_file() else {return};
+                let result=crate::assets::import_pack(&path,&assets);
+                let icons=if result.is_ok(){Some(crate::assets::scan(&[assets]))}else{None};
+                let _=tx.send(Some(Box::new(move |app: &mut App| match result {
+                    Ok((count,skipped))=>{
+                        if let Some(icons)=icons {app.available_icons=icons;}
+                        app.log(format!("{count} icônes importées — {skipped} images non prises en charge."));
                     }
-                    Err(e) => self.fail(e.to_string()),
-                }
-            }
+                    Err(e)=>app.fail(e.to_string()),
+                }) as DialogEffect));
+            });
         }
     }
     pub(super) fn choose_icon(&mut self, path: &str, name: &str) -> Result<(), String> {
@@ -399,6 +399,8 @@ pub(super) fn audio_options(
     step: &mut Step,
     audio: &crate::audio::Snapshot,
     pick: &mut Option<usize>,
+    tx: &Sender<Option<DialogEffect>>,
+    target: &StepTarget,
 ) -> bool {
     let Step::AudioSwitch {
         first,
@@ -510,13 +512,19 @@ pub(super) fn audio_options(
                                     *pick = Some(state);
                                 }
                                 if ui.small_button("Fichier…").clicked() {
-                                    if let Some(path) = rfd::FileDialog::new()
-                                        .add_filter("Image", &["png", "jpg", "jpeg"])
-                                        .pick_file()
-                                    {
-                                        *icon = path.to_string_lossy().into_owned();
-                                        changed = true;
-                                    }
+                                    let tx=tx.clone();let target=target.clone();
+                                    std::thread::spawn(move || {
+                                        let path=rfd::FileDialog::new().add_filter("Image", &["png","jpg","jpeg"]).pick_file();
+                                        let _=tx.send(path.map(|path| Box::new(move |app: &mut App| {
+                                            let (profile,page,key,step_path)=target;
+                                            if let Some(Step::AudioSwitch {first_icon,second_icon,..})=
+                                                app.config.profiles.get_mut(profile).and_then(|p|p.keys_at_mut(&page))
+                                                .and_then(|keys|keys.get_mut(key)).and_then(|key|extras::step_mut(&mut key.steps,&step_path)) {
+                                                *(if state==0 {first_icon} else {second_icon})=path.to_string_lossy().into_owned();
+                                                app.edited();
+                                            }
+                                        }) as DialogEffect));
+                                    });
                                 }
                                 if ui.small_button("Par défaut").clicked() {
                                     icon.clear();

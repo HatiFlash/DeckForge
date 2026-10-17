@@ -344,7 +344,8 @@ fn convert_action(a: &Value, ids: &HashMap<String, String>, depth: usize) -> Res
                 "Raccourci macOS ou combinaison multiple non convertible"
             );
             let k = active[0];
-            let vk = k["VKeyCode"].as_u64().unwrap() as u16;
+            let vk = u16::try_from(k["VKeyCode"].as_u64().unwrap())
+                .map_err(|_| anyhow!("Code de touche Windows hors limites : action non convertie"))?;
             if let Some(qt) = k["QTKeyCode"].as_u64().and_then(qt_vk) {
                 ensure!(
                     qt == vk,
@@ -494,6 +495,13 @@ mod tests {
     use std::io::Write;
     fn hotkey() -> Value {
         json!({"UUID":"com.elgato.streamdeck.system.hotkey","States":[{"Title":"Save"}],"Settings":{"Hotkeys":[{"VKeyCode":83,"KeyCtrl":true},{"VKeyCode":-1}]}})
+    }
+    #[test]
+    fn oversized_vkey_is_not_truncated() {
+        let mut action = hotkey();
+        action["Settings"]["Hotkeys"][0]["VKeyCode"] = json!(65619);
+        let error = convert_action(&action, &HashMap::new(), 0).unwrap_err();
+        assert!(error.to_string().contains("action non convertie"));
     }
     #[test]
     fn imports_legacy_and_preserves_unknown_as_empty_with_report() {

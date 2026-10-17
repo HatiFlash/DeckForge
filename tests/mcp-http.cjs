@@ -19,6 +19,22 @@ r=await fetch(url,{headers:{...base,...sessionHeaders}});assert.equal(r.status,4
 r=await post({jsonrpc:'2.0',id:4,method:'ping'},{...sessionHeaders,'MCP-Protocol-Version':'invalid'});assert.equal(r.status,400);checks.push('unsupported HTTP protocol versions rejected');
 r=await fetch(url,{method:'POST',headers:{...base,...sessionHeaders},body:'invalid json'});assert.equal(r.status,400);checks.push('malformed HTTP JSON rejected');
 r=await fetch(url,{method:'DELETE',headers:{...base,...sessionHeaders}});assert.equal(r.status,204);r=await post({jsonrpc:'2.0',id:5,method:'tools/list'},sessionHeaders);assert.equal(r.status,404);checks.push('HTTP session deletion');
+// Eight incomplete requests must not block the accept loop; excess clients receive 503.
+const idle=await Promise.all(Array.from({length:8},()=>new Promise((resolve,reject)=>{
+  const socket=net.connect(port,'127.0.0.1',()=>resolve(socket));socket.on('error',reject);
+})));
+await new Promise(r=>setTimeout(r,150));
+const refused=await Promise.race([
+  new Promise((resolve,reject)=>{const socket=net.connect(port,'127.0.0.1');let text='';
+    socket.on('data',chunk=>text+=chunk);socket.on('end',()=>resolve(text));socket.on('error',reject);
+  }),
+  new Promise((_,reject)=>setTimeout(()=>reject(new Error('busy HTTP request hung')),1500))
+]);
+assert(refused.startsWith('HTTP/1.1 503 '),refused.slice(0,100));
+idle.forEach(socket=>socket.destroy());
+await new Promise(r=>setTimeout(r,150));
+r=await post({jsonrpc:'2.0',id:6,method:'initialize',params:{}});assert.equal(r.status,200);
+checks.push('eight slow clients capped; ninth gets 503; server recovers');
 const invalid=cp.spawnSync(binary,['--http','192.0.2.1:9846',connection],{windowsHide:true,encoding:'utf8'});assert.notEqual(invalid.status,0);checks.push('non-loopback binding refused');
 child.kill();await new Promise(r=>child.on('exit',r));bridge.close();for(const f of ['connection.json','mcp-http-token.txt'])fs.unlinkSync(path.join(dir,f));fs.rmdirSync(dir);console.log(JSON.stringify({passed:true,checks}));
 })().catch(e=>{console.error(e);child?.kill();bridge.close();process.exit(1);});

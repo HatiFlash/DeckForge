@@ -18,6 +18,7 @@ mod mcp_server;
 mod model;
 mod recorder;
 mod store;
+mod token_equal;
 mod theme;
 mod ui;
 
