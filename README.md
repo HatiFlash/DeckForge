@@ -1,6 +1,8 @@
 # DeckForge 0.5.0 — version de test Windows
 
-Application Rust indépendante pour le FIFINE AmpliGame D6 (USB 3142:0060), avec macros, pages, dossiers et connecteur MCP optionnel. Le logiciel FIFINE doit être fermé pour laisser DeckForge accéder au D6.
+<img src="res/branding/deckforge-logo.png" width="96" align="right" alt="Logo DeckForge">
+
+Application Rust indépendante pour le FIFINE AmpliGame D6 (USB 3142:0060) : macros, pages, dossiers, Atelier de blocs, actions natives (audio, OBS, Discord, système) et connecteur MCP optionnel. Le logiciel FIFINE doit être fermé pour laisser DeckForge accéder au D6.
 
 ![Interface](docs/interface.png)
 
@@ -8,12 +10,32 @@ Pour connecter Claude Desktop, Claude Code, Codex CLI ou Cursor sans éditer de 
 
 ## Nouveautés 0.5.0
 
-- **Édition plus sûre** : Annuler / Rétablir sur 50 étapes (Ctrl+Z / Ctrl+Y), copier / coller / dupliquer une touche par clic droit ou Ctrl+C / Ctrl+V, même entre pages et profils.
-- **Atelier de blocs repensé** : il s'ouvre en grand à la place du deck ; palette de blocs par catégories avec recherche ; « + Insérer ici » entre deux blocs ; cartes repliables avec une phrase résumée ; dupliquer, désactiver ou retirer un bloc ; blocs incomplets signalés en orange ; six modèles prêts à personnaliser ; mode Simple (champs essentiels et aide) ou Avancé (tous les réglages) ; déroulé lisible de la simulation ; raccourcis Ctrl+D, Suppr, Alt+↑/↓.
-- **Appui long** : chaque touche peut avoir une seconde série d'actions déclenchée en la maintenant (seuil réglable, 500 ms par défaut). Sans appui long, la touche réagit toujours immédiatement.
-- **Icônes animées** : GIF animés et vidéos (MP4, WebM, MOV, MKV, AVI, converties en GIF à l'import avec FFmpeg, 10 s maximum, sans son). Curseur **Taille de l'icône** (20 à 200 %) et taille du titre par touche.
-- **Profil automatique** selon l'application au premier plan (Applications associées dans le menu du profil, interrupteur dans Réglages) et **veille de l'écran** du D6 après inactivité ; le premier appui réveille sans lancer la macro.
-- **Fiabilité** : le D6 reste réactif pendant les boîtes « Ouvrir un fichier », sauvegarde de secours `config.json.bak` atomique avec reprise automatique, erreurs de sauvegarde consignées dans `deckforge-error.log`, MCP HTTP concurrent borné.
+### Nouvelle interface
+- **Thème sombre « studio »** : fond bleu nuit, accent bleu électrique, nouveau logo (fenêtre, barre des tâches, zone de notification, exécutable).
+- **Navigation à gauche** : profils, pages et carte d'état du FIFINE D6 ; version compacte sur les petites fenêtres.
+- **Pavé adaptatif** : les 15 touches suivent la taille de la fenêtre, sans barre de défilement.
+- **Bibliothèque en cartes** avec recherche, onglets Actions / Magasin / Mes binds / Plugins.
+- **Inspecteur** avec badge d'état, onglets Action et Avancé, « Vider » en rouge pour éviter les erreurs.
+- **Plus de clignotement** : rendu wgpu (DirectX 12 / Vulkan).
+
+![Atelier de blocs](docs/workflow.png)
+
+### Blocs natifs (sans AutoHotkey ni programme externe)
+- **Volume d'une application** : l'application au premier plan (ou un exécutable précis), en points de pourcentage, muet / rétabli / bascule ; jamais le volume général.
+- **Volume d'un périphérique** : micro ou sortie, par défaut ou choisi.
+- **Si… sinon** avec 14 conditions : application au premier plan ou ouverte, fenêtre, son en cours, muet, seuil de volume, casque branché, sortie actuelle, variables, et « non / toutes / au moins une ».
+- **Attendre que…** une condition, avec délai maximal et bouton Arrêter.
+- **Notification Windows** avec variables `{nom}`.
+- Aussi : OBS (scènes, enregistrement, stream, caméra virtuelle, replay, sources), Discord, souris, fermer une fenêtre, soundboard, luminosité / veille du D6, UDP, HTTP, touche à deux états.
+- **Conversion** des anciens binds `FocusAudio.exe` en blocs natifs (Réglages → À propos), avec sauvegarde.
+
+### Plugins Stream Deck / FIFINE
+- Magasin et hôte de plugins compatibles (exe, Node.js, HTML), page de réglages du plugin, image et titre en direct sur la touche. Les fonctions déjà natives sont proposées en priorité.
+
+![Magasin de plugins](docs/plugins-store.png)
+
+### Déjà dans la 0.5.0
+- Annuler / Rétablir (Ctrl+Z / Ctrl+Y), copier / coller / dupliquer une touche, appui long, GIF et vidéos, taille d'icône, profil automatique selon l'application, veille du D6, À propos et vérification des mises à jour, sauvegarde de secours `config.json.bak`.
 
 Détails, tests réalisés et points restant à vérifier : [journal 0.5](docs/CHANGELOG-0.5.md) et [essais manuels 0.5.0](docs/TEST-0.5.0.md).
 
@@ -52,7 +74,7 @@ Les profils restent dans `config.json`, les préférences dans `preferences.json
 
 Version de test : voir [les contrôles réalisés](docs/VALIDATION.md) et [les essais manuels](docs/TEST-0.5.0.md). Cette correction a été développée et vérifiée sans ouvrir d’application sur l’écran de l’utilisateur et sans modifier ses périphériques audio.
 
-Les plugins tiers Elgato/FIFINE sont inventoriés, mais leur moteur d’exécution n’est pas encore implémenté. L’import de profils ne convertit que les actions reconnues ; voir [compatibilité Elgato](docs/ELGATO.md).
+Les plugins tiers sont exécutés par un hôte compatible Stream Deck ; certains plugins peuvent rester partiellement compatibles. L’import de profils ne convertit que les actions reconnues ; voir [compatibilité Elgato](docs/ELGATO.md).
 
 Le retour visuel audio est défini pour une macro contenant un seul basculement audio, y compris après d’autres blocs. Plusieurs basculements dans la même macro ne reçoivent pas d’état visuel supposé. Les variables sont locales à chaque exécution. Exporter en AutoHotkey refuse explicitement les blocs non pris en charge.
 
