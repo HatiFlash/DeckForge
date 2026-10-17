@@ -64,6 +64,21 @@ fn palette(ui: &mut egui::Ui, search: &mut String, depth: usize) -> Option<usize
     }
     selected
 }
+fn block_summary(step: &Step) -> String {
+    match step {
+        Step::Hotkey { keys } => format!("Appuyer sur {keys}"),
+        Step::Delay { ms } => format!("Attendre {ms} ms"),
+        Step::Url { url } => format!("Ouvrir {url}"),
+        Step::Text { text } => format!("Écrire {}", text.chars().take(50).collect::<String>()),
+        Step::Launch { program, .. } => format!("Lancer {program}"),
+        Step::Repeat { count, steps } => format!("Répéter {count} fois ({} blocs)", steps.len()),
+        Step::IfWindow { title, .. } => format!("Si la fenêtre {title} est ouverte"),
+        Step::IfVariable { name, value, .. } => format!("Si {name} vaut {value}"),
+        Step::SetVariable { name, value } => format!("Mémoriser {name} = {value}"),
+        Step::WaitWindow { title, .. } => format!("Attendre la fenêtre {title}"),
+        _ => step.name().to_owned(),
+    }
+}
 fn new_block(kind: usize, profiles: &[String]) -> Step {
     catalog::action(kind, profiles.first().map(String::as_str).unwrap_or("Bureau")).steps.remove(0)
 }
@@ -87,6 +102,7 @@ pub(super) fn block_editor(
     let mut remove = None;
     let mut movement = None;
     let mut insertion = None;
+    let mut duplicate = None;
     for (i, step) in steps.iter_mut().enumerate() {
         let mut path = parent.to_vec();
         path.push(i);
@@ -134,15 +150,23 @@ pub(super) fn block_editor(
                                 .join("."),
                             color,
                         );
+                        let folded_id = egui::Id::new("block_fold").with(&path);
+                        let folded = ui.data(|d| d.get_temp::<bool>(folded_id)).unwrap_or(false);
                         if ui.selectable_label(
-                            parent.is_empty() && ui.data(|d| d.get_temp::<usize>(egui::Id::new("workshop_selected"))) == Some(i),
-                            RichText::new(step.name()).strong(),
-                        ).clicked() && parent.is_empty() {
-                            ui.data_mut(|d| d.insert_temp(egui::Id::new("workshop_selected"), i));
+                            !folded,
+                            format!("{} · {}", step.name(), block_summary(step)),
+                        ).clicked() {
+                            ui.data_mut(|d| d.insert_temp(folded_id, !folded));
+                            if parent.is_empty() {
+                                ui.data_mut(|d| d.insert_temp(egui::Id::new("workshop_selected"), i));
+                            }
                         }
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.small_button("Retirer").clicked() {
                                 remove = Some(i);
+                            }
+                            if ui.small_button("Dupliquer").clicked() {
+                                duplicate = Some(i);
                             }
                             if ui
                                 .add_enabled(i > 0, egui::Button::new("↑").small())
@@ -155,6 +179,9 @@ pub(super) fn block_editor(
                             }
                         });
                     });
+                    if ui.data(|d| d.get_temp::<bool>(egui::Id::new("block_fold").with(&path))).unwrap_or(false) {
+                        return;
+                    }
                     ui.add_space(6.0);
                     let mut capture = false;
                     let mut icon = None;
@@ -225,6 +252,12 @@ pub(super) fn block_editor(
                     }
                 });
         });
+    }
+    if let Some(i) = duplicate {
+        if steps.len() < 256 {
+            steps.insert(i + 1, steps[i].clone());
+            changed = true;
+        }
     }
     if let Some((i, kind)) = insertion {
         if steps.len() < 256 {
@@ -483,5 +516,15 @@ impl App {
                 Err(e) => self.fail(e),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod workshop_tests {
+    use super::*;
+    #[test]
+    fn summaries_are_readable() {
+        assert_eq!(block_summary(&Step::Delay { ms: 500 }), "Attendre 500 ms");
+        assert_eq!(block_summary(&Step::Repeat { count: 3, steps: vec![Step::Back, Step::Back] }), "Répéter 3 fois (2 blocs)");
     }
 }
