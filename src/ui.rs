@@ -2371,18 +2371,34 @@ impl App {
         let p = theme::palette(ctx);
         let running = self.engine.running.load(Ordering::SeqCst);
         egui::TopBottomPanel::bottom("key_inspector").default_height(if ctx.screen_rect().height()<800.0 {240.0}else{260.0}).height_range(240.0..=420.0).resizable(true).frame(egui::Frame::new().fill(p.surface).inner_margin(16)).show(ctx,|ui| {
+            let tab_id = egui::Id::new("inspector_tab");
+            let mut tab = ui.ctx().data_mut(|d| *d.get_persisted_mut_or_default::<u8>(tab_id));
+            let configured = { let k = &self.config.keys()[self.selected]; !k.steps.is_empty() || !k.long_steps.is_empty() || k.plugin.is_some() };
+            let narrow = ui.available_width() < 1180.0;
+            let actions = |app: &mut Self, ui: &mut egui::Ui, narrow: bool| {
+                if ui.add(theme::primary(RichText::new("Atelier de blocs").color(Color32::WHITE))).on_hover_text("Composer l’automatisation avec des blocs visuels").clicked(){app.show_workflow=true;}
+                if ui.button(if narrow {"★ Mes binds"} else {"Enregistrer dans Mes binds"}).on_hover_text("Enregistrer dans Mes binds : conserver cette macro pour la réutiliser").clicked(){app.bind_name=app.config.keys()[app.selected].label.clone();app.save_bind=true;}
+                if ui.add_enabled(!app.config.keys()[app.selected].steps.is_empty(),egui::Button::new(RichText::new("Vider").color(theme::DANGER)).fill(Color32::TRANSPARENT).stroke(egui::Stroke::new(1.0_f32, theme::DANGER.gamma_multiply(0.6)))).on_hover_text("Retirer toutes les actions de cette touche (Ctrl+Z pour annuler)").clicked(){app.assign(DragItem::Bind(Key::default()),app.selected);}
+                if ui.add_enabled(!running,egui::Button::new(if narrow {"Test 3 s"} else {"Tester dans 3 s"})).on_hover_text("Tester dans 3 s : exécute la macro sur ton PC après 3 secondes, dans la fenêtre active.").clicked(){app.preview(false);}
+                if ui.add_enabled(!running,theme::primary(RichText::new("Simuler").color(Color32::WHITE))).on_hover_text("Affiche les étapes sans les exécuter.").clicked(){app.preview(true);}
+            };
             ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("Touche {:02}",self.selected+1)).size(16.0).strong());
-                ui.selectable_value(&mut self.long_editor, false, "Appui court");
-                ui.selectable_value(&mut self.long_editor, true, "Appui long");
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| {
-                    if ui.add(theme::primary(RichText::new("Atelier de blocs").color(Color32::WHITE))).on_hover_text("Composer l’automatisation avec des blocs visuels").clicked(){self.show_workflow=true;}
-                    if ui.button("Enregistrer dans Mes binds").on_hover_text("Conserver cette macro pour la réutiliser").clicked(){self.bind_name=self.config.keys()[self.selected].label.clone();self.save_bind=true;}
-                    if ui.add_enabled(!self.config.keys()[self.selected].steps.is_empty(),egui::Button::new("Vider")).clicked(){self.assign(DragItem::Bind(Key::default()),self.selected);}
-                    if ui.add_enabled(!running,egui::Button::new("Tester dans 3 s")).on_hover_text("Exécute la macro sur ton PC après 3 secondes, dans la fenêtre active.").clicked(){self.preview(false);}
-                    if ui.add_enabled(!running,theme::primary(RichText::new("Simuler").color(Color32::WHITE))).on_hover_text("Affiche les étapes sans les exécuter.").clicked(){self.preview(true);}
+                ui.label(RichText::new(format!("Touche {:02}",self.selected+1)).size(17.0).strong());
+                if !narrow { theme::status_badge(ui, if configured { "Action configurée" } else { "Touche vide" }, if configured { GREEN } else { p.muted }); ui.add_space(10.0); }
+                egui::Frame::new().fill(p.bg).corner_radius(10).inner_margin(egui::Margin::same(3)).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.x = 2.0;
+                    for (i, label, short) in [(0u8, "⚡ Action", "⚡"), (1u8, "⚙ Avancé", "⚙")] {
+                        if ui.selectable_label(tab == i, if narrow { short } else { label }).on_hover_text(&label[4..]).clicked() { tab = i; }
+                    }
                 });
+                if tab == 0 {
+                    ui.add_space(6.0);
+                    ui.selectable_value(&mut self.long_editor, false, if narrow { "Court" } else { "Appui court" });
+                    ui.selectable_value(&mut self.long_editor, true, if narrow { "Long" } else { "Appui long" });
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| actions(self, ui, narrow));
             });
+            ui.ctx().data_mut(|d| d.insert_persisted(tab_id, tab));
             ui.separator();
             if let Some(shortcut) = extras::discord_shortcut(&self.config.keys()[self.selected]) {
                 ui.group(|ui| {
@@ -2397,7 +2413,7 @@ impl App {
             let long_editor = self.long_editor;
             let active=self.config.active; let names=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
             let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let image_size=self.config.image_size;let key=&mut self.config.keys_mut()[selected];
-            let mut removed_step=false; let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut pick_audio=None; let mut open_workflow=false; let mut open_model=false;
+            let mut removed_step=false; let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut pick_audio=None; let mut open_workflow=false; let mut open_model=false; let mut advanced: Option<u8>=None;
             if let Some(binding)=key.plugin.clone(){
                 ui.horizontal(|ui|{
                     ui.label(format!("Plugin : {} · {}",binding.plugin,binding.action));
@@ -2464,13 +2480,27 @@ impl App {
                             }
                         });
                         changed |= ui.add(egui::Slider::new(&mut key.icon_scale, 20..=200).suffix(" %")).changed();
-                        ui.horizontal(|ui|{ui.label("Répéter");changed|=ui.add(egui::DragValue::new(&mut key.repeat).range(1..=1000)).changed();ui.label("fois");});
-                        ui.add_space(6.0);
-                        ui.label(RichText::new("La simulation ne lance aucune action. Le test réel vise la fenêtre active.").size(10.0).color(p.muted));
                     });
                 });
                 ui.separator();
                 ui.allocate_ui_with_layout(Vec2::new((width-240.0).max(100.0),body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
+                    if tab == 1 {
+                        egui::ScrollArea::vertical().id_salt("inspector_advanced").max_height(body_height).show(ui,|ui|{
+                            ui.label(RichText::new("Comportement").strong());
+                            ui.horizontal(|ui|{ui.label("Répéter la macro");changed|=ui.add(egui::DragValue::new(&mut key.repeat).range(1..=1000)).changed();ui.label("fois à chaque appui");});
+                            ui.label(RichText::new(format!("Appui court : {} étape(s) · Appui long : {} étape(s)", key.steps.len(), key.long_steps.len())).color(p.muted));
+                            ui.add_space(8.0);
+                            ui.label(RichText::new("Touche").strong());
+                            ui.horizontal(|ui|{
+                                if ui.button("Copier la touche").clicked(){advanced=Some(0);}
+                                if ui.button("Coller ici").clicked(){advanced=Some(1);}
+                                if ui.button("Dupliquer vers la touche libre suivante").clicked(){advanced=Some(2);}
+                            });
+                            ui.add_space(8.0);
+                            ui.label(RichText::new("La simulation ne lance aucune action. Le test réel vise la fenêtre active ; « Arrêter les macros en cours » (Ctrl + Alt + F12) interrompt une exécution.").size(11.0).color(p.muted));
+                        });
+                        return;
+                    }
                     if !long_editor && key.steps.len()==1 && matches!(key.steps[0],Step::AudioSwitch{..}) {
                         egui::ScrollArea::vertical().id_salt("compact_audio").max_height(body_height).show(ui,|ui|{let mut state=None;changed|=icon_ui::audio_options(ui,&mut key.steps[0],&self.audio,&mut state,&dialog_tx,&(active,page_id.clone(),selected,vec![0]));if let Some(state)=state{pick_audio=Some((vec![0],state));}});
                         return;
@@ -2506,6 +2536,7 @@ impl App {
                     if let Some(i)=remove{steps.remove(i);changed=true;removed_step=true;}if let Some((a,b))=movement{steps.swap(a,b);changed=true;}
                 });
             });
+            match advanced { Some(0)=>self.copy_key(), Some(1)=>self.paste_key(self.selected), Some(2)=>self.duplicate_key(self.selected), _=>{} }
             if open_workflow {self.show_workflow=true;}if open_model {self.show_workflow=true;}
             if let Some(step)=record_step {self.recording=Some((active,self.config.page.clone(),self.selected,vec![step],self.gate.enabled));self.recording_error.clear();self.gate.enabled=false;self.engine.stop();self.refresh_hotkeys();}
             if changed {self.edited(); if removed_step {self.log("Étape retirée — Ctrl+Z pour annuler".into());}}
