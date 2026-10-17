@@ -149,3 +149,13 @@ Le guide de connexion ChatGPT est décrit dans [la documentation officielle Open
 `deckforge_configure_key` accepte `background: false` pour un écran noir ou `background: true` pour rétablir la couleur RGB mémorisée. Si ce champ est absent, le réglage actuel est conservé. Le connecteur 0.4.3 doit être rechargé dans le client IA pour exposer ce nouveau champ ; les connecteurs plus anciens peuvent continuer les opérations existantes.
 
 La proposition `deckforge_configure_key` accepte `icon_scale` (entier facultatif de 20 à 200 %, 100 % par défaut), validé localement avant application.
+
+## Actions natives supplémentaires
+
+deckforge_configure_key accepte close_window (sans paramètre), mouse_click (button : left/right/middle, double : booléen), mouse_move (x/y : coordonnées entières, relative : booléen) et mouse_scroll (amount : crans -100 à 100). Ces étapes sont validées localement, sans exécution lors de la proposition. La simulation n'agit pas sur Windows ; l'export AutoHotkey refuse explicitement ces étapes non prises en charge.
+
+
+Soundboard : deckforge_configure_key accepte play_sound avec path (fichier WAV/MP3 local) et olume (entier 0 à 100), ainsi que stop_sounds sans paramètre. Les fichiers ne sont ni lus ni transmis par MCP lors de la proposition : la validation reste locale et la lecture ne démarre que sur un appui après validation. deckforge_simulate_macro n'émet aucun son. L'export AutoHotkey refuse ces blocs plutôt que de les ignorer.
+
+
+Actions réseau : configure_key accepte udp_send (host, port, text) et http_request (method GET/POST/PUT, url http://, body, content_type). HTTPS est refusé explicitement faute de TLS ; validation locale avant proposition, aucune requête en simulation. La réponse HTTP est journalisée sur une longueur bornée ; l’export AutoHotkey refuse ces blocs.

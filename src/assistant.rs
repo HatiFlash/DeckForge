@@ -169,6 +169,7 @@ impl Proposals {
                     steps: a.steps,
                     long_steps: a.long_steps.unwrap_or_else(|| old.long_steps.clone()),
                     display_kind: None,
+                    runtime_badge: None, runtime_id: None,
                 };
                 next.validate_structure().map_err(|e| e.to_string())?;
                 crate::model::validate_key_in_profile(

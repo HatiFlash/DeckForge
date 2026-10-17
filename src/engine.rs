@@ -16,6 +16,28 @@ use windows_sys::Win32::{
     UI::{Input::KeyboardAndMouse::*, WindowsAndMessaging::*},
 };
 
+thread_local! { static ACTIVE_KEY: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) }; }
+static TOGGLE_STATES: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, bool>>> = std::sync::OnceLock::new();
+fn toggle_states() -> &'static std::sync::Mutex<std::collections::HashMap<String, bool>> {
+    TOGGLE_STATES.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+pub fn identity(profile: &str, page: &str, index: usize) -> String { format!("{profile}\0{page}\0{index}") }
+pub fn toggle_badge(id: &str, key: &Key) -> Option<String> {
+    let index = key.steps.iter().position(|s| matches!(s.active(), Step::Toggle { .. }))?;
+    let path = format!("{id}\0{index}");
+    let states = toggle_states().lock().unwrap_or_else(|e| e.into_inner());
+    Some(if *states.get(&path).unwrap_or(&false) { "2" } else { "1" }.to_owned() + "/2")
+}
+fn next_branch(path: &[usize]) -> usize {
+    let id = ACTIVE_KEY.with(|id| id.borrow().clone());
+    let id = format!("{id}\0{}", path.iter().map(usize::to_string).collect::<Vec<_>>().join("."));
+    let mut states = toggle_states().lock().unwrap_or_else(|e| e.into_inner());
+    if states.len() > 2048 { states.clear(); }
+    let next = states.entry(id).or_insert(false);
+    let branch = usize::from(*next);
+    *next = !*next;
+    branch
+}
 pub struct Engine {
     pub running: Arc<AtomicBool>,
     cancel: Arc<AtomicBool>,
@@ -42,7 +64,7 @@ impl Engine {
                 > *self.last_finished.lock().unwrap_or_else(|e| e.into_inner())
                     + Duration::from_millis(150)
     }
-    pub fn start(&self, key: Key, dry: bool, initial_delay: u64) {
+    pub fn start(&self, key: Key, dry: bool, initial_delay: u64, obs: crate::model::ObsSettings) {
         if self
             .running
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -63,7 +85,8 @@ impl Engine {
                 if !dry {
                     wait(initial_delay, &cancel)?;
                 }
-                run(&key, dry, &cancel, &tx)
+                ACTIVE_KEY.with(|id| *id.borrow_mut() = key.runtime_id.clone().unwrap_or_else(|| serde_json::to_string(&key).unwrap_or_default()));
+                run(&key, dry, &cancel, &tx, &obs)
             }));
             let message = match result {
                 Ok(Ok(())) => "Macro terminée".into(),
@@ -104,7 +127,7 @@ fn wait(ms: u64, cancel: &AtomicBool) -> Result<()> {
         std::thread::sleep(remaining.min(Duration::from_millis(20)));
     }
 }
-fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>) -> Result<()> {
+fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>, obs: &crate::model::ObsSettings) -> Result<()> {
     let _ = tx.send(Event::Log(format!(
         "{} — {} ({} répétition(s))",
         if dry { "SIMULATION" } else { "EXÉCUTION" },
@@ -122,6 +145,7 @@ fn run(key: &Key, dry: bool, cancel: &AtomicBool, tx: &Sender<Event>) -> Result<
             &mut variables,
             &mut budget,
             &[],
+            obs,
         )?;
     }
     let _ = tx.send(Event::Block(vec![]));
@@ -135,6 +159,7 @@ fn run_steps(
     variables: &mut std::collections::BTreeMap<String, String>,
     budget: &mut usize,
     parent: &[usize],
+    obs: &crate::model::ObsSettings,
 ) -> Result<()> {
     for (idx, step) in steps.iter().enumerate() {
         if step.is_disabled() { continue; }
@@ -172,6 +197,7 @@ fn run_steps(
                         variables,
                         budget,
                         &[path.clone(), vec![0]].concat(),
+                        obs,
                     )?;
                     run_steps(
                         else_steps,
@@ -181,8 +207,14 @@ fn run_steps(
                         variables,
                         budget,
                         &[path.clone(), vec![1]].concat(),
+                        obs,
                     )?;
                 }
+                Step::Toggle { a, b } => {
+                    for (branch, list) in [a, b].into_iter().enumerate() {
+                        run_steps(list, true, cancel, tx, variables, budget, &[path.clone(), vec![branch]].concat(), obs)?;
+                    }
+                },
                 Step::Repeat { steps, .. } => run_steps(
                     steps,
                     true,
@@ -191,6 +223,7 @@ fn run_steps(
                     variables,
                     budget,
                     &[path.clone(), vec![0]].concat(),
+                    obs,
                 )?,
                 _ => {}
             }
@@ -198,6 +231,24 @@ fn run_steps(
         }
         match step {
             Step::Disabled { .. } => {},
+            Step::Toggle { a, b } => {
+                let branch = next_branch(&path);
+                let _ = tx.send(Event::ToggleVisual);
+                run_steps(if branch == 0 { a } else { b }, dry, cancel, tx, variables, budget, &[path.clone(), vec![branch]].concat(), obs)?;
+            },
+            Step::PlaySound { path, volume } => crate::soundboard::play(path, *volume)?,
+            Step::StopSounds => crate::soundboard::stop(),
+            Step::UdpSend { host, port, text } => crate::network_actions::udp_send(host, *port, text)?,
+            Step::HttpRequest { method, url, body, content_type } => { let reply = crate::network_actions::http_request(method, url, body, content_type)?; let _ = tx.send(Event::Log(reply)); },
+            Step::D6Brightness { mode, value } => { let _ = tx.send(Event::D6Brightness(mode.clone(), *value)); },
+            Step::D6Sleep => { let _ = tx.send(Event::D6Sleep); },
+            Step::CloseWindow => close_foreground_window()?,
+            Step::MouseClick { button, double } => mouse_click(button, *double)?,
+            Step::MouseMove { x, y, relative } => mouse_move(*x, *y, *relative)?,
+            Step::MouseScroll { amount } => mouse_event(MOUSEEVENTF_WHEEL, amount.wrapping_mul(120) as u32, 0, 0)?,
+            Step::ObsScene { .. } | Step::ObsRecord { .. } | Step::ObsStream { .. }
+            | Step::ObsVirtualCam { .. } | Step::ObsReplay { .. } | Step::ObsMute { .. }
+            | Step::ObsSourceVisibility { .. } => crate::obs::execute(step, obs)?,
             Step::AudioSwitch {
                 first,
                 second,
@@ -227,6 +278,7 @@ fn run_steps(
                     variables,
                     budget,
                     &[path.clone(), vec![branch_id]].concat(),
+                    obs,
                 )?;
             }
             Step::IfVariable {
@@ -248,6 +300,7 @@ fn run_steps(
                     variables,
                     budget,
                     &[path.clone(), vec![branch_id]].concat(),
+                    obs,
                 )?;
             }
             Step::Repeat { count, steps } => {
@@ -260,6 +313,7 @@ fn run_steps(
                         variables,
                         budget,
                         &[path.clone(), vec![0]].concat(),
+                        obs,
                     )?;
                 }
             }
@@ -336,6 +390,49 @@ fn run_steps(
 
         wait(10, cancel)?;
     }
+    Ok(())
+}
+fn mouse_event(flags: u32, data: u32, dx: i32, dy: i32) -> Result<()> {
+    let event = INPUT { r#type: INPUT_MOUSE, Anonymous: INPUT_0 { mi: MOUSEINPUT {
+        dx, dy, mouseData: data, dwFlags: flags, time: 0, dwExtraInfo: 0,
+    } } };
+    anyhow::ensure!(unsafe { SendInput(1, &event, std::mem::size_of::<INPUT>() as i32) } == 1, "Windows a refusé l'action souris");
+    Ok(())
+}
+fn mouse_click(button: &str, double: bool) -> Result<()> {
+    let (down, up) = match button {
+        "left" => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
+        "right" => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
+        "middle" => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
+        _ => anyhow::bail!("Bouton souris invalide"),
+    };
+    for _ in 0..if double { 2 } else { 1 } {
+        mouse_event(down, 0, 0, 0)?;
+        mouse_event(up, 0, 0, 0)?;
+    }
+    Ok(())
+}
+fn mouse_move(x: i32, y: i32, relative: bool) -> Result<()> {
+    if relative { mouse_event(MOUSEEVENTF_MOVE, 0, x, y) }
+    else {
+        let width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
+        let height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
+        anyhow::ensure!(width > 1 && height > 1, "Écran introuvable");
+        let left = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
+        let top = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
+        mouse_event(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, 0,
+            ((i64::from(x - left) * 65535) / i64::from(width - 1)).clamp(0, 65535) as i32,
+            ((i64::from(y - top) * 65535) / i64::from(height - 1)).clamp(0, 65535) as i32)
+    }
+}
+fn close_foreground_window() -> Result<()> {
+    let window = unsafe { GetForegroundWindow() };
+    anyhow::ensure!(!window.is_null(), "Aucune fenêtre active à fermer");
+    let mut process_id = 0u32;
+    unsafe { GetWindowThreadProcessId(window, &mut process_id) };
+    anyhow::ensure!(process_id != std::process::id(), "DeckForge ne peut pas se fermer lui-même");
+    let posted = unsafe { PostMessageW(window, WM_CLOSE, 0, 0) };
+    anyhow::ensure!(posted != 0, "Windows a refusé de fermer la fenêtre");
     Ok(())
 }
 fn input(vk: u16, scan: u16, flags: u32) -> Result<()> {
@@ -417,7 +514,28 @@ fn find_window(query: &str) -> Option<HWND> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn toggle_alternates_and_badge_follows() {
+        let key = crate::model::Key { steps: vec![crate::model::Step::Toggle { a: vec![], b: vec![] }], ..crate::model::Key::default() };
+        let id = super::identity("t", "p", 7);
+        super::ACTIVE_KEY.with(|k| *k.borrow_mut() = id.clone());
+        assert_eq!(super::toggle_badge(&id, &key).as_deref(), Some("1/2"));
+        assert_eq!(super::next_branch(&[0]), 0);
+        assert_eq!(super::toggle_badge(&id, &key).as_deref(), Some("2/2"));
+        assert_eq!(super::next_branch(&[0]), 1);
+        assert_eq!(super::toggle_badge(&id, &key).as_deref(), Some("1/2"));
+        let json = serde_json::to_string(&key.steps[0]).unwrap();
+        assert!(json.contains("toggle"), "{json}");
+    }
     use super::*;
+    #[test]
+    fn sound_simulation_does_not_open_missing_files() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let key = Key { steps: vec![Step::PlaySound { path: "Z:\\missing.wav".into(), volume: 40 }, Step::StopSounds], ..Key::default() };
+        run(&key, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default()).unwrap();
+        assert!(rx.try_iter().any(|event| matches!(event, Event::Log(s) if s.contains("Jouer un son"))));
+    }
     #[test]
     fn disabled_nested_blocks_are_skipped_during_execution_and_simulation() {
         for dry in [false, true] {
@@ -429,7 +547,7 @@ mod tests {
                 Step::Disabled { step: Box::new(Step::SetVariable { name: "bad".into(), value: "yes".into() }) },
                 Step::SetVariable { name: "good".into(), value: "yes".into() },
             ] }];
-            run_steps(&steps, dry, &AtomicBool::new(false), &tx, &mut vars, &mut budget, &[]).unwrap();
+            run_steps(&steps, dry, &AtomicBool::new(false), &tx, &mut vars, &mut budget, &[], &crate::model::ObsSettings::default()).unwrap();
             assert!(!vars.contains_key("bad"));
             if !dry { assert_eq!(vars.get("good").map(String::as_str), Some("yes")); }
             assert_eq!(budget, 8);
@@ -472,6 +590,7 @@ mod tests {
             &mut variables,
             &mut budget,
             &[],
+            &crate::model::ObsSettings::default(),
         )
         .unwrap();
         assert_eq!(variables["result"], "oui");
@@ -495,7 +614,7 @@ mod tests {
             }],
             ..Key::default()
         };
-        run(&key, true, &AtomicBool::new(false), &tx).unwrap();
+        run(&key, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default()).unwrap();
     }
     #[test]
     fn nested_execution_budget_stops_before_another_block_runs() {
@@ -519,6 +638,7 @@ mod tests {
             &mut variables,
             &mut budget,
             &[],
+            &crate::model::ObsSettings::default(),
         )
         .unwrap_err();
         assert!(err.to_string().contains("10 000"));
@@ -545,7 +665,7 @@ mod tests {
             ],
             ..Key::default()
         };
-        run(&k, true, &AtomicBool::new(false), &tx).unwrap();
+        run(&k, true, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default()).unwrap();
         assert_eq!(
             rx.try_iter()
                 .filter(|e| matches!(e, Event::Profile(_)))
@@ -564,7 +684,7 @@ mod tests {
             ],
             ..Key::default()
         };
-        run(&k, false, &AtomicBool::new(false), &tx).unwrap();
+        run(&k, false, &AtomicBool::new(false), &tx, &crate::model::ObsSettings::default()).unwrap();
         let names = rx
             .try_iter()
             .filter_map(|e| {

@@ -12,6 +12,12 @@ pub fn kind(key: &Key) -> usize {
 pub fn step_kind(step: &Step) -> usize {
     match step.active() {
         Step::Disabled { .. } => unreachable!(),
+        Step::MouseClick { .. } | Step::MouseMove { .. } | Step::MouseScroll { .. } => 1,
+        Step::PlaySound { .. } | Step::StopSounds => 6,
+        Step::Toggle { .. } => 30,
+        Step::UdpSend { .. } | Step::HttpRequest { .. } => 4,
+        Step::D6Brightness { .. } | Step::D6Sleep => 9,
+        Step::CloseWindow => 5,
         Step::Delay { .. } => 0,
         Step::Hotkey { .. } => 1,
         Step::Text { .. } => 2,
@@ -39,6 +45,7 @@ pub fn step_kind(step: &Step) -> usize {
         Step::Repeat { .. } => 30,
         Step::SetVariable { .. } => 2,
         Step::AutoHotkey { .. } => 1,
+        Step::ObsScene { .. } | Step::ObsRecord { .. } | Step::ObsStream { .. } | Step::ObsVirtualCam { .. } | Step::ObsReplay { .. } | Step::ObsMute { .. } | Step::ObsSourceVisibility { .. } => 6,
         Step::Folder { .. } => 15,
         Step::Back => 16,
         Step::Page { .. } => 17,

@@ -20,6 +20,8 @@ pub const NAMES: &[&str] = &[
     "Définir une variable",
     "Si une variable correspond",
     "Script AutoHotkey",
+    "OBS : scène", "OBS : enregistrement", "OBS : diffusion", "OBS : caméra",
+    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active", "Clic souris", "Déplacer la souris", "Défilement souris", "Jouer un son", "Arrêter les sons", "Luminosité du D6", "Veille du D6",
 ];
 pub fn step(kind: usize) -> Step {
     match kind {
@@ -51,6 +53,24 @@ pub fn step(kind: usize) -> Step {
             then_steps: vec![Step::Delay { ms: 250 }],
             else_steps: vec![],
         },
+        30 => Step::PlaySound { path: "choisir.wav".into(), volume: 100 },
+        31 => Step::StopSounds,
+        32 => Step::D6Brightness { mode: "set".into(), value: 70 },
+        33 => Step::D6Sleep,
+        34 => Step::UdpSend { host: "127.0.0.1".into(), port: 8099, text: "message".into() },
+        36 => Step::Toggle { a: vec![Step::Delay { ms: 100 }], b: vec![Step::Delay { ms: 200 }] },
+        35 => Step::HttpRequest { method: "GET".into(), url: "http://127.0.0.1:8088/api".into(), body: String::new(), content_type: "text/plain".into() },
+        26 => Step::CloseWindow,
+        27 => Step::MouseClick { button: "left".into(), double: false },
+        28 => Step::MouseMove { x: 0, y: 0, relative: true },
+        29 => Step::MouseScroll { amount: 1 },
+        19 => Step::ObsScene { name: "Scène".into() },
+        20 => Step::ObsRecord { mode: "toggle".into() },
+        21 => Step::ObsStream { mode: "toggle".into() },
+        22 => Step::ObsVirtualCam { mode: "toggle".into() },
+        23 => Step::ObsReplay { mode: "save".into() },
+        24 => Step::ObsMute { input: "Micro/Aux".into(), mode: "toggle".into() },
+        25 => Step::ObsSourceVisibility { scene: "Scène".into(), source: "Source".into(), mode: "toggle".into() },
         _ => Step::AutoHotkey {
             executable: detect_ahk(),
             script: "#Requires AutoHotkey v2.0\n; Écris ton script ici.\n".into(),
@@ -312,4 +332,13 @@ pub fn run_script(
         std::thread::sleep(std::time::Duration::from_millis(25));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod native_close_tests {
+    #[test]
+    fn export_close_window_fails_atomically() {
+        let key = crate::model::Key { steps: vec![crate::model::Step::CloseWindow], ..Default::default() };
+        assert!(super::export(&key).is_err());
+    }
 }

@@ -3,6 +3,7 @@ mod assets;
 mod assistant;
 mod audio;
 mod automation;
+mod network_actions;
 mod catalog;
 mod control;
 mod desktop;
@@ -17,7 +18,10 @@ mod mcp_protocol;
 mod mcp_server;
 mod mcp_connect;
 mod model;
+mod obs;
+mod obs_monitor;
 mod recorder;
+mod soundboard;
 mod store;
 mod token_equal;
 mod theme;
@@ -28,6 +32,9 @@ pub enum Event {
     Log(String),
     Audio(audio::Snapshot),
     Block(Vec<usize>),
+    D6Brightness(String, u8),
+    D6Sleep,
+    ToggleVisual,
     Open,
     TrayReady(bool),
     Toggle,

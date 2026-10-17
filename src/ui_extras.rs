@@ -1,5 +1,35 @@
 use super::*;
 
+// These two presets send hotkeys; Discord does not report its real mute state.
+pub(super) fn discord_shortcut(key: &Key) -> Option<&str> {
+    let expected = match key.label.as_str() {
+        "Discord : Micro" => "CTRL+SHIFT+F13",
+        "Discord : Casque" => "CTRL+SHIFT+F14",
+        _ => return None,
+    };
+    match key.steps.as_slice() {
+        [Step::Hotkey { keys }] if keys == expected => Some(keys.as_str()),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod discord_assistant_tests {
+    use super::*;
+    #[test]
+    fn only_original_discord_shortcuts_show_the_assistant() {
+        let mut key = Key { label: "Discord : Micro".into(),
+            steps: vec![Step::Hotkey { keys: "CTRL+SHIFT+F13".into() }],
+            ..Key::default() };
+        assert_eq!(discord_shortcut(&key), Some("CTRL+SHIFT+F13"));
+        key.steps = vec![Step::Hotkey { keys: "CTRL+SHIFT+F14".into() }];
+        assert_eq!(discord_shortcut(&key), None);
+        key.label = "Discord : Casque".into();
+        assert_eq!(discord_shortcut(&key), Some("CTRL+SHIFT+F14"));
+        key.steps.push(Step::Delay { ms: 1 });
+        assert_eq!(discord_shortcut(&key), None);
+    }
+}
 pub(super) fn step_mut<'a>(steps: &'a mut [Step], path: &[usize]) -> Option<&'a mut Step> {
     let step = steps.get_mut(*path.first()?)?.active_mut();
     if path.len() == 1 {
@@ -8,6 +38,7 @@ pub(super) fn step_mut<'a>(steps: &'a mut [Step], path: &[usize]) -> Option<&'a 
     let branch = *path.get(1)?;
     let children = match step {
         Step::Repeat { steps, .. } if branch == 0 => steps,
+        Step::Toggle { a, b } => if branch == 0 { a } else { b },
         Step::IfWindow {
             then_steps,
             else_steps,
@@ -29,7 +60,9 @@ pub(super) fn step_mut<'a>(steps: &'a mut [Step], path: &[usize]) -> Option<&'a 
     step_mut(children, &path[2..])
 }
 const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
-    ("Clavier", &[0]), ("Texte", &[1]), ("Applications et sites", &[2, 3]),
+    ("Clavier", &[0]),
+    ("Streaming", &[19, 20, 21, 22, 23, 24, 25, 30, 31, 0, 4]), ("Système", &[0, 2, 4, 26, 27, 28, 29, 32, 33]),
+    ("Texte", &[1]), ("Applications et sites", &[2, 3]),
     ("Médias et audio", &[4, 13]), ("Fenêtres", &[6]), ("Attendre", &[5]),
     ("Logique et répétitions", &[14, 15]), ("Variables", &[16, 17]),
     ("Navigation DeckForge", &[7, 8, 9, 10, 11]), ("Avancé / AutoHotkey", &[18]),
@@ -42,8 +75,25 @@ fn block_help(kind: usize) -> &'static str {
         6 => "Attend et peut activer une fenêtre.", 13 => "Bascule entre deux appareils audio.",
         14 => "Exécute des blocs si une fenêtre est ouverte.", 15 => "Rejoue plusieurs fois les blocs imbriqués.",
         16 => "Enregistre une valeur pour cette exécution.", 17 => "Choisit des blocs selon une valeur.",
+        19..=25 => "Commande OBS Studio par WebSocket local (OBS 28 ou plus).",
+        32 => "Règle ou ajuste la luminosité du D6 (0 à 100 %).",
+        33 => "Met le D6 en veille ; le prochain appui le réveille.",
         18 => "Exécute un script AutoHotkey v2.", _ => "Change la page, le dossier ou le profil affiché.",
     }
+}
+fn matches_palette(kind: usize, category: &str, search: &str) -> bool {
+    let aliases = match kind {
+        19..=25 => "obs studio record stream scene source visibility virtual camera replay mute",
+        0 => "hotkey super hotkeys discord browser back forward refresh quick control close window",
+        1 => "text plain text",
+        2 => "open openapps quick tool calculator mail music",
+        3 => "website home page",
+        4 => "multimedia systemvolume mute quick control",
+        7..=11 => "pages folders",
+        15 => "multi action",
+        _ => "",
+    };
+    search.is_empty() || format!("{} {} {}", category, crate::automation::NAMES[kind], aliases).to_lowercase().contains(&search.to_lowercase())
 }
 fn palette(ui: &mut egui::Ui, search: &mut String, depth: usize, advanced: bool) -> Option<usize> {
     let mut selected = None;
@@ -52,7 +102,7 @@ fn palette(ui: &mut egui::Ui, search: &mut String, depth: usize, advanced: bool)
         let matches: Vec<_> = kinds.iter().copied().filter(|&kind| {
             (depth == 0 || !(7..=11).contains(&kind)) &&
             (advanced || kind != 18) &&
-            (search.is_empty() || format!("{} {}", category, crate::automation::NAMES[kind]).to_lowercase().contains(&search.to_lowercase()))
+            matches_palette(kind, category, search)
         }).collect();
         if matches.is_empty() { continue; }
         ui.label(RichText::new(category).strong().color(BLUE));
@@ -70,12 +120,20 @@ fn simple_fields_visible(step: &Step, advanced: bool) -> bool {
 }
 fn block_summary(step: &Step) -> String {
     match step.active() {
+        Step::ObsScene { name } => format!("OBS : scène {name}"),
+        Step::ObsRecord { mode } | Step::ObsStream { mode } | Step::ObsVirtualCam { mode } | Step::ObsReplay { mode } => format!("{} : {mode}", step.name()),
+        Step::ObsMute { input, mode } => format!("OBS : {input} ({mode})"),
+        Step::ObsSourceVisibility { scene, source, mode } => format!("OBS : {scene} / {source} ({mode})"),
         Step::Hotkey { keys } => format!("Appuyer sur {keys}"),
         Step::Delay { ms } => format!("Attendre {ms} ms"),
         Step::Url { url } => format!("Ouvrir {url}"),
         Step::Text { text } => format!("Écrire {}", text.chars().take(50).collect::<String>()),
         Step::Launch { program, .. } => format!("Lancer {program}"),
+        Step::Toggle { a, b } => format!("Basculer : {} / {} blocs", a.len(), b.len()),
         Step::Repeat { count, steps } => format!("Répéter {count} fois ({} blocs)", steps.len()),
+        Step::UdpSend { host, port, .. } => format!("UDP : {host}:{port}"),
+        Step::HttpRequest { method, url, .. } => format!("HTTP {method} : {url}"),
+        Step::D6Brightness { mode, value } => format!("Luminosité D6 : {mode} {value} %"),
         Step::IfWindow { title, .. } => format!("Si la fenêtre {title} est ouverte"),
         Step::IfVariable { name, value, .. } => format!("Si {name} vaut {value}"),
         Step::SetVariable { name, value } => format!("Mémoriser {name} = {value}"),
@@ -86,6 +144,13 @@ fn block_summary(step: &Step) -> String {
 #[cfg(test)]
 mod workshop_summary_tests {
     use super::*;
+    #[test]
+    fn fifine_search_aliases_find_existing_actions() {
+        for (kind, query) in [(0, "Super Hotkeys"), (2, "OpenApps"), (3, "Website"), (4, "SystemVolume"), (15, "Multi Action")] {
+            assert!(matches_palette(kind, "Système", query));
+        }
+        assert!(!matches_palette(2, "Système", "OBS scene"));
+    }
     #[test]
     fn summaries_do_not_repeat_the_block_name_and_wrappers_keep_the_summary() {
         let step = Step::Delay { ms: 250 };
@@ -139,6 +204,7 @@ fn simulation_trace(steps: &[Step]) -> Vec<TraceLine> {
                 Step::IfWindow { .. } => "ALORS et SINON explorés (fenêtre non évaluée)".into(),
                 Step::IfVariable { .. } => "ALORS et SINON explorés (valeur non évaluée)".into(),
                 Step::Repeat { count, .. } => format!("1 itération simulée sur {count} prévues"),
+                Step::Toggle { .. } => "États 1 et 2 explorés sans effet".into(),
                 _ => "0 ms (action non exécutée)".into(),
             };
             out.push(TraceLine { path: path.clone(), text: format!("{prefix} · {} — {detail}", block_summary(step)) });
@@ -148,6 +214,7 @@ fn simulation_trace(steps: &[Step]) -> Vec<TraceLine> {
                     p.pop(); p.push(1); walk(else_steps, &p, out, limit);
                 }
                 Step::Repeat { steps, .. } => { let mut p = path; p.push(0); walk(steps, &p, out, limit); }
+                Step::Toggle { a, b } => { let mut p = path.clone(); p.push(0); walk(a, &p, out, limit); p.pop(); p.push(1); walk(b, &p, out, limit); }
                 _ => {}
             }
         }
@@ -269,6 +336,7 @@ pub(super) fn block_editor(
                         Step::Url { .. } => 3, Step::Media { .. } => 4, Step::Delay { .. } => 5,
                         Step::WaitWindow { .. } => 6, Step::AudioSwitch { .. } => 13,
                         Step::IfWindow { .. } => 14, Step::Repeat { .. } => 15,
+                        Step::Toggle { .. } => 36,
                         Step::SetVariable { .. } => 16, Step::IfVariable { .. } => 17,
                         Step::AutoHotkey { .. } => 18, _ => 7,
                     })).small()); }
@@ -335,6 +403,13 @@ pub(super) fn block_editor(
                                         advanced,
                                     );
                                 });
+                            }
+                        }
+                        Step::Toggle { a, b } => {
+                            for (branch, label, list) in [(0, "ÉTAT 1", a), (1, "ÉTAT 2", b)] {
+                                ui.label(label);
+                                let mut child = path.clone(); child.push(branch);
+                                ui.indent(branch, |ui| { changed |= block_editor(ui, list, profiles, pages, audio, &child, record, depth + 1, running, pick_audio, tx, target, config, advanced); });
                             }
                         }
                         Step::Repeat { steps, .. } => {
@@ -422,7 +497,7 @@ impl App {
         format!("Utilise le connecteur MCP DeckForge pour proposer cette automatisation :\n{}\n\nDestination exacte : {destination}\nLis d’abord deckforge_get_state et deckforge_get_profile. Si la demande concerne l’audio, utilise deckforge_get_audio_devices pour récupérer les identifiants réels. Tu peux utiliser deckforge_get_icons ; pour audio_switch, first_icon/second_icon acceptent builtin:headphones, builtin:speakers et builtin:microphone. Crée les étapes avec deckforge_configure_key (conditions, répétitions et variables possibles). Si une information manque, demande-la-moi au lieu d’inventer un périphérique, un programme ou un script. N’exécute aucune macro. Attends la validation de la proposition dans DeckForge ; les blocs resteront ensuite modifiables dans l’Atelier.",self.assistant_request.trim())
     }
     pub(super) fn presented_key(&self, index: usize) -> Key {
-        crate::audio::present_key(&self.config.keys()[index], &self.audio)
+        crate::obs_monitor::present_key(&crate::audio::present_key(&self.config.keys()[index], &self.audio), &self.obs_state)
     }
     pub(super) fn refresh_hotkeys(&self) {
         if let Some(desktop) = &self.desktop {
@@ -637,6 +712,12 @@ impl App {
             if ui.checkbox(&mut enabled,"Démarrer avec Windows en arrière-plan").changed(){startup=Some(enabled);}
             changed|=ui.checkbox(&mut self.preferences.close_to_tray,"Fermer la fenêtre garde DeckForge près de l’horloge").changed();
             if ui.add_enabled(self.tray_ready,egui::Button::new("Masquer maintenant")).clicked(){ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));}
+            ui.separator();ui.label("OBS Studio (WebSocket local)");
+            changed |= ui.text_edit_singleline(&mut self.config.obs.host).changed();
+            changed |= ui.add(egui::DragValue::new(&mut self.config.obs.port).range(1..=65535)).changed();
+            changed |= ui.add(egui::TextEdit::singleline(&mut self.config.obs.password).password(true).hint_text("Mot de passe OBS")).changed();
+            ui.label(crate::obs_monitor::snapshot().status);
+            if ui.button("Tester la connexion").clicked() { crate::obs_monitor::update(&self.config.obs, true); }
             ui.separator();ui.label(RichText::new(format!("Raccourci global · touche {:02}",self.selected+1)).strong());
             ui.label("Actif sur la page actuellement ouverte. Les raccourcis restent disponibles sans D6 branché.");
             let name=self.config.profiles[self.config.active].name.clone();let page=self.config.page.clone();let key=self.selected;
@@ -668,9 +749,7 @@ impl App {
                 Err(e) => self.fail(e.to_string()),
             }
         }
-        if changed && self.save_preferences() {
-            self.refresh_hotkeys();
-        }
+        if changed { self.save(); if self.save_preferences() { self.refresh_hotkeys(); } }
     }
     pub(super) fn record_trigger(&mut self, ctx: &egui::Context) {
         if !self.trigger_recording || !ctx.input(|i| i.focused) {

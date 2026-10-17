@@ -133,6 +133,7 @@ pub struct App {
     delete_page: Option<String>,
     desktop: Option<crate::desktop::Desktop>,
     audio: crate::audio::Snapshot,
+    obs_state: crate::obs_monitor::Snapshot,
     running_block: Vec<usize>,
     open_requested: bool,
     tray_ready: bool,
@@ -293,6 +294,7 @@ impl App {
             delete_page: None,
             desktop,
             audio: Default::default(),
+            obs_state: Default::default(),
             running_block: vec![],
             open_requested: false,
             tray_ready: false,
@@ -357,10 +359,11 @@ impl App {
             }
         };
         for p in &mut deployed.profiles {
-            for keys in std::iter::once(&mut p.keys).chain(p.pages.iter_mut().map(|p| &mut p.keys))
+            for (page, keys) in std::iter::once(("", &mut p.keys)).chain(p.pages.iter_mut().map(|page| (page.id.as_str(), &mut page.keys)))
             {
-                for key in keys {
-                    *key = crate::audio::present_key(key, &self.audio);
+                for (index, key) in keys.iter_mut().enumerate() {
+                    *key = crate::obs_monitor::present_key(&crate::audio::present_key(key, &self.audio), &self.obs_state);
+                    if let Some(badge) = crate::engine::toggle_badge(&crate::engine::identity(&p.name, page, index), key) { key.runtime_badge = Some(badge); }
                 }
             }
         }
@@ -426,10 +429,11 @@ impl App {
             );
             return;
         }
-        self.engine.start(key, dry, if delayed { 3000 } else { 0 });
+        self.engine.start(key, dry, if delayed { 3000 } else { 0 }, config.obs.clone());
     }
     fn preview(&mut self, dry: bool) {
-        let key = self.config.keys()[self.selected].clone();
+        let mut key = self.config.keys()[self.selected].clone();
+        key.runtime_id = Some(crate::engine::identity(&self.config.profiles[self.config.active].name, &self.config.page, self.selected));
         let c = self.config.clone();
         self.execute_key(key, dry, !dry, &c);
     }
@@ -437,6 +441,7 @@ impl App {
         if self.gate.decision() != Decision::Execute { return; }
         let c = self.applied.clone();
         let mut key = c.keys()[index].clone();
+        key.runtime_id = Some(crate::engine::identity(&c.profiles[c.active].name, &c.page, index));
         if long { key.steps = std::mem::take(&mut key.long_steps); }
         self.execute_key(key, false, false, &c);
     }
@@ -448,6 +453,18 @@ impl App {
             match event {
                 Event::Log(s) => self.log(s),
                 Event::Block(path) => self.running_block = path,
+                Event::D6Brightness(mode, value) => {
+                    self.config.brightness = crate::model::d6_brightness(self.config.brightness, &mode, value);
+                    if self.wanted && self.gate.connected && !self.sleep.sleeping {
+                        let _ = self.device.send(Command::Brightness(self.config.brightness));
+                    }
+                    self.edited();
+                }
+                Event::ToggleVisual => { if self.wanted && self.gate.connected { self.upload(false); } },
+                Event::D6Sleep => {
+                    self.sleep.sleeping = true;
+                    if self.wanted && self.gate.connected { let _ = self.device.send(Command::Brightness(self.config.sleep_brightness)); }
+                }
                 Event::Foreground(exe) => { self.foreground = exe; self.update_auto_profile(); }
                 Event::Open => self.open_requested = true,
                 Event::TrayReady(ready) => {
@@ -483,7 +500,8 @@ impl App {
                         && !self.gate.dirty
                     {
                         let c = self.config.clone();
-                        let key = c.keys()[index].clone();
+                        let mut key = c.keys()[index].clone();
+                        key.runtime_id = Some(crate::engine::identity(&c.profiles[c.active].name, &c.page, index));
                         self.execute_key(key, false, false, &c);
                     }
                 }
@@ -1672,6 +1690,16 @@ impl App {
                 });
             });
             ui.separator();
+            if let Some(shortcut) = extras::discord_shortcut(&self.config.keys()[self.selected]) {
+                ui.group(|ui| {
+                    ui.label("Discord : configure ce raccourci dans Discord → Paramètres → Raccourcis clavier");
+                    ui.horizontal(|ui| {
+                        ui.label(shortcut);
+                        if ui.button("Copier").clicked() { ui.ctx().copy_text(shortcut.to_owned()); }
+                    });
+                    ui.label("État estimé : DeckForge ne lit pas l'état réel du micro ni du casque dans Discord.");
+                });
+            }
             let long_editor = self.long_editor;
             let active=self.config.active; let names=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
             let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let image_size=self.config.image_size;let key=&mut self.config.keys_mut()[selected];
@@ -2343,6 +2371,12 @@ impl Runner {
 }
 impl App {
     fn background_tick(&mut self) {
+        crate::obs_monitor::update(&self.config.obs, false);
+        let obs_state = crate::obs_monitor::snapshot();
+        if obs_state != self.obs_state {
+            self.obs_state = obs_state;
+            if self.wanted && !self.gate.dirty && !self.gate.invalid { self.upload(false); }
+        }
         self.events();
         self.housekeeping();
         let due = self.long_press.due(Instant::now(), self.applied.long_press_ms);
@@ -2397,6 +2431,37 @@ fn edit_step(
     let mut changed = false;
     match step {
         Step::Disabled { .. } => unreachable!("atelier passe une étape active"),
+        Step::MouseClick { button, double } => {
+            egui::ComboBox::from_id_salt("mouse_button").selected_text(match button.as_str() { "left" => "Gauche", "right" => "Droit", _ => "Milieu" }).show_ui(ui, |ui| {
+                for (id, label) in [("left", "Gauche"), ("right", "Droit"), ("middle", "Milieu")] { changed |= ui.selectable_value(button, id.into(), label).changed(); }
+            });
+            changed |= ui.checkbox(double, "Double clic").changed();
+        }
+        Step::MouseMove { x, y, relative } => {
+            ui.horizontal(|ui| { ui.label("X"); changed |= ui.add(egui::DragValue::new(x).range(-32768..=32767)).changed(); ui.label("Y"); changed |= ui.add(egui::DragValue::new(y).range(-32768..=32767)).changed(); });
+            changed |= ui.checkbox(relative, "Déplacement relatif").changed();
+        }
+        Step::MouseScroll { amount } => { ui.label("Défilement (crans)"); changed |= ui.add(egui::DragValue::new(amount).range(-100..=100)).changed(); }
+        Step::PlaySound { path, volume } => { ui.label("Fichier WAV ou MP3"); changed |= ui.text_edit_singleline(path).changed(); ui.label("Volume"); changed |= ui.add(egui::Slider::new(volume, 0..=100)).changed(); }
+        Step::StopSounds => { ui.label("Arrête tous les sons lancés par DeckForge."); }
+        Step::Toggle { .. } => { ui.label("Alterne les états 1 et 2 à chaque appui. Modifie leurs blocs dans l’Atelier."); }
+        Step::UdpSend { host, port, text } => { ui.label("Hôte UDP"); changed |= ui.text_edit_singleline(host).changed(); ui.label("Port"); changed |= ui.add(egui::DragValue::new(port).range(1..=65535)).changed(); ui.label("Message"); changed |= ui.text_edit_multiline(text).changed(); }
+        Step::HttpRequest { method, url, body, content_type } => { ui.label("Méthode"); egui::ComboBox::from_id_salt("http_method").selected_text(method.as_str()).show_ui(ui, |ui| { for choice in ["GET", "POST", "PUT"] { changed |= ui.selectable_value(method, choice.into(), choice).changed(); } }); ui.label("Adresse HTTP (sans HTTPS)"); changed |= ui.text_edit_singleline(url).changed(); ui.label("Corps"); changed |= ui.text_edit_multiline(body).changed(); ui.label("Type de contenu"); changed |= ui.text_edit_singleline(content_type).changed(); }
+        Step::D6Brightness { mode, value } => {
+            ui.label("Luminosité du pavé D6");
+            egui::ComboBox::from_id_salt("d6_brightness_mode").selected_text(match mode.as_str() { "up" => "Augmenter", "down" => "Diminuer", _ => "Régler à" }).show_ui(ui, |ui| {
+                for (id, label) in [("set", "Régler à"), ("up", "Augmenter"), ("down", "Diminuer")] { changed |= ui.selectable_value(mode, id.into(), label).changed(); }
+            });
+            changed |= ui.add(egui::Slider::new(value, 0..=100).text("%" )).changed();
+        }
+        Step::D6Sleep => { ui.label("Met le D6 en veille maintenant. Un appui le réveille sans lancer la macro."); }
+        Step::CloseWindow => { ui.label("Ferme la fenêtre active (jamais DeckForge)."); }
+        Step::ObsScene { name } => { ui.label("Scène OBS"); changed |= obs_entry(ui, name, &crate::obs_monitor::snapshot().scenes); }
+        Step::ObsMute { input, mode } => { ui.label("Entrée audio OBS"); changed |= obs_entry(ui, input, &crate::obs_monitor::snapshot().inputs); obs_choice(ui, mode, &["toggle", "mute", "unmute"], &mut changed); }
+        Step::ObsSourceVisibility { scene, source, mode } => { ui.label("Scène puis source OBS"); changed |= obs_entry(ui, scene, &crate::obs_monitor::snapshot().scenes); changed |= obs_entry(ui, source, crate::obs_monitor::snapshot().scene_items.get(scene).map(Vec::as_slice).unwrap_or(&[])); obs_choice(ui, mode, &["toggle", "show", "hide"], &mut changed); }
+        Step::ObsRecord { mode } => obs_choice(ui, mode, &["toggle", "start", "stop", "pause"], &mut changed),
+        Step::ObsStream { mode } | Step::ObsVirtualCam { mode } => obs_choice(ui, mode, &["toggle", "start", "stop"], &mut changed),
+        Step::ObsReplay { mode } => obs_choice(ui, mode, &["toggle", "start", "stop", "save"], &mut changed),
         Step::Delay { ms } => {
             ui.horizontal(|ui| {
                 changed |= ui
@@ -2594,6 +2659,17 @@ fn step_summary(step: &Step) -> String {
     match step {
         Step::Hotkey { keys } => keys.clone(),
         Step::Delay { ms } => format!("Attendre {ms} ms"),
+        Step::MouseClick { button, double } => format!("Clic {button}{}", if *double { " double" } else { "" }),
+        Step::MouseMove { x, y, relative } => format!("Souris {x}, {y} ({})", if *relative { "relatif" } else { "absolu" }),
+        Step::MouseScroll { amount } => format!("Défiler de {amount} crans"),
+        Step::PlaySound { path, volume } => format!("Son : {path} ({volume} %)"),
+        Step::StopSounds => "Arrêter les sons".into(),
+        Step::Toggle { a, b } => format!("Basculer 1 / 2 ({} / {} blocs)", a.len(), b.len()),
+        Step::UdpSend { host, port, .. } => format!("UDP : {host}:{port}"),
+        Step::HttpRequest { method, url, .. } => format!("HTTP {method} : {url}"),
+        Step::D6Brightness { mode, value } => format!("Luminosité D6 : {mode} {value} %"),
+        Step::D6Sleep => "Veille du D6".into(),
+        Step::CloseWindow => "Fermer la fenêtre active".into(),
         Step::Media { command } => format!("Média : {command}"),
         Step::Url { url } => url.clone(),
         Step::Text { .. } => "Texte".into(),
@@ -2698,4 +2774,22 @@ mod automatic_profile_sleep_tests {
         assert!(!sleep.press(now + Duration::from_secs(63)));
         assert!(!sleep.due(now + Duration::from_secs(999), 0));
     }
+}
+
+fn obs_choice(ui: &mut egui::Ui, mode: &mut String, options: &[&str], changed: &mut bool) {
+    egui::ComboBox::from_id_salt(ui.next_auto_id()).selected_text(mode.as_str()).show_ui(ui, |ui| {
+        for option in options { *changed |= ui.selectable_value(mode, (*option).to_owned(), *option).changed(); }
+    });
+}
+
+fn obs_entry(ui: &mut egui::Ui, value: &mut String, options: &[String]) -> bool {
+    let mut changed = ui.text_edit_singleline(value).changed();
+    if !options.is_empty() {
+        egui::ComboBox::from_id_salt(ui.next_auto_id()).selected_text("Choisir…").show_ui(ui, |ui| {
+            for item in options {
+                if ui.selectable_label(value == item, item).clicked() { *value = item.clone(); changed = true; }
+            }
+        });
+    }
+    changed
 }

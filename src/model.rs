@@ -75,6 +75,24 @@ pub enum Step {
         script: String,
         args: Vec<String>,
     },
+    PlaySound { path: String, volume: u8 },
+    StopSounds,
+    Toggle { a: Vec<Step>, b: Vec<Step> },
+    UdpSend { host: String, port: u16, text: String },
+    HttpRequest { method: String, url: String, body: String, content_type: String },
+    D6Brightness { mode: String, value: u8 },
+    D6Sleep,
+    CloseWindow,
+    MouseClick { button: String, double: bool },
+    MouseMove { x: i32, y: i32, relative: bool },
+    MouseScroll { amount: i32 },
+    ObsScene { name: String },
+    ObsRecord { mode: String },
+    ObsStream { mode: String },
+    ObsVirtualCam { mode: String },
+    ObsReplay { mode: String },
+    ObsMute { input: String, mode: String },
+    ObsSourceVisibility { scene: String, source: String, mode: String },
     Back,
     PageNext,
     PagePrevious,
@@ -106,6 +124,24 @@ impl Step {
             Self::SetVariable { .. } => "Définir une variable",
             Self::IfVariable { .. } => "Si une variable correspond",
             Self::AutoHotkey { .. } => "Script AutoHotkey",
+            Self::MouseClick { .. } => "Clic souris",
+            Self::MouseMove { .. } => "Déplacer la souris",
+            Self::MouseScroll { .. } => "Défilement souris",
+            Self::PlaySound { .. } => "Jouer un son",
+            Self::StopSounds => "Arrêter les sons",
+            Self::Toggle { .. } => "Basculer entre deux actions",
+            Self::UdpSend { .. } => "Envoyer en UDP",
+            Self::HttpRequest { .. } => "Requête HTTP",
+            Self::D6Brightness { .. } => "Luminosité du D6",
+            Self::D6Sleep => "Mettre le D6 en veille",
+            Self::CloseWindow => "Fermer la fenêtre active",
+            Self::ObsScene { .. } => "OBS : scène",
+            Self::ObsRecord { .. } => "OBS : enregistrement",
+            Self::ObsStream { .. } => "OBS : diffusion",
+            Self::ObsVirtualCam { .. } => "OBS : caméra virtuelle",
+            Self::ObsReplay { .. } => "OBS : replay",
+            Self::ObsMute { .. } => "OBS : couper une entrée",
+            Self::ObsSourceVisibility { .. } => "OBS : visibilité de source",
             Self::Back => "Retour au dossier précédent",
             Self::PageNext => "Page suivante",
             Self::PagePrevious => "Page précédente",
@@ -130,6 +166,10 @@ pub struct Key {
     pub long_steps: Vec<Step>,
     #[serde(skip)]
     pub display_kind: Option<usize>,
+    #[serde(skip)]
+    pub runtime_badge: Option<String>,
+    #[serde(skip)]
+    pub runtime_id: Option<String>,
 }
 impl Default for Key {
     fn default() -> Self {
@@ -144,6 +184,8 @@ impl Default for Key {
             steps: vec![],
             long_steps: vec![],
             display_kind: None,
+            runtime_badge: None,
+            runtime_id: None,
         }
     }
 }
@@ -221,6 +263,8 @@ impl Profile {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
     pub schema: u32,
+    #[serde(default)]
+    pub obs: ObsSettings,
     pub brightness: u8,
     #[serde(default)]
     pub auto_profile: bool,
@@ -243,6 +287,17 @@ pub struct Config {
     pub page: String,
     #[serde(default)]
     pub trail: Vec<String>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ObsSettings {
+    #[serde(default = "obs_host")] pub host: String,
+    #[serde(default = "obs_port")] pub port: u16,
+    #[serde(default)] pub password: String,
+}
+fn obs_host() -> String { "127.0.0.1".into() }
+fn obs_port() -> u16 { 4455 }
+impl Default for ObsSettings {
+    fn default() -> Self { Self { host: obs_host(), port: obs_port(), password: String::new() } }
 }
 impl Default for Config {
     fn default() -> Self {
@@ -290,6 +345,7 @@ impl Default for Config {
         };
         Self {
             schema: 2,
+            obs: ObsSettings::default(),
             brightness: 70,
             auto_profile: false,
             sleep_after_min: 0,
@@ -365,6 +421,8 @@ impl Config {
         Ok(next)
     }
     pub fn validate(&self) -> Result<()> {
+        anyhow::ensure!(self.obs.host == "127.0.0.1" || self.obs.host == "localhost", "OBS doit être local");
+        anyhow::ensure!(self.obs.port != 0 && self.obs.password.len() <= 4096, "Réglages OBS invalides");
         if ![1, 2].contains(&self.schema) {
             bail!("Version de configuration non prise en charge");
         }
@@ -494,6 +552,9 @@ pub fn validate_key_in_profile(key: &Key, c: &Config, p: &Profile) -> Result<()>
 }
 pub fn media_vk(command: &str) -> Option<u16> {
     Some(match command {
+        "browser_back" => 0xA6,
+        "browser_forward" => 0xA7,
+        "browser_refresh" => 0xA8,
         "play_pause" => 0xB3,
         "next" => 0xB0,
         "previous" => 0xB1,
@@ -542,6 +603,9 @@ pub fn parse_hotkey(text: &str) -> Result<Vec<u16>> {
             "LBRACKET" => 0xDB,
             "RBRACKET" => 0xDD,
             "BACKTICK" => 0xC0,
+            "BROWSER_BACK" => 0xA6,
+            "BROWSER_FORWARD" => 0xA7,
+            "BROWSER_REFRESH" => 0xA8,
             _ if p.len() == 1 && p.as_bytes()[0].is_ascii_alphanumeric() => p.as_bytes()[0] as u16,
             _ if p.starts_with('F') => {
                 let n = p[1..].parse::<u16>().unwrap_or(0);
@@ -591,6 +655,23 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
     for s in &key.steps {
         if s.is_disabled() { continue; }
         match s {
+            Step::MouseClick { button, .. } if !["left", "right", "middle"].contains(&button.as_str()) => bail!("Bouton souris invalide"),
+            Step::MouseMove { x, y, .. } if !(-32768..=32767).contains(x) || !(-32768..=32767).contains(y) => bail!("Position souris hors limites"),
+            Step::MouseScroll { amount } if !(-100..=100).contains(amount) => bail!("Défilement souris hors limites"),
+            Step::PlaySound { path, volume } if path.trim().is_empty() || path.len() > 1024 || path.contains('"') || path.chars().any(char::is_control) || !["wav", "mp3"].iter().any(|ext| std::path::Path::new(path).extension().is_some_and(|e| e.eq_ignore_ascii_case(ext))) || *volume > 100 => bail!("Son WAV/MP3 ou volume invalide"),
+            Step::StopSounds => {},
+            Step::Toggle { a, b } => { for steps in [a, b] { validate_key(&Key { steps: steps.clone(), ..Key::default() }, config)?; } },
+            Step::UdpSend { host, port, text } if !valid_udp_host(host) || *port == 0 || text.len() > 65507 => bail!("Destination UDP ou message invalide"),
+            Step::HttpRequest { method, url, body, content_type } => validate_http(method, url, body, content_type)?,
+            Step::D6Brightness { mode, value } if !["set", "up", "down"].contains(&mode.as_str()) || *value > 100 => bail!("Mode ou luminosité du D6 invalide"),
+            Step::D6Sleep => {},
+            Step::CloseWindow => {},
+            Step::ObsScene { name } if name.trim().is_empty() || name.len() > 256 => bail!("Scène OBS invalide"),
+            Step::ObsMute { input, mode } if input.trim().is_empty() || !obs_mode(mode, &["toggle", "mute", "unmute"]) => bail!("Entrée OBS ou mode invalide"),
+            Step::ObsSourceVisibility { scene, source, mode } if scene.trim().is_empty() || source.trim().is_empty() || !obs_mode(mode, &["toggle", "show", "hide"]) => bail!("Source OBS ou mode invalide"),
+            Step::ObsRecord { mode } if !obs_mode(mode, &["toggle", "start", "stop", "pause"]) => bail!("Mode OBS invalide"),
+            Step::ObsStream { mode } | Step::ObsVirtualCam { mode } if !obs_mode(mode, &["toggle", "start", "stop"]) => bail!("Mode OBS invalide"),
+            Step::ObsReplay { mode } if !obs_mode(mode, &["toggle", "start", "stop", "save"]) => bail!("Mode replay invalide"),
             Step::Delay { ms } if *ms > 3_600_000 => bail!("Pause supérieure à une heure"),
             Step::Hotkey { keys } => {
                 parse_hotkey(keys)?;
@@ -676,6 +757,25 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
     }
     Ok(())
 }
+pub fn d6_brightness(current: u8, mode: &str, value: u8) -> u8 {
+    match mode { "set" => value, "up" => current.saturating_add(value).min(100), "down" => current.saturating_sub(value), _ => current }
+}
+pub fn valid_udp_host(host: &str) -> bool {
+    !host.is_empty() && host.len() <= 253 && host.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'.' || c == b'-')
+        && !host.starts_with('-') && !host.ends_with('-')
+}
+pub fn validate_http(method: &str, url: &str, body: &str, content_type: &str) -> Result<()> {
+    if url.starts_with("https://") { bail!("HTTPS non pris en charge sans bibliothèque TLS"); }
+    let rest = url.strip_prefix("http://").ok_or_else(|| anyhow::anyhow!("Adresse HTTP requise"))?;
+    let authority = rest.split('/').next().unwrap_or("");
+    let (host, port) = authority.rsplit_once(':').unwrap_or((authority, "80"));
+    anyhow::ensure!(valid_udp_host(host) && port.parse::<u16>().is_ok_and(|n| n != 0)
+        && url.len() <= 2048 && !url.chars().any(char::is_control)
+        && ["GET", "POST", "PUT"].contains(&method) && body.len() <= 65536
+        && content_type.len() <= 128 && !content_type.chars().any(|c| c.is_control() || c == '\r' || c == '\n'), "Requête HTTP invalide");
+    Ok(())
+}
+fn obs_mode(mode: &str, valid: &[&str]) -> bool { valid.contains(&mode) }
 fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> {
     anyhow::ensure!(depth <= 8, "8 niveaux de blocs maximum");
     *total += steps.len();
@@ -696,6 +796,7 @@ fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> 
                 validate_tree(then_steps, depth + 1, total)?;
                 validate_tree(else_steps, depth + 1, total)?;
             }
+            Step::Toggle { a, b } => { validate_tree(a, depth + 1, total)?; validate_tree(b, depth + 1, total)?; }
             Step::Repeat { count, steps } => {
                 anyhow::ensure!((1..=100).contains(count), "1 à 100 répétitions par bloc");
                 validate_tree(steps, depth + 1, total)?;
@@ -719,6 +820,27 @@ fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn d6_lighting_steps_validate_and_calculate() {
+        assert_eq!(d6_brightness(95, "up", 20), 100);
+        assert_eq!(d6_brightness(4, "down", 20), 0);
+        assert_eq!(d6_brightness(90, "set", 30), 30);
+        let c=Config::default();
+        for step in [Step::D6Brightness { mode: "bad".into(), value: 10 }, Step::D6Brightness { mode: "set".into(), value: 101 }] {
+            assert!(validate_key(&Key { steps: vec![step], ..Key::default() }, &c).is_err());
+        }
+        for step in [Step::D6Sleep, Step::D6Brightness { mode: "up".into(), value: 10 }] {
+            let value = serde_json::to_value(&step).unwrap();
+            assert_eq!(serde_json::from_value::<Step>(value).unwrap(), step);
+        }
+    }
+    #[test]
+    fn browser_virtual_keys_are_distinct_and_validated() {
+        for (name, vk) in [("BROWSER_BACK", 0xA6), ("BROWSER_FORWARD", 0xA7), ("BROWSER_REFRESH", 0xA8)] {
+            assert_eq!(parse_hotkey(name).unwrap(), vec![vk]);
+        }
+        assert!(parse_hotkey("BROWSER_UNKNOWN").is_err());
+    }
     #[test]
     fn long_press_config_and_actions_keep_legacy_compatible() {
         let mut c = Config::default();
@@ -871,5 +993,53 @@ mod tests {
             name: "absent".into(),
         });
         assert!(c.validate().is_err());
+    }
+}
+
+#[cfg(test)]
+mod native_sound_tests {
+    use super::*;
+    #[test]
+    fn sound_json_validation_and_export_safety() {
+        let c = Config::default();
+        let good = Step::PlaySound { path: "C:\\sons\\été.mp3".into(), volume: 65 };
+        let json = serde_json::to_string(&good).unwrap();
+        assert_eq!(serde_json::from_str::<Step>(&json).unwrap(), good);
+        for step in [good, Step::StopSounds] {
+            let key = Key { steps: vec![step], ..Key::default() };
+            validate_key(&key, &c).unwrap();
+            assert!(crate::automation::export(&key).is_err());
+        }
+        for path in ["", "voice.exe", "x\"y.wav"] {
+            assert!(validate_key(&Key { steps: vec![Step::PlaySound { path: path.into(), volume: 50 }], ..Key::default() }, &c).is_err());
+        }
+        assert!(validate_key(&Key { steps: vec![Step::PlaySound { path: "ok.wav".into(), volume: 101 }], ..Key::default() }, &c).is_err());
+    }
+}
+#[cfg(test)]
+mod native_close_tests {
+    use super::*;
+    #[test]
+    fn close_window_is_valid_and_serialized() {
+        let step = Step::CloseWindow;
+        assert_eq!(serde_json::to_string(&step).unwrap(), r#"{"type":"close_window"}"#);
+        validate_key(&Key { steps: vec![step], ..Key::default() }, &Config::default()).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod native_mouse_tests {
+    use super::*;
+    #[test]
+    fn mouse_actions_validate_and_roundtrip() {
+        let c = Config::default();
+        for step in [Step::MouseClick { button: "left".into(), double: true }, Step::MouseMove { x: 14, y: -5, relative: true }, Step::MouseScroll { amount: -3 }] {
+            let json = serde_json::to_string(&step).unwrap();
+            assert_eq!(serde_json::from_str::<Step>(&json).unwrap(), step);
+            validate_key(&Key { steps: vec![step], ..Key::default() }, &c).unwrap();
+        }
+        for invalid in [Step::MouseClick { button: "other".into(), double: false }, Step::MouseScroll { amount: 101 }, Step::MouseMove { x: 99999, y: 0, relative: false }] {
+            assert!(validate_key(&Key { steps: vec![invalid], ..Key::default() }, &c).is_err());
+        }
     }
 }
