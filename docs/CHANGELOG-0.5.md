@@ -86,3 +86,11 @@ Tests exécutés : Build-Windows.ps1 -Action All : 86 tests application, 5 tests
 - Atelier de blocs rendu visible dans l’inspecteur, aide sans code dans l’étape AutoHotkey, et accès à l’atelier ou aux modèles quand la touche est vide.
 - Tests egui sans fenêtre : boutons de suppression visibles à 1380×900 et 1100×800 avec script long et média ; accès atelier/modèles et aucune commande viewport sur 8 frames stables. `Build-Windows.ps1 -Action All -PreviewDirectory %TEMP%\df-fix2` : 105 tests app et 5 tests MCP, transports stdio et HTTP validés, zéro warning de build. `cargo clippy --locked --all-targets` : 26 lignes warning (dont doublons et résumés), exit 0 ; 21 warnings binaires et 26 pour tests, dont 21 doublons.
 - À vérifier sur le PC et le D6 : absence de clignotement après redémarrage et ouverture/fermeture tray, lisibilité à l’échelle Windows réelle ; pas d’exécution de macros ou d’ouverture native pendant ces tests.
+
+## Correctif - clignotement de la fenêtre
+
+- Cause mesurée sur la vraie fenêtre (captures PrintWindow en rafale) : l'aperçu animé des GIF présentait par moments une image vide (fond par défaut d'eframe) ; 6 à 11 images vides pour environ 550 captures, jusqu'à 55 % d'un cœur. Bissection : introduit par l'aperçu animé du lot 4c.
+- Une seule texture par touche animée mise à jour sur place, cadence plafonnée, une seule demande de rafraîchissement, décodage des GIF dans un thread ; redessin continu à 60 ms supprimé ; fond de fenêtre opaque aux couleurs du thème.
+- GIF de plus de 2048 px refusés pour l'animation (image fixe) ; à l'import, un GIF de plus de 512 px est réduit automatiquement à 256 px.
+- Mesure après correctif, configuration de l'utilisateur avec deux GIF : 0 image vide sur 658 captures, environ 19 % d'un cœur (0.4.3 : 21 %). Animation visible dans l'aperçu et sur le D6.
+- Reste possible : mettre en cache les trames D6 entre deux synchronisations (non nécessaire à ce stade).
