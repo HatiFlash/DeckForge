@@ -1,3 +1,5 @@
+> **Reprise la plus récente : lire d'abord [ETAT-0.5.md](ETAT-0.5.md)** (0.5 en développement : plugins Stream Dock, OBS, actions natives, problèmes ouverts).
+
 # Reprise de DeckForge — 0.4.3, 17 octobre 2026
 
 DeckForge remplace le logiciel FIFINE pour un AmpliGame D6 sous Windows. L’utilisateur privilégie une interface française simple et soignée, les macros avancées, les pages/dossiers et les automatisations modifiables. L’app fonctionne indépendamment du logiciel FIFINE ; les binaires propriétaires ne sont pas intégrés.
