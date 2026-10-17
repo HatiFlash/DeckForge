@@ -29,6 +29,13 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
     let mut retry = Instant::now();
     let mut beat = Instant::now();
     let mut last_press = [Instant::now() - Duration::from_secs(1); 15];
+    let (animation_tx, animation_rx) = mpsc::channel::<(u64, Vec<Vec<crate::key_render::AnimatedFrame>>)>() ;
+    let mut animation_generation = 0u64;
+    let mut animations: Vec<Vec<crate::key_render::AnimatedFrame>> = Vec::new();
+    let mut next_frame = [1usize; 15];
+    let mut due = [Instant::now(); 15];
+    let mut last_frame = Instant::now() - Duration::from_secs(1);
+    let mut cursor = 0usize;
     loop {
         let mut update = false;
         loop {
@@ -75,6 +82,10 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
             }
         }
         let mut failed = None;
+        if update || deck.is_none() {
+            animations.clear();
+            animation_generation = animation_generation.wrapping_add(1);
+        }
         if let Some(d) = &deck {
             if update {
                 match d.apply(&config) {
@@ -84,11 +95,29 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
                             format!("D6 connecté · 15 touches · rapports {} octets", d.packet),
                         ));
                         let _ = tx.send(Event::Applied(revision));
+                        if config.d6_animations && config.keys().iter().any(|k| k.image.to_ascii_lowercase().ends_with(".gif")) {
+                            let generation = animation_generation;
+                            let c = config.clone();
+                            let reply = animation_tx.clone();
+                            std::thread::spawn(move || {
+                                let rendered = crate::key_render::font().ok().map(|font| c.keys().iter()
+                                    .map(|key| crate::key_render::animated(key, c.image_size, &font).unwrap_or_default())
+                                    .collect::<Vec<_>>()).unwrap_or_default();
+                                let _ = reply.send((generation, rendered));
+                            });
+                        }
                         for warning in warnings {
                             let _ = tx.send(Event::Log(warning));
                         }
                     }
                     Err(e) => failed = Some(e.to_string()),
+                }
+            }
+            while let Ok((generation, rendered)) = animation_rx.try_recv() {
+                if generation == animation_generation {
+                    animations = rendered;
+                    next_frame = [1; 15];
+                    due = [Instant::now(); 15];
                 }
             }
             if failed.is_none() && beat.elapsed() >= Duration::from_secs(8) {
@@ -120,6 +149,29 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
                     }
                     Err(e) => failed = Some(e.to_string()),
                     _ => {}
+                }
+            }
+            // Read HID before every animation frame; uploads never preempt a full apply.
+            if failed.is_none() && config.d6_animations &&
+                last_frame.elapsed() >= Duration::from_millis(1000 / 30) {
+                for n in 0..15 {
+                    let index = (cursor + n) % 15;
+                    if let Some(frames) = animations.get(index) {
+                        if frames.len() > 1 && Instant::now() >= due[index] &&
+                            last_frame.elapsed() >= Duration::from_millis(1000 / config.animation_fps.max(1) as u64) {
+                            let frame = &frames[next_frame[index] % frames.len()];
+                            match d.send_frame(index, &frame.jpeg, frame_end()) {
+                                Ok(()) => {
+                                    due[index] = Instant::now() + frame.delay.max(Duration::from_millis(1000 / config.animation_fps.max(1) as u64));
+                                    next_frame[index] += 1;
+                                    cursor = (index + 1) % 15;
+                                    last_frame = Instant::now();
+                                }
+                                Err(e) => failed = Some(e.to_string()),
+                            }
+                            break;
+                        }
+                    }
                 }
             }
         } else {
@@ -245,7 +297,21 @@ struct Deck {
     packet: usize,
     rid: u8,
 }
+// Hardware hypothesis: a single BAT upload ends with STP, without CLE.
+// Change this constant to UlendStp if the D6 firmware requires the full terminator.
+#[derive(Clone, Copy)]
+enum FrameEnd { Stp, UlendStp }
+fn frame_end() -> FrameEnd {
+    if std::env::var_os("DECKFORGE_D6_FRAME_ULEND").is_some() { FrameEnd::UlendStp } else { FrameEnd::Stp }
+}
 impl Deck {
+    fn send_frame(&self, idx: usize, jpeg: &[u8], end: FrameEnd) -> Result<()> {
+        anyhow::ensure!(idx < 15 && jpeg.len() <= 65535, "Image JPEG trop lourde");
+        self.command(&[b'B', b'A', b'T', 0, 0, (jpeg.len() >> 8) as u8, jpeg.len() as u8, display_index(idx) as u8 + 1])?;
+        for chunk in jpeg.chunks(self.packet) { self.report(chunk)?; }
+        if matches!(end, FrameEnd::UlendStp) { self.command(b"ULEND")?; }
+        self.command(b"STP")
+    }
     fn open() -> Result<Self> {
         let api = HidApi::new()?;
         let info = api

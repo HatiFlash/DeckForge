@@ -1570,7 +1570,7 @@ impl App {
                             let profile=active;let page=page_id.clone();let index=selected;
                             let tx=self.dialog_tx.clone();
                             std::thread::spawn(move || {
-                                let path=rfd::FileDialog::new().add_filter("Image", &["png","jpg","jpeg","svg"]).pick_file();
+                                let path=rfd::FileDialog::new().add_filter("Image", &["png","jpg","jpeg","svg","gif"]).pick_file();
                                 let _=tx.send(path.map(|path| Box::new(move |app: &mut App| {
                                     if let Some(key)=app.config.profiles.get_mut(profile).and_then(|p|p.keys_at_mut(&page)).and_then(|keys|keys.get_mut(index)) {
                                         key.image=path.to_string_lossy().into_owned();app.edited();
@@ -1919,6 +1919,9 @@ impl App {
                     ui.add_space(8.0);
                     if ui.add(egui::Slider::new(&mut self.config.long_press_ms, 250..=2000).text("Appui long (ms)")).changed() { self.edited(); }
                     ui.label(RichText::new("Une touche avec appui long attend ce délai ; sans relâchement détecté, elle lance l’action longue.").small().color(p.muted));
+                    if ui.checkbox(&mut self.config.d6_animations, "Animations sur le D6").changed() { self.edited(); }
+                    if ui.add(egui::Slider::new(&mut self.config.animation_fps, 1..=15).text("Images/s max")).changed() { self.edited(); }
+                    ui.label(RichText::new("Animation des GIF : protocole à vérifier sur le matériel D6.").small().color(p.muted));
                     ui.add_space(16.0);
                     ui.label(RichText::new("Diagnostic des touches").strong());
                     if ui

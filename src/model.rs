@@ -148,6 +148,7 @@ impl Default for Key {
     }
 }
 fn default_long_press_ms() -> u64 { 500 }
+fn default_animation_fps() -> u8 { 12 }
 fn default_icon_scale() -> u8 { 100 }
 fn is_default_icon_scale(value: &u8) -> bool { *value == 100 }
 fn default_title_size() -> u8 { 14 }
@@ -220,6 +221,10 @@ pub struct Config {
     pub brightness: u8,
     #[serde(default = "default_long_press_ms")]
     pub long_press_ms: u64,
+    #[serde(default = "default_background")]
+    pub d6_animations: bool,
+    #[serde(default = "default_animation_fps")]
+    pub animation_fps: u8,
     pub active: usize,
     pub profiles: Vec<Profile>,
     // Firmware variants disagree on whether key input needs the display row flip.
@@ -278,6 +283,8 @@ impl Default for Config {
             schema: 2,
             brightness: 70,
             long_press_ms: 500,
+            d6_animations: true,
+            animation_fps: 12,
             active: 0,
             profiles: vec![profile],
             flip_input_rows: false,
@@ -358,7 +365,7 @@ impl Config {
         if !(250..=2000).contains(&self.long_press_ms) {
             bail!("Seuil de l’appui long invalide (250 à 2000 ms)");
         }
-        if self.brightness > 100 || ![112, 126].contains(&self.image_size) {
+        if !(1..=15).contains(&self.animation_fps) || self.brightness > 100 || ![112, 126].contains(&self.image_size) {
             bail!("Réglages du D6 invalides");
         }
         let mut names = std::collections::HashSet::new();
@@ -707,9 +714,13 @@ mod tests {
         let key = legacy["profiles"][0]["keys"][0].as_object_mut().unwrap();
         key.remove("long_steps");
         key.remove("title_size");
+        key.remove("icon_scale");
         let restored: Config = serde_json::from_value(legacy).unwrap();
         assert_eq!(restored.long_press_ms, 500);
         assert_eq!(restored.keys()[0].title_size, 14);
+        assert_eq!(restored.keys()[0].icon_scale, 100);
+        assert!(restored.d6_animations);
+        assert_eq!(restored.animation_fps, 12);
         assert!(restored.keys()[0].long_steps.is_empty());
         c.long_press_ms = 249;
         assert!(c.validate().is_err());
