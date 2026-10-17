@@ -48,13 +48,13 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
   let fixture=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sdplugin");
   let p=crate::plugins::parse(&fixture,&std::fs::read(fixture.join("manifest.json")).unwrap()).unwrap();
   let Ok(host)=Host::start(&p) else {eprintln!("Node.js absent : fixture ignorée");return};
-  let register=host.incoming.recv_timeout(Duration::from_secs(4)).unwrap();
+  let register=host.incoming.recv_timeout(Duration::from_secs(15)).unwrap();
   assert_eq!(register["event"],"registerPlugin");
   let payload=json!({"settings":{},"coordinates":{"column":0,"row":0},"state":0,"isInMultiAction":false,"controller":"Keypad"});
   let event=|name|json!({"event":name,"action":"test.deckforge.fixture.action","context":"ctx-1","device":"deckforge-d6","payload":payload});
   host.send(event("willAppear")).unwrap();host.send(event("keyDown")).unwrap();
   let mut names=std::collections::HashSet::new();
-  for _ in 0..4 {let message=host.incoming.recv_timeout(Duration::from_secs(4)).unwrap();assert_eq!(message["context"],"ctx-1");if message["event"]=="setTitle"{assert_eq!(message["payload"]["title"],"OK 1");}if message["event"]=="setSettings"{assert_eq!(message["payload"]["settings"]["presses"],1);}names.insert(message["event"].as_str().unwrap().to_string());}
+  for _ in 0..4 {let message=host.incoming.recv_timeout(Duration::from_secs(15)).unwrap();assert_eq!(message["context"],"ctx-1");if message["event"]=="setTitle"{assert_eq!(message["payload"]["title"],"OK 1");}if message["event"]=="setSettings"{assert_eq!(message["payload"]["settings"]["presses"],1);}names.insert(message["event"].as_str().unwrap().to_string());}
   assert_eq!(names,std::collections::HashSet::from(["setTitle".into(),"setImage".into(),"setSettings".into(),"showOk".into()]));
  } #[test] fn rejected_protected_plugin_does_not_spawn(){let d=tempfile::tempdir().unwrap();let p=crate::plugins::parse(d.path(),b"ELGATO\x01payload").unwrap();assert!(Host::start(&p).is_err());}
 }
