@@ -1,4 +1,4 @@
-# DeckForge 0.5.1 — version de test Windows
+# DeckForge 0.7.0 — version de test Windows
 
 <img src="res/branding/deckforge-logo.png" width="96" align="right" alt="Logo DeckForge">
 
@@ -7,6 +7,16 @@ Application Rust indépendante pour le FIFINE AmpliGame D6 (USB 3142:0060) : mac
 ![Interface](docs/interface.png)
 
 Pour connecter Claude Desktop, Claude Code, Codex CLI ou Cursor sans éditer de fichier : bouton **IA** dans la barre → **Connecter une IA**. Voir [le guide MCP](docs/MCP.md).
+
+## État de la 0.7.0 — 18 octobre 2026
+
+DeckForge peut importer des archives de plugins Stream Deck/OpenAction et héberger des actions natives ou Node.js. L'hôte suit les contrats communs de lancement, WebSocket, contextes et réglages ; les mécanismes d'[OpenDeck/OpenAction](docs/PLUGINS-OPENDECK-COMPARAISON.md) ont servi de référence, **sans copier de code OpenDeck GPL**.
+
+**Essai confirmé d'un plugin tiers :** l'archive OpenAction Counter 1.0.1 a été importée par le code d'import dans un dossier temporaire, puis son action a fonctionné dans une App isolée avec appareil virtuel. Dans une copie indépendante de DeckForge sur le FIFINE D6, un appui sur la touche 1 a provoqué `keyDown`/`keyUp` ; le véritable plugin a renvoyé `setSettings` et `setTitle`, le compteur sauvegardé est passé de 0 à 1 et l'utilisateur a vu **1 sur la touche physique**. Ce test matériel utilisait un package extrait de façon contrôlée : **le bouton d'import de l'interface n'a pas été testé lors de cet essai**. Aucun binaire tiers n'est inclus dans le dépôt.
+
+**Limites :** cela ne garantit pas la compatibilité de tous les plugins. La reprise du compteur après redémarrage n'a pas été vérifiée ; Gizmos reste sans effet confirmé. Les Property Inspectors HTML tiers ne sont pas qualifiés comme sûrs ; l'exécution HTML non fiable reste refusée. Ne pas ouvrir d'interface HTML inconnue avant validation de son confinement. Voir [les preuves, modes d'essai et limites](docs/PLUGINS-COMPATIBILITE.md) et [l'architecture](docs/PLUGINS-ARCHITECTURE.md).
+
+Dernier build Windows vérifié : **300 tests applicatifs réussis**, 3 ignorés (dont 2 essais tiers opt-in lancés séparément et réussis), **9 tests MCP réussis**. Cette publication du code source n'est pas une distribution binaire ni une certification de compatibilité générale.
 
 ## Périphériques pris en charge
 
@@ -47,7 +57,7 @@ Pour connecter Claude Desktop, Claude Code, Codex CLI ou Cursor sans éditer de 
 - **Conversion** des anciens binds `FocusAudio.exe` en blocs natifs (Réglages → À propos), avec sauvegarde.
 
 ### Plugins Stream Deck / FIFINE
-- Magasin et hôte de plugins compatibles (exe, Node.js, HTML), page de réglages du plugin, image et titre en direct sur la touche. Les fonctions déjà natives sont proposées en priorité.
+- Magasin et hôte de plugins introduits dans la 0.5.0 (exe, Node.js, HTML expérimental), page de réglages du plugin, image et titre en direct sur la touche. Les fonctions déjà natives sont proposées en priorité. **État 0.7.0 :** l’exécution HTML non fiable est refusée et les Property Inspectors tiers restent à sécuriser ; voir la section ci-dessus.
 
 ![Magasin de plugins](docs/plugins-store.png)
 
@@ -89,7 +99,7 @@ Les profils restent dans `config.json`, les préférences dans `preferences.json
 
 ## Validation et limites
 
-Version de test : voir [les contrôles réalisés](docs/VALIDATION.md) et [les essais manuels](docs/TEST-0.5.0.md). Cette correction a été développée et vérifiée sans ouvrir d’application sur l’écran de l’utilisateur et sans modifier ses périphériques audio.
+Version de test : voir [les contrôles réalisés](docs/VALIDATION.md), [les essais manuels 0.5.0](docs/TEST-0.5.0.md) et [l’essai du plugin tiers sur D6](docs/PLUGINS-COMPATIBILITE.md). La validation 0.7.0 a ouvert une copie isolée de DeckForge avec l’accord de l’utilisateur ; l’application habituelle et les volumes audio n’ont pas été modifiés.
 
 Les plugins tiers sont exécutés par un hôte compatible Stream Deck ; certains plugins peuvent rester partiellement compatibles. L’import de profils ne convertit que les actions reconnues ; voir [compatibilité Elgato](docs/ELGATO.md).
 
