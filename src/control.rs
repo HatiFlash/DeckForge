@@ -90,7 +90,7 @@ impl InputGate {
     }
     pub fn decision(&self) -> Decision {
         if !self.connected {
-            return Decision::Blocked("D6 déconnecté");
+            return Decision::Blocked("Périphérique déconnecté");
         }
         if self.invalid {
             return Decision::Blocked("Configuration à corriger");
@@ -105,7 +105,7 @@ impl InputGate {
             return Decision::Blocked("Enregistre tes modifications pour activer les touches");
         }
         if self.pending() {
-            return Decision::Blocked("Synchronisation du D6 en cours");
+            return Decision::Blocked("Synchronisation du périphérique en cours");
         }
         Decision::Execute
     }

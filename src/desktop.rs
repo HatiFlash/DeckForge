@@ -258,7 +258,7 @@ pub fn spawn(tx: Sender<Event>, ctx: eframe::egui::Context) -> Desktop {
         if !own_icon {
             icon.hIcon = LoadIconW(std::ptr::null_mut(), IDI_APPLICATION);
         }
-        let tip = wide("DeckForge · FIFINE D6");
+        let tip = wide("DeckForge");
         icon.szTip[..tip.len()].copy_from_slice(&tip);
         let state = Box::new(State {
             tx: tx.clone(),

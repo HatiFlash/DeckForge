@@ -88,8 +88,8 @@ fn block_help(kind: usize) -> &'static str {
         44 => "Copie, lit, vide, sauvegarde ou restaure le texte Unicode du presse-papiers.",
         16 => "Enregistre une valeur pour cette exécution.", 17 => "Choisit des blocs selon une valeur.",
         19..=25 => "Commande OBS Studio par WebSocket local (OBS 28 ou plus).",
-        32 => "Règle ou ajuste la luminosité du D6 (0 à 100 %).",
-        33 => "Met le D6 en veille ; le prochain appui le réveille.",
+        32 => "Règle ou ajuste la luminosité du périphérique (0 à 100 %).",
+        33 => "Met le périphérique en veille ; le prochain appui le réveille.",
         18 => "Exécute un script AutoHotkey v2.", _ => "Change la page, le dossier ou le profil affiché.",
     }
 }
@@ -151,7 +151,7 @@ fn block_summary(step: &Step) -> String {
         Step::Repeat { count, steps } => format!("Répéter {count} fois ({} blocs)", steps.len()),
         Step::UdpSend { host, port, .. } => format!("UDP : {host}:{port}"),
         Step::HttpRequest { method, url, .. } => format!("HTTP {method} : {url}"),
-        Step::D6Brightness { mode, value } => format!("Luminosité D6 : {mode} {value} %"),
+        Step::D6Brightness { mode, value } => format!("Luminosité : {mode} {value} %"),
         Step::IfCondition { condition, .. } => format!("Si {}", condition.summary()),
         Step::WaitUntil { condition, timeout_ms, .. } => format!("Attendre que {} ({} ms max)", condition.summary(), timeout_ms),
         Step::Notify { title, message } => format!("Notification « {title} » : {}", message.chars().take(50).collect::<String>()),
@@ -772,7 +772,7 @@ impl App {
             ui.label(crate::obs_monitor::snapshot().status);
             if ui.button("Tester la connexion").clicked() { crate::obs_monitor::update(&self.config.obs, true); }
             ui.separator();ui.label(RichText::new(format!("Raccourci global · touche {:02}",self.selected+1)).strong());
-            ui.label("Actif sur la page actuellement ouverte. Les raccourcis restent disponibles sans D6 branché.");
+            ui.label("Actif sur la page actuellement ouverte. Les raccourcis restent disponibles sans périphérique branché.");
             let name=self.config.profiles[self.config.active].name.clone();let page=self.config.page.clone();let key=self.selected;
             let index=self.preferences.triggers.iter().position(|t|t.kind=="hotkey"&&t.profile==name&&t.page==page&&t.key==key);
             let mut text=index.map(|i|self.preferences.triggers[i].keys.clone()).unwrap_or_default();

@@ -518,7 +518,7 @@ impl App {
         }
         self.wanted = true;
         self.upload(true);
-        self.log("Connexion au D6…".into());
+        self.log("Connexion au périphérique…".into());
     }
     fn save(&mut self) {
         if self.gate.invalid {
@@ -533,7 +533,7 @@ impl App {
                     self.upload(false);
                 }
                 self.log(if self.config.binding_errors().is_empty() {
-                    "Modifications enregistrées, envoi au D6…".into()
+                    format!("Modifications enregistrées, envoi au {}…", self.device_name())
                 } else {
                     "Brouillons enregistrés. Synchronisation des touches valides…".into()
                 });
@@ -559,6 +559,11 @@ impl App {
         self.device_model.clone().unwrap_or_else(DeviceGrid::default)
     }
     fn device_keys(&self) -> usize { self.grid().keys }
+    /// Name of the connected model, or a neutral word when nothing is plugged in.
+    fn device_name(&self) -> String {
+        self.device_model.as_ref().map_or_else(|| "périphérique".into(), |d| d.name.clone())
+    }
+    fn is_d6(&self) -> bool { self.device_model.as_ref().is_none_or(|d| d.name.contains("D6")) }
     fn device_label(&self) -> String {
         self.device_model.as_ref().map_or_else(|| "Aucun périphérique".into(), |d| {
             format!("{} · {} touches{}", d.name, d.keys, if d.experimental { " · expérimental" } else { "" })
@@ -728,7 +733,7 @@ impl App {
                             }
                         }
                         self.log(
-                            "D6 synchronisé. Les touches suivent le mode affiché en haut.".into(),
+                            format!("{} synchronisé. Les touches suivent le mode affiché en haut.", self.device_name()),
                         );
                     }
                 }
@@ -1658,7 +1663,7 @@ impl App {
                                 self.show_device_report = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Réglages du D6").clicked() {
+                            if ui.button(format!("Réglages — {}", self.device_name())).clicked() {
                                 self.settings = true;
                                 ui.close_menu();
                             }
@@ -1682,9 +1687,9 @@ impl App {
                             ui.separator();
                             if ui
                                 .button(if self.wanted {
-                                    "Déconnecter le D6"
+                                    "Déconnecter le périphérique"
                                 } else {
-                                    "Connecter le D6"
+                                    "Connecter le périphérique"
                                 })
                                 .clicked()
                             {
@@ -1765,7 +1770,7 @@ impl App {
                                     "En pause"
                                 } else if !self.gate.connected {
                                     if self.wanted {
-                                        "D6 en attente"
+                                        "En attente"
                                     } else {
                                         "Déconnecté"
                                     }
@@ -2658,7 +2663,7 @@ impl App {
                                 changed |= icon_ui::audio_options(ui,&mut key.steps[0],&self.audio,&mut state,&dialog_tx,&(active,page_id.clone(),selected,vec![0]));
                                 if let Some(state)=state { pick_audio=Some((vec![0],state)); }
                             }
-                        ui.label(RichText::new("Titre sur le D6").small().color(p.muted));
+                        ui.label(RichText::new("Titre sur la touche").small().color(p.muted));
                         changed|=ui.add(egui::TextEdit::singleline(&mut key.label).desired_width(200.0).hint_text("Nom de la touche")).changed();
                         ui.horizontal(|ui| {
                             ui.label("Taille du titre");
@@ -3480,7 +3485,7 @@ impl App {
                             }
                             Err(e) => { ui.label(format!("Lecture du rapport impossible : {e}")); }
                         },
-                        Ok(None) => { ui.label("Aucun rapport disponible. Lance une connexion du D6."); },
+                        Ok(None) => { ui.label("Aucun rapport disponible. Lance une connexion du périphérique."); },
                         Err(e) => { ui.label(format!("Recherche du rapport impossible : {e}")); }
                     }
                 });
@@ -3488,7 +3493,8 @@ impl App {
         }
         if self.settings {
             let mut open = true;
-            egui::Window::new("Réglages du D6")
+            let d6 = self.is_d6();
+            egui::Window::new(format!("Réglages — {}", self.device_name())).id(egui::Id::new("device_settings"))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
@@ -3511,9 +3517,9 @@ impl App {
                     ui.add_space(8.0);
                     if ui.add(egui::Slider::new(&mut self.config.long_press_ms, 250..=2000).text("Appui long (ms)")).changed() { self.edited(); }
                     ui.label(RichText::new("Une touche avec appui long attend ce délai ; sans relâchement détecté, elle lance l’action longue.").small().color(p.muted));
-                    if ui.checkbox(&mut self.config.d6_animations, "Animations sur le D6").changed() { self.edited(); }
+                    if ui.checkbox(&mut self.config.d6_animations, "Animations GIF et vidéo sur les touches").changed() { self.edited(); }
                     if ui.add(egui::Slider::new(&mut self.config.animation_fps, 1..=15).text("Images/s max")).changed() { self.edited(); }
-                    ui.label(RichText::new("Animation des GIF : protocole à vérifier sur le matériel D6.").small().color(p.muted));
+                    ui.label(RichText::new("Les GIF et les vidéos converties sont joués sur le périphérique, une image à la fois.").small().color(p.muted));
                     ui.add_space(16.0);
                     ui.separator();
                     ui.label(RichText::new("Diagnostic du clignotement").strong());
@@ -3549,7 +3555,7 @@ impl App {
                             .color(p.muted),
                     );
                     ui.add_space(12.0);
-                    egui::CollapsingHeader::new("Compatibilité avancée").show(ui, |ui| {
+                    if d6 { egui::CollapsingHeader::new("Compatibilité avancée").show(ui, |ui| {
                         if ui
                             .checkbox(
                                 &mut self.config.flip_input_rows,
@@ -3578,7 +3584,7 @@ impl App {
                             .small()
                             .color(p.muted),
                         );
-                    });
+                    }); }
                 });
             self.settings = open;
         }
@@ -4105,7 +4111,7 @@ fn edit_step(
         Step::UdpSend { host, port, text } => { ui.label("Message : accepte {nom}, {date}, {heure}, {horodatage}, {presse_papiers}."); ui.label("Hôte UDP"); changed |= ui.text_edit_singleline(host).changed(); ui.label("Port"); changed |= ui.add(egui::DragValue::new(port).range(1..=65535)).changed(); ui.label("Message"); changed |= ui.text_edit_multiline(text).changed(); }
         Step::HttpRequest { method, url, body, content_type } => { ui.label("Adresse et corps : {nom}, {date}, {heure}, {horodatage}, {presse_papiers}."); ui.label("Méthode"); egui::ComboBox::from_id_salt("http_method").selected_text(method.as_str()).show_ui(ui, |ui| { for choice in ["GET", "POST", "PUT"] { changed |= ui.selectable_value(method, choice.into(), choice).changed(); } }); ui.label("Adresse HTTP (sans HTTPS)"); changed |= ui.text_edit_singleline(url).changed(); ui.label("Corps"); changed |= ui.text_edit_multiline(body).changed(); ui.label("Type de contenu"); changed |= ui.text_edit_singleline(content_type).changed(); }
         Step::D6Brightness { mode, value } => {
-            ui.label("Luminosité du pavé D6");
+            ui.label("Luminosité du périphérique");
             egui::ComboBox::from_id_salt("d6_brightness_mode").selected_text(match mode.as_str() { "up" => "Augmenter", "down" => "Diminuer", _ => "Régler à" }).show_ui(ui, |ui| {
                 for (id, label) in [("set", "Régler à"), ("up", "Augmenter"), ("down", "Diminuer")] { changed |= ui.selectable_value(mode, id.into(), label).changed(); }
             });
@@ -4202,7 +4208,7 @@ fn edit_step(
                 changed |= ui.checkbox(include_children, "Inclure les processus enfants").changed();
             });
         }
-        Step::D6Sleep => { ui.label("Met le D6 en veille maintenant. Un appui le réveille sans lancer la macro."); }
+        Step::D6Sleep => { ui.label("Met le périphérique en veille maintenant. Un appui le réveille sans lancer la macro."); }
         Step::CloseWindow => { ui.label("Ferme la fenêtre active (jamais DeckForge)."); }
         Step::ObsScene { name } => { ui.label("Scène OBS"); changed |= obs_entry(ui, name, &crate::obs_monitor::snapshot().scenes); }
         Step::ObsMute { input, mode } => { ui.label("Entrée audio OBS"); changed |= obs_entry(ui, input, &crate::obs_monitor::snapshot().inputs); obs_choice(ui, mode, &["toggle", "mute", "unmute"], &mut changed); }
@@ -4459,7 +4465,7 @@ fn edit_step(
             ui.label(RichText::new("Le script agit sur ton PC lors de l’exécution. Arrêter la macro termine le processus AutoHotkey lancé par DeckForge.").small());
         }
         Step::Back | Step::PageNext | Step::PagePrevious => {
-            ui.label("Navigation dans ce profil, aussi disponible depuis les touches du D6.");
+            ui.label("Navigation dans ce profil, aussi disponible depuis les touches du périphérique.");
         }
         Step::Profile { name } => {
             egui::ComboBox::from_id_salt("profile_action")
@@ -4502,8 +4508,8 @@ fn step_summary(step: &Step) -> String {
         Step::Toggle { a, b } => format!("Basculer 1 / 2 ({} / {} blocs)", a.len(), b.len()),
         Step::UdpSend { host, port, .. } => format!("UDP : {host}:{port}"),
         Step::HttpRequest { method, url, .. } => format!("HTTP {method} : {url}"),
-        Step::D6Brightness { mode, value } => format!("Luminosité D6 : {mode} {value} %"),
-        Step::D6Sleep => "Veille du D6".into(),
+        Step::D6Brightness { mode, value } => format!("Luminosité : {mode} {value} %"),
+        Step::D6Sleep => "Veille du périphérique".into(),
         Step::CloseWindow => "Fermer la fenêtre active".into(),
         Step::Media { command } => format!("Média : {command}"),
         Step::Url { url } => url.clone(),

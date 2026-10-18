@@ -21,7 +21,7 @@ pub const NAMES: &[&str] = &[
     "Si une variable correspond",
     "Script AutoHotkey",
     "OBS : scène", "OBS : enregistrement", "OBS : diffusion", "OBS : caméra",
-    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active", "Clic souris", "Déplacer la souris", "Défilement souris", "Jouer un son", "Arrêter les sons", "Luminosité du D6", "Veille du D6", "Envoyer en UDP", "Requête HTTP", "Touche à deux états", "Volume d’une application", "Volume d’un périphérique", "Si… sinon", "Attendre que…", "Notification", "Calculer", "Texte", "Presse-papiers", "Maintenir une touche", "Opération sur une fenêtre",
+    "OBS : replay", "OBS : micro", "OBS : source", "Fermer la fenêtre active", "Clic souris", "Déplacer la souris", "Défilement souris", "Jouer un son", "Arrêter les sons", "Luminosité du périphérique", "Veille du périphérique", "Envoyer en UDP", "Requête HTTP", "Touche à deux états", "Volume d’une application", "Volume d’un périphérique", "Si… sinon", "Attendre que…", "Notification", "Calculer", "Texte", "Presse-papiers", "Maintenir une touche", "Opération sur une fenêtre",
 ];
 pub fn step(kind: usize) -> Step {
     match kind {

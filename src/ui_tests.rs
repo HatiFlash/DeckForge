@@ -830,7 +830,7 @@ fn appearance_inspector_sizes_have_correct_units_and_icon_slider_can_scroll_into
     let output = h.warm(size);
     assert!(text_position(&output.shapes, "14 px").is_some(), "title size is measured in pixels");
     assert!(text_position(&output.shapes, "Taille du titre").is_some());
-    let origin = text_position(&output.shapes, "Titre sur le D6").unwrap();
+    let origin = text_position(&output.shapes, "Titre sur la touche").unwrap();
     let area = pos2(origin.x + 85.0, origin.y + 90.0);
     let mut visible = text_position(&output.shapes, "Taille de l’icône").is_some()
         && text_position(&output.shapes, "100 %").is_some();

@@ -351,8 +351,8 @@ impl Step {
             Self::Toggle { .. } => "Basculer entre deux actions",
             Self::UdpSend { .. } => "Envoyer en UDP",
             Self::HttpRequest { .. } => "Requête HTTP",
-            Self::D6Brightness { .. } => "Luminosité du D6",
-            Self::D6Sleep => "Mettre le D6 en veille",
+            Self::D6Brightness { .. } => "Luminosité du périphérique",
+            Self::D6Sleep => "Mettre le périphérique en veille",
             Self::CloseWindow => "Fermer la fenêtre active",
             Self::ObsScene { .. } => "OBS : scène",
             Self::ObsRecord { .. } => "OBS : enregistrement",
@@ -735,7 +735,7 @@ impl Config {
             bail!("Réglages de veille invalides");
         }
         if !(1..=15).contains(&self.animation_fps) || self.brightness > 100 || ![112, 126].contains(&self.image_size) {
-            bail!("Réglages du D6 invalides");
+            bail!("Réglages du périphérique invalides");
         }
         let mut names = std::collections::HashSet::new();
         for p in &self.profiles {
@@ -1011,7 +1011,7 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
             Step::Toggle { a, b } => { for steps in [a, b] { validate_key(&Key { steps: steps.clone(), ..Key::default() }, config)?; } },
             Step::UdpSend { host, port, text } if !valid_udp_host(host) || *port == 0 || text.len() > 65507 => bail!("Destination UDP ou message invalide"),
             Step::HttpRequest { method, url, body, content_type } => validate_http(method, url, body, content_type)?,
-            Step::D6Brightness { mode, value } if !["set", "up", "down"].contains(&mode.as_str()) || *value > 100 => bail!("Mode ou luminosité du D6 invalide"),
+            Step::D6Brightness { mode, value } if !["set", "up", "down"].contains(&mode.as_str()) || *value > 100 => bail!("Mode ou luminosité invalide"),
             Step::D6Sleep => {},
             Step::CloseWindow => {},
             Step::ObsScene { name } if name.trim().is_empty() || name.len() > 256 => bail!("Scène OBS invalide"),

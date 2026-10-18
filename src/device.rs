@@ -185,12 +185,13 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                             format!("{}{} connecté · {} touches ({} × {}) · rapports {} octets", d.driver.model().name, if d.driver.model().verified { "" } else { " (expérimental)" }, d.driver.model().keys, d.driver.model().rows, d.driver.model().cols, d.packet),
                         ));
                         let _ = tx.send(Event::Applied(revision));
-                        if d.driver.model().id == "fifine_d6" && config.d6_animations && config.keys().iter().any(|k| k.image.to_ascii_lowercase().ends_with(".gif")) {
+                        if config.d6_animations && config.keys().iter().any(|k| k.image.to_ascii_lowercase().ends_with(".gif")) {
                             let generation = animation_generation;
                             let c = config.clone();
+                            let keys = d.driver.model().keys as usize;
                             let reply = animation_tx.clone();
                             std::thread::spawn(move || {
-                                let rendered = crate::key_render::font().ok().map(|font| c.keys().iter()
+                                let rendered = crate::key_render::font().ok().map(|font| c.keys().iter().take(keys)
                                     .map(|key| crate::key_render::animated(key, c.image_size, &font).unwrap_or_default())
                                     .collect::<Vec<_>>()).unwrap_or_default();
                                 let _ = reply.send((generation, rendered));
