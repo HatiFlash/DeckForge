@@ -81,6 +81,10 @@ Exemple de demande :
 > ouvrir mon application, attendre sa fenêtre, puis envoyer Ctrl+Shift+S.
 > Attends ma validation dans DeckForge avant de considérer la proposition appliquée.
 
+### Demande consentie depuis l'Atelier
+
+En mode IA, ou après une demande inconnue en mode Automatique (ambiguë : bouton « Demander à mon IA »), l'Atelier affiche avant transmission le texte, la destination profil/page/touche et les noms des blocs actuels. Aucun chemin ni paramètre des blocs n'est envoyé. Après « Transmettre à mon IA », `deckforge_get_state` contient temporairement `pending_request: {text, destination: {profile, page, key}, blocks: [types], created: secondes_depuis_accord}` ; ce champ est absent avant accord, après annulation, changement de destination, décision ou expiration de dix minutes. Le bouton copie aussi la demande pour la coller dans un client IA MCP connecté. Aucun appel IA n'est déclenché par DeckForge ; le client doit lire l'état puis proposer avec `deckforge_configure_key`. Les propositions suivent la validation locale existante. La présence effective d'un client MCP n'est pas détectable par DeckForge : vérifier sa connexion dans le client.
+
 ## ChatGPT web ou client HTTP
 
 Active l’assistant, puis clique **Démarrer HTTP**.
@@ -117,7 +121,7 @@ Ne publie ni `mcp-http-token.txt` ni `mcp-connection.json` dans un dépôt ou un
 
 | Outil | Effet |
 |---|---|
-| `deckforge_get_state` | Lire la connexion, les profils et l’état des touches |
+| `deckforge_get_state` | Lire la connexion, les profils et l’état des touches ; `pending_request` après consentement explicite |
 | `deckforge_get_profile` | Lire les actions d’un profil |
 | `deckforge_get_audio_devices` | Lire les périphériques audio et la sélection active |
 | `deckforge_get_icons` | Chercher les icônes locales et les symboles audio intégrés |

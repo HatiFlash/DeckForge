@@ -211,6 +211,13 @@ Livré : option « Conserver entre les macros » pour Définir une variable (`se
 - Teste automatiquement : unicite et geometrie de la table, filtre D6 identique au code actuel, candidats PID inconnu et interface non retenue ; build complet Windows.
 - A tester avec Hatim et ses collegues : enumeration reelle et identification de chaque modele, rapports HID, affichage et controles ; aucune integration au transport, aucune image envoyee par M1.
 
+## Atelier minimaliste & assistant — B3
+
+- Livré : demande IA consentie dans le chat flottant, contexte limité aux noms de blocs, destination et texte ; exposition temporaire par `deckforge_get_state`, copie vers le presse-papiers, annulation et validation MCP existante. Aucun modèle ni API IA dans DeckForge.
+- Testé : `cargo check --locked`, build Windows `Build-Windows.ps1 -Action All` vert : 265 tests application réussis (+1 ignoré), 9 MCP réussis, connecteur stdio vérifié, zéro avertissement. Tests de non-transmission sans consentement, annulation/expiration, mode Local, chat aux deux résolutions et absence de paramètres sensibles dans la requête.
+- Limites : le connecteur activé ne prouve pas qu'un client MCP est effectivement connecté ; l'utilisateur doit coller la demande dans son client. Les valeurs/paramètres des blocs ne sont pas exposés ; une demande texte contenant elle-même un secret reste sous la responsabilité de l'utilisateur avant consentement. Navigation clavier flèches/Entrée depuis le champ de recherche livrée mais non couverte par un test d’interaction clavier dédié ; mesures instrumentées de fluidité non réalisées. Compatibilité aller-retour d’une ancienne configuration non testée (les fixtures disponibles ne fournissent pas de config historique).
+- À tester avec Hatim : consentement/refus à 1366×768 et 1920×1080, connexion Claude/Codex/ChatGPT MCP, validation réelle de la proposition sans exécution automatique et lisibilité chat + propriétés.
+
 ## Assistant de test des périphériques — M6
 
 Livré : numérotation des touches, capture et comparaison des appuis bruts/décodés, commandes de luminosité 30 % / 100 %, orientation demandée, rapport texte copiable et enregistrable, macros suspendues. Tests unitaires purs du mapping et de la détection d’inversion ; build Windows complet. À tester avec Hatim et des collègues : affichage numéroté, orientation, réception des touches et effet visuel de la luminosité sur chaque modèle (les autres que D6 restent expérimentaux).

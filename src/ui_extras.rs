@@ -107,9 +107,10 @@ fn matches_palette(kind: usize, category: &str, search: &str) -> bool {
     };
     search.is_empty() || format!("{} {} {}", category, crate::automation::NAMES[kind], aliases).to_lowercase().contains(&search.to_lowercase())
 }
-fn palette(ui: &mut egui::Ui, search: &str, depth: usize, advanced: bool) -> Option<usize> {
+fn palette(ui: &mut egui::Ui, search: &str, depth: usize, advanced: bool, keyboard: Option<usize>) -> Option<usize> {
     let mut selected = None;
     let mut found = false;
+    let mut index = 0;
     for &(category, kinds) in BLOCK_CATEGORIES {
         let matches: Vec<_> = kinds.iter().copied().filter(|&kind| {
             (depth == 0 || !(7..=11).contains(&kind)) &&
@@ -124,8 +125,11 @@ fn palette(ui: &mut egui::Ui, search: &str, depth: usize, advanced: bool) -> Opt
                         let color = if category.contains("Logique") { Color32::from_rgb(164, 123, 239) }
                             else if category.contains("Streaming") { Color32::from_rgb(239, 169, 83) } else { BLUE };
                         family_bar(ui, color);
-                        if ui.add(egui::Button::new(crate::automation::NAMES[kind]).frame(false))
+                        let label = if keyboard == Some(index) { format!("> {}", crate::automation::NAMES[kind]) }
+                            else { crate::automation::NAMES[kind].to_owned() };
+                        if ui.add(egui::Button::new(label).frame(false))
                             .on_hover_text(block_help(kind)).clicked() { selected = Some(kind); }
+                        index += 1;
                     });
                 }
             });
@@ -795,10 +799,23 @@ impl App {
         let mut add = None;
         egui::SidePanel::left("workshop_library").resizable(true).default_width(280.0).min_width(220.0).max_width(350.0).show(ctx, |ui| {
             ui.label(RichText::new("BIBLIOTHÈQUE DE BLOCS").strong());
-            ui.add(egui::TextEdit::singleline(&mut search).hint_text("Rechercher un bloc"));
+            let response = ui.add(egui::TextEdit::singleline(&mut search).hint_text("Rechercher un bloc"));
+            let kinds: Vec<_> = BLOCK_CATEGORIES.iter().flat_map(|(category, kinds)| kinds.iter().copied()
+                .filter(|&kind| (self.preferences.workshop_advanced || kind != 18) && matches_palette(kind, category, &search))).collect();
+            let cursor_id = egui::Id::new("workshop_palette_cursor");
+            let mut cursor = ctx.data(|d| d.get_temp::<usize>(cursor_id)).unwrap_or(0);
+            if !kinds.is_empty() { cursor = cursor.min(kinds.len()-1); }
+            if response.changed() { cursor = 0; }
+            if response.has_focus() && !kinds.is_empty() {
+                if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) { cursor = (cursor+1) % kinds.len(); }
+                if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) { cursor = (cursor+kinds.len()-1) % kinds.len(); }
+                if ui.input(|i| i.key_pressed(egui::Key::Enter)) { add = Some(kinds[cursor]); }
+            }
+            ctx.data_mut(|d| d.insert_temp(cursor_id, cursor));
             ui.separator();
             egui::ScrollArea::vertical().id_salt("block_palette").show(ui, |ui| {
-                add = palette(ui, &search, 0, self.preferences.workshop_advanced);
+                let clicked = palette(ui, &search, 0, self.preferences.workshop_advanced, response.has_focus().then_some(cursor));
+                if clicked.is_some() { add = clicked; }
             });
         });
         ctx.data_mut(|d| d.insert_temp(search_id, search));

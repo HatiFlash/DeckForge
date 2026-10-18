@@ -1126,9 +1126,13 @@ impl App {
                     json!({"icons":icons,"audio_defaults":crate::audio::BUILTIN_ICONS.iter().map(|(id,name,_)|json!({"id":id,"name":name})).collect::<Vec<_>>(),"usage":"For audio_switch set first_icon and second_icon to a returned path or builtin id; an empty icon selects the default headphones/speakers. Propose the binding with deckforge_configure_key."}),
                 )
             }
-            "deckforge_get_state" => Ok(
-                json!({"connected":self.gate.connected,"physical_keys":format!("{:?}",self.gate.decision()),"current_profile":self.config.profiles[self.config.active].name,"current_page":self.config.page,"trail":self.config.trail,"profiles":self.config.profiles.iter().map(|p|json!({"name":p.name,"pages":p.pages.iter().map(|page|json!({"id":page.id,"name":page.name,"folder":page.folder})).collect::<Vec<_>>(),"keys":p.keys.iter().enumerate().map(|(i,k)|json!({"key":i+1,"label":k.label,"steps":k.steps.len()})).collect::<Vec<_>>()})).collect::<Vec<_>>(),"pending_proposals":self.proposals.pending.len(),"configuration_invalid":self.gate.invalid}),
-            ),
+            "deckforge_get_state" => {
+                let scope = (self.config.active, self.config.page.clone(), self.selected);
+                let pending_request = workshop_chat_ui::mcp_request(&mut self.workshop_chat, &scope);
+                let mut state = json!({"connected":self.gate.connected,"physical_keys":format!("{:?}",self.gate.decision()),"current_profile":self.config.profiles[self.config.active].name,"current_page":self.config.page,"trail":self.config.trail,"profiles":self.config.profiles.iter().map(|p|json!({"name":p.name,"pages":p.pages.iter().map(|page|json!({"id":page.id,"name":page.name,"folder":page.folder})).collect::<Vec<_>>(),"keys":p.keys.iter().enumerate().map(|(i,k)|json!({"key":i+1,"label":k.label,"steps":k.steps.len()})).collect::<Vec<_>>()})).collect::<Vec<_>>(),"pending_proposals":self.proposals.pending.len(),"configuration_invalid":self.gate.invalid});
+                if let Some(request) = pending_request { state["pending_request"] = request; }
+                Ok(state)
+            },
             "deckforge_get_audio_devices" => Ok(serde_json::to_value(&self.audio).unwrap()),
             "deckforge_get_profile" => {
                 let name = args["profile"].as_str().ok_or("Nom de profil requis")?;
@@ -1151,7 +1155,11 @@ impl App {
                 if self.gate.invalid {
                     return Err("Récupère d’abord la configuration dans DeckForge".into());
                 }
-                self.proposals.propose(name, args, &self.config)
+                let result = self.proposals.propose(name, args, &self.config);
+                if result.is_ok() && self.workshop_chat.awaiting.take().is_some() {
+                    self.workshop_chat.say("Proposition de ton IA reçue. Vérifie-la dans la fenêtre de validation.");
+                }
+                result
             }
             "deckforge_simulate_macro" => {
                 let (p, page, k) = crate::assistant::position(&self.config, args)?;
@@ -1201,7 +1209,7 @@ impl App {
     }
     fn set_ai_enabled(&mut self, enabled: bool) {
         if let Some(server)=&self.assistant { server.set_enabled(enabled); }
-        if !enabled { self.stop_http(); self.proposals.reject_all(); self.assistant_cache.clear(); }
+        if !enabled { self.stop_http(); self.proposals.reject_all(); self.assistant_cache.clear(); self.workshop_chat.awaiting = None; }
         self.preferences.allow_connected_ai=enabled;
         self.save_preferences();
     }
@@ -1284,6 +1292,7 @@ impl App {
             });
         }
         if let Some(accept) = decision {
+            self.workshop_chat.awaiting = None;
             match self.proposals.decide(accept, &self.config) {
                 Ok(Some(crate::assistant::Change::Config(c))) => {
                     self.engine.stop();

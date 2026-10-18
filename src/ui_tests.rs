@@ -1,4 +1,65 @@
 //! Tests of the actual egui widgets, without opening or controlling Windows.
+
+#[test]
+fn workshop_ai_requires_consent_and_local_never_offers_it() {
+    let mut h = Harness::new();
+    h.app.preferences.workshop_chat_mode = "ia".into();
+    h.app.workshop_chat_send("une demande".into(), None);
+    assert!(h.app.workshop_chat.consent.is_some());
+    let scope = (h.app.config.active, h.app.config.page.clone(), h.app.selected);
+    assert!(super::workshop_chat_ui::mcp_request(&mut h.app.workshop_chat, &scope).is_none());
+    h.app.preferences.workshop_chat_mode = "local".into();
+    h.app.workshop_chat_send("inconnue introuvable xyz".into(), None);
+    assert!(h.app.workshop_chat.consent.is_none());
+    assert!(super::workshop_chat_ui::mcp_request(&mut h.app.workshop_chat, &scope).is_none());
+}
+
+#[test]
+fn mcp_get_state_exposes_request_only_after_consent_and_not_after_cancel() {
+    let mut h = Harness::new();
+    let args = serde_json::json!({});
+    let state = h.app.assistant_call("deckforge_get_state", &args).unwrap();
+    assert!(state.get("pending_request").is_none());
+    h.app.preferences.workshop_chat_mode = "ia".into();
+    h.app.workshop_chat_send("attends 2 s".into(), None);
+    assert!(h.app.assistant_call("deckforge_get_state", &args).unwrap().get("pending_request").is_none());
+    h.app.workshop_chat.awaiting = h.app.workshop_chat.consent.take();
+    let state = h.app.assistant_call("deckforge_get_state", &args).unwrap();
+    assert_eq!(state["pending_request"]["text"], "attends 2 s");
+    assert_eq!(state["pending_request"]["destination"]["key"], 1);
+    h.app.workshop_chat.awaiting = None;
+    assert!(h.app.assistant_call("deckforge_get_state", &args).unwrap().get("pending_request").is_none());
+}
+
+#[test]
+fn workshop_chat_consent_card_is_visible_without_publishing() {
+    let mut h = Harness::new();
+    let size = vec2(1366.0, 768.0);
+    h.app.show_workflow = true;
+    h.app.workshop_chat.open = true;
+    h.app.preferences.workshop_chat_mode = "ia".into();
+    h.app.workshop_chat_send("aide".into(), None);
+    let output = h.warm(size);
+    assert!(text_position(&output.shapes, "Transmettre à mon IA").is_some());
+    assert!(text_position(&output.shapes, "Non merci").is_some());
+    assert!(h.app.workshop_chat.awaiting.is_none());
+    assert!(h.app.assistant_call("deckforge_get_state", &serde_json::json!({})).unwrap().get("pending_request").is_none());
+    let pos = text_position(&output.shapes, "Non merci").unwrap();
+    h.click(size, pos);
+    assert!(h.app.workshop_chat.consent.is_none());
+}
+
+#[test]
+fn workshop_chat_and_properties_fit_both_screen_sizes() {
+    for size in [vec2(1366.0, 768.0), vec2(1920.0, 1080.0)] {
+        let mut h = Harness::new();
+        h.app.show_workflow = true;
+        h.app.workshop_chat.open = true;
+        let output = h.warm(size);
+        assert!(!output.shapes.is_empty());
+        assert!(text_position(&output.shapes, "Assistant · Atelier").is_some());
+    }
+}
 use super::*;
 use egui::{pos2, vec2, Event as Input, Modifiers, PointerButton, Rect};
 
