@@ -33,6 +33,7 @@ mod plugins;
 mod plugin_host;
 mod plugin_http;
 mod plugin_runtime;
+mod plugin_validation;
 #[allow(dead_code)]
 mod plugin_import;
 mod plugin_catalog;

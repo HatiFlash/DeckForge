@@ -80,6 +80,14 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
         }
         for (plugin,host) in &hosts {while let Ok(mut value)=host.incoming.try_recv(){
             let name=value["event"].as_str().unwrap_or("").to_owned();
+            if name=="__hostError" {let _=reply.send(Reply::Error(plugin.clone(),value["reason"].as_str().unwrap_or("Message invalide").into()));continue;}
+            if !matches!(name.as_str(),"registerPlugin"|"logMessage"|"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"getSettings"|"setGlobalSettings"|"getGlobalSettings"|"sendToPlugin"|"sendToPropertyInspector"|"propertyInspectorDidAppear"|"propertyInspectorDidDisappear"|"openUrl") {
+                let _=reply.send(Reply::Error(plugin.clone(),format!("Evenement plugin non pris en charge : {name}")));continue;
+            }
+            if matches!(name.as_str(),"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"getSettings")
+                && !current.get(value["context"].as_str().unwrap_or("")).is_some_and(|v:&Visible|v.plugin==*plugin) {
+                let _=reply.send(Reply::Error(plugin.clone(),"Contexte etranger ou absent".into()));continue;
+            }
             if let Some(id)=value["__pi"].as_str().map(str::to_owned){
                 let Some(v)=inspectors.get(&id).filter(|v|v.plugin==*plugin).cloned() else {continue};
                 if name=="propertyInspectorDidDisappear" {inspectors.remove(&id);}
@@ -103,6 +111,7 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
             if current.values().any(|v|v.plugin==*id) && host.exited() {Some(id.clone())}else{None}
         }).collect::<Vec<_>>();
         for id in exited {
+            let _=reply.send(Reply::Error(id.clone(),"Plugin termine inopinement; redemarrage tente".into()));
             hosts.remove(&id);inspectors.retain(|_,v|v.plugin!=id); // Drop kills any remaining descendants before restart.
             let attempts=restarts.entry(id.clone()).or_default();
             attempts.retain(|when|when.elapsed()<Duration::from_secs(300));

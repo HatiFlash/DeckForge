@@ -26,6 +26,16 @@ impl App {
      ui.label(format!("Runtime : {ty} · Windows · Compatibilité : non vérifiée · Installé / inactif si aucune touche liée"));
      ui.label("Droits de redistribution : non évalués ; processus tiers = droits utilisateur, aucune sandbox.");
      ui.label(format!("{} actions · {}",plugin.actions.len(),self.plugin_errors.get(&plugin.uuid).map(String::as_str).unwrap_or("arrêté")));
+     let report_path=plugin.folder.join("validation-report.json");
+     let report=std::fs::read(&report_path).ok().and_then(|data|serde_json::from_slice::<crate::plugin_validation::Report>(&data).ok())
+         .filter(|r|r.plugin==plugin.uuid && r.version==plugin.version);
+     if let Some(report)=report {
+      for result in report.actions {
+       let verdict=match result.verdict {crate::plugin_validation::Verdict::Passed=>"Réussi",crate::plugin_validation::Verdict::Failed=>"Échoué",crate::plugin_validation::Verdict::Unverified=>"Non vérifié"};
+       ui.label(format!("{} : {verdict} · {} · {} · date Unix {}",result.action,result.reason,result.mode,result.tested_at_unix));
+      }
+     } else { ui.label("Validation : non vérifiée (aucun rapport pour cette version)."); }
+     if ui.button("Tester le plugin (simulation uniquement)").clicked(){self.plugin_test_request(plugin.clone());}
      ui.label("Actions disponibles (placer sur une touche peut lancer le plugin) :");
      for action in &plugin.actions{
       let name=plugin_import::action_name(&plugin,action);
@@ -98,6 +108,17 @@ impl App {
    ui.collapsing(format!("Protégés ({})",protected.len()),|ui|{
     for plugin in &protected{ui.label(plugin.display_name());}
    });
+  });
+ }
+ fn plugin_test_request(&mut self,plugin:Plugin){
+  self.start_dialog(move||{
+   let report=crate::plugin_validation::simulate(&plugin);
+   let result=serde_json::to_vec_pretty(&report).map_err(anyhow::Error::from)
+      .and_then(|bytes|std::fs::write(plugin.folder.join("validation-report.json"),bytes).map_err(anyhow::Error::from));
+   Some(Box::new(move |app:&mut App|match result{
+    Ok(())=>{app.notice="Rapport de simulation enregistré (aucun essai matériel).".into();},
+    Err(e)=>app.fail(format!("Rapport de plugin non enregistré : {e}")),
+   }))
   });
  }
  fn plugin_import_request(&mut self,source:Option<std::path::PathBuf>){

@@ -6,6 +6,7 @@ use crate::plugins::{Plugin,Runtime};
 fn node_executable()->Option<std::path::PathBuf>{
  let mut candidates=Vec::new();
  if let Some(paths)=std::env::var_os("PATH"){candidates.extend(std::env::split_paths(&paths).map(|p|p.join("node.exe")));}
+ if let Some(p)=std::env::var_os("ProgramFiles"){candidates.push(std::path::PathBuf::from(p).join("nodejs/node.exe"));}
  if let Some(p)=std::env::var_os("ProgramFiles(x86)"){candidates.push(std::path::PathBuf::from(p).join("fifine Control Deck/node/node20.exe"));}
  if let Some(p)=std::env::var_os("APPDATA"){if let Ok(entries)=std::fs::read_dir(std::path::PathBuf::from(p).join("Elgato/StreamDeck/NodeJS")){for entry in entries.flatten().take(32){candidates.push(entry.path().join("node.exe"));}}}
  candidates.into_iter().find(|p|p.is_file())
@@ -60,6 +61,7 @@ fn socket_loop(listener:TcpListener,commands:Receiver<Value>,messages:Sender<Val
     let _=listener.set_nonblocking(true);
     let mut plugin:Option<tungstenite::WebSocket<std::net::TcpStream>>=None;
     let mut pending=Vec::new();
+    let mut queued=std::collections::VecDeque::new();
     let mut inspectors:HashMap<String,tungstenite::WebSocket<std::net::TcpStream>>=HashMap::new();
     while !stop.load(Ordering::Relaxed){
         match listener.accept(){Ok((stream,_))=>{let _=stream.set_nonblocking(false); // Windows : le socket accepté hérite du mode non bloquant de l'écouteur.
@@ -75,13 +77,15 @@ fn socket_loop(listener:TcpListener,commands:Receiver<Value>,messages:Sender<Val
                 }
             }
         }
-        while let Ok(mut cmd)=commands.try_recv(){
+        while let Ok(cmd)=commands.try_recv(){ queued.push_back(cmd); }
+        while plugin.is_some() && !queued.is_empty() {
+            let mut cmd=queued.pop_front().unwrap();
             let target=cmd.get("__pi").and_then(Value::as_str).map(str::to_owned);
             if let Some(obj)=cmd.as_object_mut(){obj.remove("__pi");}
             if let Some(id)=target{if let Some(ws)=inspectors.get_mut(&id){let _=ws.send(tungstenite::Message::Text(cmd.to_string().into()));}}
             else if let Some(ws)=plugin.as_mut(){let _=ws.send(tungstenite::Message::Text(cmd.to_string().into()));}
         }
-        if let Some(ws)=plugin.as_mut(){match ws.read(){Ok(tungstenite::Message::Text(text))=>{if let Ok(value)=serde_json::from_str::<Value>(&text){let _=messages.send(value);}},Ok(tungstenite::Message::Close(_))=>{plugin=None;},Err(tungstenite::Error::Io(ref e)) if matches!(e.kind(),std::io::ErrorKind::WouldBlock|std::io::ErrorKind::TimedOut)=>{},Err(_)=>{plugin=None;},_=>{}}}
+        if let Some(ws)=plugin.as_mut(){match ws.read(){Ok(tungstenite::Message::Text(text))=>{match serde_json::from_str::<Value>(&text){Ok(value)=>{let _=messages.send(value);},Err(e)=>{let _=messages.send(json!({"event":"__hostError","reason":format!("Message JSON malforme : {e}")}));}}},Ok(tungstenite::Message::Close(_))=>{plugin=None;},Err(tungstenite::Error::Io(ref e)) if matches!(e.kind(),std::io::ErrorKind::WouldBlock|std::io::ErrorKind::TimedOut)=>{},Err(_)=>{plugin=None;},_=>{}}}
         let mut gone=Vec::new();
         for (id,ws) in &mut inspectors {match ws.read(){Ok(tungstenite::Message::Text(text))=>{if let Ok(mut value)=serde_json::from_str::<Value>(&text){if let Some(obj)=value.as_object_mut(){obj.insert("__pi".into(),json!(id));let _=messages.send(value);}}},Ok(tungstenite::Message::Close(_))=>gone.push(id.clone()),Err(tungstenite::Error::Io(ref e)) if matches!(e.kind(),std::io::ErrorKind::WouldBlock|std::io::ErrorKind::TimedOut)=>{},Err(_)=>gone.push(id.clone()),_=>{}}}
         for id in gone {inspectors.remove(&id);if let Some(r)=&registry{r.lock().unwrap().remove(&id);}let _=messages.send(json!({"event":"propertyInspectorDidDisappear","__pi":id}));}
