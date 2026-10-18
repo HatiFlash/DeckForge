@@ -38,7 +38,7 @@ pub fn diff(old:&HashMap<String,Visible>,new:&HashMap<String,Visible>) -> (Vec<V
 }
 pub(crate) fn event(name:&str,v:&Visible,device:&Device)->Value {
     let mut payload=json!({"settings":v.settings,"coordinates":{"column":v.index%device.columns,"row":v.index/device.columns},"state":v.state,"isInMultiAction":false});
-    if matches!(name,"willAppear"|"willDisappear"|"didReceiveSettings") {payload["controller"]=json!("Keypad");}
+    if matches!(name,"willAppear"|"willDisappear"|"didReceiveSettings"|"keyDown"|"keyUp") {payload["controller"]=json!("Keypad");}
     json!({"event":name,"action":v.action,"context":v.context,"device":device.id,"payload":payload})
 }
 pub(crate) fn title_event(v:&Visible,device:&Device,title:&str)->Value {
@@ -177,7 +177,7 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
             assert_eq!(msg["payload"]["isInMultiAction"],false);
             assert_eq!(msg["payload"]["state"],1);
         }
-        assert_eq!(event("willAppear",&v,&d)["payload"]["controller"],"Keypad");
+        for name in ["willAppear","willDisappear","didReceiveSettings","keyDown","keyUp"] { assert_eq!(event(name,&v,&d)["payload"]["controller"],"Keypad"); }
         assert_eq!(Device::virtual_device().info()["size"]["columns"],5);
     }
     #[test]fn configured_title_event(){
