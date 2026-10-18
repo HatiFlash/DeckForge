@@ -4,9 +4,13 @@ use crate::{model::{Key,Step,PluginBinding},plugins::{Plugin,Runtime},plugin_imp
 use eframe::egui::{self,RichText};
 impl App {
  pub(super) fn plugin_store(&mut self,ui:&mut egui::Ui,search:&str){
-  ui.label(RichText::new("Les plugins restent arrêtés tant qu'ils ne sont pas utilisés.").small());
+  ui.label(RichText::new("Découvrir / Installés / Importer").strong());
+  ui.label(RichText::new("Catalogue local, sans réseau. Compatibilité non vérifiée ; installer ne lance rien. Lier une action à une touche peut ensuite lancer son plugin.").small());
+  let catalog=crate::plugin_catalog::Catalog::offline();
+  ui.label(format!("Découvrir · {} entrée(s) locales publiables",catalog.entries.len()));
+  ui.separator();ui.label(RichText::new("Importer").strong());
   ui.horizontal_wrapped(|ui|{
-   if ui.button("Importer depuis FIFINE / StreamDock").clicked(){self.plugin_import_request(None);}
+   if ui.button("Importer depuis FIFINE / StreamDock / Elgato").clicked(){self.plugin_import_request(None);}
    if ui.button("Importer un fichier .streamDeckPlugin").clicked(){self.plugin_import_dialog(true);}
    if ui.button("Importer un dossier .sdPlugin").clicked(){self.plugin_import_dialog(false);}
   });
@@ -17,7 +21,12 @@ impl App {
    if let Some(root)=&root{for plugin in plugin_import::inventory(root){
     if !format!("{} {}",plugin.display_name(),plugin.uuid).to_lowercase().contains(search) && !plugin.actions.iter().any(|a|a.name.to_lowercase().contains(search)){continue;}
     let ty=match plugin.runtime{Runtime::Exe(_)|Runtime::Node(_)=>"programme",Runtime::Html(_)=>"web",Runtime::Protected=>"protégé",Runtime::Unsupported=>"indisponible"};
-    ui.group(|ui|{ui.label(RichText::new(format!("{} · v{}",plugin.display_name(),plugin.version)).strong());ui.label(format!("{} actions · {} · {}",plugin.actions.len(),ty,self.plugin_errors.get(&plugin.uuid).map(String::as_str).unwrap_or("arrêté")));
+    ui.group(|ui|{ui.label(RichText::new(format!("{} · v{}",plugin.display_name(),plugin.version)).strong());
+     ui.label(format!("Auteur : {} · Origine : import local",if plugin.author.trim().is_empty(){"inconnu"}else{&plugin.author}));
+     ui.label(format!("Runtime : {ty} · Windows · Compatibilité : non vérifiée · Installé / inactif si aucune touche liée"));
+     ui.label("Droits de redistribution : non évalués ; processus tiers = droits utilisateur, aucune sandbox.");
+     ui.label(format!("{} actions · {}",plugin.actions.len(),self.plugin_errors.get(&plugin.uuid).map(String::as_str).unwrap_or("arrêté")));
+     ui.label("Actions disponibles (placer sur une touche peut lancer le plugin) :");
      for action in &plugin.actions{
       let name=plugin_import::action_name(&plugin,action);
       let mut key=Key{label:name.clone(),..Key::default()};
@@ -31,7 +40,7 @@ impl App {
     });
    }}
    ui.separator();
-   ui.label(RichText::new("Disponibles depuis FIFINE / StreamDock").strong());
+   ui.label(RichText::new("Découvrir · sources locales FIFINE / StreamDock / Elgato").strong());
   if search.is_empty() || "volumecontroller audio volume muet peripherique".contains(&search.to_lowercase()) {
    ui.group(|ui| {
     ui.label(RichText::new("Audio natif DeckForge — sans plugin ni fenêtre externe").strong());
@@ -73,7 +82,9 @@ impl App {
      ui.vertical(|ui|{
       ui.label(RichText::new(plugin.display_name()).strong());
       ui.label(format!("{} · v{}",if plugin.author.trim().is_empty(){"Auteur inconnu"}else{&plugin.author},plugin.version));
-      ui.label(format!("{} action(s) · {}",plugin.actions.len(),plugin_type(&plugin.runtime)));
+      ui.label(format!("{} action(s) · Runtime : {} · Windows",plugin.actions.len(),plugin_type(&plugin.runtime)));
+      ui.label(format!("Origine : locale · Analyse statique : {:?} · Compatibilité : non vérifiée · Redistribution : non évaluée",plugin_import::compatibility(plugin)));
+      for action in &plugin.actions {ui.label(format!("Action : {}",plugin_import::action_name(plugin,action)));}
      });
      if ui.button("Importer").clicked(){self.plugin_import_request(Some(plugin.folder.clone()));}
     });

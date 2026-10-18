@@ -1477,7 +1477,7 @@ fn plugin_store_is_rendered_without_a_window() {
     let size=vec2(1180.0,800.0);
     let output=h.warm(size);
     assert!(text_position(&output.shapes,"Installés dans DeckForge").is_some());
-    assert!(text_position(&output.shapes,"Disponibles depuis FIFINE / StreamDock").is_some());
+    assert!(text_position(&output.shapes,"Découvrir · sources locales FIFINE / StreamDock / Elgato").is_some());
     if let Some(dir)=std::env::var_os("DECKFORGE_UI_OUTPUT") {
         h.png(size,output,&PathBuf::from(dir).join("plugins-store.png"));
     }

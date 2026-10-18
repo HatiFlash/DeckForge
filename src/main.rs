@@ -35,6 +35,7 @@ mod plugin_http;
 mod plugin_runtime;
 #[allow(dead_code)]
 mod plugin_import;
+mod plugin_catalog;
 mod recorder;
 mod soundboard;
 mod store;
