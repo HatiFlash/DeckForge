@@ -192,6 +192,9 @@ pub fn is_video(path: &Path) -> bool {
 
 pub fn ffmpeg_path() -> Option<PathBuf> {
     let name = "ffmpeg.exe";
+    // Lets tests and support check the Windows decoder on a PC that has FFmpeg.
+    if std::env::var_os("DECKFORGE_NO_FFMPEG").is_some() { return None; }
+    if let Some(own) = tools_dir().map(|d| d.join(name)).filter(|p| p.is_file()) { return Some(own); }
     if let Some(paths) = std::env::var_os("PATH") {
         for folder in std::env::split_paths(&paths) {
             let candidate = folder.join(name);
@@ -220,22 +223,79 @@ pub fn ffmpeg_path() -> Option<PathBuf> {
 
 pub const FFMPEG_MISSING: &str = "FFmpeg absent";
 
-/// Installs FFmpeg with winget (no console window) after an explicit user click.
-pub fn install_ffmpeg() -> Result<PathBuf> {
+const FFMPEG_URL: &str = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
+
+/// Folder where DeckForge keeps its own copy of FFmpeg (per user, always writable).
+pub fn tools_dir() -> Option<PathBuf> {
+    Some(PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("DeckForge").join("tools"))
+}
+
+fn hidden(program: &str) -> std::process::Command {
     use std::os::windows::process::CommandExt;
-    use std::process::{Command, Stdio};
+    let mut command = std::process::Command::new(program);
+    command.creation_flags(0x0800_0000).stdin(std::process::Stdio::null());
+    command
+}
+
+/// Runs a download command with a time limit; never opens a console window.
+fn wait_download(mut command: std::process::Command, seconds: u64) -> Result<()> {
     use std::time::{Duration, Instant};
-    let mut child = Command::new("winget")
-        .args(["install", "--id", "Gyan.FFmpeg", "-e", "--silent", "--accept-source-agreements", "--accept-package-agreements"])
-        .creation_flags(0x0800_0000).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
-        .spawn().map_err(|e| anyhow::anyhow!("winget introuvable ({e}). Installe FFmpeg depuis https://www.gyan.dev/ffmpeg/builds/ puis copie ffmpeg.exe à côté de DeckForge.exe"))?;
+    let mut child = command.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn()?;
     let start = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait()? { break status; }
-        if start.elapsed() >= Duration::from_secs(600) { let _ = child.kill(); let _ = child.wait(); anyhow::bail!("Installation de FFmpeg interrompue après 10 min"); }
+    loop {
+        if let Some(status) = child.try_wait()? { ensure!(status.success(), "téléchargement échoué ({status})"); return Ok(()); }
+        if start.elapsed() >= Duration::from_secs(seconds) { let _ = child.kill(); let _ = child.wait(); anyhow::bail!("téléchargement interrompu après {seconds} s"); }
         std::thread::sleep(Duration::from_millis(250));
-    };
-    ffmpeg_path().ok_or_else(|| anyhow::anyhow!("winget a terminé ({status}) mais ffmpeg.exe reste introuvable"))
+    }
+}
+
+fn download(url: &str, to: &Path, seconds: u64) -> Result<()> {
+    let mut curl = hidden("curl.exe");
+    curl.args(["-L", "--fail", "--silent", "--show-error", "--retry", "2", "-o"]).arg(to).arg(url);
+    if wait_download(curl, seconds).is_ok() && to.is_file() { return Ok(()); }
+    let mut ps = hidden("powershell.exe");
+    ps.args(["-NoProfile", "-NonInteractive", "-Command"])
+        .arg(format!("$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -UseBasicParsing -Uri '{url}' -OutFile '{}'", to.display()));
+    wait_download(ps, seconds)
+}
+
+fn sha256_file(path: &Path) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hash = Sha256::new();
+    let mut buffer = vec![0u8; 1 << 16];
+    loop { let n = file.read(&mut buffer)?; if n == 0 { break; } hash.update(&buffer[..n]); }
+    Ok(format!("{:x}", hash.finalize()))
+}
+
+/// Downloads the official FFmpeg "essentials" build after an explicit click, checks its
+/// published SHA-256 and keeps only ffmpeg.exe in %LOCALAPPDATA%\DeckForge\tools.
+pub fn install_ffmpeg() -> Result<PathBuf> {
+    let dir = tools_dir().ok_or_else(|| anyhow::anyhow!("dossier LOCALAPPDATA introuvable"))?;
+    std::fs::create_dir_all(&dir)?;
+    let archive = dir.join("ffmpeg-download.zip");
+    let checksum = dir.join("ffmpeg-download.sha256");
+    let result = (|| -> Result<PathBuf> {
+        download(&format!("{FFMPEG_URL}.sha256"), &checksum, 60)
+            .map_err(|e| anyhow::anyhow!("Impossible de joindre gyan.dev ({e}). Vérifie la connexion Internet."))?;
+        let expected = std::fs::read_to_string(&checksum)?.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
+        ensure!(expected.len() == 64, "Empreinte FFmpeg illisible");
+        download(FFMPEG_URL, &archive, 1200).map_err(|e| anyhow::anyhow!("Téléchargement de FFmpeg impossible ({e})"))?;
+        ensure!(sha256_file(&archive)? == expected, "Le fichier FFmpeg téléchargé est corrompu (empreinte différente) : réessaie");
+        let mut zip = zip::ZipArchive::new(std::fs::File::open(&archive)?)?;
+        let index = (0..zip.len()).find(|&i| zip.by_index(i).is_ok_and(|f| f.name().is_ok_and(|n| n.replace('\\', "/").ends_with("/bin/ffmpeg.exe"))))
+            .ok_or_else(|| anyhow::anyhow!("ffmpeg.exe absent de l'archive"))?;
+        let temporary = dir.join("ffmpeg.exe.part");
+        std::io::copy(&mut zip.by_index(index)?, &mut std::fs::File::create(&temporary)?)?;
+        let target = dir.join("ffmpeg.exe");
+        let _ = std::fs::remove_file(&target);
+        std::fs::rename(&temporary, &target)?;
+        Ok(target)
+    })();
+    let _ = std::fs::remove_file(archive);
+    let _ = std::fs::remove_file(checksum);
+    result
 }
 
 /// Appends one import attempt to diagnostics/import-video.log next to the configuration.
@@ -256,9 +316,27 @@ pub fn import_video(src: &Path, dest: &Path, size: u32) -> Result<PathBuf> {
     let bytes = std::fs::metadata(src).map_or(0, |m| m.len());
     match &result {
         Ok(path) => video_log(dest, &format!("OK .{ext} {bytes} octets -> {}", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())),
-        Err(e) => video_log(dest, &format!("ÉCHEC .{ext} {bytes} octets, taille {size} ; ffmpeg={:?} ; erreur : {e}", ffmpeg_path())),
+        Err(e) => video_log(dest, &format!("ÉCHEC .{ext} {bytes} octets, taille {size} ; ffmpeg={:?} ; erreur : {e}", ffmpeg_path().map(|p| p.file_name().map(|n| n.to_owned())))),
     }
     result
+}
+
+/// Without FFmpeg: decode with Windows itself (MP4/MOV H.264 everywhere, other formats if
+/// the matching Windows video extension is installed).
+fn import_video_native(src: &Path, dest: &Path, size: u32) -> Result<PathBuf> {
+    let frames = crate::video_mf::decode(src, 12, 10, size)
+        .map_err(|e| anyhow::anyhow!("{FFMPEG_MISSING} : Windows n'a pas pu convertir cette vidéo ({e})"))?;
+    let bytes = crate::video_mf::encode_gif(frames, 12)?;
+    ensure!(bytes.len() <= 20_000_000, "GIF supérieur à 20 Mo");
+    std::fs::create_dir_all(dest)?;
+    let name = src.file_stem().and_then(|s| s.to_str()).unwrap_or("video");
+    let imported = import_image(&bytes, dest, name)?;
+    let key = crate::model::Key { image: imported.to_string_lossy().into_owned(), ..Default::default() };
+    if let Err(e) = crate::key_render::font().and_then(|font| crate::key_render::animated(&key, size, &font)) {
+        let _ = std::fs::remove_file(&imported);
+        return Err(e);
+    }
+    Ok(imported)
 }
 
 fn import_video_inner(src: &Path, dest: &Path, size: u32) -> Result<PathBuf> {
@@ -266,8 +344,7 @@ fn import_video_inner(src: &Path, dest: &Path, size: u32) -> Result<PathBuf> {
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
     ensure!(is_video(src) && src.is_file() && [112, 126].contains(&size), "Vidéo ou taille invalide");
-    let ffmpeg = ffmpeg_path().ok_or_else(|| anyhow::anyhow!(
-        "{FFMPEG_MISSING} : DeckForge a besoin de FFmpeg (gratuit) pour convertir les vidéos"))?;
+    let Some(ffmpeg) = ffmpeg_path() else { return import_video_native(src, dest, size); };
     std::fs::create_dir_all(dest)?;
     let name = src.file_stem().and_then(|s| s.to_str()).unwrap_or("video");
     let temporary = dest.join(format!(".video-{}-{:?}.gif", std::process::id(), std::thread::current().id()));
@@ -328,6 +405,41 @@ mod video_tests {
         assert!(gif.exists());
         let key = crate::model::Key { image: gif.to_string_lossy().into_owned(), ..Default::default() };
         assert!(crate::key_render::animated(&key, 126, &crate::key_render::font().unwrap()).unwrap().len() > 1);
+    }
+    /// Real 115 MB download; run explicitly with `--ignored`.
+    #[test]
+    #[ignore]
+    fn ffmpeg_download_real() {
+        let exe = install_ffmpeg().unwrap();
+        assert!(exe.is_file() && std::fs::metadata(&exe).unwrap().len() > 10_000_000);
+        let out = std::process::Command::new(&exe).arg("-version").output().unwrap();
+        assert!(String::from_utf8_lossy(&out.stdout).starts_with("ffmpeg version"));
+    }
+    #[test]
+    fn windows_decoder_imports_h264_without_ffmpeg() {
+        let temp = tempfile::tempdir().unwrap();
+        let broken = temp.path().join("pas-une-video.mp4");
+        std::fs::write(&broken, b"ceci n'est pas une video").unwrap();
+        let error = import_video_native(&broken, &temp.path().join("assets"), 126).unwrap_err().to_string();
+        assert!(error.contains(FFMPEG_MISSING), "{error}");
+        // FFmpeg only builds the sample file; decoding below uses Windows alone.
+        let Some(ffmpeg) = ffmpeg_path() else { eprintln!("FFmpeg absent : vidéo d'essai non générée"); return; };
+        use std::os::windows::process::CommandExt;
+        let src = temp.path().join("bandes.mp4");
+        let status = std::process::Command::new(ffmpeg)
+            .args(["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                "color=c=red:s=96x64:d=2:r=24,drawbox=x=0:y=32:w=96:h=32:color=blue:t=fill",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p"])
+            .arg(&src).creation_flags(0x08000000).status().unwrap();
+        assert!(status.success(), "génération de la vidéo d'essai");
+        let frames = crate::video_mf::decode(&src, 12, 10, 32).unwrap();
+        assert!((20..=26).contains(&frames.len()), "{} images", frames.len());
+        let (top, bottom) = (frames[0].get_pixel(16, 3).0, frames[0].get_pixel(16, 28).0);
+        assert!(top[0] > 170 && top[2] < 90, "haut {top:?}");
+        assert!(bottom[2] > 170 && bottom[0] < 90, "bas {bottom:?}");
+        let gif = import_video_native(&src, &temp.path().join("assets"), 126).unwrap();
+        let key = crate::model::Key { image: gif.to_string_lossy().into_owned(), ..Default::default() };
+        assert!(crate::key_render::animated(&key, 126, &crate::key_render::font().unwrap()).unwrap().len() > 10);
     }
 }
 

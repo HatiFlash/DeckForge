@@ -3405,13 +3405,13 @@ impl App {
             egui::Window::new("Importer une vidéo").id(egui::Id::new("ffmpeg_offer"))
                 .open(&mut open).collapsible(false).resizable(false).default_width(380.0)
                 .show(ctx, |ui| {
-                    ui.label("Pour convertir une vidéo en animation, DeckForge utilise FFmpeg, un outil gratuit qui n’est pas encore installé sur ce PC.");
+                    ui.label("Windows n’a pas réussi à convertir cette vidéo (format ou codec non pris en charge). DeckForge peut télécharger son module vidéo FFmpeg, gratuit, une seule fois.");
                     ui.add_space(6.0);
                     if installing {
-                        ui.horizontal(|ui| { ui.spinner(); ui.label("Installation de FFmpeg puis conversion… (1 à 3 min)"); });
+                        ui.horizontal(|ui| { ui.spinner(); ui.label("Téléchargement du module vidéo (≈ 110 Mo) puis conversion…"); });
                     } else {
-                        if ui.button("Installer FFmpeg et importer la vidéo").clicked() { install = true; }
-                        ui.label(RichText::new("Installation par winget (Microsoft), sans fenêtre. Autre solution : copier ffmpeg.exe à côté de DeckForge.exe puis réimporter.").small());
+                        if ui.button("Télécharger le module vidéo et importer").clicked() { install = true; }
+                        ui.label(RichText::new("Source officielle gyan.dev, empreinte vérifiée, rangé dans %LOCALAPPDATA%\\DeckForge\\tools. Sans droits administrateur. Autre solution : copier ffmpeg.exe à côté de DeckForge.exe.").small());
                     }
                 });
             if install {
@@ -3430,7 +3430,7 @@ impl App {
                                     key.image = path.to_string_lossy().into_owned();
                                     app.edited();
                                 }
-                                app.log("FFmpeg installé, vidéo convertie en GIF animé.".into());
+                                app.log("Module vidéo installé, vidéo convertie en GIF animé.".into());
                             }
                             Err(e) => app.fail(format!("Import vidéo impossible : {e}")),
                         }
