@@ -64,6 +64,7 @@ pub const MODELS: &[DeviceModel] = &[
     DeviceModel { id: "elgato_module_32", name: "Elgato Module 32", family: Family::Elgato, vid: 0x0fd9, pid: 0x00ba, rows: 4, cols: 8, keys: 32, image_w: 96, image_h: 96, image_format: ImageFormat::Jpeg, rotation: 0, mirror_x: true, mirror_y: true, packet_len: 1024, protocol: Protocol::ElgatoModule, encoders: 0, verified: false, notes: "" },
  ];
 
+pub mod test_assistant;
 pub mod report;
 pub mod elgato;
 

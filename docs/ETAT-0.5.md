@@ -180,3 +180,7 @@ Livré : option « Conserver entre les macros » pour Définir une variable (`se
 - Livre : table FIFINE D6, AKP153/HSV293S/293V3, AKP03/N3 et Elgato Original/Mini/MK.2/XL/Neo/Plus/Modules ; detection VID:PID et interface HID sans ouvrir de peripherique. D6 seul valide localement ; tous les autres modeles sont experimentaux. Collision documentaire 0300:1001 affectee provisoirement a AKP03, sans supposer le layout sur materiel.
 - Teste automatiquement : unicite et geometrie de la table, filtre D6 identique au code actuel, candidats PID inconnu et interface non retenue ; build complet Windows.
 - A tester avec Hatim et ses collegues : enumeration reelle et identification de chaque modele, rapports HID, affichage et controles ; aucune integration au transport, aucune image envoyee par M1.
+
+## Assistant de test des périphériques — M6
+
+Livré : numérotation des touches, capture et comparaison des appuis bruts/décodés, commandes de luminosité 30 % / 100 %, orientation demandée, rapport texte copiable et enregistrable, macros suspendues. Tests unitaires purs du mapping et de la détection d’inversion ; build Windows complet. À tester avec Hatim et des collègues : affichage numéroté, orientation, réception des touches et effet visuel de la luminosité sur chaque modèle (les autres que D6 restent expérimentaux).

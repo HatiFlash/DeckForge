@@ -148,6 +148,8 @@ pub struct App {
     show_logs: bool,
     settings: bool,
     show_device_report: bool,
+    show_hardware_test: bool,
+    hardware_test: Option<crate::devices::test_assistant::Session>,
     show_saved_variables: bool,
     show_about: bool,
     update_result: Option<String>,
@@ -332,6 +334,8 @@ impl App {
             show_logs: false,
             settings: false,
             show_device_report: false,
+            show_hardware_test: false,
+            hardware_test: None,
             show_saved_variables: false,
             show_about: false,
             update_result: None,
@@ -664,6 +668,23 @@ impl App {
                         self.execute_key(key, false, false, &c);
                     }
                 }
+                Event::HardwareTestPress(raw, index) => {
+                    if let Some(test)=&mut self.hardware_test {
+                        test.press(&raw,index);
+                        let next=test.next;
+                        let finished=test.next == test.keys;
+                        self.log(format!("Test : brut [{raw}] ; décodé {} ; attendu {}",index+1,next));
+                        if finished { let _=self.device.send(Command::TestBrightness); }
+                    }
+                }
+                Event::HardwareTestStatus(message) => {
+                    if let Some(test)=&mut self.hardware_test {
+                        if message.starts_with("Images numérotées") { test.image=message.clone(); }
+                        if message.starts_with("Luminosité") || message.starts_with("ÉCHEC luminosité") { test.brightness=message.clone(); }
+                        if message.starts_with("ÉCHEC") || message.starts_with("Images numérotées : ÉCHEC") || message.starts_with("Test arrêté") { test.active=false; }
+                    }
+                    self.log(format!("Assistant périphérique : {message}"));
+                }
                 Event::DeviceModel { name, keys, rows, cols, experimental } => {
                     if let Some(grid) = DeviceGrid::new(name.clone(), keys, rows, cols, experimental) {
                         crate::model::extend_for_device(&mut self.config, grid.keys);
@@ -683,6 +704,7 @@ impl App {
                     }
                     self.status = message;
                     if !connected {
+                        if let Some(test)=&mut self.hardware_test { test.active=false; test.brightness="ÉCHEC : périphérique déconnecté".into(); }
                         self.device_model = None;
                         self.selected = self.selected.min(14);
                         self.long_press.clear();
@@ -711,6 +733,7 @@ impl App {
                     }
                 }
                 Event::Key(index, at) => {
+                    if self.hardware_test.as_ref().is_some_and(|t| t.active) { continue; }
                     let wake = self.sleep.press(Instant::now());
                     if wake { self.wake_display(); self.long_press.clear(); continue; }
                     self.last_key = Some((index, Instant::now()));
@@ -739,6 +762,7 @@ impl App {
                     }
                 }
                 Event::KeyRelease(index, at) => {
+                    if self.hardware_test.as_ref().is_some_and(|t| t.active) { continue; }
                     if index < self.device_keys() && index < self.applied.keys().len() {
                         if self.gate.decision()==Decision::Execute && self.applied.keys()[index].plugin.is_some() { if let Some(plugins)=&self.plugins { plugins.key(index,false); } }
                         if let Some(long) = self.long_press.release(index, at, self.applied.long_press_ms) {
@@ -1624,6 +1648,10 @@ impl App {
                             }
                             if ui.button("Variables enregistrées…").clicked() {
                                 self.show_saved_variables = true;
+                                ui.close_menu();
+                            }
+                            if ui.button("Tester mon périphérique…").clicked() {
+                                self.show_hardware_test = true;
                                 ui.close_menu();
                             }
                             if ui.button("Rapport périphérique…").clicked() {
@@ -3383,6 +3411,52 @@ impl App {
             });
             self.show_apps = open;
         }
+        if self.show_hardware_test {
+            let mut open=true;
+            egui::Window::new("Tester mon périphérique").open(&mut open).default_width(540.0).resizable(true).show(ctx,|ui| {
+                let p=theme::palette(ui.ctx());
+                ui.label(RichText::new(self.device_label()).strong());
+                theme::status_badge(ui, &self.status, if self.gate.connected { GREEN } else { theme::WARNING });
+                ui.label("Ce test met les macros en pause et remplace temporairement les images. Ferme Elgato / Stream Dock / FIFINE Control Deck avant de commencer.");
+                let active=self.hardware_test.as_ref().is_some_and(|t|t.active);
+                if ui.add_enabled(self.gate.connected && !active,theme::secondary_button("Lancer le test")).clicked() {
+                    self.engine.stop();
+                    self.gate.enabled=false;
+                    self.long_press.clear();
+                    let grid=self.grid();
+                    self.hardware_test=Some(crate::devices::test_assistant::Session::new(grid.keys,grid.cols));
+                    if self.device.send(Command::TestStart).is_err() { self.fail("Service HID arrêté".into()); if let Some(t)=&mut self.hardware_test { t.active=false; } }
+                }
+                if active && ui.add(theme::danger_button("Arrêter le test")).clicked() {
+                    let _=self.device.send(Command::TestStop);
+                    if let Some(t)=&mut self.hardware_test { t.active=false; }
+                }
+                if let Some(t)=&mut self.hardware_test {
+                    ui.label(format!("Appuie sur le numéro {} / {} (dans l’ordre, sans action exécutée).",(t.next+1).min(t.keys),t.keys));
+                    ui.label(RichText::new(format!("{} touche(s) vérifiée(s), {} erreur(s)",t.next,t.mismatches.len())).color(p.muted));
+                    ui.label("Les numéros sont-ils à l’endroit ?");
+                    ui.horizontal(|ui| { ui.selectable_value(&mut t.orientation,Some(true),"Oui"); ui.selectable_value(&mut t.orientation,Some(false),"Non"); });
+                    ui.label(&t.brightness);
+                    if t.brightness.contains("100 %") { ui.label("As-tu vu le passage à 30 %, puis à 100 % ? Indique-le dans ton retour au support."); }
+                }
+                let result=self.hardware_test.as_ref().map(|t|t.result()).unwrap_or_else(||"Test non lancé.\n".into());
+                let log=crate::devices::report::latest(&self.path).ok().flatten().and_then(|p|std::fs::read_to_string(p).ok()).unwrap_or_else(||"Journal périphérique indisponible\n".into());
+                let text=format!("Rapport de test DeckForge\nModèle : {}\nStatut : {}\n\nRésultat du test\n{}\nJournal périphérique\n{}",self.device_label(),self.status,result,log);
+                ui.horizontal(|ui| {
+                    if ui.add(theme::secondary_button("Copier")).clicked() { ui.ctx().copy_text(text.clone()); }
+                    if ui.add(theme::secondary_button("Enregistrer")).clicked() {
+                        if let Some(path)=rfd::FileDialog::new().add_filter("Texte", &["txt"]).set_file_name("rapport-test-deckforge.txt").save_file() {
+                            if let Err(e)=std::fs::write(path.with_extension("txt"),&text) {self.fail(format!("Enregistrement impossible : {e}"));}
+                        }
+                    }
+                });
+                egui::ScrollArea::vertical().max_height(180.0).show(ui,|ui|{ui.monospace(&text);});
+            });
+            if !open {
+                if self.hardware_test.as_ref().is_some_and(|t|t.active) { let _=self.device.send(Command::TestStop); if let Some(t)=&mut self.hardware_test { t.active=false; } }
+                self.show_hardware_test=false;
+            }
+        }
         if self.show_device_report {
             let mut open = true;
             egui::Window::new("Rapport périphérique").open(&mut open)
@@ -3569,6 +3643,7 @@ impl App {
             || self.recording.is_some()
             || self.import_report.is_some()
             || self.settings
+            || self.show_hardware_test
             || self.show_device_report
             || self.show_saved_variables
             || self.show_about

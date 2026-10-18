@@ -33,6 +33,9 @@ pub enum Command {
     Brightness(u8),
     KeyImage(usize, Vec<u8>),
     Disconnect,
+    TestStart,
+    TestStop,
+    TestBrightness,
 }
 pub fn spawn(tx: Sender<Event>, config_path: PathBuf) -> Sender<Command> {
     let (cmd, rx) = mpsc::channel();
@@ -44,6 +47,8 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
     if let Ok(report) = Report::start(&config_path) {
         match HidApi::new() { Ok(api) => report.inventory(&api), Err(e) => report.log(&format!("Inventaire HID indisponible : {e}")) }
     } else { let _ = tx.send(Event::Log("Rapport périphérique : création impossible".into())); }
+    let mut test_running = false;
+    let mut test_brightness_at: Option<Instant> = None;
     let mut wanted = false;
     let mut config = Config::default();
     let mut revision = 0;
@@ -65,7 +70,42 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
         let mut brightness = None;
         loop {
             match rx.try_recv() {
+                Ok(Command::TestStart) => {
+                    if let Some(d) = &deck {
+                        test_running = true;
+                        test_brightness_at = None;
+                        let result = (|| -> Result<()> {
+                            let font = crate::key_render::font()?;
+                            for idx in 0..d.driver.model().keys as usize {
+                                let mut key = crate::model::Key::default();
+                                key.label = (idx+1).to_string();
+                                key.title_size = 46;
+                                key.color = [20, 56, 90];
+                                key.background = true;
+                                let image = crate::key_render::jpeg(&key, d.driver.model().image_w.max(60) as u32, &font)?;
+                                d.set_key_image(idx, &image, frame_end())?;
+                            }
+                            Ok(())
+                        })();
+                        match result {
+                            Ok(()) => { let _=tx.send(Event::HardwareTestStatus("Images numérotées : OK. Appuie sur les touches dans l’ordre.".into())); },
+                            Err(e) => { test_running=false; update=true; let _=tx.send(Event::HardwareTestStatus(format!("Images numérotées : ÉCHEC — {e}"))); }
+                        }
+                    } else { let _=tx.send(Event::HardwareTestStatus("ÉCHEC : périphérique non connecté".into())); }
+                }
+                Ok(Command::TestBrightness) => {
+                    if test_running {
+                        if let Some(d)=&deck {
+                            match d.set_brightness(30) {
+                                Ok(()) => { test_brightness_at=Some(Instant::now()); let _=tx.send(Event::HardwareTestStatus("Luminosité 30 % : commande OK".into())); },
+                                Err(e) => { let _=tx.send(Event::HardwareTestStatus(format!("ÉCHEC luminosité 30 % : {e}"))); }
+                            }
+                        }
+                    }
+                }
+                Ok(Command::TestStop) => { if test_running { test_running=false; test_brightness_at=None; update=true; let _=tx.send(Event::HardwareTestStatus("Test arrêté ; affichage normal restauré".into())); } }
                 Ok(Command::Connect(c, r)) => {
+                    test_running = false;
                     config = c;
                     revision = r;
                     wanted = true;
@@ -75,12 +115,13 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                 Ok(Command::Update(c, r)) => {
                     config = c;
                     revision = r;
-                    update = true;
+                    update = !test_running;
                 }
                 Ok(Command::Brightness(value)) => brightness = Some(value.min(100)),
                 Ok(Command::KeyImage(index,jpeg)) => { if index<32 && jpeg.len()<=100_000 {key_images[index]=Some(jpeg);} },
                 Ok(Command::Disconnect) => {
                     wanted = false;
+                    test_running = false;
                     deck = None;
                     key_images.fill(None);
                     let _ = tx.send(Event::Device(false, "Périphérique déconnecté de DeckForge".into()));
@@ -127,7 +168,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
             animation_generation = animation_generation.wrapping_add(1);
         }
         if let Some(d) = &deck {
-            if update {
+            if update && !test_running {
                 match d.apply(&config) {
                     Ok(warnings) => {
                         let _ = tx.send(Event::Device(
@@ -154,7 +195,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                 }
             }
             if failed.is_none() {
-                if let Some(value) = brightness {
+                if let Some(value) = brightness.filter(|_| !test_running) {
                     if let Err(e) = d.set_brightness(value) {
                         failed = Some(e.to_string());
                     }
@@ -165,6 +206,17 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                     animations = rendered;
                     next_frame = [1; 15];
                     due = [Instant::now(); 15];
+                }
+            }
+            if failed.is_none() && test_running {
+                if let Some(at) = test_brightness_at {
+                    if at.elapsed() >= Duration::from_millis(900) {
+                        match d.set_brightness(100) {
+                            Ok(()) => { let _=tx.send(Event::HardwareTestStatus("Luminosité 30 % / 100 % : commandes OK (effet visuel à confirmer)".into())); },
+                            Err(e) => failed=Some(format!("Test luminosité 100 % : {e}")),
+                        }
+                        test_brightness_at=None;
+                    }
                 }
             }
             if failed.is_none() && beat.elapsed() >= Duration::from_secs(8) {
@@ -185,11 +237,16 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                         if d.driver.model().id == "elgato_plus" && data.get(1).is_some_and(|tag| *tag == 2 || *tag == 3) {
                             d.note(&format!("Stream Deck Plus : écran/molette ignoré (type {})", data[1]));
                         }
+                        if test_running && !data.starts_with(b"ACK") && !data.starts_with(b"\0ACK") { d.note(&format!("Test entrée brute : {}", report::hex(&data[..n]))); }
                         for event in d.decode_input(&data[..n]) {
                             match event {
                                 InputEvent::Key(mut k, down) if k < d.driver.model().keys as usize && k < config.keys().len() => {
                                     if config.flip_input_rows && d.driver.model().id == "fifine_d6" { k = display_index(k); }
-                                    if down {
+                                    if down && test_running {
+                                        d.note(&format!("Test appui : brut={} ; index décodé={}", report::hex(&data[..n]), k+1));
+                                        let _=tx.send(Event::HardwareTestPress(report::hex(&data[..n]), k));
+                                    } else if test_running { /* Relâchement ignoré pendant le test. */
+                                    } else if down {
                                         if last_press[k].elapsed() >= Duration::from_millis(150) {
                                             last_press[k] = Instant::now();
                                             let _ = tx.send(Event::Key(k, Instant::now()));
@@ -206,7 +263,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                 }
             }
             // Pending runtime faces are replayed after a complete apply, never interleaved.
-            if failed.is_none() && !update {
+            if failed.is_none() && !update && !test_running {
                 if let Some(index) = key_images.iter().position(Option::is_some) {
                     if let Some(jpeg) = key_images[index].take() {
                         if let Err(e)=d.set_key_image(index,&jpeg,frame_end()) { failed=Some(e.to_string()); }
@@ -217,7 +274,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
             let now = Instant::now();
             let lengths = std::array::from_fn(|i| animations.get(i).map_or(0, Vec::len));
             if let Some(index) = next_animation_frame(now, update || failed.is_some(),
-                config.d6_animations, config.animation_fps, &lengths, &due,
+                config.d6_animations && !test_running, config.animation_fps, &lengths, &due,
                 &last_per_key, last_frame, cursor) {
                 let frames = &animations[index];
                 let frame = &frames[next_frame[index] % frames.len()];
@@ -237,6 +294,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
             std::thread::sleep(Duration::from_millis(50));
         }
         if let Some(error) = failed {
+            if test_running { let _=tx.send(Event::HardwareTestStatus(format!("ÉCHEC périphérique : {error}"))); test_running=false; test_brightness_at=None; }
             if let Some(d) = &deck { d.note(&format!("Connexion interrompue : {error}")); }
             deck = None;
             let _ = tx.send(Event::Device(

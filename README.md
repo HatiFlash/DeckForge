@@ -8,6 +8,12 @@ Application Rust indépendante pour le FIFINE AmpliGame D6 (USB 3142:0060) : mac
 
 Pour connecter Claude Desktop, Claude Code, Codex CLI ou Cursor sans éditer de fichier : bouton **IA** dans la barre → **Connecter une IA**. Voir [le guide MCP](docs/MCP.md).
 
+## Périphériques pris en charge
+
+- Vérifié sur matériel : FIFINE AmpliGame D6 (15 touches).
+- Expérimental, non vérifié sur matériel : modèles Mirabox / AJAZZ et Elgato Stream Deck répertoriés dans le catalogue HID ; compatibilité variable selon le modèle et le protocole.
+- Pour participer à la validation : [guide de test des périphériques](docs/TEST-PERIPHERIQUES.md) ; Réglages → Tester mon périphérique… et envoyer le rapport généré.
+
 ## Nouveautés 0.5.1
 
 - **Inspecteur complet** : onglets Action / Apparence / Avancé, grand aperçu de la touche, mise en page sûre à 125 % et 150 % (petits écrans compris).

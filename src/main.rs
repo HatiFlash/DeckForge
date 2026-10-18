@@ -61,6 +61,8 @@ pub enum Event {
     Key(usize, std::time::Instant),
     KeyRelease(usize, std::time::Instant),
     Device(bool, String),
+    HardwareTestPress(String, usize),
+    HardwareTestStatus(String),
     DeviceModel { name: String, keys: u8, rows: u8, cols: u8, experimental: bool },
     Applied(u64),
     Profile(String),
