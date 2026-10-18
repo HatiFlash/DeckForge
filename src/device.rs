@@ -50,7 +50,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
     let mut deck: Option<Deck> = None;
     let mut retry = Instant::now();
     let mut beat = Instant::now();
-    let mut last_press = [Instant::now() - Duration::from_secs(1); 15];
+    let mut last_press = [Instant::now() - Duration::from_secs(1); 32];
     let (animation_tx, animation_rx) = mpsc::channel::<(u64, Vec<Vec<crate::key_render::AnimatedFrame>>)>() ;
     let mut animation_generation = 0u64;
     let mut animations: Vec<Vec<crate::key_render::AnimatedFrame>> = Vec::new();
@@ -59,7 +59,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
     let mut last_frame = Instant::now() - Duration::from_secs(1);
     let mut last_per_key = [Instant::now() - Duration::from_secs(1); 15];
     let mut cursor = 0usize;
-    let mut key_images: [Option<Vec<u8>>;15] = std::array::from_fn(|_|None);
+    let mut key_images: [Option<Vec<u8>>;32] = std::array::from_fn(|_|None);
     loop {
         let mut update = false;
         let mut brightness = None;
@@ -78,7 +78,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                     update = true;
                 }
                 Ok(Command::Brightness(value)) => brightness = Some(value.min(100)),
-                Ok(Command::KeyImage(index,jpeg)) => { if index<15 && jpeg.len()<=100_000 {key_images[index]=Some(jpeg);} },
+                Ok(Command::KeyImage(index,jpeg)) => { if index<32 && jpeg.len()<=100_000 {key_images[index]=Some(jpeg);} },
                 Ok(Command::Disconnect) => {
                     wanted = false;
                     deck = None;
@@ -187,7 +187,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                         }
                         for event in d.decode_input(&data[..n]) {
                             match event {
-                                InputEvent::Key(mut k, down) if k < 15 => {
+                                InputEvent::Key(mut k, down) if k < d.driver.model().keys as usize && k < config.keys().len() => {
                                     if config.flip_input_rows && d.driver.model().id == "fifine_d6" { k = display_index(k); }
                                     if down {
                                         if last_press[k].elapsed() >= Duration::from_millis(150) {

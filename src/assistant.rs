@@ -75,17 +75,18 @@ pub fn position(c: &Config, a: &Value) -> Result<(usize, String, usize), String>
     Ok((profile, p.page, key))
 }
 fn locate(c: &Config, name: &str, page: &str, key: usize) -> Result<(usize, usize), String> {
-    if !(1..=15).contains(&key) {
-        return Err("La touche doit être comprise entre 1 et 15".into());
+    if !(1..=32).contains(&key) {
+        return Err("La touche doit être comprise entre 1 et 32".into());
     }
     let p = c
         .profiles
         .iter()
         .position(|p| p.name == name)
         .ok_or("Profil introuvable")?;
-    if c.profiles[p].keys_at(page).is_none() {
+    let Some(keys) = c.profiles[p].keys_at(page) else {
         return Err("Page ou dossier introuvable".into());
-    }
+    };
+    if key > keys.len() { return Err(format!("Cette page contient {} touches", keys.len())); }
     Ok((p, key - 1))
 }
 impl Proposals {

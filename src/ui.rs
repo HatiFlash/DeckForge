@@ -100,6 +100,25 @@ impl SleepState {
     }
 }
 
+#[derive(Clone)]
+struct DeviceGrid { name: String, keys: usize, rows: usize, cols: usize, experimental: bool }
+impl Default for DeviceGrid {
+    fn default() -> Self { Self { name: "Aucun périphérique".into(), keys: 15, rows: 3, cols: 5, experimental: false } }
+}
+impl DeviceGrid {
+    fn new(name: String, keys: u8, rows: u8, cols: u8, experimental: bool) -> Option<Self> {
+        let (keys, rows, cols) = (keys as usize, rows as usize, cols as usize);
+        (keys > 0 && keys <= 32 && rows > 0 && cols > 0 && rows * cols == keys)
+            .then_some(Self { name, keys, rows, cols, experimental })
+    }
+    fn total_width(&self, width: f32) -> f32 { width * self.cols as f32 + 14.0 * (self.cols - 1) as f32 + 48.0 }
+    fn total_height(&self, width: f32) -> f32 { width * self.rows as f32 + 14.0 * (self.rows - 1) as f32 + 68.0 }
+    fn key_width(&self, available_width: f32, available_height: f32) -> f32 {
+        ((available_width - 48.0 - 14.0 * (self.cols - 1) as f32) / self.cols as f32)
+            .min((available_height - 68.0) / self.rows as f32 - 14.0 * (self.rows - 1) as f32 / self.rows as f32)
+            .floor().clamp(40.0, 320.0)
+    }
+}
 pub struct App {
     config: Config,
     applied: Config,
@@ -111,7 +130,8 @@ pub struct App {
     events: Receiver<Event>,
     state_monitor: Sender<crate::state_display::Command>,
     state_generation: u64,
-    state_values: [Option<bool>; 15],
+    state_values: [Option<bool>; 32],
+    device_model: Option<DeviceGrid>,
     gate: InputGate,
     long_press: LongPress,
     long_editor: bool,
@@ -300,12 +320,12 @@ impl App {
             engine,
             device,
             events,
-            state_monitor, state_generation: 0, state_values: [None; 15],
+            state_monitor, state_generation: 0, state_values: [None; 32], device_model: None,
             gate,
             long_press: LongPress::default(),
             long_editor: false,
             wanted: false,
-            status: "D6 non connecté".into(),
+            status: "Aucun périphérique".into(),
             logs: VecDeque::new(),
             started: Instant::now(),
             last_edit: Instant::now(),
@@ -418,7 +438,7 @@ impl App {
     }
     fn sync_state_display(&mut self) {
         self.state_generation = self.state_generation.wrapping_add(1);
-        self.state_values = [None; 15];
+        self.state_values = [None; 32];
         let _ = self.state_monitor.send(crate::state_display::Command::Page(
             self.state_generation, self.config.keys().clone()));
     }
@@ -430,7 +450,7 @@ impl App {
     }
     fn send_state_face(&self, index: usize) {
         if !self.wanted || !self.gate.connected || self.gate.dirty || self.pending.is_some()
-            || self.sleep.sleeping || index >= 15 { return; }
+            || self.sleep.sleeping || index >= self.device_keys() || index >= self.applied.keys().len() { return; }
         let key = self.state_key(index, self.applied.keys()[index].clone());
         if let Ok(font) = crate::key_render::font() {
             if let Ok(jpeg) = crate::key_render::for_plugin(&key, self.applied.image_size, &font, None, None) {
@@ -531,6 +551,15 @@ impl App {
         }
         self.engine.start(key, dry, if delayed { 3000 } else { 0 }, config.obs.clone());
     }
+    fn grid(&self) -> DeviceGrid {
+        self.device_model.clone().unwrap_or_else(DeviceGrid::default)
+    }
+    fn device_keys(&self) -> usize { self.grid().keys }
+    fn device_label(&self) -> String {
+        self.device_model.as_ref().map_or_else(|| "Aucun périphérique".into(), |d| {
+            format!("{} · {} touches{}", d.name, d.keys, if d.experimental { " · expérimental" } else { "" })
+        })
+    }
     fn preview(&mut self, dry: bool) {
         let mut key = self.config.keys()[self.selected].clone();
         key.runtime_id = Some(crate::engine::identity(&self.config.profiles[self.config.active].name, &self.config.page, self.selected));
@@ -620,7 +649,8 @@ impl App {
                 }
                 Event::Hotkey(index, at) => {
                     if self.engine.allows_global_press(at)
-                        && index < 15
+                        && index < self.device_keys()
+                        && index < self.applied.keys().len()
                         && at.elapsed() < Duration::from_millis(500)
                         && self.gate.enabled
                         && !self.trigger_recording
@@ -635,6 +665,15 @@ impl App {
                     }
                 }
                 Event::DeviceModel { name, keys, rows, cols, experimental } => {
+                    if let Some(grid) = DeviceGrid::new(name.clone(), keys, rows, cols, experimental) {
+                        crate::model::extend_for_device(&mut self.config, grid.keys);
+                        crate::model::extend_for_device(&mut self.applied, grid.keys);
+                        self.selected = self.selected.min(grid.keys - 1);
+                        self.device_model = Some(grid);
+                        self.sync_state_display();
+                    } else {
+                        self.fail(format!("Grille HID invalide : {name}, {keys} touches ({rows} × {cols})"));
+                    }
                     self.log(format!("Modèle HID détecté : {name} · {keys} touches ({rows} × {cols}){}",
                         if experimental { " · EXPÉRIMENTAL, non vérifié sur matériel" } else { " · vérifié" }));
                 }
@@ -644,6 +683,8 @@ impl App {
                     }
                     self.status = message;
                     if !connected {
+                        self.device_model = None;
+                        self.selected = self.selected.min(14);
                         self.long_press.clear();
                         self.gate.disconnect();
                         self.engine.stop();
@@ -657,7 +698,7 @@ impl App {
                         if let Some((r, c)) = self.pending.take() {
                             if r == revision {
                                 self.applied = c;
-                                for index in 0..15 { if self.state_values[index].is_some() { self.send_state_face(index); } }
+                                for index in 0..self.device_keys() { if self.state_values[index].is_some() { self.send_state_face(index); } }
                                 if let Some(plugins)=&mut self.plugins { plugins.sync(&self.applied); }
                                 if self.sleep.sleeping {
                                     let _ = self.device.send(Command::Brightness(self.config.sleep_brightness));
@@ -689,7 +730,7 @@ impl App {
                             self.log(format!("Touche {:02} : {reason}", index + 1))
                         }
                         Decision::Execute => {
-                            if index < 15 && self.applied.keys()[index].plugin.is_some() { if let Some(plugins)=&self.plugins { plugins.key(index,true); } }
+                            if index < self.device_keys() && index < self.applied.keys().len() && self.applied.keys()[index].plugin.is_some() { if let Some(plugins)=&self.plugins { plugins.key(index,true); } }
                             let has_long = !self.applied.keys()[index].long_steps.is_empty();
                             if self.long_press.press(index, at, has_long) {
                                 self.execute_physical(index, false);
@@ -698,7 +739,7 @@ impl App {
                     }
                 }
                 Event::KeyRelease(index, at) => {
-                    if index < 15 {
+                    if index < self.device_keys() && index < self.applied.keys().len() {
                         if self.gate.decision()==Decision::Execute && self.applied.keys()[index].plugin.is_some() { if let Some(plugins)=&self.plugins { plugins.key(index,false); } }
                         if let Some(long) = self.long_press.release(index, at, self.applied.long_press_ms) {
                             self.execute_physical(index, long);
@@ -982,6 +1023,12 @@ impl App {
     ) -> Result<serde_json::Value, String> {
         use serde_json::json;
         let tools = crate::mcp_protocol::tools();
+        if matches!(name, "deckforge_configure_key" | "deckforge_simulate_macro" | "deckforge_request_run") {
+            let key = args["key"].as_u64().ok_or("Numéro de touche requis")?;
+            if key == 0 || key > self.device_keys() as u64 {
+                return Err(format!("Touche hors grille : 1 à {} pour le modèle actif", self.device_keys()));
+            }
+        }
         let schema = tools["tools"]
             .as_array()
             .unwrap()
@@ -1486,16 +1533,16 @@ impl App {
                     ui.painter().text(
                         card_r.center() + Vec2::new(0.0, 8.0),
                         egui::Align2::CENTER_CENTER,
-                        "D6",
+                        "Deck",
                         egui::FontId::proportional(10.0),
                         p.ink,
                     );
-                    card_resp.on_hover_text(format!("FIFINE D6 · 15 touches · {status_label}"));
+                    card_resp.on_hover_text(format!("{} · {status_label}", self.device_label()));
                 } else {
                     ui.painter().text(
                         card_r.min + Vec2::new(12.0, 10.0),
                         egui::Align2::LEFT_TOP,
-                        "FIFINE D6 · 15 touches",
+                        self.device_label(),
                         egui::FontId::proportional(11.0),
                         p.ink,
                     );
@@ -1526,18 +1573,12 @@ impl App {
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing.y = 0.0;
                         ui.label(RichText::new("DeckForge").size(18.0).strong());
-                        ui.label(RichText::new("FIFINE D6").size(10.0).color(p.muted));
+                        ui.label(RichText::new(self.device_label()).size(10.0).color(p.muted));
                     });
                     ui.add_space(8.0);
                     theme::status_badge(
                         ui,
-                        if self.gate.connected {
-                            "D6 connecté"
-                        } else if self.wanted {
-                            "D6 en attente"
-                        } else {
-                            "D6 déconnecté"
-                        },
+                        if self.gate.connected { "Connecté" } else { "Aucun périphérique" },
                         if self.gate.connected {
                             GREEN
                         } else if self.wanted {
@@ -1748,8 +1789,8 @@ impl App {
             DragItem::Position(profile, origin, from)
                 if profile == active
                     && origin == page
-                    && from < 15
-                    && target < 15
+                    && from < self.device_keys()
+                    && target < self.device_keys()
                     && from != target =>
             {
                 self.config.keys_mut().swap(from, target);
@@ -1833,7 +1874,7 @@ impl App {
     fn copy_key(&mut self) { self.clipboard = Some(self.config.keys()[self.selected].clone()); self.log("Touche copiée.".into()); }
     fn paste_key(&mut self, target: usize) { if let Some(key) = self.clipboard.clone() { self.assign(DragItem::Bind(key), target); } }
     fn duplicate_key(&mut self, from: usize) {
-        let Some(target) = ((from+1)..15).find(|&i| Self::empty_key(&self.config.keys()[i])) else { self.log("Aucune touche vide après celle-ci sur cette page.".into()); return; };
+        let Some(target) = ((from+1)..self.device_keys()).find(|&i| Self::empty_key(&self.config.keys()[i])) else { self.log("Aucune touche vide après celle-ci sur cette page.".into()); return; };
         self.assign(DragItem::Bind(self.config.keys()[from].clone()), target);
     }
     fn empty_key(key: &Key) -> bool { key.label.is_empty() && key.image.is_empty() && key.steps.is_empty() }
@@ -2725,6 +2766,7 @@ impl App {
 
     fn deck(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
+        let grid = self.grid();
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(p.bg).inner_margin(18))
             .show(ctx, |ui| {
@@ -2849,6 +2891,9 @@ impl App {
                         .join("  ›  ");
                     ui.label(RichText::new(path).small().color(p.muted));
                 }
+                if grid.keys < self.config.keys().len() {
+                    ui.label(RichText::new(format!("{} touches supplémentaires conservées, masquées sur ce périphérique", self.config.keys().len() - grid.keys)).small().color(p.muted));
+                }
                 ui.add_space(if ctx.screen_rect().height() < 600.0 { 2.0 } else { 7.0 });
                 if ctx.screen_rect().width() >= 1200.0 {
                     ui.label(
@@ -2861,20 +2906,16 @@ impl App {
                 }
                 {
                     // Le pavé suit la taille de la fenêtre : il occupe tout l'espace disponible, sans barre de défilement.
-                    // Largeur : 5 touches + 4 espacements (56) + marges (48). Hauteur : 3 touches + 2 espacements (28) + marges (68) + 4 px de sécurité.
-                    let width = ((ui.available_width() - 104.0) / 5.0)
-                        .min((ui.available_height() - 100.0) / 3.0)
-                        .floor()
-                        .clamp(40.0, 320.0);
+                    let width = grid.key_width(ui.available_width(), ui.available_height());
                     if self.flicker.as_ref().is_some_and(|session| session.active()) {
                         self.diagnostic_key_width = width;
                     }
-                    let total = width * 5.0 + 56.0 + 48.0;
+                    let total = grid.total_width(width);
                     ui.horizontal(|ui| {
                         ui.add_space(((ui.available_width() - total) / 2.0).max(0.0));
                         let body = egui::Rect::from_min_size(
                             ui.cursor().min,
-                            Vec2::new(total, width * 3.0 + 28.0 + 68.0),
+                            Vec2::new(total, grid.total_height(width)),
                         );
                         theme::device_shell(ui.painter(), body);
                         let device = egui::Frame::new()
@@ -2897,7 +2938,7 @@ impl App {
                                 egui::Grid::new("deck_grid_v3")
                                     .spacing([14.0, 14.0])
                                     .show(ui, |ui| {
-                                        for i in 0..15 {
+                                        for i in 0..grid.keys {
                                             let mut key = self.presented_key(i);
                                             let face = self.plugin_face(i).cloned();
                                             if let Some(face) = &face {
@@ -3066,7 +3107,7 @@ impl App {
                                                 i + 1,
                                                 key.label
                                             ));
-                                            if i % 5 == 4 {
+                                            if i % grid.cols == grid.cols - 1 {
                                                 ui.end_row();
                                             }
                                         }
@@ -3083,7 +3124,7 @@ impl App {
                         ui.painter().text(
                             edge.center_bottom() - Vec2::new(0.0, 13.0),
                             egui::Align2::CENTER_CENTER,
-                            "D E C K F O R G E    /    D 6",
+                            "D E C K F O R G E",
                             egui::FontId::proportional(8.0),
                             Color32::from_rgb(118, 127, 146),
                         );
@@ -3549,6 +3590,7 @@ impl App {
         }
         self.drag_sources.clear();
         self.drop_targets.clear();
+        self.selected = self.selected.min(self.device_keys() - 1);
         self.shortcuts(ctx);
         self.frames += 1;
         self.key_previews.begin_frame();

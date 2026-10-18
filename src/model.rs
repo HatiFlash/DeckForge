@@ -500,6 +500,16 @@ pub struct Page {
     pub folder: bool,
     pub keys: Vec<Key>,
 }
+/// Les pages gardent leur contenu lors d'un changement de périphérique.
+pub fn extend_for_device(config: &mut Config, count: usize) {
+    let count = count.clamp(1, 32);
+    for profile in &mut config.profiles {
+        if profile.keys.len() < count { profile.keys.resize_with(count, Key::default); }
+        for page in &mut profile.pages {
+            if page.keys.len() < count { page.keys.resize_with(count, Key::default); }
+        }
+    }
+}
 impl Page {
     pub fn new(id: String, name: String, folder: bool) -> Self {
         let mut keys = vec![Key::default(); 15];
@@ -746,8 +756,8 @@ impl Config {
                 }
             }
             for keys in std::iter::once(&p.keys).chain(p.pages.iter().map(|page| &page.keys)) {
-                if keys.len() != 15 {
-                    bail!("Chaque page doit contenir 15 touches");
+                if !(1..=32).contains(&keys.len()) {
+                    bail!("Chaque page doit contenir entre 1 et 32 touches");
                 }
                 for key in keys {
                     validate_key_in_profile(key, self, p)?;
@@ -1186,6 +1196,31 @@ fn validate_tree(steps: &[Step], depth: usize, total: &mut usize) -> Result<()> 
     Ok(())
 }
 
+#[cfg(test)]
+mod device_page_tests {
+    use super::*;
+    #[test]
+    fn legacy_pages_survive_expansion_and_smaller_devices() {
+        let mut c = Config::default();
+        let original = serde_json::to_value(&c).unwrap();
+        assert_eq!(c.keys().len(), 15);
+        c.validate_structure().unwrap();
+        extend_for_device(&mut c, 6);
+        assert_eq!(serde_json::to_value(&c).unwrap(), original);
+        c.keys_mut()[14].label = "Conservée".into();
+        extend_for_device(&mut c, 32);
+        assert_eq!(c.keys().len(), 32);
+        assert_eq!(c.keys()[14].label, "Conservée");
+        assert!(c.keys()[31].steps.is_empty());
+        c.validate_structure().unwrap();
+        let roundtrip: Config = serde_json::from_value(serde_json::to_value(&c).unwrap()).unwrap();
+        assert_eq!(roundtrip.keys().len(), 32);
+        c.keys_mut().push(Key::default());
+        assert!(c.validate_structure().is_err());
+        c.keys_mut().clear();
+        assert!(c.validate_structure().is_err());
+    }
+}
 #[cfg(test)]
 mod window_op_tests {
     use super::*;

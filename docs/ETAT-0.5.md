@@ -1,5 +1,9 @@
 # DeckForge 0.5 (développement) — état au 17 octobre 2026
 
+## M5 — Grille dynamique (code livré)
+
+Mini 2×3, D6 5×3 et XL 8×4 : pavé et aperçu des touches visibles selon le modèle HID détecté. Les 15 touches historiques restent inchangées et conservées quand un modèle plus petit est connecté ; XL étend les pages jusqu’à 32 touches. MCP : indices limités à la grille active (15 hors connexion). Grilles alternatives expérimentales, non vérifiées sur matériel ; à tester avec Hatim et ses collègues. Tests purs, rendu egui hors écran et build Windows complet réalisés.
+
 Point de reprise après la session Claude du 17/10/2026. Version de travail : branche `claude/0.5`, commit de fusion `45d73e1` (+ ce document). Construite et vérifiée par `tools/Build-Windows.ps1 -Action All` : 162 tests application + 6 tests MCP, contrôles MCP stdio/HTTP, aucun avertissement de compilation, Clippy ≤ 30. **Pas encore validée sur le D6 dans sa forme fusionnée.**
 
 Exécutables prêts sur le PC fixe : `Bureau\DeckForge-0.5-fusion\DeckForge.exe` (+ `deckforge-mcp.exe`, config, assets, `plugins\`). Version d'essai plugins seule : `Bureau\DeckForge-plugins-test`.

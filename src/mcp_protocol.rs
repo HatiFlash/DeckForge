@@ -4,7 +4,7 @@ pub const MAX_FRAME: usize = 2_000_000;
 
 pub fn tools() -> Value {
     let profile = json!({"type":"string","minLength":1,"maxLength":128});
-    let position = json!({"type":"integer","minimum":1,"maximum":15});
+    let position = json!({"type":"integer","minimum":1,"maximum":32,"description":"La limite effective est le nombre de touches du périphérique actif (15 sans périphérique)"});
     let mut step_schema = json!({"oneOf":[
         {"type":"object","properties":{"type":{"const":"delay"},"ms":{"type":"integer","minimum":0,"maximum":3600000}},"required":["type","ms"],"additionalProperties":false},
         {"type":"object","properties":{"type":{"const":"hotkey"},"keys":{"type":"string"}},"required":["type","keys"],"additionalProperties":false},
@@ -76,7 +76,7 @@ pub fn tools() -> Value {
         tool("deckforge_get_state","Read connection state and current profiles. Available only when Assistant IA is enabled.",json!({"type":"object","properties":{},"additionalProperties":false}),true),
         tool("deckforge_get_profile","Read one profile including its key bindings.",json!({"type":"object","properties":{"profile":profile},"required":["profile"],"additionalProperties":false}),true),
         tool("deckforge_create_profile","Propose a new empty profile. Requires approval in DeckForge; never overwrites an existing profile.",json!({"type":"object","properties":{"name":profile},"required":["name"],"additionalProperties":false}),false),
-        tool("deckforge_configure_key","Propose a complete binding for a key. The user must review and apply it in DeckForge. Key positions are 1 through 15, top to bottom, left to right. No arbitrary shell API is exposed; a launch step runs a configured program only after approval and a later user action.",json!({"type":"object","properties":{"profile":profile,"page":{"type":"string","maxLength":160},"key":position,"label":{"type":"string","maxLength":128},"background":{"type":"boolean","description":"true uses the saved RGB color; false uses a black LCD background while preserving the color"},"color":{"type":"array","items":{"type":"integer","minimum":0,"maximum":255},"minItems":3,"maxItems":3},"repeat":{"type":"integer","minimum":1,"maximum":1000},"run_mode":{"enum":["ignore","restart","queue"]},"debounce_ms":{"type":"integer","minimum":0,"maximum":60000,"default":0},"icon_scale":{"type":"integer","minimum":20,"maximum":200},"state_display":{"type":"object","properties":{"condition":{"$ref":"#/$defs/condition"},"on":{"$ref":"#/$defs/state_face"},"off":{"$ref":"#/$defs/state_face"},"poll_ms":{"type":"integer","minimum":250,"maximum":600000,"default":1000}},"additionalProperties":false},"plugin":{"type":"object","properties":{"plugin":{"type":"string","minLength":1},"action":{"type":"string","minLength":1},"settings":{},"state":{"type":"integer","minimum":0,"maximum":255}},"required":["plugin","action"],"additionalProperties":false},"steps":{"type":"array","items":step_schema.clone(),"maxItems":256},"long_steps":{"type":"array","items":step_schema,"maxItems":256}},"required":["profile","key","label","steps"],"additionalProperties":false}),false),
+        tool("deckforge_configure_key","Propose a complete binding for a key. The user must review and apply it in DeckForge. Key positions are 1 through the connected device key count (15 by default), top to bottom, left to right. No arbitrary shell API is exposed; a launch step runs a configured program only after approval and a later user action.",json!({"type":"object","properties":{"profile":profile,"page":{"type":"string","maxLength":160},"key":position,"label":{"type":"string","maxLength":128},"background":{"type":"boolean","description":"true uses the saved RGB color; false uses a black LCD background while preserving the color"},"color":{"type":"array","items":{"type":"integer","minimum":0,"maximum":255},"minItems":3,"maxItems":3},"repeat":{"type":"integer","minimum":1,"maximum":1000},"run_mode":{"enum":["ignore","restart","queue"]},"debounce_ms":{"type":"integer","minimum":0,"maximum":60000,"default":0},"icon_scale":{"type":"integer","minimum":20,"maximum":200},"state_display":{"type":"object","properties":{"condition":{"$ref":"#/$defs/condition"},"on":{"$ref":"#/$defs/state_face"},"off":{"$ref":"#/$defs/state_face"},"poll_ms":{"type":"integer","minimum":250,"maximum":600000,"default":1000}},"additionalProperties":false},"plugin":{"type":"object","properties":{"plugin":{"type":"string","minLength":1},"action":{"type":"string","minLength":1},"settings":{},"state":{"type":"integer","minimum":0,"maximum":255}},"required":["plugin","action"],"additionalProperties":false},"steps":{"type":"array","items":step_schema.clone(),"maxItems":256},"long_steps":{"type":"array","items":step_schema,"maxItems":256}},"required":["profile","key","label","steps"],"additionalProperties":false}),false),
         tool("deckforge_simulate_macro","Simulate one iteration without keyboard, application, timing or profile side effects. Does not require approval.",key_args.clone(),true),
         tool("deckforge_request_run","Ask the user in DeckForge to execute an already configured macro. Returns a proposal id; it does not execute until approved. Approval starts a 3-second delay.",key_args,false),
         tool("deckforge_stop_macro","Immediately cancel the current macro and pause physical keys.",json!({"type":"object","properties":{},"additionalProperties":false}),false),
@@ -121,6 +121,14 @@ pub fn tool_result(result: Result<Value, String>) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn device_key_schema_allows_xl_but_runtime_checks_active_model() {
+        let list = tools();
+        for name in ["deckforge_configure_key", "deckforge_simulate_macro", "deckforge_request_run"] {
+            let tool = list["tools"].as_array().unwrap().iter().find(|t| t["name"] == name).unwrap();
+            assert_eq!(tool["inputSchema"]["properties"]["key"]["maximum"], 32);
+        }
+    }
     #[test]
     fn tools_have_strict_structured_inputs() {
         for tool in tools()["tools"].as_array().unwrap() {

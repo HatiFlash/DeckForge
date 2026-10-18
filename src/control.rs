@@ -1,8 +1,8 @@
 /// State for long actions. Releases may be absent; the deadline always completes the hold.
 #[derive(Default, Debug)]
 pub struct LongPress {
-    pending: [Option<std::time::Instant>; 15],
-    held: [bool; 15],
+    pending: [Option<std::time::Instant>; 32],
+    held: [bool; 32],
 }
 impl LongPress {
     pub fn clear(&mut self) { self.pending.fill(None); self.held.fill(false); }

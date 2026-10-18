@@ -2,6 +2,23 @@
 use super::*;
 use egui::{pos2, vec2, Event as Input, Modifiers, PointerButton, Rect};
 
+#[test]
+fn grids_render_without_overflow_or_touching_hardware() {
+    for (name, cols, rows, keys) in [("Mini", 3, 2, 6), ("D6", 5, 3, 15), ("XL", 8, 4, 32)] {
+        let mut h = Harness::new();
+        h.app.device_model = DeviceGrid::new(name.into(), keys, rows, cols, name != "D6");
+        crate::model::extend_for_device(&mut h.app.config, keys as usize);
+        let output = h.warm(vec2(1060.0, 720.0));
+        assert_eq!(h.app.drop_targets.len(), keys as usize, "{name}");
+        for (rect, index) in &h.app.drop_targets {
+            assert!(*index < keys as usize);
+            assert!(rect.left() >= 0.0 && rect.top() >= 0.0 && rect.right() <= 1060.0 && rect.bottom() <= 720.0, "{name}: {rect:?}");
+        }
+        assert!(!output.shapes.is_empty());
+        if keys == 6 { assert_eq!(h.app.config.keys().len(), 15); }
+        if keys == 32 { assert_eq!(h.app.config.keys().len(), 32); }
+    }
+}
 struct Harness {
     ctx: egui::Context,
     app: App,
