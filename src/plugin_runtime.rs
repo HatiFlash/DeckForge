@@ -41,19 +41,26 @@ pub(crate) fn event(name:&str,v:&Visible,device:&Device)->Value {
     if matches!(name,"willAppear"|"willDisappear"|"didReceiveSettings") {payload["controller"]=json!("Keypad");}
     json!({"event":name,"action":v.action,"context":v.context,"device":device.id,"payload":payload})
 }
-enum Request { Sync(HashMap<String,Visible>), Device(Device), Key(String,bool), Send(String,Value), Open(String), Stop }
+pub(crate) fn title_event(v:&Visible,device:&Device,title:&str)->Value {
+    json!({"event":"titleParametersDidChange","action":v.action,"context":v.context,"device":device.id,
+        "payload":{"title":title,"titleParameters":{"fontFamily":"","fontSize":14,"fontStyle":"Regular","fontUnderline":false,"showTitle":true,"titleAlignment":"middle","titleColor":"#ffffff"},"state":v.state,"coordinates":{"column":v.index%device.columns,"row":v.index/device.columns}}})
+}
+enum Request { Sync(HashMap<String,Visible>), Device(Device), Key(String,bool), Title(String,String), Send(String,Value), Open(String), Stop }
 pub enum Reply { Message(String,Value), Error(String,String) }
-pub struct Manager { tx:Sender<Request>,pub rx:Receiver<Reply>,visible:HashMap<String,Visible>,pub catalog:Vec<Plugin> }
+pub struct Manager { tx:Sender<Request>,pub rx:Receiver<Reply>,visible:HashMap<String,Visible>,titles:HashMap<String,String>,pub catalog:Vec<Plugin> }
 impl Manager {
     pub fn new(plugins:Vec<Plugin>)->Self {
         let (tx,requests)=mpsc::channel();let (reply,rx)=mpsc::channel();
         let catalog=plugins.clone();thread::spawn(move||run(plugins,requests,reply));
-        Self{tx,rx,visible:HashMap::new(),catalog}
+        Self{tx,rx,visible:HashMap::new(),titles:HashMap::new(),catalog}
     }
     pub fn device(&self,device:Device){let _=self.tx.send(Request::Device(device));}
     pub fn sync(&mut self, config:&Config) {
         let next=visible(config);
-        if next!=self.visible {self.visible=next.clone();let _=self.tx.send(Request::Sync(next));}
+        if next!=self.visible {self.visible=next.clone();let _=self.tx.send(Request::Sync(next.clone()));}
+        let titles=next.iter().map(|(id,v)|(id.clone(),config.keys()[v.index].label.clone())).collect::<HashMap<_,_>>();
+        for (id,title) in &titles {if self.titles.get(id)!=Some(title){let _=self.tx.send(Request::Title(id.clone(),title.clone()));}}
+        self.titles=titles;
     }
     pub fn key(&self,index:usize,down:bool) {
         if let Some(v)=self.visible.values().find(|v|v.index==index){let _=self.tx.send(Request::Key(v.context.clone(),down));}
@@ -65,7 +72,7 @@ impl Manager {
 }
 impl Drop for Manager {fn drop(&mut self){let _=self.tx.send(Request::Stop);}}
 fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
-    let mut hosts:HashMap<String,Host>=HashMap::new();let mut current=HashMap::new();
+    let mut hosts:HashMap<String,Host>=HashMap::new();let mut current:HashMap<String,Visible>=HashMap::new();
     let mut device=Device::virtual_device();
     let mut inspectors:HashMap<String,Visible>=HashMap::new();
     let mut idle:HashMap<String,Instant>=HashMap::new();
@@ -73,6 +80,7 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
     loop {
         match requests.recv_timeout(Duration::from_millis(50)) {
             Ok(Request::Stop)|Err(mpsc::RecvTimeoutError::Disconnected)=>break,
+            Ok(Request::Title(context,title))=>{if let Some(v)=current.get(&context){if let Some(host)=hosts.get(&v.plugin){let _=host.send(title_event(v,&device,&title));}}}
             Ok(Request::Device(next))=>{if next!=device {for host in hosts.values(){let _=host.send(device.event("deviceDidDisconnect"));let _=host.send(next.event("deviceDidConnect"));}device=next;}}
             Ok(Request::Sync(next))=>{
                 let (gone,added)=diff(&current,&next);
@@ -171,6 +179,13 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
         }
         assert_eq!(event("willAppear",&v,&d)["payload"]["controller"],"Keypad");
         assert_eq!(Device::virtual_device().info()["size"]["columns"],5);
+    }
+    #[test]fn configured_title_event(){
+        let v=Visible{context:"ctx".into(),plugin:"p".into(),action:"a".into(),index:7,settings:json!({}),state:1};
+        let msg=title_event(&v,&Device::virtual_device(),"Titre configuré");
+        assert_eq!(msg["event"],"titleParametersDidChange");
+        assert_eq!(msg["payload"]["title"],"Titre configuré");
+        assert_eq!(msg["payload"]["coordinates"],json!({"column":2,"row":1}));
     }
     #[test]fn event_coordinates(){let v=Visible{context:"ctx".into(),plugin:"p".into(),action:"a".into(),index:7,settings:json!({"x":1}),state:2};let message=event("keyDown",&v,&Device::virtual_device());assert_eq!(message["payload"]["coordinates"],json!({"column":2,"row":1}));assert_eq!(message["context"],"ctx");}
 }
