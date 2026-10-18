@@ -1,5 +1,11 @@
 # DeckForge 0.5 (développement) — état au 17 octobre 2026
 
+## Atelier minimaliste & assistant — B1 (phase 4)
+
+- Livré : moteur local déterministe et hors ligne (intention par synonymes, clauses, paramètres, propositions à compléter, validation par le modèle, explication, diagnostic et modèles du catalogue). Aucune exécution de macro ni insertion automatique ; l’interface/chat reste pour une autre phase.
+- Testé automatiquement : intentions et exemples obligatoires, ambiguïtés, diagnostics et build Windows complet.
+- À tester avec Hatim : formulations naturelles variées, terminologie OBS et UX de validation lorsque le futur chat sera intégré.
+
 ## Atelier minimaliste & assistant — A3 (phase 3)
 
 - Livré : barre compacte de simulation en bas de la séquence, journal fermé par défaut ; ouverture au premier événement d'un essai, étapes imbriquées cliquables et chronométrées, messages et bilan de l'exécution. « Simuler » passe par le moteur en mode sec ; « Tester pour de vrai » exige une confirmation explicite, sans exécution à l'ouverture. Les simulations n'émettent aucune action : les blocs sont court-circuités avant les opérations clavier, souris, audio, réseau, OBS, USB, fichiers et navigation ; les conditions peuvent consulter l'état local en lecture seule. Les branches des conditions et un seul tour de répétition sont explorés ; ce n'est pas une prévision fidèle du comportement réel. L'ancien aperçu statique reste limité aux tests de compatibilité.
