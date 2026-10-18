@@ -31,9 +31,12 @@ pub fn visible(config: &Config) -> HashMap<String, Visible> {
         Some((context.clone(),Visible{context,plugin:binding.plugin.clone(),action:binding.action.clone(),index,settings:binding.settings.clone(),state:binding.state}))
     }).collect()
 }
+fn same_instance(a:&Visible,b:&Visible)->bool {
+    a.context==b.context && a.plugin==b.plugin && a.action==b.action && a.index==b.index
+}
 pub fn diff(old:&HashMap<String,Visible>,new:&HashMap<String,Visible>) -> (Vec<Visible>,Vec<Visible>) {
-    let gone=old.iter().filter(|(id,v)|new.get(*id)!=Some(*v)).map(|(_,v)|v.clone()).collect();
-    let added=new.iter().filter(|(id,v)|old.get(*id)!=Some(*v)).map(|(_,v)|v.clone()).collect();
+    let gone=old.iter().filter(|(id,v)|!new.get(*id).is_some_and(|next|same_instance(v,next))).map(|(_,v)|v.clone()).collect();
+    let added=new.iter().filter(|(id,v)|!old.get(*id).is_some_and(|before|same_instance(before,v))).map(|(_,v)|v.clone()).collect();
     (gone,added)
 }
 pub(crate) fn event(name:&str,v:&Visible,device:&Device)->Value {
@@ -45,7 +48,25 @@ pub(crate) fn title_event(v:&Visible,device:&Device,title:&str)->Value {
     json!({"event":"titleParametersDidChange","action":v.action,"context":v.context,"device":device.id,
         "payload":{"controller":"Keypad","settings":v.settings,"resources":{},"title":title,"titleParameters":{"fontFamily":"","fontSize":14,"fontStyle":"Regular","fontUnderline":false,"showTitle":true,"titleAlignment":"middle","titleColor":"#ffffff"},"state":v.state,"coordinates":{"column":v.index%device.columns,"row":v.index/device.columns}}})
 }
-enum Request { Sync(HashMap<String,Visible>), Device(Device), Key(String,bool), Title(String,String), Send(String,Value), Open(String), Stop }
+fn settings_notifications(old:&HashMap<String,Visible>,new:&HashMap<String,Visible>,inspectors:&HashMap<String,Visible>,device:&Device,origin:Option<(&str,bool)>)->Vec<(String,Value)> {
+    let mut result=Vec::new();
+    for (context,v) in new {
+        if !old.get(context).is_some_and(|previous|same_instance(previous,v) && previous.settings!=v.settings){continue;}
+        let source=origin.filter(|(id,_)|*id==context).map(|(_,from_pi)|from_pi);
+        if source!=Some(false) {result.push((v.plugin.clone(),event("didReceiveSettings",v,device)));}
+        if source!=Some(true) {
+            for (id,inspector) in inspectors {
+                if same_instance(v,inspector) {
+                    let mut message=event("didReceiveSettings",v,device);
+                    message["__pi"]=json!(id);
+                    result.push((v.plugin.clone(),message));
+                }
+            }
+        }
+    }
+    result
+}
+enum Request { Sync(HashMap<String,Visible>,Option<(String,bool)>), Device(Device), Key(String,bool), Title(String,String), Send(String,Value), Open(String), Stop }
 pub enum Reply { Message(String,Value), Error(String,String) }
 pub struct Manager { tx:Sender<Request>,pub rx:Receiver<Reply>,visible:HashMap<String,Visible>,titles:HashMap<String,String>,pub catalog:Vec<Plugin> }
 impl Manager {
@@ -55,9 +76,11 @@ impl Manager {
         Self{tx,rx,visible:HashMap::new(),titles:HashMap::new(),catalog}
     }
     pub fn device(&self,device:Device){let _=self.tx.send(Request::Device(device));}
-    pub fn sync(&mut self, config:&Config) {
+    pub fn sync(&mut self, config:&Config) {self.sync_with_origin(config,None);}
+    pub fn sync_settings(&mut self,config:&Config,context:&str,from_pi:bool){self.sync_with_origin(config,Some((context.to_owned(),from_pi)));}
+    fn sync_with_origin(&mut self, config:&Config, origin:Option<(String,bool)>) {
         let next=visible(config);
-        if next!=self.visible {self.visible=next.clone();let _=self.tx.send(Request::Sync(next.clone()));}
+        if next!=self.visible {self.visible=next.clone();let _=self.tx.send(Request::Sync(next.clone(),origin));}
         let titles=next.iter().map(|(id,v)|(id.clone(),config.keys()[v.index].label.clone())).collect::<HashMap<_,_>>();
         for (id,title) in &titles {if self.titles.get(id)!=Some(title){let _=self.tx.send(Request::Title(id.clone(),title.clone()));}}
         self.titles=titles;
@@ -82,7 +105,8 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
             Ok(Request::Stop)|Err(mpsc::RecvTimeoutError::Disconnected)=>break,
             Ok(Request::Title(context,title))=>{if let Some(v)=current.get(&context){if let Some(host)=hosts.get(&v.plugin){let _=host.send(title_event(v,&device,&title));}}}
             Ok(Request::Device(next))=>{if next!=device {for host in hosts.values(){let _=host.send(device.event("deviceDidDisconnect"));let _=host.send(next.event("deviceDidConnect"));}device=next;}}
-            Ok(Request::Sync(next))=>{
+            Ok(Request::Sync(next,origin))=>{
+                let notifications=settings_notifications(&current,&next,&inspectors,&device,origin.as_ref().map(|(id,from_pi)|(id.as_str(),*from_pi)));
                 let (gone,added)=diff(&current,&next);
                 for v in gone {if let Some(host)=hosts.get(&v.plugin){let _=host.send(event("willDisappear",&v,&device));}}
                 for v in added {if !hosts.contains_key(&v.plugin){
@@ -90,7 +114,10 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
                     else{let _=reply.send(Reply::Error(v.plugin.clone(),"Plugin installé introuvable".into()));}
                 }
                 if let Some(host)=hosts.get(&v.plugin){let _=host.send(event("willAppear",&v,&device));}}
-                current=next;inspectors.retain(|_,v|current.get(&v.context)==Some(v));
+                current=next;
+                inspectors.retain(|_,v|current.get(&v.context).is_some_and(|now|same_instance(v,now)));
+                for v in inspectors.values_mut(){if let Some(now)=current.get(&v.context){*v=now.clone();}}
+                for (plugin,message) in notifications {if let Some(host)=hosts.get(&plugin){let _=host.send(message);}}
                 for plugin in hosts.keys(){if current.values().any(|v|&v.plugin==plugin){idle.remove(plugin);}else{idle.entry(plugin.clone()).or_insert_with(Instant::now);}}
             }
             Ok(Request::Open(context))=>{if let Some(v)=current.get(&context){if let (Some(p),Some(host))=(plugins.iter().find(|p|p.uuid==v.plugin),hosts.get(&v.plugin)){
@@ -164,6 +191,37 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
 }
 #[cfg(test)]mod tests {use super::*;use crate::model::{Config,PluginBinding};
     #[test]fn page_diff(){let mut c=Config::default();c.keys_mut()[0].plugin=Some(PluginBinding{plugin:"fixture".into(),action:"fixture.a".into(),settings:json!({}),state:0});let old=visible(&c);c.profiles[c.active].pages.push(crate::model::Page::new("other".into(),"Other".into(),false));c.page="other".into();let next=visible(&c);let (gone,added)=diff(&old,&next);assert_eq!(gone.len(),1);assert!(added.is_empty());}
+    #[test]fn settings_update_preserves_action_visibility(){
+        let mut config=Config::default();
+        config.keys_mut()[0].plugin=Some(PluginBinding{plugin:"fixture".into(),action:"fixture.action".into(),settings:json!({"count":0}),state:0});
+        let before=visible(&config);
+        config.keys_mut()[0].plugin.as_mut().unwrap().settings=json!({"count":1});
+        let after=visible(&config);
+        let (gone,added)=diff(&before,&after);
+        assert!(gone.is_empty(),"updating settings must not emit willDisappear");
+        assert!(added.is_empty(),"updating settings must not emit willAppear");
+    }
+    #[test]fn settings_update_targets_only_adjacent_socket(){
+        let mut config=Config::default();
+        config.keys_mut()[0].plugin=Some(PluginBinding{plugin:"fixture".into(),action:"fixture.action".into(),settings:json!({"count":0}),state:0});
+        let before=visible(&config);
+        let context=before.keys().next().unwrap().clone();
+        let inspectors=HashMap::from([("pi-a".to_owned(),before[&context].clone())]);
+        config.keys_mut()[0].plugin.as_mut().unwrap().settings=json!({"count":1});
+        let after=visible(&config);
+        let device=Device::virtual_device();
+        let from_plugin=settings_notifications(&before,&after,&inspectors,&device,Some((&context,false)));
+        assert_eq!(from_plugin.len(),1);
+        assert_eq!(from_plugin[0].0,"fixture");
+        assert_eq!(from_plugin[0].1["__pi"],"pi-a");
+        assert_eq!(from_plugin[0].1["event"],"didReceiveSettings");
+        assert_eq!(from_plugin[0].1["payload"]["settings"],json!({"count":1}));
+        let from_pi=settings_notifications(&before,&after,&inspectors,&device,Some((&context,true)));
+        assert_eq!(from_pi.len(),1);
+        assert_eq!(from_pi[0].0,"fixture");
+        assert!(from_pi[0].1.get("__pi").is_none());
+        assert!(settings_notifications(&after,&after,&inspectors,&device,None).is_empty());
+    }
     #[test]fn sdk_device_and_payload_contract(){
         let d=Device::from_grid("Elgato Stream Deck XL".into(),8,4);
         let v=Visible{context:"x".into(),plugin:"p".into(),action:"a".into(),index:17,settings:json!({"n":1}),state:1};

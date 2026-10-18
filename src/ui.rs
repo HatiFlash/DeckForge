@@ -4158,7 +4158,7 @@ impl App {
                         if let Some(binding)=self.config.keys_mut()[v.index].plugin.as_mut(){binding.settings=json!(settings);}
                         if let Some(binding)=self.applied.keys_mut()[v.index].plugin.as_mut(){binding.settings=json!(settings);}
                         if let Err(e)=store::save(&self.path,&self.config){self.fail(format!("Réglages du plugin non sauvegardés : {e}"));}
-                        else if let Some(manager)=&mut self.plugins {manager.sync(&self.applied);manager.send(plugin,app_settings_event(&v,&sdk_device,&json!(settings),None));}
+                        else if let Some(manager)=&mut self.plugins {manager.sync_settings(&self.applied,&v.context,pi.is_some());}
                     }
                 }
             },
