@@ -22,11 +22,22 @@ impl Trace {fn open(uuid:&str)->Option<Self>{
  if std::env::var("DECKFORGE_PLUGIN_TRACE_UUID").ok().as_deref()!=Some(uuid){return None;}
  let path=std::env::temp_dir().join("deckforge-plugin-traces");std::fs::create_dir_all(&path).ok()?;
  let name=uuid.chars().map(|c|if c.is_ascii_alphanumeric()||c=='-'||c=='_'{c}else{'_'}).take(128).collect::<String>();
- let file=std::fs::OpenOptions::new().create(true).append(true).open(path.join(format!("{name}-{}.jsonl",std::process::id()))).ok()?;
+ let target=path.join(format!("{name}-{}.jsonl",std::process::id()));
+ let truncate=target.metadata().is_ok_and(|m|m.len()>64_000);
+ let file=std::fs::OpenOptions::new().create(true).append(!truncate).write(true).truncate(truncate).open(target).ok()?;
  Some(Self{file,entries:0})
 }}
 fn supported_command(message:&Value)->bool {
  matches!(message.get("event").and_then(Value::as_str),Some("registerPlugin"|"registerPropertyInspector"|"logMessage"|"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"getSettings"|"setGlobalSettings"|"getGlobalSettings"|"openUrl"|"sendToPlugin"|"sendToPropertyInspector"))
+}
+pub fn unsupported_events(uuid:&str)->Vec<String>{
+ if std::env::var("DECKFORGE_PLUGIN_TRACE_UUID").ok().as_deref()!=Some(uuid){return Vec::new();}
+ let name=uuid.chars().map(|c|if c.is_ascii_alphanumeric()||c=='-'||c=='_'{c}else{'_'}).take(128).collect::<String>();
+ let path=std::env::temp_dir().join("deckforge-plugin-traces").join(format!("{name}-{}.jsonl",std::process::id()));
+ let Ok(data)=std::fs::read(path) else{return Vec::new()};
+ let mut events=std::collections::BTreeSet::new();
+ for line in data[..data.len().min(128_000)].split(|b|*b==b'\n'){if let Ok(value)=serde_json::from_slice::<Value>(line){if value["unsupported"]==true {if let Some(name)=value["event"].as_str(){events.insert(name.to_owned());}}}}
+ events.into_iter().take(32).collect()
 }
 fn trace_message(trace:&mut Option<Trace>,direction:&str,message:&Value,unsupported:bool){
  let Some(trace)=trace.as_mut() else{return};if trace.entries>=1024{return;}
@@ -146,6 +157,13 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
 }}
 #[cfg(windows)] use std::os::windows::process::CommandExt;
 #[cfg(test)] mod tests {use super::*;
+ #[test] fn trace_redacts_payload_and_marks_unknown(){
+  let d=tempfile::tempdir().unwrap();let path=d.path().join("trace.jsonl");
+  let file=std::fs::File::create(&path).unwrap();let mut trace=Some(Trace{file,entries:0});
+  let unknown=json!({"event":"alien","payload":{"token":"SECRET"}});
+  trace_message(&mut trace,"plugin->host",&unknown,!supported_command(&unknown));
+  let data=std::fs::read_to_string(path).unwrap();assert!(data.contains(r#""unsupported":true"#));assert!(!data.contains("SECRET"));
+ }
  #[test] fn launch_contract_and_unknown_command(){
   let d=tempfile::tempdir().unwrap();let p=crate::plugins::parse(d.path(),br#"{"UUID":"test","Version":"1.0"}"#).unwrap();
   let info=launch_info(&p);assert_eq!(info["application"]["platform"],"windows");

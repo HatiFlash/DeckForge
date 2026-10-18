@@ -27,6 +27,8 @@ impl App {
      ui.label(format!("Runtime : {ty} · Windows · Compatibilité : non vérifiée · Installé / inactif si aucune touche liée"));
      ui.label("Droits de redistribution : non évalués ; processus tiers = droits utilisateur, aucune sandbox.");
      ui.label(format!("{} actions · {}",plugin.actions.len(),self.plugin_errors.get(&plugin.uuid).map(String::as_str).unwrap_or("arrêté")));
+     let unsupported=crate::plugin_host::unsupported_events(&plugin.uuid);
+     ui.label(format!("Événements non pris en charge : {}",if unsupported.is_empty(){"aucun observé (ou trace désactivée)".into()}else{unsupported.join(", " )}));
      let cache_key=format!("{}-{}",plugin.uuid,plugin.version);
      let report=self.plugin_report_cache.entry(cache_key).or_insert_with(||plugin_validation::report_path(&plugin).and_then(|p|std::fs::read(p).ok()).and_then(|bytes|serde_json::from_slice::<plugin_validation::Report>(&bytes).ok()).filter(|r|r.plugin==plugin.uuid && r.version==plugin.version));
      if let Some(report)=report {
