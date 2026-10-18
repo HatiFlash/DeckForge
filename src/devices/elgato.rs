@@ -72,7 +72,13 @@ pub fn keys(model: &DeviceModel, data: &[u8]) -> Option<Vec<(usize, bool)>> {
     if plus && data.get(1) != Some(&0) { return None; }
     let offset = if plus { 4 } else if legacy(model) { 1 } else { 4 };
     if data.first() == Some(&0) || data.len() < offset + model.keys as usize { return None; }
-    Some((0..model.keys as usize).map(|i| (i, data[offset+i] != 0)).collect())
+    let cols = model.cols as usize;
+    Some((0..model.keys as usize).map(|i| {
+        // The Original reports its keys right-to-left on each row (confirmed on hardware:
+        // the top-left key arrives at raw position 5). Same mapping as image_key().
+        let logical = if model.protocol == Protocol::ElgatoV1 { i / cols * cols + cols - 1 - i % cols } else { i };
+        (logical, data[offset + i] != 0)
+    }).collect())
 }
 
 #[cfg(test)]
@@ -80,6 +86,15 @@ mod tests {
     use super::*;
     use crate::devices::MODELS;
     fn m(id: &str) -> &'static DeviceModel { MODELS.iter().find(|m| m.id == id).unwrap() }
+    /// Raw reports captured on a real Stream Deck Original (firmware 1.0.191203).
+    #[test] fn original_keys_are_read_right_to_left_like_real_hardware() {
+        let original = m("elgato_original");
+        let pressed = |raw_pos: usize| { let mut d = vec![0u8; 17]; d[0] = 1; d[raw_pos] = 1; keys(original, &d).unwrap().into_iter().find(|(_, down)| *down).unwrap().0 };
+        assert_eq!([pressed(5), pressed(4), pressed(3), pressed(2), pressed(1)], [0, 1, 2, 3, 4], "top row, left to right");
+        assert_eq!(pressed(10), 5); assert_eq!(pressed(6), 9);
+        assert_eq!(pressed(15), 10); assert_eq!(pressed(11), 14);
+        for logical in 0..15 { let raw = image_key(original, logical).unwrap() as usize; assert_eq!(pressed(raw), logical, "image and input use the same position"); }
+    }
     #[test] fn images_v1_mini_v2_and_modules() {
         let original = m("elgato_original");
         assert_eq!(image_key(original, 0).unwrap(), 5);
@@ -111,7 +126,8 @@ mod tests {
         assert_eq!(firmware(m("elgato_mini"), &report).as_deref(), Some("1.2"));
         assert!(firmware(m("elgato_mk2"), &report).is_none());
         let mut input = vec![0;16]; input[0]=1; input[1]=1;
-        assert_eq!(keys(m("elgato_original"), &input).unwrap()[0], (0,true));
+        // Raw position 1 is the top-RIGHT key on a real Original (logical index 4).
+        assert_eq!(keys(m("elgato_original"), &input).unwrap()[0], (4,true));
         let mut v2 = vec![0;19]; v2[0]=1; v2[4]=1;
         assert_eq!(keys(m("elgato_mk2"), &v2).unwrap()[0], (0,true));
         let mut plus = vec![0;12]; plus[0]=1; plus[1]=0; plus[4]=1;
