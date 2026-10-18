@@ -202,7 +202,10 @@ pub fn ffmpeg_path() -> Option<PathBuf> {
         let candidate = exe.with_file_name(name);
         if candidate.is_file() { return Some(candidate); }
     }
-    let packages = PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("Microsoft/WinGet/Packages");
+    let winget = PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("Microsoft/WinGet");
+    let link = winget.join("Links").join(name);
+    if link.is_file() { return Some(link); }
+    let packages = winget.join("Packages");
     for package in std::fs::read_dir(packages).ok()?.flatten() {
         if !package.file_name().to_string_lossy().starts_with("Gyan.FFmpeg") { continue; }
         if let Ok(versions) = std::fs::read_dir(package.path()) {
@@ -215,27 +218,75 @@ pub fn ffmpeg_path() -> Option<PathBuf> {
     None
 }
 
+pub const FFMPEG_MISSING: &str = "FFmpeg absent";
+
+/// Installs FFmpeg with winget (no console window) after an explicit user click.
+pub fn install_ffmpeg() -> Result<PathBuf> {
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+    let mut child = Command::new("winget")
+        .args(["install", "--id", "Gyan.FFmpeg", "-e", "--silent", "--accept-source-agreements", "--accept-package-agreements"])
+        .creation_flags(0x0800_0000).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null())
+        .spawn().map_err(|e| anyhow::anyhow!("winget introuvable ({e}). Installe FFmpeg depuis https://www.gyan.dev/ffmpeg/builds/ puis copie ffmpeg.exe à côté de DeckForge.exe"))?;
+    let start = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait()? { break status; }
+        if start.elapsed() >= Duration::from_secs(600) { let _ = child.kill(); let _ = child.wait(); anyhow::bail!("Installation de FFmpeg interrompue après 10 min"); }
+        std::thread::sleep(Duration::from_millis(250));
+    };
+    ffmpeg_path().ok_or_else(|| anyhow::anyhow!("winget a terminé ({status}) mais ffmpeg.exe reste introuvable"))
+}
+
+/// Appends one import attempt to diagnostics/import-video.log next to the configuration.
+fn video_log(dest: &Path, line: &str) {
+    use std::io::Write;
+    let Some(root) = dest.parent().and_then(Path::parent) else { return };
+    let folder = root.join("diagnostics");
+    if std::fs::create_dir_all(&folder).is_err() { return; }
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(folder.join("import-video.log")) {
+        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        let _ = writeln!(file, "[{secs}] DeckForge {} | {line}", env!("CARGO_PKG_VERSION"));
+    }
+}
+
 pub fn import_video(src: &Path, dest: &Path, size: u32) -> Result<PathBuf> {
+    let result = import_video_inner(src, dest, size);
+    let ext = src.extension().and_then(|s| s.to_str()).unwrap_or("?");
+    let bytes = std::fs::metadata(src).map_or(0, |m| m.len());
+    match &result {
+        Ok(path) => video_log(dest, &format!("OK .{ext} {bytes} octets -> {}", path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())),
+        Err(e) => video_log(dest, &format!("ÉCHEC .{ext} {bytes} octets, taille {size} ; ffmpeg={:?} ; erreur : {e}", ffmpeg_path())),
+    }
+    result
+}
+
+fn import_video_inner(src: &Path, dest: &Path, size: u32) -> Result<PathBuf> {
     use std::os::windows::process::CommandExt;
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
     ensure!(is_video(src) && src.is_file() && [112, 126].contains(&size), "Vidéo ou taille invalide");
     let ffmpeg = ffmpeg_path().ok_or_else(|| anyhow::anyhow!(
-        "Pour importer une vidéo, installe FFmpeg : winget install Gyan.FFmpeg"))?;
+        "{FFMPEG_MISSING} : DeckForge a besoin de FFmpeg (gratuit) pour convertir les vidéos"))?;
     std::fs::create_dir_all(dest)?;
     let name = src.file_stem().and_then(|s| s.to_str()).unwrap_or("video");
     let temporary = dest.join(format!(".video-{}-{:?}.gif", std::process::id(), std::thread::current().id()));
+    let errors = temporary.with_extension("err.txt");
     let filter = format!("fps=12,scale={size}:{size}:force_original_aspect_ratio=increase,crop={size}:{size},split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse");
     let result = (|| -> Result<PathBuf> {
         let mut child = Command::new(ffmpeg)
             .args(["-hide_banner", "-loglevel", "error", "-y", "-t", "10", "-i"])
             .arg(src).args(["-vf", &filter, "-loop", "0"])
             .arg(&temporary).creation_flags(0x08000000)
-            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()?;
+            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(std::fs::File::create(&errors)?).spawn()?;
         let start = Instant::now();
         loop {
             if let Some(status) = child.try_wait()? {
-                ensure!(status.success(), "Conversion FFmpeg échouée (code {status})");
+                if !status.success() {
+                    let detail = std::fs::read_to_string(&errors).unwrap_or_default();
+                    let detail: String = detail.trim().chars().rev().take(300).collect::<Vec<_>>().into_iter().rev().collect();
+                    anyhow::bail!("Conversion FFmpeg échouée ({status}) : {}", if detail.is_empty() { "aucun détail" } else { &detail });
+                }
                 break;
             }
             if start.elapsed() >= Duration::from_secs(60) {
@@ -253,6 +304,7 @@ pub fn import_video(src: &Path, dest: &Path, size: u32) -> Result<PathBuf> {
         Ok(imported)
     })();
     let _ = std::fs::remove_file(temporary);
+    let _ = std::fs::remove_file(errors);
     result
 }
 

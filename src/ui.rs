@@ -102,6 +102,9 @@ impl SleepState {
 
 #[derive(Clone)]
 struct DeviceGrid { name: String, keys: usize, rows: usize, cols: usize, experimental: bool }
+/// A video import that is waiting for FFmpeg to be installed.
+#[derive(Clone)]
+struct FfmpegOffer { video: PathBuf, assets: PathBuf, size: u32, profile: usize, page: String, index: usize }
 impl Default for DeviceGrid {
     fn default() -> Self { Self { name: "Aucun périphérique".into(), keys: 15, rows: 3, cols: 5, experimental: false } }
 }
@@ -152,6 +155,8 @@ pub struct App {
     hardware_test: Option<crate::devices::test_assistant::Session>,
     show_saved_variables: bool,
     show_about: bool,
+    ffmpeg_offer: Option<FfmpegOffer>,
+    ffmpeg_installing: bool,
     update_result: Option<String>,
     update_rx: Option<Receiver<String>>,
     rename: bool,
@@ -338,6 +343,8 @@ impl App {
             hardware_test: None,
             show_saved_variables: false,
             show_about: false,
+            ffmpeg_offer: None,
+            ffmpeg_installing: false,
             update_result: None,
             update_rx: None,
             rename: false,
@@ -2716,6 +2723,7 @@ impl App {
                                 let path=rfd::FileDialog::new().add_filter("Image ou vidéo", &["png","jpg","jpeg","svg","gif","mp4","webm","mov","mkv","avi"]).pick_file();
                                 if let Some(path) = path {
                                     let video = crate::assets::is_video(&path);
+                                    let src = path.clone(); let assets_dir = assets.clone();
                                     if video { let _ = tx.send(Some(Box::new(|app: &mut App| app.log("Conversion de la vidéo…".into())) as DialogEffect)); }
                                     let result = if video {
                                         crate::assets::import_video(&path, &assets, size).map_err(|e| e.to_string())
@@ -2733,7 +2741,12 @@ impl App {
                                                 if video { app.log("Vidéo convertie en GIF animé.".into()); }
                                             }
                                         }
-                                        Err(e) => app.fail(format!("Import image ou vidéo impossible : {e}")),
+                                        Err(e) => {
+                                            if video && e.contains(crate::assets::FFMPEG_MISSING) {
+                                                app.ffmpeg_offer = Some(FfmpegOffer { video: src, assets: assets_dir, size, profile, page, index });
+                                            }
+                                            app.fail(format!("Import image ou vidéo impossible : {e}"));
+                                        }
                                     }) as DialogEffect));
                                 }
                             });
@@ -3384,6 +3397,47 @@ impl App {
                     if let Some(message) = &self.update_result { ui.label(message); }
                 });
             self.show_about = open;
+        }
+        if let Some(offer) = self.ffmpeg_offer.clone() {
+            let mut open = true;
+            let mut install = false;
+            let installing = self.ffmpeg_installing;
+            egui::Window::new("Importer une vidéo").id(egui::Id::new("ffmpeg_offer"))
+                .open(&mut open).collapsible(false).resizable(false).default_width(380.0)
+                .show(ctx, |ui| {
+                    ui.label("Pour convertir une vidéo en animation, DeckForge utilise FFmpeg, un outil gratuit qui n’est pas encore installé sur ce PC.");
+                    ui.add_space(6.0);
+                    if installing {
+                        ui.horizontal(|ui| { ui.spinner(); ui.label("Installation de FFmpeg puis conversion… (1 à 3 min)"); });
+                    } else {
+                        if ui.button("Installer FFmpeg et importer la vidéo").clicked() { install = true; }
+                        ui.label(RichText::new("Installation par winget (Microsoft), sans fenêtre. Autre solution : copier ffmpeg.exe à côté de DeckForge.exe puis réimporter.").small());
+                    }
+                });
+            if install {
+                self.ffmpeg_installing = true;
+                let tx = self.dialog_tx.clone();
+                std::thread::spawn(move || {
+                    let result = crate::assets::install_ffmpeg()
+                        .and_then(|_| crate::assets::import_video(&offer.video, &offer.assets, offer.size))
+                        .map_err(|e| e.to_string());
+                    let _ = tx.send(Some(Box::new(move |app: &mut App| {
+                        app.ffmpeg_installing = false;
+                        app.ffmpeg_offer = None;
+                        match result {
+                            Ok(path) => {
+                                if let Some(key) = app.config.profiles.get_mut(offer.profile).and_then(|p| p.keys_at_mut(&offer.page)).and_then(|keys| keys.get_mut(offer.index)) {
+                                    key.image = path.to_string_lossy().into_owned();
+                                    app.edited();
+                                }
+                                app.log("FFmpeg installé, vidéo convertie en GIF animé.".into());
+                            }
+                            Err(e) => app.fail(format!("Import vidéo impossible : {e}")),
+                        }
+                    }) as DialogEffect));
+                });
+            }
+            if !open && !self.ffmpeg_installing { self.ffmpeg_offer = None; }
         }
         if self.show_apps {
             let mut open = true;
