@@ -123,7 +123,7 @@ fn palette(ui: &mut egui::Ui, search: &str, depth: usize, advanced: bool) -> Opt
                     ui.horizontal(|ui| {
                         let color = if category.contains("Logique") { Color32::from_rgb(164, 123, 239) }
                             else if category.contains("Streaming") { Color32::from_rgb(239, 169, 83) } else { BLUE };
-                        ui.colored_label(color, "▏");
+                        family_bar(ui, color);
                         if ui.add(egui::Button::new(crate::automation::NAMES[kind]).frame(false))
                             .on_hover_text(block_help(kind)).clicked() { selected = Some(kind); }
                     });
@@ -521,6 +521,11 @@ pub(super) fn block_editor(
     }
     changed
 }
+/// Thin family colour bar (font-independent, unlike box-drawing glyphs).
+fn family_bar(ui: &mut egui::Ui, color: Color32) {
+    let (r, _) = ui.allocate_exact_size(egui::vec2(3.0, 14.0), egui::Sense::hover());
+    ui.painter().rect_filled(r, 1.0, color);
+}
 // The simple canvas is a read-only tree: editing is confined to the contextual inspector.
 fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection: &mut Option<Vec<usize>>) {
     let p = theme::palette(ui.ctx());
@@ -536,7 +541,8 @@ fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection
                         Color32::from_rgb(164, 123, 239)
                     } else if matches!(step.active(), Step::Repeat { .. }) { Color32::from_rgb(239, 169, 83) } else { BLUE };
                     ui.horizontal(|ui| {
-                        ui.colored_label(color, format!("▏{}", path.iter().step_by(2).map(|n| (n + 1).to_string()).collect::<Vec<_>>().join(".")));
+                        family_bar(ui, color);
+                        ui.colored_label(color, format!("{}", path.iter().step_by(2).map(|n| (n + 1).to_string()).collect::<Vec<_>>().join(".")));
                         let title = format!("{} · {}", step.name(), block_summary(step));
                         if ui.selectable_label(chosen, title).on_hover_text("Sélectionner et modifier ce bloc").clicked() {
                             *selection = Some(path.clone());
@@ -559,7 +565,10 @@ fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection
                     }
                 });
             ui.add_space(5.0);
-            if i + 1 < steps.len() { ui.colored_label(p.muted, "  │"); }
+            if i + 1 < steps.len() {
+                let (r, _) = ui.allocate_exact_size(egui::vec2(24.0, 10.0), egui::Sense::hover());
+                ui.painter().line_segment([egui::pos2(r.left() + 14.0, r.top()), egui::pos2(r.left() + 14.0, r.bottom())], egui::Stroke::new(1.0_f32, p.line));
+            }
         });
     }
 }
