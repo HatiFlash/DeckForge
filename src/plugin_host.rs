@@ -356,6 +356,33 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
   assert_eq!(serde_json::from_str::<Value>(&pi.read().unwrap().to_string()).unwrap()["payload"]["ok"],true);
   stop.store(true,Ordering::Relaxed);worker.join().unwrap();
  }
+ #[cfg(windows)] #[test] #[ignore="requires explicitly supplied, audited OpenAction counter v1.0.1 release archive"]
+ fn imported_openaction_counter_executes_key_up(){
+  use sha2::{Digest,Sha256};
+  let path=std::path::PathBuf::from(std::env::var_os("DECKFORGE_TEST_OACOUNTER_ZIP").expect("set DECKFORGE_TEST_OACOUNTER_ZIP to the v1.0.1 release ZIP"));
+  let bytes=std::fs::read(&path).unwrap();
+  assert_eq!(format!("{:x}",Sha256::digest(&bytes)),"f04e0724188468e450633a49d15ee98ab0400faa2197332cfcf80278d0c54e47");
+  let dir=tempfile::tempdir().unwrap();
+  let installed=dir.path().join("plugins");
+  assert!(crate::plugin_import::import_archive(&path,&installed).unwrap());
+  let plugin=crate::plugin_import::inventory(&installed).into_iter().find(|p|p.uuid=="me.amankhanna.oacounter").expect("imported counter missing");
+  let device=crate::plugin_runtime::Device::virtual_device();
+  let host=Host::start(&plugin,&device).expect("failed to start imported counter");
+  assert_eq!(host.incoming.recv_timeout(Duration::from_secs(15)).unwrap()["event"],"registerPlugin");
+  let action=crate::plugin_runtime::Visible{context:"counter-test-context".into(),plugin:plugin.uuid.clone(),action:"me.amankhanna.oacounter.persisted".into(),index:0,settings:json!({}),state:0};
+  host.send(json!({"event":"deviceDidConnect","device":device.id,"deviceInfo":device.info()})).unwrap();
+  for name in ["willAppear","keyDown","keyUp"]{host.send(crate::plugin_runtime::event(name,&action,&device)).unwrap();}
+  let mut settings=false;let mut title=false;
+  let deadline=std::time::Instant::now()+Duration::from_secs(15);
+  while std::time::Instant::now()<deadline && !(settings && title){
+   let remaining=deadline.saturating_duration_since(std::time::Instant::now());
+   let message=host.incoming.recv_timeout(remaining).expect("counter did not return title and settings");
+   assert_eq!(message["context"],"counter-test-context");
+   if message["event"]=="setSettings" {assert_eq!(message["payload"]["value"],1);settings=true;}
+   if message["event"]=="setTitle" {assert_eq!(message["payload"]["title"],"1");title=true;}
+  }
+  assert!(settings && title,"imported plugin must execute keyUp and return its observable counter state");
+ }
  #[test] fn node_fixture_exchanges_key_messages(){
   let fixture=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sdplugin");
   let p=crate::plugins::parse(&fixture,&std::fs::read(fixture.join("manifest.json")).unwrap()).unwrap();

@@ -361,6 +361,30 @@ mod tests {
         let p = fixture();
         crate::ui::validate_witness(&p, None).unwrap();
     }
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires pinned OpenAction counter v1.0.1 release archive; starts third-party native process"]
+    fn imported_openaction_counter_changes_title_in_virtual_app() {
+        use sha2::{Digest, Sha256};
+        let archive = std::path::PathBuf::from(std::env::var_os("DECKFORGE_TEST_OACOUNTER_ZIP").expect("set DECKFORGE_TEST_OACOUNTER_ZIP"));
+        let bytes = std::fs::read(&archive).unwrap();
+        assert_eq!(format!("{:x}", Sha256::digest(&bytes)), "f04e0724188468e450633a49d15ee98ab0400faa2197332cfcf80278d0c54e47");
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("plugins");
+        assert!(crate::plugin_import::import_archive(&archive, &root).unwrap());
+        let plugin = crate::plugin_import::inventory(&root).into_iter().find(|p| p.uuid == "me.amankhanna.oacounter").expect("imported counter missing");
+        let oracle = ActionOracle {
+            action: "me.amankhanna.oacounter.persisted".into(),
+            mode: Mode::Simulated,
+            real_effects: false,
+            expected_effect: "counter title is 1".into(),
+            timeout_ms: 15000,
+            requirements: Requirements::default(),
+            observation: Observation::Title { equals: "1".into() },
+        };
+        let report = crate::ui::validate_oracle(&plugin, &oracle.action, &oracle).unwrap();
+        assert!(report.contains("Observation confirmée après appui"));
+    }
     #[test]
     fn html_oracle_never_starts_unisolated_browser() {
         let mut p = fixture();
