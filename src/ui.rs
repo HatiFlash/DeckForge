@@ -1837,7 +1837,7 @@ impl App {
                     ui.add_space(8.0);
                     theme::status_badge(
                         ui,
-                        if self.gate.connected { "Connect├®" } else { "Aucun p├®riph├®rique" },
+                        if self.gate.connected { "Connecté" } else { "Aucun périphérique" },
                         if self.gate.connected {
                             GREEN
                         } else if self.wanted {
@@ -1848,26 +1848,26 @@ impl App {
                     );
                     ui.add_space(4.0);
                     if ui
-                        .add_enabled(!self.history.is_empty(), theme::secondary_button(if ctx.screen_rect().width() < 1320.0 { "Ôå║" } else { "Annuler" }))
-                        .on_hover_text("Annuler ÔÇö Ctrl+Z")
+                        .add_enabled(!self.history.is_empty(), theme::secondary_button(if ctx.screen_rect().width() < 1320.0 { "↺" } else { "Annuler" }))
+                        .on_hover_text("Annuler — Ctrl+Z")
                         .clicked()
                     {
                         self.undo_edit();
                     }
                     if ui
-                        .add_enabled(!self.future.is_empty(), theme::secondary_button(if ctx.screen_rect().width() < 1320.0 { "Ôå╗" } else { "R├®tablir" }))
-                        .on_hover_text("R├®tablir ÔÇö Ctrl+Y")
+                        .add_enabled(!self.future.is_empty(), theme::secondary_button(if ctx.screen_rect().width() < 1320.0 { "↻" } else { "Rétablir" }))
+                        .on_hover_text("Rétablir — Ctrl+Y")
                         .clicked()
                     {
                         self.redo_edit();
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.menu_button("R├®glages", |ui| {
-                            if ui.button("Windows et raccourcisÔÇª").clicked() {
+                        ui.menu_button("Réglages", |ui| {
+                            if ui.button("Windows et raccourcis…").clicked() {
                                 self.show_desktop_settings = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Ic├┤nes et extensionsÔÇª").clicked() {
+                            if ui.button("Icônes et extensions…").clicked() {
                                 self.reload_icons();
                                 self.show_assets = true;
                                 ui.close_menu();
@@ -1877,27 +1877,27 @@ impl App {
                                 self.quitting = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Importer depuis Stream DeckÔÇª").clicked() {
+                            if ui.button("Importer depuis Stream Deck…").clicked() {
                                 self.import_elgato();
                                 ui.close_menu();
                             }
-                            if ui.button("Variables enregistr├®esÔÇª").clicked() {
+                            if ui.button("Variables enregistrées…").clicked() {
                                 self.show_saved_variables = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Tester mon p├®riph├®riqueÔÇª").clicked() {
+                            if ui.button("Tester mon périphérique…").clicked() {
                                 self.show_hardware_test = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Rapport p├®riph├®riqueÔÇª").clicked() {
+                            if ui.button("Rapport périphérique…").clicked() {
                                 self.show_device_report = true;
                                 ui.close_menu();
                             }
-                            if ui.button(format!("R├®glages ÔÇö {}", self.device_name())).clicked() {
+                            if ui.button(format!("Réglages — {}", self.device_name())).clicked() {
                                 self.settings = true;
                                 ui.close_menu();
                             }
-                            if ui.button("├Ç propos de DeckForge").clicked() {
+                            if ui.button("À propos de DeckForge").clicked() {
                                 self.show_about = true;
                                 ui.close_menu();
                             }
@@ -1906,20 +1906,20 @@ impl App {
                                 ui.close_menu();
                             }
                             ui.separator();
-                            if ui.button("Importer des profilsÔÇª").clicked() {
+                            if ui.button("Importer des profils…").clicked() {
                                 self.import();
                                 ui.close_menu();
                             }
-                            if ui.button("Exporter les profilsÔÇª").clicked() {
+                            if ui.button("Exporter les profils…").clicked() {
                                 self.export();
                                 ui.close_menu();
                             }
                             ui.separator();
                             if ui
                                 .button(if self.wanted {
-                                    "D├®connecter le p├®riph├®rique"
+                                    "Déconnecter le périphérique"
                                 } else {
-                                    "Connecter le p├®riph├®rique"
+                                    "Connecter le périphérique"
                                 })
                                 .clicked()
                             {
@@ -1936,18 +1936,18 @@ impl App {
                         });
                         let ai_on = self.assistant.as_ref().is_some_and(|s| s.enabled());
                         let ai_label = if ai_on {
-                            "IA : connect├®e"
+                            "IA : connectée"
                         } else if self.preferences.allow_connected_ai {
                             "IA : en attente"
                         } else {
-                            "IA : d├®sactiv├®e"
+                            "IA : désactivée"
                         };
                         if ui.add(theme::secondary_button("Connecter une IA")).clicked() {
                             self.connect_window = true;
                         }
                         if ui
                             .add(theme::secondary_button(ai_label))
-                            .on_hover_text("Connecter une IA ou d├®sactiver le pont local")
+                            .on_hover_text("Connecter une IA ou désactiver le pont local")
                             .clicked()
                         {
                             if ai_on {
@@ -1958,11 +1958,11 @@ impl App {
                         }
                         if ui
                             .add(theme::secondary_button(if self.preferences.dark {
-                                "Th├¿me clair"
+                                "Thème clair"
                             } else {
-                                "Th├¿me sombre"
+                                "Thème sombre"
                             }))
-                            .on_hover_text("Changer le th├¿me de toute lÔÇÖinterface")
+                            .on_hover_text("Changer le thème de toute l’interface")
                             .clicked()
                         {
                             self.preferences.dark = !self.preferences.dark;
@@ -1972,18 +1972,18 @@ impl App {
                         if ui
                             .add(
                                 theme::danger_button(
-                                    RichText::new("Arr├¬ter les macros en cours")
+                                    RichText::new("Arrêter les macros en cours")
                                         .color(theme::DANGER),
                                 )
                                 .fill(Color32::TRANSPARENT)
                                 .stroke(egui::Stroke::new(1.0_f32, theme::DANGER)),
                             )
-                            .on_hover_text("Arr├¬te les macros en cours et met les touches en pause. Les applications d├®j├á ouvertes restent ouvertes.")
+                            .on_hover_text("Arrête les macros en cours et met les touches en pause. Les applications déjà ouvertes restent ouvertes.")
                             .clicked()
                         {
                             self.engine.stop();
                             self.gate.enabled = false;
-                            self.log("Macros arr├¬t├®es. Touches en pause.".into());
+                            self.log("Macros arrêtées. Touches en pause.".into());
                         }
                         if theme::toggle(ui, &mut self.gate.enabled).changed() {
                             if !self.gate.enabled {
@@ -2002,12 +2002,12 @@ impl App {
                                     if self.wanted {
                                         "En attente"
                                     } else {
-                                        "D├®connect├®"
+                                        "Déconnecté"
                                     }
                                 } else if self.gate.dirty {
-                                    "ModificationsÔÇª"
+                                    "Modifications…"
                                 } else {
-                                    "SynchronisationÔÇª"
+                                    "Synchronisation…"
                                 },
                                 p.muted,
                             ),
