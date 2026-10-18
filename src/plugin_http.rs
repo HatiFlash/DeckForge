@@ -36,7 +36,10 @@ fn safe_file(root:&Path,request:&str,uuid:&str)->Option<PathBuf>{
     if rel.is_empty() || rel.contains('\\') || rel.contains(':') || rel.contains('\0') {return None;}
     let path=Path::new(&rel);
     if !path.components().all(|p| matches!(p,std::path::Component::Normal(_))) {return None;}
-    let real=root.join(path).canonicalize().ok()?;
+    // Refuser tout lien symbolique dans chaque composant, même s’il pointe dans la racine.
+    let mut cursor=root.to_path_buf();
+    for part in path.components(){cursor.push(part);if fs::symlink_metadata(&cursor).ok()?.file_type().is_symlink(){return None;}}
+    let real=cursor.canonicalize().ok()?;
     if real.is_file() && real.starts_with(root.canonicalize().ok()?) {Some(real)} else {None}
 }
 fn mime(path:&Path)->&'static str {match path.extension().and_then(|s|s.to_str()).unwrap_or("").to_ascii_lowercase().as_str(){
