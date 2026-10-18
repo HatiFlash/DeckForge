@@ -350,6 +350,15 @@ mod tests {
         crate::ui::validate_witness(&p, None).unwrap();
     }
     #[test]
+    fn html_oracle_never_starts_unisolated_browser() {
+        let mut p = fixture();
+        p.runtime = crate::plugins::Runtime::Html(p.folder.join("app.html"));
+        let o = oracle(&p, ACTION, Observation::Title { equals: "1".into() });
+        let result = run(&p, Some(&o), false);
+        assert!(matches!(result.actions[0].verdict, Verdict::Failed));
+        assert!(result.actions[0].reason.contains("HTML non isolé"));
+    }
+    #[test]
     fn unknown_oracle_is_unverified_and_never_launched() {
         let mut p = fixture();
         p.uuid = "third.party".into();

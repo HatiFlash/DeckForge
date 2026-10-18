@@ -182,6 +182,11 @@ pub(crate) fn validate_oracle(
     oracle: &crate::plugin_validation::ActionOracle,
 ) -> Result<String, String> {
     use crate::plugin_validation::Observation;
+    // Un HTML tiers peut appeler window.open directement, hors du protocole openUrl.
+    // Ne jamais démarrer Edge tant que cette surface n’est pas interceptée.
+    if matches!(plugin.runtime, crate::plugins::Runtime::Html(_)) {
+        return Err("HTML non isolé : window.open peut ouvrir un navigateur externe".into());
+    }
     let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
     let path = dir.path().join("config.json");
     let ctx = egui::Context::default();
@@ -309,4 +314,21 @@ pub(crate) fn validate_oracle(
         }
         std::thread::sleep(Duration::from_millis(10));
     }
+}
+
+#[cfg(test)]
+#[test]
+fn isolated_open_url_is_recorded_without_browser_launch() {
+    let dir = tempfile::tempdir().unwrap();
+    let app_path = dir.path().join("config.json");
+    let mut app = App::init_with(&egui::Context::default(), Some(app_path), false);
+    let url = "https://example.invalid/deckforge-open-url-test";
+    app.plugin_message(
+        "test.plugin",
+        &json!({"event":"openUrl","payload":{"url":url}}),
+    );
+    assert_eq!(
+        app.plugin_external_effects.as_deref(),
+        Some(&[format!("openUrl: {url}")][..])
+    );
 }

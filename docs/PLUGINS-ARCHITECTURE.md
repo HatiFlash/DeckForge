@@ -32,3 +32,8 @@ Les plugins exécutables tournent avec les droits de l'utilisateur : processus s
 | enregistrement / erreurs | partiel | file d'attente des commandes jusqu'au handshake ; JSON malformé, événement inconnu, contexte étranger et arrêt de processus signalés ; timeout observé par oracle |
 
 Limites après C1 : inspecteur HTML non testé de bout en bout, persistance du rapport en présence de fichiers non accessibles, session WebSocket authentifiée, rapport pour oracles déclarés de plugins tiers, rendu physique/image USB non vérifié, rétablissement après crash non prouvé, confirmations d'essais réels et capacités externes non testées. Processus séparé n'est pas sandbox ; jamais tester un tiers par défaut. Catalogue distant signé, conversion traçable et compatibilité multiplateforme restent hors de B.
+
+
+## Étape C2b — frontières d’essai
+
+L’oracle local `schema_version: 1` décrit l’action, le mode (`simulated` ou `real`), `real_effects`, les prérequis, le délai et une observation bornée (titre, image, état, fichier). `run` rapporte Réussi seulement après résultat observé par `validate_oracle` via `Event::Key/KeyRelease` dans une `App::init_with(..., false)` temporaire ; les cas sans oracle/prérequis/confirmation sont Non vérifié. Aucun essai réel n’est lancé par défaut. `openUrl` reçu par l’App isolée est enregistré, pas exécuté ; en revanche le JavaScript HTML peut appeler directement `window.open` : le harnais refuse tous les runtimes HTML avant de démarrer Edge. Il faudra intercepter aussi les fenêtres et le réseau dans un navigateur confiné avant d’essayer Tutorial. Le processus natif n’est pas sandboxé : ni logiciel/compte tiers ni capture Gizmos ne doivent être lancés sans analyse et accord. Matrice et empreintes : `PLUGINS-COMPATIBILITE.md`.
