@@ -309,6 +309,33 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
   assert_eq!(rx.recv_timeout(Duration::from_secs(3)).unwrap()["event"],"registerPlugin");
   stop.store(true,Ordering::Relaxed);worker.join().unwrap();
  }
+ #[test] fn registered_client_receives_key_events_for_distinct_contexts(){
+  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let port=listener.local_addr().unwrap().port();
+  let (tx,commands)=mpsc::sync_channel(64);let (messages,rx)=mpsc::channel();
+  let stop=Arc::new(AtomicBool::new(false));let flag=stop.clone();
+  let worker=thread::spawn(move||socket_loop(listener,commands,messages,flag,None));
+  let (mut peer,_)=tungstenite::connect(format!("ws://127.0.0.1:{port}")).unwrap();
+  if let tungstenite::stream::MaybeTlsStream::Plain(stream)=peer.get_mut(){stream.set_read_timeout(Some(Duration::from_secs(3))).unwrap();}
+  peer.send(tungstenite::Message::Text(json!({"event":"registerPlugin","uuid":"fixture"}).to_string().into())).unwrap();
+  assert_eq!(rx.recv_timeout(Duration::from_secs(3)).unwrap()["event"],"registerPlugin");
+  let device=crate::plugin_runtime::Device::virtual_device();
+  for (context,index,name) in [("ctx-a",0,"keyDown"),("ctx-b",1,"keyDown"),("ctx-a",0,"keyUp")] {
+   let visible=crate::plugin_runtime::Visible{context:context.into(),plugin:"fixture".into(),action:"fixture.increment".into(),index,settings:json!({}),state:0};
+   let expected=crate::plugin_runtime::event(name,&visible,&device);
+   tx.send(expected.clone()).unwrap();
+   let received=serde_json::from_str::<Value>(&peer.read().unwrap().to_string()).unwrap();
+   assert_eq!(received,expected);
+   assert_eq!(received["action"],"fixture.increment");
+   assert_eq!(received["context"],context);
+   assert_eq!(received["device"],device.id);
+   assert_eq!(received["payload"]["controller"],"Keypad");
+   assert_eq!(received["payload"]["resources"],json!({}));
+  }
+  peer.send(tungstenite::Message::Text(json!({"event":"setTitle","context":"ctx-b","payload":{"title":"1"}}).to_string().into())).unwrap();
+  let response=rx.recv_timeout(Duration::from_secs(3)).unwrap();
+  assert_eq!(response["event"],"setTitle");assert_eq!(response["context"],"ctx-b");assert_eq!(response["payload"]["title"],"1");
+  stop.store(true,Ordering::Relaxed);worker.join().unwrap();
+ }
  #[test] fn two_websocket_clients_exchange_inspector_events(){
   let listener=TcpListener::bind("127.0.0.1:0").unwrap();let port=listener.local_addr().unwrap().port();
   let id="a".repeat(32);let registry=crate::plugin_http::Inspectors::default();registry.lock().unwrap().insert(id.clone(),"JSON.stringify({})".into());
