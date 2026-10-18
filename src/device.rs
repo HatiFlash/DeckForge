@@ -2,6 +2,8 @@ use crate::key_render::for_device as render_key_or_default;
 #[cfg(test)]
 use crate::key_render::jpeg as render_key;
 use crate::{model::Config, Event};
+use crate::devices::report::{self, Report};
+use std::{path::PathBuf, sync::Arc, cell::Cell};
 #[cfg(test)]
 use ab_glyph::FontArc;
 use anyhow::{Context, Result};
@@ -30,12 +32,16 @@ pub enum Command {
     KeyImage(usize, Vec<u8>),
     Disconnect,
 }
-pub fn spawn(tx: Sender<Event>) -> Sender<Command> {
+pub fn spawn(tx: Sender<Event>, config_path: PathBuf) -> Sender<Command> {
     let (cmd, rx) = mpsc::channel();
-    std::thread::spawn(move || worker(rx, tx));
+    std::thread::spawn(move || worker(rx, tx, config_path));
     cmd
 }
-fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
+fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
+    // Rapport dès le démarrage, même si le D6 n’est pas connecté.
+    if let Ok(report) = Report::start(&config_path) {
+        match HidApi::new() { Ok(api) => report.inventory(&api), Err(e) => report.log(&format!("Inventaire HID indisponible : {e}")) }
+    } else { let _ = tx.send(Event::Log("Rapport périphérique : création impossible".into())); }
     let mut wanted = false;
     let mut config = Config::default();
     let mut revision = 0;
@@ -83,20 +89,27 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
         }
         if wanted && deck.is_none() && Instant::now() >= retry {
             retry = Instant::now() + Duration::from_secs(3);
+            let report = match Report::start(&config_path) {
+                Ok(report) => { let report = Arc::new(report); Some(report) },
+                Err(e) => { let _ = tx.send(Event::Log(format!("Rapport périphérique indisponible : {e}"))); None }
+            };
             let result = if vendor_running() {
+                if let Some(r) = &report { match HidApi::new() { Ok(api) => r.inventory(&api), Err(e) => r.log(&format!("Inventaire impossible : {e}")) } }
                 Err(anyhow::anyhow!(
                     "Ferme FIFINE Control Deck, y compris son icône près de l’horloge"
                 ))
             } else {
-                Deck::open()
+                Deck::open_with_report(report.clone())
             };
             match result {
                 Ok(d) => {
+                    if let Some(r) = &report { r.log("Ouverture D6 OK ; version firmware non disponible via le protocole D6 connu"); }
                     deck = Some(d);
                     update = true;
                     beat = Instant::now();
                 }
                 Err(e) => {
+                    if let Some(r) = &report { r.log(&format!("Ouverture D6 échouée : {e:#} ; code Windows : {:?}", std::io::Error::last_os_error().raw_os_error())); }
                     let _ = tx.send(Event::Device(false, format!("En attente · {e}")));
                 }
             }
@@ -162,6 +175,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
                 let mut data = [0u8; 2048];
                 match d.hid.read_timeout(&mut data, 30) {
                     Ok(n) if n > 0 => {
+                        if let Some(r) = &d.report { if d.inputs.get() < 20 { r.log(&format!("Entrée HID #{}{} : {}", d.inputs.get() + 1, if data.starts_with(b"ACK") || data.starts_with(b"\0ACK") { " (réponse/ACK)" } else { "" }, report::hex(&data[..n]))); d.inputs.set(d.inputs.get() + 1); } }
                         if let Some((mut k, down)) = decode_input(&data[..n]) {
                             if config.flip_input_rows { k = display_index(k); }
                             if down {
@@ -210,6 +224,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>) {
             std::thread::sleep(Duration::from_millis(50));
         }
         if let Some(error) = failed {
+            if let Some(d) = &deck { d.note(&format!("Connexion interrompue : {error}")); }
             deck = None;
             let _ = tx.send(Event::Device(
                 false,
@@ -328,6 +343,8 @@ struct Deck {
     hid: HidDevice,
     packet: usize,
     rid: u8,
+    report: Option<Arc<Report>>,
+    inputs: Cell<u8>,
 }
 // Hardware hypothesis: a single BAT upload ends with STP, without CLE.
 // Change this constant to UlendStp if the D6 firmware requires the full terminator.
@@ -338,33 +355,43 @@ fn frame_end() -> FrameEnd {
 }
 impl Deck {
     fn send_frame(&self, idx: usize, jpeg: &[u8], end: FrameEnd) -> Result<()> {
+        let started = Instant::now();
         anyhow::ensure!(idx < 15 && jpeg.len() <= 65535, "Image JPEG trop lourde");
         self.command(&[b'B', b'A', b'T', 0, 0, (jpeg.len() >> 8) as u8, jpeg.len() as u8, display_index(idx) as u8 + 1])?;
         for chunk in jpeg.chunks(self.packet) { self.report(chunk)?; }
         if matches!(end, FrameEnd::UlendStp) { self.command(b"ULEND")?; }
-        self.command(b"STP")
+        let result = self.command(b"STP");
+        self.note(&format!("Image touche {} : {} octets en {} ms ; résultat {:?}", idx + 1, jpeg.len(), started.elapsed().as_millis(), result.as_ref().err().map(ToString::to_string)));
+        result
     }
-    fn open() -> Result<Self> {
+    fn open() -> Result<Self> { Self::open_with_report(None) }
+    fn open_with_report(report: Option<Arc<Report>>) -> Result<Self> {
         let api = HidApi::new()?;
+        if let Some(r) = &report { r.inventory(&api); }
         let info = api
             .device_list()
             .find(|d| {
                 d.vendor_id() == 0x3142 && d.product_id() == 0x0060 && d.usage_page() >= 0xFF00
             })
             .context("D6 3142:0060 introuvable")?;
-        let hid = info.open_device(&api).context("Accès au D6 impossible")?;
+        let hid = info.open_device(&api).map_err(|e| {
+            if let Some(r) = &report { r.log(&format!("Ouverture HID refusée : {e} ; code Windows {:?}", std::io::Error::last_os_error().raw_os_error())); }
+            e
+        }).context("Accès au D6 impossible")?;
         let mut descriptor = [0u8; 4096];
         let n = hid.get_report_descriptor(&mut descriptor)?;
         let (packet, rid) = output_report(&descriptor[..n])?;
-        Ok(Self { hid, packet, rid })
+        if let Some(r) = &report { r.log(&format!("Rapport sortie={} octets, ID={rid} ; tampon entrée=2048 octets ; descripteur={} octets", packet, n)); }
+        Ok(Self { hid, packet, rid, report, inputs: Cell::new(0) })
     }
+    fn note(&self, line: &str) { if let Some(r) = &self.report { r.log(line); } }
     fn report(&self, payload: &[u8]) -> Result<()> {
         anyhow::ensure!(payload.len() <= self.packet, "Rapport trop long");
         let mut data = vec![0u8; self.packet + 1];
         data[0] = self.rid;
         data[1..1 + payload.len()].copy_from_slice(payload);
         // windows-native reports 0 for a synchronously completed WriteFile.
-        let n = self.hid.write(&data)?;
+        let n = self.hid.write(&data).map_err(|e| { self.note(&format!("Erreur écriture HID : {e} ; code Windows {:?}", std::io::Error::last_os_error().raw_os_error())); e })?;
         anyhow::ensure!(
             n == 0 || n == data.len(),
             "Rapport HID partiellement envoyé"
@@ -374,6 +401,7 @@ impl Deck {
     fn command(&self, tail: &[u8]) -> Result<()> {
         let mut data = b"CRT\0\0".to_vec();
         data.extend(tail);
+        self.note(&format!("Commande {} : {}", String::from_utf8_lossy(&tail[..tail.len().min(3)]), report::hex(&data[..data.len().min(16)])));
         self.report(&data)
     }
     fn apply(&self, c: &Config) -> Result<Vec<String>> {
@@ -388,6 +416,7 @@ impl Deck {
         let (images, warnings): (Vec<_>, Vec<_>) = rendered.into_iter().unzip();
         self.command(b"DIS")?;
         self.command(&[b'L', b'I', b'G', 0, 0, c.brightness])?;
+        self.note("Commande HAN : 48 41 4E");
         self.report(b"HAN")?;
         self.command(&[b'C', b'L', b'E', 0, 0, 0, 0xFF])?;
         for (idx, jpeg) in images.iter().enumerate() {
@@ -402,9 +431,11 @@ impl Deck {
                 jpeg.len() as u8,
                 display_index(idx) as u8 + 1,
             ])?;
+            let started = Instant::now();
             for chunk in jpeg.chunks(self.packet) {
                 self.report(chunk)?;
             }
+            self.note(&format!("Image initialisation touche {} : {} octets en {} ms", idx + 1, jpeg.len(), started.elapsed().as_millis()));
         }
         self.command(b"ULEND")?;
         self.command(b"STP")?;

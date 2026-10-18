@@ -127,6 +127,7 @@ pub struct App {
     show_apps: bool,
     show_logs: bool,
     settings: bool,
+    show_device_report: bool,
     show_saved_variables: bool,
     show_about: bool,
     update_result: Option<String>,
@@ -260,7 +261,7 @@ impl App {
         let device = if isolated {
             mpsc::channel().0
         } else {
-            device::spawn(tx.clone())
+            device::spawn(tx.clone(), path.clone())
         };
         let desktop = if isolated || smoke {
             None
@@ -310,6 +311,7 @@ impl App {
             last_edit: Instant::now(),
             show_logs: false,
             settings: false,
+            show_device_report: false,
             show_saved_variables: false,
             show_about: false,
             update_result: None,
@@ -1577,6 +1579,10 @@ impl App {
                             }
                             if ui.button("Variables enregistrées…").clicked() {
                                 self.show_saved_variables = true;
+                                ui.close_menu();
+                            }
+                            if ui.button("Rapport périphérique…").clicked() {
+                                self.show_device_report = true;
                                 ui.close_menu();
                             }
                             if ui.button("Réglages du D6").clicked() {
@@ -3332,6 +3338,35 @@ impl App {
             });
             self.show_apps = open;
         }
+        if self.show_device_report {
+            let mut open = true;
+            egui::Window::new("Rapport périphérique").open(&mut open)
+                .default_width(750.0).default_height(500.0).resizable(true).show(ctx, |ui| {
+                    let folder = crate::devices::report::directory(&self.path);
+                    match crate::devices::report::latest(&self.path) {
+                        Ok(Some(path)) => match std::fs::read_to_string(&path) {
+                            Ok(text) => {
+                                ui.horizontal(|ui| {
+                                    if ui.add(theme::secondary_button("Copier")).clicked() { ui.ctx().copy_text(text.clone()); }
+                                    if ui.add(theme::secondary_button("Ouvrir le dossier")).clicked() {
+                                        if let Err(e) = std::process::Command::new("explorer.exe").arg(&folder).spawn() { self.fail(format!("Dossier inaccessible : {e}")); }
+                                    }
+                                    if ui.add(theme::secondary_button("Enregistrer sous…")).clicked() {
+                                        if let Some(dest) = rfd::FileDialog::new().add_filter("Texte", &["txt"]).set_file_name("rapport-peripherique.txt").save_file() {
+                                            if let Err(e) = std::fs::write(dest.with_extension("txt"), &text) { self.fail(format!("Enregistrement impossible : {e}")); }
+                                        }
+                                    }
+                                });
+                                egui::ScrollArea::vertical().show(ui, |ui| { ui.monospace(&text); });
+                            }
+                            Err(e) => { ui.label(format!("Lecture du rapport impossible : {e}")); }
+                        },
+                        Ok(None) => { ui.label("Aucun rapport disponible. Lance une connexion du D6."); },
+                        Err(e) => { ui.label(format!("Recherche du rapport impossible : {e}")); }
+                    }
+                });
+            self.show_device_report = open;
+        }
         if self.settings {
             let mut open = true;
             egui::Window::new("Réglages du D6")
@@ -3489,6 +3524,7 @@ impl App {
             || self.recording.is_some()
             || self.import_report.is_some()
             || self.settings
+            || self.show_device_report
             || self.show_saved_variables
             || self.show_about
             || self.rename

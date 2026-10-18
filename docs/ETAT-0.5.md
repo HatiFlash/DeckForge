@@ -4,6 +4,12 @@ Point de reprise après la session Claude du 17/10/2026. Version de travail : br
 
 Exécutables prêts sur le PC fixe : `Bureau\DeckForge-0.5-fusion\DeckForge.exe` (+ `deckforge-mcp.exe`, config, assets, `plugins\`). Version d'essai plugins seule : `Bureau\DeckForge-plugins-test`.
 
+## M2 — Rapport périphériques (18/10/2026)
+
+- Livré : journal HID local par démarrage et reconnexion dans `diagnostics/peripheriques-AAAAMMJJ-HHMMSS.log` (10 derniers), inventaire complet et décision de transport, traces D6 des commandes/entrées/images/erreurs, sérial masqué et chemins du profil Windows remplacés. Fenêtre Réglages → Rapport périphérique… : affichage, copie, dossier et export .txt. Les autres modèles restent expérimentaux et non pilotés.
+- Testé automatiquement : anonymisation, format hexadécimal, rotation ; build complet Windows.
+- À tester avec Hatim : lecture du rapport et reconnexion réelle du D6, code Windows des erreurs HID sur machines tierces, ouverture du dossier et export ; aucun périphérique tiers testé sur matériel.
+
 ## E1 — Déclencheurs automatiques (17/10/2026)
 
 - Livré : ouverture/fermeture d’application, heure fixe avec jours, minuteur, branchement/débranchement de périphérique audio ; ajout et suppression dans « Windows et raccourcis », destination profil/page/touche conservée. Surveillance hors verrou, une seconde, sans action au démarrage ; pause globale respectée.
