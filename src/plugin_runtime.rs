@@ -37,13 +37,13 @@ pub fn diff(old:&HashMap<String,Visible>,new:&HashMap<String,Visible>) -> (Vec<V
     (gone,added)
 }
 pub(crate) fn event(name:&str,v:&Visible,device:&Device)->Value {
-    let mut payload=json!({"settings":v.settings,"coordinates":{"column":v.index%device.columns,"row":v.index/device.columns},"state":v.state,"isInMultiAction":false});
+    let mut payload=json!({"settings":v.settings,"coordinates":{"column":v.index%device.columns,"row":v.index/device.columns},"state":v.state,"isInMultiAction":false,"resources":{}});
     if matches!(name,"willAppear"|"willDisappear"|"didReceiveSettings"|"keyDown"|"keyUp") {payload["controller"]=json!("Keypad");}
     json!({"event":name,"action":v.action,"context":v.context,"device":device.id,"payload":payload})
 }
 pub(crate) fn title_event(v:&Visible,device:&Device,title:&str)->Value {
     json!({"event":"titleParametersDidChange","action":v.action,"context":v.context,"device":device.id,
-        "payload":{"title":title,"titleParameters":{"fontFamily":"","fontSize":14,"fontStyle":"Regular","fontUnderline":false,"showTitle":true,"titleAlignment":"middle","titleColor":"#ffffff"},"state":v.state,"coordinates":{"column":v.index%device.columns,"row":v.index/device.columns}}})
+        "payload":{"controller":"Keypad","settings":v.settings,"resources":{},"title":title,"titleParameters":{"fontFamily":"","fontSize":14,"fontStyle":"Regular","fontUnderline":false,"showTitle":true,"titleAlignment":"middle","titleColor":"#ffffff"},"state":v.state,"coordinates":{"column":v.index%device.columns,"row":v.index/device.columns}}})
 }
 enum Request { Sync(HashMap<String,Visible>), Device(Device), Key(String,bool), Title(String,String), Send(String,Value), Open(String), Stop }
 pub enum Reply { Message(String,Value), Error(String,String) }
@@ -119,7 +119,7 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
                 if name=="propertyInspectorDidAppear" {
                     // Comme Stream Dock/Stream Deck : le PI reçoit tout de suite les réglages de sa touche.
                     let _=host.send(json!({"event":"didReceiveSettings","action":v.action,"context":v.context,"device":device.id,"__pi":id,
-                        "payload":{"settings":v.settings,"coordinates":{"column":v.index%device.columns,"row":v.index/device.columns},"isInMultiAction":false}}));
+                        "payload":event("didReceiveSettings",&v,&device)["payload"]}));
                 }
                 if !matches!(name.as_str(),"setSettings"|"getSettings"|"setGlobalSettings"|"getGlobalSettings"|"sendToPlugin"|"propertyInspectorDidAppear"|"propertyInspectorDidDisappear"){continue;}
                 value["context"]=json!(v.context);value["action"]=json!(v.action);
@@ -170,10 +170,11 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
         let connect=d.event("deviceDidConnect");
         assert_eq!(connect["deviceInfo"]["size"],json!({"columns":8,"rows":4}));
         assert_eq!(connect["device"],d.id);
-        for name in ["willAppear","willDisappear","keyDown","keyUp"] {
+        for name in ["willAppear","willDisappear","didReceiveSettings","keyDown","keyUp"] {
             let msg=event(name,&v,&d);assert_eq!(msg["device"],connect["device"]);
             assert_eq!(msg["payload"]["coordinates"],json!({"column":1,"row":2}));
             assert_eq!(msg["payload"]["settings"],json!({"n":1}));
+            assert_eq!(msg["payload"]["resources"],json!({}));
             assert_eq!(msg["payload"]["isInMultiAction"],false);
             assert_eq!(msg["payload"]["state"],1);
         }
@@ -186,6 +187,11 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
         assert_eq!(msg["event"],"titleParametersDidChange");
         assert_eq!(msg["payload"]["title"],"Titre configuré");
         assert_eq!(msg["payload"]["coordinates"],json!({"column":2,"row":1}));
+        assert_eq!(msg["payload"]["controller"],"Keypad");
+        assert_eq!(msg["payload"]["settings"],json!({}));
+        assert_eq!(msg["payload"]["resources"],json!({}));
+        assert_eq!(msg["payload"]["state"],1);
+        assert!(msg["payload"]["titleParameters"].is_object());
     }
     #[test]fn event_coordinates(){let v=Visible{context:"ctx".into(),plugin:"p".into(),action:"a".into(),index:7,settings:json!({"x":1}),state:2};let message=event("keyDown",&v,&Device::virtual_device());assert_eq!(message["payload"]["coordinates"],json!({"column":2,"row":1}));assert_eq!(message["context"],"ctx");}
 }
