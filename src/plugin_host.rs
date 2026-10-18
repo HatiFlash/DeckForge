@@ -370,7 +370,7 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
   host.send(json!({"event":"deviceDidConnect","device":"deckforge-virtual","deviceInfo":crate::plugin_runtime::Device::virtual_device().info()})).unwrap();
   host.send(event("willAppear")).unwrap();host.send(event("keyDown")).unwrap();
   let mut names=std::collections::HashSet::new();
-  for _ in 0..4 {let message=host.incoming.recv_timeout(Duration::from_secs(15)).unwrap();assert_eq!(message["context"],"ctx-1");if message["event"]=="setTitle"{assert_eq!(message["payload"]["title"],"OK 1");}if message["event"]=="setSettings"{assert_eq!(message["payload"]["settings"]["presses"],1);}names.insert(message["event"].as_str().unwrap().to_string());}
+  for _ in 0..4 {let message=host.incoming.recv_timeout(Duration::from_secs(15)).unwrap();assert_eq!(message["context"],"ctx-1");if message["event"]=="setTitle"{assert_eq!(message["payload"]["title"],"OK 1");}if message["event"]=="setSettings"{assert_eq!(message["payload"]["presses"],1);}names.insert(message["event"].as_str().unwrap().to_string());}
   assert_eq!(names,std::collections::HashSet::from(["setTitle".into(),"setImage".into(),"setSettings".into(),"showOk".into()]));
  } #[test] fn rejected_protected_plugin_does_not_spawn(){let d=tempfile::tempdir().unwrap();let p=crate::plugins::parse(d.path(),b"ELGATO\x01payload").unwrap();assert!(Host::start(&p,&crate::plugin_runtime::Device::virtual_device()).is_err());}
 }

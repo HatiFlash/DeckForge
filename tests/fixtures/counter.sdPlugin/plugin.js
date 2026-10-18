@@ -15,7 +15,7 @@ socket.addEventListener('message', message => {
     if (firstContext) send('logMessage', firstContext, { message: 'global-read:' + (data.payload?.settings?.witness || 'empty') });
     if (!globals.has('global')) {
       globals.add('global');
-      send('setGlobalSettings', firstContext, { settings: { witness: 'persisted' } });
+      send('setGlobalSettings', firstContext, { witness: 'persisted' });
     }
     return;
   }
@@ -49,6 +49,6 @@ socket.addEventListener('message', message => {
     send('setImage', context, { image });
     send('setState', context, { state: 1 });
     send(count === 4 ? 'showAlert' : 'showOk', context, {});
-    send('setSettings', context, { settings: updated });
+    send('setSettings', context, updated);
   }
 });

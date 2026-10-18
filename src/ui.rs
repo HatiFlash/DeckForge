@@ -4153,7 +4153,7 @@ impl App {
                 }
             },
             "setSettings"=>{
-                if let (Some(v),Some(settings))=(visible,message["payload"]["settings"].as_object()){
+                if let (Some(v),Some(settings))=(visible,message["payload"].as_object()){
                     if self.config.active==self.applied.active && self.config.page==self.applied.page && !self.gate.dirty {
                         if let Some(binding)=self.config.keys_mut()[v.index].plugin.as_mut(){binding.settings=json!(settings);}
                         if let Some(binding)=self.applied.keys_mut()[v.index].plugin.as_mut(){binding.settings=json!(settings);}
@@ -4163,7 +4163,7 @@ impl App {
                 }
             },
             "getSettings"=>{if let (Some(v),Some(manager))=(visible,&self.plugins){manager.send(plugin,app_settings_event(&v,&sdk_device,&v.settings,pi));}},
-            "setGlobalSettings"=>{let settings=&message["payload"]["settings"];if settings.is_object(){let path=self.path.with_file_name("plugin-settings.json");let mut all=std::fs::read(&path).ok().and_then(|b|serde_json::from_slice::<serde_json::Value>(&b).ok()).filter(|v|v.is_object()).unwrap_or_else(||json!({}));all[plugin]=settings.clone();if let Err(e)=std::fs::write(path,serde_json::to_vec_pretty(&all).unwrap_or_default()){self.fail(format!("Réglages globaux non sauvegardés : {e}"));}else if let (Some(id),Some(manager))=(pi,&self.plugins){manager.send(plugin,json!({"event":"didReceiveGlobalSettings","payload":{"settings":settings},"__pi":id}));}}},
+            "setGlobalSettings"=>{let settings=&message["payload"];if settings.is_object(){let path=self.path.with_file_name("plugin-settings.json");let mut all=std::fs::read(&path).ok().and_then(|b|serde_json::from_slice::<serde_json::Value>(&b).ok()).filter(|v|v.is_object()).unwrap_or_else(||json!({}));all[plugin]=settings.clone();if let Err(e)=std::fs::write(path,serde_json::to_vec_pretty(&all).unwrap_or_default()){self.fail(format!("Réglages globaux non sauvegardés : {e}"));}else if let (Some(id),Some(manager))=(pi,&self.plugins){manager.send(plugin,json!({"event":"didReceiveGlobalSettings","payload":{"settings":settings},"__pi":id}));}}},
             "getGlobalSettings"=>{let all=std::fs::read(self.path.with_file_name("plugin-settings.json")).ok().and_then(|b|serde_json::from_slice::<serde_json::Value>(&b).ok()).unwrap_or_else(||json!({}));if let Some(manager)=&self.plugins {manager.send(plugin,json!({"event":"didReceiveGlobalSettings","payload":{"settings":all.get(plugin).cloned().unwrap_or_else(||json!({}))},"__pi":pi}));}},
             "openUrl"=>{if let Some(url)=message["payload"]["url"].as_str().filter(|u|u.starts_with("https://")||u.starts_with("http://")){
                 if let Some(effects)=&mut self.plugin_external_effects { effects.push(format!("openUrl: {url}")); }
