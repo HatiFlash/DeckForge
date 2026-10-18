@@ -238,6 +238,10 @@ fn stamp() -> u64 {
 pub fn simulate(plugin: &Plugin) -> Report {
     run(plugin, load_oracle(plugin).ok().flatten().as_ref(), false)
 }
+// Fail-closed : le WebSocket de l'hôte ne confine pas les API du navigateur.
+// Un refus n'observe aucune tentative JavaScript ; il ne doit pas être un succès.
+const HTML_VALIDATION_REFUSED: &str = "HTML refusé : CDP absent avant script ; popup/window.open, navigation/redirections et réseau (fetch, XHR, WebSocket) non bloqués ni observés ; aucun HTML exécuté";
+
 pub fn run(plugin: &Plugin, oracle: Option<&OracleFile>, confirmed_real: bool) -> Report {
     let now = stamp();
     Report {
@@ -257,70 +261,78 @@ pub fn run(plugin: &Plugin, oracle: Option<&OracleFile>, confirmed_real: bool) -
                         }
                     })
                     .unwrap_or("simulé");
-                let (verdict, reason) = match entry {
-                    None => (
-                        Verdict::Unverified,
-                        "Aucun résultat attendu déclaré pour cette action".into(),
-                    ),
-                    Some(o) if o.real_effects && !confirmed_real => (
-                        Verdict::Unverified,
-                        "Effets réels : confirmation explicite requise ; non exécuté".into(),
-                    ),
-                    Some(o) if o.mode == Mode::Simulated && confirmed_real => (
-                        Verdict::Unverified,
-                        "Action simulée : non exécutée pendant l'essai réel".into(),
-                    ),
-                    Some(o) => {
-                        let missing = o
-                            .requirements
-                            .software
-                            .iter()
-                            .find(|s| !Path::new(s).exists())
-                            .map(|s| format!("Logiciel absent : {s}"));
-                        let missing = missing
-                            .or_else(|| {
-                                o.requirements
-                                    .account
-                                    .as_ref()
-                                    .map(|s| format!("Compte non vérifié : {s}"))
-                            })
-                            .or_else(|| {
-                                o.requirements
-                                    .hardware
-                                    .as_ref()
-                                    .map(|s| format!("Matériel non vérifié : {s}"))
-                            });
-                        if let Some(reason) = missing {
-                            (Verdict::Unverified, reason)
-                        } else if matches!(
-                            &o.observation,
-                            Observation::File {
-                                directory: None,
-                                ..
-                            }
-                        ) {
-                            (
+                // Sans CDP attaché avant tout script et contrôle des popups/requêtes,
+                // aucune page HTML n'est chargée pendant une validation, même sans oracle.
+                let (verdict, reason) =
+                    if matches!(plugin.runtime, crate::plugins::Runtime::Html(_)) {
+                        (Verdict::Unverified, HTML_VALIDATION_REFUSED.into())
+                    } else {
+                        match entry {
+                            None => (
                                 Verdict::Unverified,
-                                "Dossier de destination inconnu ; aucune exécution".into(),
-                            )
-                        } else if matches!(
-                            &o.observation,
-                            Observation::WindowsRegistry { .. }
-                                | Observation::Process { .. }
-                                | Observation::Window { .. }
-                        ) {
-                            (
+                                "Aucun résultat attendu déclaré pour cette action".into(),
+                            ),
+                            Some(o) if o.real_effects && !confirmed_real => (
                                 Verdict::Unverified,
-                                "Sonde Windows indisponible ; aucune exécution".into(),
-                            )
-                        } else {
-                            match crate::ui::validate_oracle(plugin, &a.uuid, o) {
-                                Ok(s) => (Verdict::Passed, s),
-                                Err(e) => (Verdict::Failed, e),
+                                "Effets réels : confirmation explicite requise ; non exécuté"
+                                    .into(),
+                            ),
+                            Some(o) if o.mode == Mode::Simulated && confirmed_real => (
+                                Verdict::Unverified,
+                                "Action simulée : non exécutée pendant l'essai réel".into(),
+                            ),
+                            Some(o) => {
+                                let missing = o
+                                    .requirements
+                                    .software
+                                    .iter()
+                                    .find(|s| !Path::new(s).exists())
+                                    .map(|s| format!("Logiciel absent : {s}"));
+                                let missing = missing
+                                    .or_else(|| {
+                                        o.requirements
+                                            .account
+                                            .as_ref()
+                                            .map(|s| format!("Compte non vérifié : {s}"))
+                                    })
+                                    .or_else(|| {
+                                        o.requirements
+                                            .hardware
+                                            .as_ref()
+                                            .map(|s| format!("Matériel non vérifié : {s}"))
+                                    });
+                                if let Some(reason) = missing {
+                                    (Verdict::Unverified, reason)
+                                } else if matches!(
+                                    &o.observation,
+                                    Observation::File {
+                                        directory: None,
+                                        ..
+                                    }
+                                ) {
+                                    (
+                                        Verdict::Unverified,
+                                        "Dossier de destination inconnu ; aucune exécution".into(),
+                                    )
+                                } else if matches!(
+                                    &o.observation,
+                                    Observation::WindowsRegistry { .. }
+                                        | Observation::Process { .. }
+                                        | Observation::Window { .. }
+                                ) {
+                                    (
+                                        Verdict::Unverified,
+                                        "Sonde Windows indisponible ; aucune exécution".into(),
+                                    )
+                                } else {
+                                    match crate::ui::validate_oracle(plugin, &a.uuid, o) {
+                                        Ok(s) => (Verdict::Passed, s),
+                                        Err(e) => (Verdict::Failed, e),
+                                    }
+                                }
                             }
                         }
-                    }
-                };
+                    };
                 ActionReport {
                     action: a.uuid.clone(),
                     verdict,
@@ -355,8 +367,48 @@ mod tests {
         p.runtime = crate::plugins::Runtime::Html(p.folder.join("app.html"));
         let o = oracle(&p, ACTION, Observation::Title { equals: "1".into() });
         let result = run(&p, Some(&o), false);
-        assert!(matches!(result.actions[0].verdict, Verdict::Failed));
-        assert!(result.actions[0].reason.contains("HTML non isolé"));
+        assert!(matches!(result.actions[0].verdict, Verdict::Unverified));
+        assert!(result.actions[0].reason.contains("CDP absent avant script"));
+    }
+    #[test]
+    fn html_fixture_refuses_with_and_without_oracle() {
+        // Fixture entièrement maîtrisée : chacune de ces API exigerait un blocage
+        // navigateur avant script ; le garde refuse au lieu de simuler leur interception.
+        let dir = tempfile::tempdir().unwrap();
+        let page = dir.path().join("index.html");
+        std::fs::write(
+            &page,
+            r#"<script>
+            window.open('https://example.invalid/popup');
+            location.href='https://example.invalid/navigation';
+            fetch('https://example.invalid/fetch');
+            new XMLHttpRequest().open('GET','https://example.invalid/xhr');
+            new WebSocket('wss://example.invalid/socket');
+        </script>"#,
+        )
+        .unwrap();
+        let mut p = fixture();
+        p.uuid = "fixture.html.generic".into();
+        p.runtime = crate::plugins::Runtime::Html(page);
+        for oracle in [
+            None,
+            Some(oracle(
+                &p,
+                ACTION,
+                Observation::Title { equals: "1".into() },
+            )),
+        ] {
+            let report = run(&p, oracle.as_ref(), false);
+            assert!(report
+                .actions
+                .iter()
+                .all(|a| matches!(a.verdict, Verdict::Unverified)));
+            assert!(report
+                .actions
+                .iter()
+                .all(|a| a.reason.contains("CDP absent avant script")
+                    && a.reason.contains("non bloqués ni observés")));
+        }
     }
     #[test]
     fn unknown_oracle_is_unverified_and_never_launched() {
