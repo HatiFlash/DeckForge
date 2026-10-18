@@ -1,5 +1,5 @@
 //! Hôte local WebSocket pour les plugins Stream Deck classiques (exécutables et Node).
-use std::{collections::HashMap, net::TcpListener, process::{Child,Command,Stdio}, sync::{mpsc::{self,Receiver,Sender},Arc,atomic::{AtomicBool,Ordering}}, thread, time::{Duration,Instant}};
+use std::{collections::HashMap, net::TcpListener, process::{Child,Command,Stdio}, sync::{mpsc::{self,Receiver,Sender,SyncSender,TrySendError},Arc,atomic::{AtomicBool,Ordering}}, thread, time::{Duration,Instant}};
 use std::io::Write;
 use serde_json::{json,Value};
 use crate::plugins::{Plugin,Runtime};
@@ -94,7 +94,7 @@ struct Pending {ws:tungstenite::WebSocket<std::net::TcpStream>,first:bool,accept
  fn close(&mut self){if !self.0.is_null(){unsafe {windows_sys::Win32::Foundation::CloseHandle(self.0)};self.0=std::ptr::null_mut();}}
 }
 #[cfg(windows)] impl Drop for Job {fn drop(&mut self){self.close();}}
-pub struct Host { #[cfg(windows)] job:Job, pub incoming:Receiver<Value>, outgoing:Sender<Value>, pub ws_port:u16, pub http_port:Option<u16>, pub inspectors:Option<crate::plugin_http::Inspectors>, pub folder:std::path::PathBuf, pub uuid:String, child:Child, worker:Option<thread::JoinHandle<()>>, stop:Arc<AtomicBool>, _http:Option<crate::plugin_http::HtmlServer> }
+pub struct Host { #[cfg(windows)] job:Job, pub incoming:Receiver<Value>, outgoing:SyncSender<Value>, feedback:Sender<Value>, pub ws_port:u16, pub http_port:Option<u16>, pub inspectors:Option<crate::plugin_http::Inspectors>, pub folder:std::path::PathBuf, pub uuid:String, child:Child, worker:Option<thread::JoinHandle<()>>, stop:Arc<AtomicBool>, _http:Option<crate::plugin_http::HtmlServer> }
 impl Host {
  pub fn start(plugin:&Plugin,device:&crate::plugin_runtime::Device)->anyhow::Result<Self>{
   if let Some(reason)=&plugin.prerequisite {anyhow::bail!("Prérequis manquant : {reason}");}
@@ -114,12 +114,12 @@ impl Host {
   #[cfg(windows)] let job=Job::new()?;
   let mut child=process.current_dir(&plugin.folder).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).creation_flags(0x08000000).spawn()?;
   #[cfg(windows)] if let Err(e)=job.assign(&child){let _=child.kill();let _=child.wait();return Err(e.into());}
-  let (outgoing,commands)=mpsc::channel::<Value>();let (messages,incoming)=mpsc::channel();
+  let (outgoing,commands)=mpsc::sync_channel::<Value>(64);let (messages,incoming)=mpsc::channel();let feedback=messages.clone();
   let stop=Arc::new(AtomicBool::new(false));let stopped=stop.clone();
   let registry=http.as_ref().map(|server|server.inspectors.clone());
   let trace=Trace::open(&plugin.uuid);
   let worker=thread::spawn(move||socket_loop_traced(listener,commands,messages,stopped,registry,trace));
-  Ok(Self{#[cfg(windows)] job,incoming,outgoing,ws_port:port,http_port:http.as_ref().map(|h|h.port),inspectors:http.as_ref().map(|h|h.inspectors.clone()),folder:plugin.folder.clone(),uuid:plugin.uuid.clone(),child,worker:Some(worker),stop,_http:http})
+  Ok(Self{#[cfg(windows)] job,incoming,outgoing,feedback,ws_port:port,http_port:http.as_ref().map(|h|h.port),inspectors:http.as_ref().map(|h|h.inspectors.clone()),folder:plugin.folder.clone(),uuid:plugin.uuid.clone(),child,worker:Some(worker),stop,_http:http})
  }
  pub fn open_inspector(&self,path:&str,action_info:Value)->anyhow::Result<String> {
   let server=self.http_port.ok_or_else(||anyhow::anyhow!("Serveur HTML indisponible"))?;
@@ -143,7 +143,16 @@ impl Host {
   Ok(id)
  }
  pub fn exited(&mut self)->bool{self.child.try_wait().ok().flatten().is_some()}
- pub fn send(&self,message:Value)->Result<(),mpsc::SendError<Value>>{self.outgoing.send(message)}
+ pub fn send(&self,message:Value)->Result<(),TrySendError<Value>>{let result=self.outgoing.try_send(message);if result.is_err(){host_error(&self.feedback,"File de commandes plugin pleine ou arrêtée");}result}
+}
+fn host_error(messages:&Sender<Value>,reason:&'static str){let _=messages.send(json!({"event":"__hostError","reason":reason}));}
+// send() confirms only a local WebSocket write, never execution or acknowledgement by the plugin.
+fn send_traced(ws:&mut tungstenite::WebSocket<std::net::TcpStream>,cmd:&Value,messages:&Sender<Value>,trace:&mut Option<Trace>)->bool{
+ trace_message(trace,"host->plugin attempted",cmd,false);
+ match ws.send(tungstenite::Message::Text(cmd.to_string().into())){
+  Ok(())=>{trace_message(trace,"host->plugin sent",cmd,false);true},
+  Err(e)=>{trace_ws_error(trace,"host->plugin send_failed",&e);host_error(messages,"Échec d'envoi WebSocket au plugin ou inspecteur");false}
+ }
 }
 fn socket_loop(listener:TcpListener,commands:Receiver<Value>,messages:Sender<Value>,stop:Arc<AtomicBool>,registry:Option<crate::plugin_http::Inspectors>){socket_loop_traced(listener,commands,messages,stop,registry,None)}
 fn socket_loop_traced(listener:TcpListener,commands:Receiver<Value>,messages:Sender<Value>,stop:Arc<AtomicBool>,registry:Option<crate::plugin_http::Inspectors>,mut trace:Option<Trace>){
@@ -151,7 +160,7 @@ fn socket_loop_traced(listener:TcpListener,commands:Receiver<Value>,messages:Sen
     let mut plugin:Option<tungstenite::WebSocket<std::net::TcpStream>>=None;
     let mut pending:Vec<Pending>=Vec::new();
     let (mut tcp_count,mut handshake_count,mut register_count)=(0u32,0u32,0u32);
-    let mut queued=std::collections::VecDeque::new();
+    let mut queued:std::collections::VecDeque<(Instant,Value)>=std::collections::VecDeque::new();
     let mut inspectors:HashMap<String,tungstenite::WebSocket<std::net::TcpStream>>=HashMap::new();
     while !stop.load(Ordering::Relaxed){
         match listener.accept(){Ok((stream,_))=>{tcp_count+=1;trace_stage(&mut trace,"tcp_accept");let _=stream.set_nonblocking(false); // Windows : le socket accepté hérite du mode non bloquant de l'écouteur.
@@ -180,14 +189,15 @@ fn socket_loop_traced(listener:TcpListener,commands:Receiver<Value>,messages:Sen
                 trace_stage(&mut trace,"no_register_timeout");pending[i].warned=true;
             }
         }
-        while let Ok(cmd)=commands.try_recv(){ queued.push_back(cmd); }
+        while let Some((at,_))=queued.front(){if at.elapsed()<Duration::from_secs(3){break;}queued.pop_front();trace_stage(&mut trace,"command_expired_no_register");host_error(&messages,"Commande plugin expirée sans enregistrement WebSocket");}
+        while let Ok(cmd)=commands.try_recv(){ if queued.len()<64 {queued.push_back((Instant::now(),cmd));}else{trace_stage(&mut trace,"command_queue_full");host_error(&messages,"File de commandes plugin pleine sans enregistrement WebSocket");} }
         while plugin.is_some() && !queued.is_empty() {
-            let mut cmd=queued.pop_front().unwrap();
+            let (_,mut cmd)=queued.pop_front().unwrap();
             let target=cmd.get("__pi").and_then(Value::as_str).map(str::to_owned);
             if let Some(obj)=cmd.as_object_mut(){obj.remove("__pi");}
-            trace_message(&mut trace,"host->plugin",&cmd,false);
-            if let Some(id)=target{if let Some(ws)=inspectors.get_mut(&id){let _=ws.send(tungstenite::Message::Text(cmd.to_string().into()));}}
-            else if let Some(ws)=plugin.as_mut(){let _=ws.send(tungstenite::Message::Text(cmd.to_string().into()));}
+            // Attempt and outcome are recorded by send_traced, not before routing.
+            if let Some(id)=target{if let Some(ws)=inspectors.get_mut(&id){if !send_traced(ws,&cmd,&messages,&mut trace){inspectors.remove(&id);if let Some(r)=&registry{r.lock().unwrap().remove(&id);}let _=messages.send(json!({"event":"propertyInspectorDidDisappear","__pi":id}));}}else{host_error(&messages,"Inspecteur WebSocket indisponible");}}
+            else if let Some(ws)=plugin.as_mut(){if !send_traced(ws,&cmd,&messages,&mut trace){plugin=None;}}
         }
         if let Some(ws)=plugin.as_mut(){match ws.read(){Ok(tungstenite::Message::Text(text))=>{match serde_json::from_str::<Value>(&text){Ok(value)=>{trace_message(&mut trace,"plugin->host",&value,!supported_command(&value));let _=messages.send(value);},Err(e)=>{let _=messages.send(json!({"event":"__hostError","reason":format!("Message JSON malformé : {e}")}));}}},Ok(tungstenite::Message::Close(_))=>{trace_stage(&mut trace,"socket_closed_plugin");plugin=None;},Err(tungstenite::Error::Io(ref e)) if matches!(e.kind(),std::io::ErrorKind::WouldBlock|std::io::ErrorKind::TimedOut)=>{},Err(e)=>{trace_ws_error(&mut trace,"socket_error_plugin",&e);plugin=None;},_=>{}}}
         let mut gone=Vec::new();
@@ -204,6 +214,24 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
 }}
 #[cfg(windows)] use std::os::windows::process::CommandExt;
 #[cfg(test)] mod tests {use super::*;
+ #[test] fn websocket_send_trace_success_and_failure(){
+  let dir=tempfile::tempdir().unwrap();let path=dir.path().join("trace.jsonl");
+  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let addr=listener.local_addr().unwrap();
+  let client=thread::spawn(move||tungstenite::connect(format!("ws://{addr}")).unwrap().0);
+  let (stream,_)=listener.accept().unwrap();let mut ws=tungstenite::accept(stream).unwrap();let mut peer=client.join().unwrap();
+  let (messages,rx)=mpsc::channel();let mut trace=Some(Trace{file:std::fs::File::create(&path).unwrap(),entries:0});
+  let cmd=json!({"event":"keyDown","payload":{"settings":"SECRET"}});
+  assert!(send_traced(&mut ws,&cmd,&messages,&mut trace));assert_eq!(serde_json::from_str::<Value>(&peer.read().unwrap().to_string()).unwrap(),cmd);
+  ws.close(None).unwrap();assert!(!send_traced(&mut ws,&cmd,&messages,&mut trace));
+  assert_eq!(rx.recv_timeout(Duration::from_secs(1)).unwrap()["event"],"__hostError");
+  let data=std::fs::read_to_string(path).unwrap();assert!(data.contains("host->plugin attempted"));assert!(data.contains("host->plugin sent"));assert!(data.contains("host->plugin send_failed"));assert!(!data.contains("SECRET"));
+ }
+ #[test] fn commands_expire_without_registration(){
+  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let (tx,commands)=mpsc::sync_channel(64);let (messages,rx)=mpsc::channel();let stop=Arc::new(AtomicBool::new(false));let flag=stop.clone();
+  let worker=thread::spawn(move||socket_loop(listener,commands,messages,flag,None));tx.send(json!({"event":"keyDown"})).unwrap();
+  let error=rx.recv_timeout(Duration::from_secs(5)).unwrap();assert_eq!(error["event"],"__hostError");assert!(error["reason"].as_str().unwrap().contains("expirée"));
+  stop.store(true,Ordering::Relaxed);worker.join().unwrap();
+ }
  #[test] fn node_requirement_and_sdk_v2(){let d=tempfile::tempdir().unwrap();std::fs::create_dir(d.path().join("bin")).unwrap();std::fs::write(d.path().join("bin/plugin.js"),b"").unwrap();let p=crate::plugins::parse(d.path(),br#"{"CodePath":"bin/plugin.js","Nodejs":{"Version":"18.17"}}"#).unwrap();assert_eq!(required_node(&p),20);let p=crate::plugins::parse(d.path(),br#"{"CodePath":"bin/plugin.js","Nodejs":{"Version":"22"}}"#).unwrap();assert_eq!(required_node(&p),22);}
  #[test] fn trace_redacts_payload_and_marks_unknown(){
   let d=tempfile::tempdir().unwrap();let path=d.path().join("trace.jsonl");
