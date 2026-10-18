@@ -769,6 +769,10 @@ impl App {
                 }
             }
         }
+        let compact = ctx.screen_rect().width() < 1500.0;
+        let palette_id = egui::Id::new("workshop_palette_open");
+        let mut palette_open = ctx.data(|d| d.get_temp::<bool>(palette_id)).unwrap_or(!compact);
+        if compact && self.workshop_chat.open { palette_open = false; }
         egui::TopBottomPanel::top("workshop_header").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 if ui.button("← Retour au deck").clicked() { self.show_workflow = false; selection = None; }
@@ -778,6 +782,7 @@ impl App {
                 ui.separator();
                 if ui.selectable_value(&mut self.preferences.workshop_advanced, false, "Simple").changed() { self.save_preferences(); }
                 if ui.selectable_value(&mut self.preferences.workshop_advanced, true, "Avancé").changed() { self.save_preferences(); }
+                if compact && ui.button(if palette_open { "Masquer les blocs" } else { "Blocs" }).clicked() { palette_open = !palette_open; }
                 template_menu(ui, &mut template_choice);
                 if self.preferences.workshop_advanced && ui.button("Exporter AHK").clicked() { export = true; }
                 if ui.add(egui::Button::new("Enregistrer").fill(BLUE)).clicked() { self.save(); }
@@ -797,7 +802,9 @@ impl App {
         let search_id = egui::Id::new("workshop_search");
         let mut search = ctx.data(|d| d.get_temp::<String>(search_id)).unwrap_or_default();
         let mut add = None;
-        egui::SidePanel::left("workshop_library").resizable(true).default_width(280.0).min_width(220.0).max_width(350.0).show(ctx, |ui| {
+        ctx.data_mut(|d| d.insert_temp(palette_id, palette_open));
+        if (!compact || palette_open) && !(compact && self.workshop_chat.open) {
+        egui::SidePanel::left("workshop_library").resizable(!compact).default_width(if compact { 240.0 } else { 280.0 }).min_width(200.0).max_width(if compact { 260.0 } else { 350.0 }).show(ctx, |ui| {
             ui.label(RichText::new("BIBLIOTHÈQUE DE BLOCS").strong());
             let response = ui.add(egui::TextEdit::singleline(&mut search).hint_text("Rechercher un bloc"));
             let kinds: Vec<_> = BLOCK_CATEGORIES.iter().flat_map(|(category, kinds)| kinds.iter().copied()
@@ -818,6 +825,7 @@ impl App {
                 if clicked.is_some() { add = clicked; }
             });
         });
+        }
         ctx.data_mut(|d| d.insert_temp(search_id, search));
         if !self.engine.running.load(Ordering::SeqCst) { self.running_block.clear(); }
         let validation_config = self.config.clone();
@@ -828,14 +836,15 @@ impl App {
         let dialog_tx = self.dialog_tx.clone();
         let can_run = !self.engine.running.load(Ordering::SeqCst) && !self.workshop_journal.confirm_real;
         egui::TopBottomPanel::bottom("workshop_journal_bar").show(ctx, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 let arrow = if self.workshop_journal.open { "Masquer" } else { "Journal" };
                 if ui.button(arrow).clicked() { self.workshop_journal.open = !self.workshop_journal.open; }
-                ui.label(self.workshop_journal.summary());
+                ui.add(egui::Label::new(self.workshop_journal.summary()).truncate());
                 if ui.add_enabled(can_run, egui::Button::new("Simuler")).clicked() { self.start_workshop_run(true); }
                 if ui.add_enabled(can_run, egui::Button::new("Tester pour de vrai")).clicked() {
                     self.workshop_journal.confirm_real = true;
                 }
+                if ui.button(if self.workshop_chat.open { "Fermer l’assistant" } else { "Assistant" }).clicked() { self.workshop_chat.open = !self.workshop_chat.open; }
             });
             if self.workshop_journal.open {
                 ui.separator();
@@ -854,13 +863,51 @@ impl App {
                 });
             }
         });
-        egui::Area::new(egui::Id::new("workshop_chat_launcher"))
-            .anchor(egui::Align2::RIGHT_BOTTOM, [-18.0, -53.0])
-            .order(egui::Order::Foreground)
-            .show(ctx, |ui| {
-                if ui.add(theme::primary("Assistant")).clicked() { self.workshop_chat.open = !self.workshop_chat.open; }
-            });
         let selected_trace = ctx.data(|d| d.get_temp::<Vec<usize>>(selected_id)).unwrap_or_default();
+        if !self.preferences.workshop_advanced && !self.workshop_chat.open && (!compact || !palette_open) {
+            if let Some(path) = selection.clone() {
+                let mut close = false;
+                egui::SidePanel::right("workshop_properties_panel")
+                    .resizable(!compact).default_width(if compact { 300.0 } else { 340.0 })
+                    .min_width(260.0).max_width(360.0).show(ctx, |ui| {
+                        if ui.small_button("× Fermer les propriétés").clicked() { close = true; }
+                        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                            if let Some(step) = step_mut(&mut self.config.keys_mut()[selected].steps, &path) {
+                                ui.label(RichText::new("Propriétés du bloc").strong());
+                                ui.label(RichText::new(step.name()).strong());
+                                ui.label(block_summary(step));
+                                 if !step.is_disabled() {
+                                     if let Err(e) = validate_key(&Key { steps: vec![step.clone()], ..Key::default() }, &validation_config) {
+                                         ui.colored_label(Color32::LIGHT_RED, format!("À corriger : {e}"));
+                                     }
+                                 }
+                                let mut capture = false;
+                                let mut icon = None;
+                                changed |= edit_step(ui, step, &profiles, &pages, &mut capture, &self.audio, &mut icon,
+                                    &dialog_tx, &(target.0, target.1.clone(), target.2, path.clone()));
+                                if capture { record = Some(path.clone()); }
+                                if let Some(state) = icon { pick_audio = Some((path.clone(), state)); }
+                            }
+                        });
+                    });
+                if close { selection = None; }
+            }
+        }
+        if self.workshop_journal.confirm_real {
+            egui::Window::new("Confirmer l'exécution réelle").collapsible(false).resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+                    ui.label(format!("Ceci va réellement exécuter {} blocs sur ce PC.", self.config.keys()[selected].steps.len()));
+                    ui.label("Les actions peuvent modifier les applications, le son et les périphériques.");
+                    ui.horizontal(|ui| {
+                        if ui.button("Annuler").clicked() { self.workshop_journal.confirm_real = false; }
+                        if ui.add(theme::danger_button("Confirmer l'exécution réelle")).clicked() {
+                            self.workshop_journal.confirm_real = false;
+                            self.start_workshop_run(false);
+                        }
+                    });
+                });
+        }
+        self.workshop_chat(ctx, selection.as_deref());
         let highlight = if selected_trace.is_empty() { &self.running_block } else { &selected_trace };
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.label(RichText::new("Construis ton automatisation").size(21.0).strong());
@@ -932,51 +979,6 @@ impl App {
             if let Some(path) = insert_at { d.insert_temp(egui::Id::new("workshop_insert_at"), path); }
             else { d.remove::<Vec<usize>>(egui::Id::new("workshop_insert_at")); }
         });
-        if !self.preferences.workshop_advanced {
-            if let Some(path) = selection.clone() {
-                let mut close = false;
-                egui::Window::new("Propriétés du bloc").id(egui::Id::new("workshop_properties"))
-                    .anchor(egui::Align2::RIGHT_CENTER, [-12.0, 0.0])
-                    .default_width(320.0).min_width(270.0).max_width(350.0)
-                    .resizable(true).show(ctx, |ui| {
-                        if ui.small_button("× Fermer les propriétés").clicked() { close = true; }
-                        egui::ScrollArea::vertical().max_height((ctx.screen_rect().height() - 140.0).max(240.0)).show(ui, |ui| {
-                            if let Some(step) = step_mut(&mut self.config.keys_mut()[selected].steps, &path) {
-                                ui.label(RichText::new("Propriétés du bloc").strong());
-                                ui.label(RichText::new(step.name()).strong());
-                                ui.label(block_summary(step));
-                                 if !step.is_disabled() {
-                                     if let Err(e) = validate_key(&Key { steps: vec![step.clone()], ..Key::default() }, &validation_config) {
-                                         ui.colored_label(Color32::LIGHT_RED, format!("À corriger : {e}"));
-                                     }
-                                 }
-                                let mut capture = false;
-                                let mut icon = None;
-                                changed |= edit_step(ui, step, &profiles, &pages, &mut capture, &self.audio, &mut icon,
-                                    &dialog_tx, &(target.0, target.1.clone(), target.2, path.clone()));
-                                if capture { record = Some(path.clone()); }
-                                if let Some(state) = icon { pick_audio = Some((path.clone(), state)); }
-                            }
-                        });
-                    });
-                if close { selection = None; }
-            }
-        }
-        if self.workshop_journal.confirm_real {
-            egui::Window::new("Confirmer l'exécution réelle").collapsible(false).resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
-                    ui.label(format!("Ceci va réellement exécuter {} blocs sur ce PC.", self.config.keys()[selected].steps.len()));
-                    ui.label("Les actions peuvent modifier les applications, le son et les périphériques.");
-                    ui.horizontal(|ui| {
-                        if ui.button("Annuler").clicked() { self.workshop_journal.confirm_real = false; }
-                        if ui.add(theme::danger_button("Confirmer l'exécution réelle")).clicked() {
-                            self.workshop_journal.confirm_real = false;
-                            self.start_workshop_run(false);
-                        }
-                    });
-                });
-        }
-        self.workshop_chat(ctx, selection.as_deref());
         ctx.data_mut(|d| {
             if let Some(path) = selection {
                 if path.len() == 1 { d.insert_temp(egui::Id::new("workshop_selected"), path[0]); }

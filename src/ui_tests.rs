@@ -50,6 +50,42 @@ fn workshop_chat_consent_card_is_visible_without_publishing() {
 }
 
 #[test]
+fn workshop_responsive_panels_reserve_space_at_multiple_sizes_and_dpi() {
+    for (physical, dpi) in [(vec2(1000.0, 700.0), 1.0), (vec2(1000.0, 700.0), 1.5),
+        (vec2(1366.0, 768.0), 1.0), (vec2(1920.0, 1080.0), 1.0),
+        (vec2(1366.0, 768.0), 1.25), (vec2(1920.0, 1080.0), 1.5)] {
+        let mut h = Harness::new();
+        h.ctx.set_pixels_per_point(dpi);
+        let size = physical / dpi;
+        h.app.show_workflow = true;
+        h.app.config.keys_mut()[0].steps = vec![Step::Delay { ms: 100 }];
+        h.app.workshop_chat.open = true;
+        let output = h.warm(size);
+        for label in ["Fermer l’assistant", "Simuler", "Tester pour de vrai", "Enregistrer", "Construis ton automatisation"] {
+            assert!(text_position(&output.shapes, label).is_some(), "{label} at {physical:?} / {dpi}");
+        }
+        if size.x < 1500.0 {
+            let chat = egui::containers::panel::PanelState::load(&h.ctx, egui::Id::new("workshop_chat_panel")).unwrap().rect;
+            assert!(chat.left() > 0.0 && chat.right() <= size.x + 1.0, "chat {chat:?} at {size:?}");
+            let title = text_position(&output.shapes, "Construis ton automatisation").unwrap();
+            assert!(title.x < chat.left() && title.y < size.y, "chat overlaps canvas {chat:?}, title {title:?}");
+            assert!(text_position(&output.shapes, "Retour à la séquence").is_some());
+            assert!(text_position(&output.shapes, "BIBLIOTHÈQUE DE BLOCS").is_none());
+            assert!(text_position(&output.shapes, "Propriétés du bloc").is_none());
+        }
+        h.app.workshop_chat.open = false;
+        h.ctx.data_mut(|d| d.insert_temp(egui::Id::new("workshop_path"), vec![0_usize]));
+        let output = h.warm(size);
+        assert!(text_position(&output.shapes, "Propriétés du bloc").is_some(), "properties {size:?} panel={:?} path={:?} text={:?}", egui::containers::panel::PanelState::load(&h.ctx, egui::Id::new("workshop_properties_panel")).map(|p| p.rect), h.ctx.data(|d| d.get_temp::<Vec<usize>>(egui::Id::new("workshop_path"))), output.shapes.iter().filter_map(|s| if let egui::Shape::Text(t)=&s.shape { Some(t.galley.job.text.clone()) } else { None }).take(30).collect::<Vec<_>>());
+        assert!(text_position(&output.shapes, "Construis ton automatisation").is_some());
+        let property = egui::containers::panel::PanelState::load(&h.ctx, egui::Id::new("workshop_properties_panel")).unwrap().rect;
+        assert!(property.left() > 0.0 && property.right() <= size.x + 1.0, "property {property:?} at {size:?}");
+        assert!(text_position(&output.shapes, "Construis ton automatisation").unwrap().x < property.left());
+        assert!(text_position(&output.shapes, "× Fermer les propriétés").is_some());
+    }
+}
+
+#[test]
 fn workshop_chat_and_properties_fit_both_screen_sizes() {
     for size in [vec2(1366.0, 768.0), vec2(1920.0, 1080.0)] {
         let mut h = Harness::new();
@@ -899,12 +935,16 @@ fn workshop_simple_layout_keeps_canvas_visible_at_both_sizes() {
         let output = h.warm(size);
         assert!(text_position(&output.shapes, "Propriétés du bloc").is_some(), "path={:?}, shown={:?}, texts={:?}", h.ctx.data(|d| d.get_temp::<Vec<usize>>(egui::Id::new("workshop_path"))), h.app.show_workflow, output.shapes.iter().filter_map(|shape| if let egui::Shape::Text(t) = &shape.shape {Some(t.galley.job.text.clone())} else {None}).collect::<Vec<_>>());
         assert!(text_position(&output.shapes, "Construis ton automatisation").is_some());
+        h.ctx.data_mut(|d| d.insert_temp(egui::Id::new("workshop_palette_open"), true));
+        let output = h.warm(size);
         assert!(text_position(&output.shapes, "BIBLIOTHÈQUE DE BLOCS").is_some());
+        h.ctx.data_mut(|d| d.insert_temp(egui::Id::new("workshop_palette_open"), false));
         h.app.config.keys_mut()[1].steps.clear();
         h.app.selected = 1;
         let output = h.warm(size);
         assert!(text_position(&output.shapes, "Propriétés du bloc").is_none());
         assert!(text_position(&output.shapes, "Ajoute ton premier bloc").is_some());
+        h.ctx.data_mut(|d| d.insert_temp(egui::Id::new("workshop_palette_open"), true));
         h.ctx.data_mut(|d| d.insert_temp(egui::Id::new("workshop_search"), "aucun-bloc-xyz".to_owned()));
         let output = h.warm(size);
         assert!(text_position(&output.shapes, "Aucun bloc trouvé. Essaie un autre mot-clé.").is_some());
@@ -936,6 +976,7 @@ fn workflow_preview_shows_conditional_blocks() {
         ..Key::default()
     };
     h.app.show_workflow = true;
+    h.ctx.data_mut(|d| d.insert_temp(egui::Id::new("workshop_palette_open"), true));
     let output = h.warm(size);
     assert!(text_position(&output.shapes, "Construis ton automatisation").is_some());
     assert!(text_position(&output.shapes, "BIBLIOTHÈQUE DE BLOCS").is_some());

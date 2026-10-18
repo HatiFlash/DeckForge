@@ -203,232 +203,252 @@ impl App {
         let mut save_mode = false;
         let mut consent_action = None;
         let screen = ctx.screen_rect();
-        egui::Window::new("Assistant · Atelier")
-            .id(egui::Id::new("workshop_chat_window"))
-            .open(&mut open)
-            .default_pos(egui::pos2(
-                (screen.right() - 356.0).max(8.0),
-                (screen.bottom() - 495.0).max(32.0),
-            ))
-            .default_width(340.0)
-            .min_width(280.0)
-            .max_width(360.0)
-            .resizable(true)
-            .show(ctx, |ui| {
-                ui.set_max_height((screen.height() - 110.0).max(220.0));
+        let compact = screen.width() < 1500.0;
+        let chat_content = |ui: &mut egui::Ui| {
+            if compact {
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(match self.preferences.workshop_chat_mode.as_str() {
-                            "ia" if self.assistant.is_some() => "IA",
-                            "ia" => "Indisponible",
-                            _ => "Local",
-                        })
-                        .color(theme::palette(ctx).muted),
-                    );
-                    egui::ComboBox::from_id_salt("workshop_chat_mode")
-                        .selected_text(match self.preferences.workshop_chat_mode.as_str() {
-                            "local" => "Local",
-                            "ia" => "IA",
-                            _ => "Automatique",
-                        })
-                        .show_ui(ui, |ui| {
-                            for (value, label) in
-                                [("local", "Local"), ("auto", "Automatique"), ("ia", "IA")]
-                            {
-                                save_mode |= ui
-                                    .selectable_value(
-                                        &mut self.preferences.workshop_chat_mode,
-                                        value.into(),
-                                        label,
-                                    )
-                                    .changed();
+                    ui.label("Assistant · Atelier");
+                    if ui.button("Retour à la séquence").clicked() {
+                        open = false;
+                    }
+                });
+            }
+            ui.horizontal(|ui| {
+                let response = ui.add(
+                    egui::TextEdit::singleline(&mut self.workshop_chat.input)
+                        .hint_text("Décris une action...")
+                        .desired_width((ui.available_width() - 90.0).max(60.0)),
+                );
+                if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                    || ui.button("Envoyer").clicked()
+                {
+                    send = Some(std::mem::take(&mut self.workshop_chat.input));
+                }
+            });
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(match self.preferences.workshop_chat_mode.as_str() {
+                                "ia" if self.assistant.is_some() => "IA",
+                                "ia" => "Indisponible",
+                                _ => "Local",
+                            })
+                            .color(theme::palette(ctx).muted),
+                        );
+                        egui::ComboBox::from_id_salt("workshop_chat_mode")
+                            .selected_text(match self.preferences.workshop_chat_mode.as_str() {
+                                "local" => "Local",
+                                "ia" => "IA",
+                                _ => "Automatique",
+                            })
+                            .show_ui(ui, |ui| {
+                                for (value, label) in
+                                    [("local", "Local"), ("auto", "Automatique"), ("ia", "IA")]
+                                {
+                                    save_mode |= ui
+                                        .selectable_value(
+                                            &mut self.preferences.workshop_chat_mode,
+                                            value.into(),
+                                            label,
+                                        )
+                                        .changed();
+                                }
+                            });
+                    });
+                    if let Some(request) = &self.workshop_chat.consent {
+                        ui.separator();
+                        ui.label("Contexte transmis uniquement après ton accord :");
+                        ui.label(format!("Demande : {}", request.text));
+                        ui.label(format!("Destination : {}", request.destination));
+                        ui.label(format!(
+                            "Blocs actuels (types uniquement) : {}",
+                            request.blocks.join(", ")
+                        ));
+                        ui.label("Aucun chemin personnel ni secret des blocs n'est transmis.");
+                        ui.horizontal(|ui| {
+                            if ui.button("Transmettre à mon IA").clicked() {
+                                consent_action = Some(true);
+                            }
+                            if ui.button("Non merci").clicked() {
+                                consent_action = Some(false);
                             }
                         });
-                });
-                if let Some(request) = &self.workshop_chat.consent {
-                    ui.separator();
-                    ui.label("Contexte transmis uniquement après ton accord :");
-                    ui.label(format!("Demande : {}", request.text));
-                    ui.label(format!("Destination : {}", request.destination));
-                    ui.label(format!(
-                        "Blocs actuels (types uniquement) : {}",
-                        request.blocks.join(", ")
-                    ));
-                    ui.label("Aucun chemin personnel ni secret des blocs n'est transmis.");
-                    ui.horizontal(|ui| {
-                        if ui.button("Transmettre à mon IA").clicked() {
-                            consent_action = Some(true);
+                    }
+                    if self.workshop_chat.consent.is_some() || self.workshop_chat.awaiting.is_some()
+                    {
+                        if !self.assistant.as_ref().is_some_and(|s| s.enabled()) {
+                            ui.label("Indisponible");
+                            if ui.button("Connecter une IA").clicked() {
+                                self.connect_window = true;
+                            }
                         }
-                        if ui.button("Non merci").clicked() {
+                    }
+                    if self.workshop_chat.awaiting.is_some() {
+                        ui.label("En attente de ton IA…");
+                        if ui.button("Annuler la demande IA").clicked() {
                             consent_action = Some(false);
                         }
-                    });
-                }
-                if self.workshop_chat.consent.is_some() || self.workshop_chat.awaiting.is_some() {
-                    if !self.assistant.as_ref().is_some_and(|s| s.enabled()) {
-                        ui.label("Indisponible");
-                        if ui.button("Connecter une IA").clicked() {
-                            self.connect_window = true;
+                    }
+                    if let Some(p) = self.proposals.pending.front() {
+                        ui.label("Proposition de ton IA reçue");
+                        ui.label(&p.title);
+                        ui.label(p.details.chars().take(180).collect::<String>());
+                        if ui.button("Voir et valider la proposition").clicked() {
+                            self.workshop_chat.open = false;
                         }
                     }
-                }
-                if self.workshop_chat.awaiting.is_some() {
-                    ui.label("En attente de ton IA…");
-                    if ui.button("Annuler la demande IA").clicked() {
-                        consent_action = Some(false);
-                    }
-                }
-                if let Some(p) = self.proposals.pending.front() {
-                    ui.label("Proposition de ton IA reçue");
-                    ui.label(&p.title);
-                    ui.label(p.details.chars().take(180).collect::<String>());
-                    if ui.button("Voir et valider la proposition").clicked() {
-                        self.workshop_chat.open = false;
-                    }
-                }
-                egui::ScrollArea::vertical()
-                    .id_salt("chat_history")
-                    .max_height((screen.height() * 0.22).min(150.0))
-                    .show(ui, |ui| {
-                        for message in &self.workshop_chat.messages {
-                            ui.label(message);
-                        }
-                    });
-                if let Some(pending) = &self.workshop_chat.pending {
-                    ui.separator();
-                    if stale {
-                        ui.colored_label(
-                            theme::palette(ctx).muted,
-                            "Proposition périmée : touche, page ou profil changé.",
-                        );
-                    }
-                    match &pending.proposal.status {
-                        Status::Ambigue { question, choix } => {
-                            ui.label(question);
-                            if self.preferences.workshop_chat_mode == "auto"
-                                && !stale
-                                && ui.button("Demander à mon IA").clicked()
-                            {
-                                consent_action = Some(true);
-                                self.workshop_chat.consent = Some(ConsentRequest::new(
-                                    pending.request.clone(),
-                                    &self.config,
-                                    self.selected,
-                                ));
+                    egui::ScrollArea::vertical()
+                        .id_salt("chat_history")
+                        .max_height((screen.height() * 0.22).min(150.0))
+                        .show(ui, |ui| {
+                            for message in &self.workshop_chat.messages {
+                                ui.label(message);
                             }
-                            for option in choix {
-                                if ui.button(option).clicked() {
-                                    choice = Some(option.clone());
+                        });
+                    if let Some(pending) = &self.workshop_chat.pending {
+                        ui.separator();
+                        if stale {
+                            ui.colored_label(
+                                theme::palette(ctx).muted,
+                                "Proposition périmée : touche, page ou profil changé.",
+                            );
+                        }
+                        match &pending.proposal.status {
+                            Status::Ambigue { question, choix } => {
+                                ui.label(question);
+                                if self.preferences.workshop_chat_mode == "auto"
+                                    && !stale
+                                    && ui.button("Demander à mon IA").clicked()
+                                {
+                                    consent_action = Some(true);
+                                    self.workshop_chat.consent = Some(ConsentRequest::new(
+                                        pending.request.clone(),
+                                        &self.config,
+                                        self.selected,
+                                    ));
+                                }
+                                for option in choix {
+                                    if ui.button(option).clicked() {
+                                        choice = Some(option.clone());
+                                    }
                                 }
                             }
-                        }
-                        Status::Reconnue => {
-                            egui::ScrollArea::vertical()
-                                .id_salt("chat_preview")
-                                .max_height((screen.height() * 0.24).min(175.0))
-                                .show(ui, |ui| {
-                                    if let Some(before) = &pending.original {
-                                        ui.label(format!("Avant : {} bloc(s)", before.len()));
-                                        for step in before {
+                            Status::Reconnue => {
+                                egui::ScrollArea::vertical()
+                                    .id_salt("chat_preview")
+                                    .max_height((screen.height() * 0.24).min(175.0))
+                                    .show(ui, |ui| {
+                                        if let Some(before) = &pending.original {
+                                            ui.label(format!("Avant : {} bloc(s)", before.len()));
+                                            for step in before {
+                                                ui.label(format!(
+                                                    "- {}",
+                                                    super::extras::block_summary(step)
+                                                ));
+                                            }
                                             ui.label(format!(
-                                                "- {}",
-                                                super::extras::block_summary(step)
+                                                "Après : {} bloc(s)",
+                                                pending.proposal.steps.len()
                                             ));
                                         }
-                                        ui.label(format!(
-                                            "Après : {} bloc(s)",
-                                            pending.proposal.steps.len()
-                                        ));
-                                    }
-                                    for (i, step) in pending.proposal.steps.iter().enumerate() {
-                                        ui.label(format!(
-                                            "{}  {}",
-                                            step.name(),
-                                            super::extras::block_summary(step)
-                                        ));
-                                        for missing in pending
-                                            .proposal
-                                            .missing
-                                            .iter()
-                                            .filter(|m| m.path.first() == Some(&i))
-                                        {
-                                            ui.colored_label(
-                                                Color32::LIGHT_RED,
-                                                format!("À compléter : {}", missing.field),
-                                            );
+                                        for (i, step) in pending.proposal.steps.iter().enumerate() {
+                                            ui.label(format!(
+                                                "{}  {}",
+                                                step.name(),
+                                                super::extras::block_summary(step)
+                                            ));
+                                            for missing in pending
+                                                .proposal
+                                                .missing
+                                                .iter()
+                                                .filter(|m| m.path.first() == Some(&i))
+                                            {
+                                                ui.colored_label(
+                                                    Color32::LIGHT_RED,
+                                                    format!("À compléter : {}", missing.field),
+                                                );
+                                            }
+                                            if sensitive(step) {
+                                                ui.colored_label(
+                                                    Color32::LIGHT_RED,
+                                                    "Action sensible : vérifier avant insertion.",
+                                                );
+                                            }
                                         }
-                                        if sensitive(step) {
-                                            ui.colored_label(
-                                                Color32::LIGHT_RED,
-                                                "Action sensible : vérifier avant insertion.",
-                                            );
+                                        for note in &pending.proposal.notes {
+                                            ui.label(note);
                                         }
+                                    });
+                                ui.horizontal(|ui| {
+                                    let valid = !stale
+                                        && pending.proposal.insertable()
+                                        && (pending.original.is_some()
+                                            || self.config.keys()[self.selected].steps.len()
+                                                + pending.proposal.steps.len()
+                                                <= 256);
+                                    if ui
+                                        .add_enabled(
+                                            valid,
+                                            egui::Button::new(if pending.original.is_some() {
+                                                "Appliquer"
+                                            } else {
+                                                "Ajouter"
+                                            }),
+                                        )
+                                        .clicked()
+                                    {
+                                        action = Some(0);
                                     }
-                                    for note in &pending.proposal.notes {
-                                        ui.label(note);
+                                    if ui.button("Ajuster").clicked() {
+                                        action = Some(1);
+                                    }
+                                    if ui.button("Annuler").clicked() {
+                                        action = Some(2);
                                     }
                                 });
-                            ui.horizontal(|ui| {
-                                let valid = !stale
-                                    && pending.proposal.insertable()
-                                    && (pending.original.is_some()
-                                        || self.config.keys()[self.selected].steps.len()
-                                            + pending.proposal.steps.len()
-                                            <= 256);
-                                if ui
-                                    .add_enabled(
-                                        valid,
-                                        egui::Button::new(if pending.original.is_some() {
-                                            "Appliquer"
-                                        } else {
-                                            "Ajouter"
-                                        }),
-                                    )
-                                    .clicked()
-                                {
-                                    action = Some(0);
-                                }
-                                if ui.button("Ajuster").clicked() {
-                                    action = Some(1);
-                                }
+                            }
+                            Status::Inconnue => {
                                 if ui.button("Annuler").clicked() {
                                     action = Some(2);
                                 }
-                            });
-                        }
-                        Status::Inconnue => {
-                            if ui.button("Annuler").clicked() {
-                                action = Some(2);
                             }
                         }
                     }
-                }
-                ui.separator();
-                ui.horizontal_wrapped(|ui| {
-                    for label in [
-                        "Créer une macro",
-                        "Expliquer ce bloc",
-                        "Corriger cette macro",
-                        "Optimiser",
-                        "Ajouter une temporisation",
-                    ] {
-                        if ui.small_button(label).clicked() {
-                            send = Some(label.to_owned());
+                    ui.separator();
+                    ui.horizontal_wrapped(|ui| {
+                        for label in [
+                            "Créer une macro",
+                            "Expliquer ce bloc",
+                            "Corriger cette macro",
+                            "Optimiser",
+                            "Ajouter une temporisation",
+                        ] {
+                            if ui.small_button(label).clicked() {
+                                send = Some(label.to_owned());
+                            }
                         }
-                    }
+                    });
                 });
-                ui.horizontal(|ui| {
-                    let response = ui.add(
-                        egui::TextEdit::singleline(&mut self.workshop_chat.input)
-                            .hint_text("Décris une action..."),
-                    );
-                    if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                        || ui.button("Envoyer").clicked()
-                    {
-                        send = Some(std::mem::take(&mut self.workshop_chat.input));
-                    }
-                });
-            });
+        };
+        if compact {
+            egui::SidePanel::right("workshop_chat_panel")
+                .resizable(false)
+                .exact_width((screen.width() * 0.38).clamp(290.0, 360.0))
+                .show(ctx, chat_content);
+        } else {
+            let x = screen.right() - 360.0;
+            egui::Window::new("Assistant · Atelier")
+                .id(egui::Id::new("workshop_chat_window"))
+                .current_pos(egui::pos2(x.max(8.0), (screen.bottom() - 410.0).max(32.0)))
+                .default_width(340.0)
+                .min_width(280.0)
+                .max_width(360.0)
+                .max_height((screen.height() - 100.0).max(250.0))
+                .resizable(false)
+                .show(ctx, chat_content);
+        }
         self.workshop_chat.open = open;
         if let Some(agree) = consent_action {
             if agree {
