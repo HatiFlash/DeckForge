@@ -4,13 +4,24 @@ use std::io::Write;
 use serde_json::{json,Value};
 use crate::plugins::{Plugin,Runtime};
 
-fn node_executable()->Option<std::path::PathBuf>{
+fn node_executable(required:u32)->Option<std::path::PathBuf>{
  let mut candidates=Vec::new();
  if let Some(paths)=std::env::var_os("PATH"){candidates.extend(std::env::split_paths(&paths).map(|p|p.join("node.exe")));}
  if let Some(p)=std::env::var_os("ProgramFiles"){candidates.push(std::path::PathBuf::from(p).join("nodejs/node.exe"));}
  if let Some(p)=std::env::var_os("ProgramFiles(x86)"){candidates.push(std::path::PathBuf::from(p).join("fifine Control Deck/node/node20.exe"));}
- if let Some(p)=std::env::var_os("APPDATA"){if let Ok(entries)=std::fs::read_dir(std::path::PathBuf::from(p).join("Elgato/StreamDeck/NodeJS")){for entry in entries.flatten().take(32){candidates.push(entry.path().join("node.exe"));}}}
- candidates.into_iter().find(|p|p.is_file())
+ if let Some(p)=std::env::var_os("APPDATA"){let root=std::path::PathBuf::from(p).join("Elgato/StreamDeck/NodeJS");candidates.push(root.join("node.exe"));if let Ok(entries)=std::fs::read_dir(root){for entry in entries.flatten().take(32){candidates.push(entry.path().join("node.exe"));}}}
+ candidates.into_iter().filter(|p|p.is_file()).find(|p|node_major(p).is_some_and(|v|v>=required))
+}
+fn node_major(path:&std::path::Path)->Option<u32>{
+ let output=Command::new(path).arg("--version").stdin(Stdio::null()).output().ok()?;
+ if !output.status.success(){return None;}
+ let text=std::str::from_utf8(&output.stdout).ok()?;
+ text.trim().trim_start_matches('v').split('.').next()?.parse().ok()
+}
+fn required_node(plugin:&Plugin)->u32{
+ let declared=plugin.node_version.as_deref().and_then(|v|v.trim_start_matches('v').split('.').next()?.parse::<u32>().ok()).unwrap_or(0);
+ let sdk_v2=matches!(&plugin.runtime,Runtime::Node(p) if p.to_string_lossy().replace('\\',"/").ends_with("bin/plugin.js"));
+ declared.max(if sdk_v2 {20}else{0})
 }
 fn launch_info(plugin:&Plugin,device:&crate::plugin_runtime::Device)->Value {
  let platform_version=std::env::var("DECKFORGE_PLATFORM_VERSION").unwrap_or_else(|_|"10.0".into());
@@ -28,7 +39,7 @@ impl Trace {fn open(uuid:&str)->Option<Self>{
  Some(Self{file,entries:0})
 }}
 fn supported_command(message:&Value)->bool {
- matches!(message.get("event").and_then(Value::as_str),Some("registerPlugin"|"registerPropertyInspector"|"logMessage"|"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"getSettings"|"setGlobalSettings"|"getGlobalSettings"|"openUrl"|"sendToPlugin"|"sendToPropertyInspector"))
+ matches!(message.get("event").and_then(Value::as_str),Some("registerPlugin"|"registerPropertyInspector"|"logMessage"|"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"getSettings"|"setGlobalSettings"|"getGlobalSettings"|"openUrl"|"sendToPlugin"|"sendToPropertyInspector"|"switchToProfile"))
 }
 pub fn unsupported_events(uuid:&str)->Vec<String>{
  if std::env::var("DECKFORGE_PLUGIN_TRACE_UUID").ok().as_deref()!=Some(uuid){return Vec::new();}
@@ -66,11 +77,12 @@ fn trace_message(trace:&mut Option<Trace>,direction:&str,message:&Value,unsuppor
 pub struct Host { #[cfg(windows)] job:Job, pub incoming:Receiver<Value>, outgoing:Sender<Value>, pub ws_port:u16, pub http_port:Option<u16>, pub inspectors:Option<crate::plugin_http::Inspectors>, pub folder:std::path::PathBuf, pub uuid:String, child:Child, worker:Option<thread::JoinHandle<()>>, stop:Arc<AtomicBool>, _http:Option<crate::plugin_http::HtmlServer> }
 impl Host {
  pub fn start(plugin:&Plugin,device:&crate::plugin_runtime::Device)->anyhow::Result<Self>{
+  if let Some(reason)=&plugin.prerequisite {anyhow::bail!("Prérequis manquant : {reason}");}
   let listener=TcpListener::bind("127.0.0.1:0")?;
   let port=listener.local_addr()?.port();
   let mut process=match &plugin.runtime {
    Runtime::Exe(p)=>Command::new(p),
-   Runtime::Node(p)=>{let node=node_executable().ok_or_else(||anyhow::anyhow!("Node.js introuvable (système, FIFINE ou Elgato)"))?;let mut c=Command::new(node);c.arg(p);c},
+   Runtime::Node(p)=>{let required=required_node(plugin);let node=node_executable(required).ok_or_else(||anyhow::anyhow!("Node.js >= {required} introuvable (système, FIFINE ou Elgato)"))?;let mut c=Command::new(node);c.arg(p);c},
    Runtime::Html(_)=>{let edge=std::path::Path::new(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe");anyhow::ensure!(edge.is_file(),"Microsoft Edge introuvable");Command::new(edge)},
    _=>anyhow::bail!("Plugin protégé ou type non pris en charge"),
   };
@@ -157,6 +169,7 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
 }}
 #[cfg(windows)] use std::os::windows::process::CommandExt;
 #[cfg(test)] mod tests {use super::*;
+ #[test] fn node_requirement_and_sdk_v2(){let d=tempfile::tempdir().unwrap();std::fs::create_dir(d.path().join("bin")).unwrap();std::fs::write(d.path().join("bin/plugin.js"),b"").unwrap();let p=crate::plugins::parse(d.path(),br#"{"CodePath":"bin/plugin.js","Nodejs":{"Version":"18.17"}}"#).unwrap();assert_eq!(required_node(&p),20);let p=crate::plugins::parse(d.path(),br#"{"CodePath":"bin/plugin.js","Nodejs":{"Version":"22"}}"#).unwrap();assert_eq!(required_node(&p),22);}
  #[test] fn trace_redacts_payload_and_marks_unknown(){
   let d=tempfile::tempdir().unwrap();let path=d.path().join("trace.jsonl");
   let file=std::fs::File::create(&path).unwrap();let mut trace=Some(Trace{file,entries:0});
@@ -223,7 +236,7 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
  #[test] fn node_fixture_exchanges_key_messages(){
   let fixture=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sdplugin");
   let p=crate::plugins::parse(&fixture,&std::fs::read(fixture.join("manifest.json")).unwrap()).unwrap();
-  let node=node_executable().expect("Node.js required for the plugin fixture test");
+  let node=node_executable(0).expect("Node.js required for the plugin fixture test");
   let support=Command::new(&node).args(["-p","typeof WebSocket"]).output().expect("Node.js fixture preflight failed");
   assert!(support.status.success() && support.stdout==b"function
 ", "Node.js fixture needs global WebSocket: {} {}", String::from_utf8_lossy(&support.stdout), String::from_utf8_lossy(&support.stderr));

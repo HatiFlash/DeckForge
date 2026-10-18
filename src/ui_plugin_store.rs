@@ -25,6 +25,8 @@ impl App {
     ui.group(|ui|{ui.label(RichText::new(format!("{} · v{}",plugin.display_name(),plugin.version)).strong());
      ui.label(format!("Auteur : {} · Origine : import local",if plugin.author.trim().is_empty(){"inconnu"}else{&plugin.author}));
      ui.label(format!("Runtime : {ty} · Windows · Compatibilité : non vérifiée · Installé / inactif si aucune touche liée"));
+     if let Some(reason)=&plugin.prerequisite {ui.colored_label(egui::Color32::YELLOW,format!("Prérequis manquant : {reason}"));}
+     if let Some(version)=&plugin.node_version {ui.label(format!("Node.js demandé : {version}"));}
      ui.label("Droits de redistribution : non évalués ; processus tiers = droits utilisateur, aucune sandbox.");
      ui.label(format!("{} actions · {}",plugin.actions.len(),self.plugin_errors.get(&plugin.uuid).map(String::as_str).unwrap_or("arrêté")));
      let unsupported=crate::plugin_host::unsupported_events(&plugin.uuid);

@@ -54,3 +54,9 @@ Le lancement Exe/Node conserve -port, -pluginUUID, -registerEvent et -info ; l�
 
 Limites D2 : l’identifiant SDK physique reste dérivé de la taille de grille et non du numéro de série (deux appareils de même grille sont confondus) ; le type SDK des modèles non reconnus est par défaut 0 ; connexion initiale sans modèle remonte comme virtuel. platformVersion est toujours la valeur de repli 10.0, colors vide et police vide. L’événement de déconnexion à l’arrêt de l’hôte n’est pas garanti, ni les transitions matérielles sans changement de grille. Pas encore de titleParametersDidChange, systemDidWakeUp, applicationDidLaunch/applicationDidTerminate ni sonde de processus. Ces points réclament une tranche ultérieure et des tests dédiés ; aucune conformité intégrale SDK v2 revendiquée.
 
+## D3 — tranche runtime et limites
+
+CodePathWin prévaut sur CodePath ; OS[] doit contenir windows, MinimumVersion est confrontée à la version Windows (build du registre ou valeur de test explicite), sinon lancement refusé avec prérequis explicite. Nodejs.Version sélectionne une version majeure compatible parmi PATH, FIFINE et Elgato ; les entrées SDK v2 bin/plugin.js demandent au moins Node 20. Le répertoire de travail reste le dossier du plugin pour Node et exe. Le magasin affiche les prérequis du manifeste. Tests unitaires couvrent manifeste et seuil SDK v2, sans démarrage de plugin tiers.
+
+Les commandes usuelles étaient déjà gérées dans l'App isolée et l'hôte ; switchToProfile est désormais refusée explicitement plutôt que prétendue réussie. Restent non implémentés : bascule vers profil DeckForge existant, vérification du rendu setTitle/setImage par target et state, événements de titre configuré / réveil / applications surveillées, tests ciblés de chaque commande et démarrage SDK v2 réel. Aucune compatibilité totale revendiquée.
+

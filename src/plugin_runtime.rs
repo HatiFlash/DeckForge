@@ -98,7 +98,7 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
         for (plugin,host) in &hosts {while let Ok(mut value)=host.incoming.try_recv(){
             let name=value["event"].as_str().unwrap_or("").to_owned();
             if name=="__hostError" {let _=reply.send(Reply::Error(plugin.clone(),value["reason"].as_str().unwrap_or("Message invalide").into()));continue;}
-            if !matches!(name.as_str(),"registerPlugin"|"logMessage"|"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"getSettings"|"setGlobalSettings"|"getGlobalSettings"|"sendToPlugin"|"sendToPropertyInspector"|"propertyInspectorDidAppear"|"propertyInspectorDidDisappear"|"openUrl") {
+            if !matches!(name.as_str(),"registerPlugin"|"logMessage"|"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"getSettings"|"setGlobalSettings"|"getGlobalSettings"|"sendToPlugin"|"sendToPropertyInspector"|"switchToProfile"|"propertyInspectorDidAppear"|"propertyInspectorDidDisappear"|"openUrl") {
                 let _=reply.send(Reply::Error(plugin.clone(),format!("Evenement plugin non pris en charge : {name}")));continue;
             }
             if matches!(name.as_str(),"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"getSettings")
@@ -122,6 +122,7 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
             } else if name=="sendToPropertyInspector" {
                 if let Some(ctx)=value["context"].as_str(){for (id,v) in &inspectors {if v.context==ctx && v.plugin==*plugin {let mut message=value.clone();message["__pi"]=json!(id);let _=host.send(message);}}}continue;
             }
+            if name=="switchToProfile" {let _=reply.send(Reply::Error(plugin.clone(),"switchToProfile non pris en charge : profil non vérifié".into()));continue;}
             let _=reply.send(Reply::Message(plugin.clone(),value));
         }}
         let exited=hosts.iter_mut().filter_map(|(id,host)|{
