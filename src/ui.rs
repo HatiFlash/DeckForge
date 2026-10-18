@@ -30,6 +30,9 @@ mod appearance;
 
 #[path = "ui_plugin_store.rs"]
 mod plugin_store_ui;
+#[path = "ui_plugin_validation.rs"]
+mod plugin_validation_harness;
+pub(crate) use plugin_validation_harness::validate_witness;
 
 #[path = "ui_workshop_chat.rs"]
 mod workshop_chat_ui;
@@ -260,6 +263,11 @@ impl App {
         Runner::new(app, cc.egui_ctx.clone())
     }
     fn init(ctx: &egui::Context, override_path: Option<PathBuf>) -> Self {
+        Self::init_with(ctx, override_path, true)
+    }
+    /// `configure_variables=false` keeps the process-wide saved variables untouched; used by the
+    /// background plugin validation, which runs while the real application is open.
+    fn init_with(ctx: &egui::Context, override_path: Option<PathBuf>, configure_variables: bool) -> Self {
         let isolated = override_path.is_some();
         theme::install(ctx);
         let path = override_path.unwrap_or_else(|| {
@@ -278,7 +286,8 @@ impl App {
         } else {
             Config::default()
         };
-        if let Err(e) = crate::persistent_variables::configure(&path.with_file_name("variables.json")) {
+        if !configure_variables {
+        } else if let Err(e) = crate::persistent_variables::configure(&path.with_file_name("variables.json")) {
             load_error = Some(format!("Variables enregistrées illisibles : {e}"));
         }
         let smoke = !isolated && std::env::args().any(|a| a == "--ui-smoke");
