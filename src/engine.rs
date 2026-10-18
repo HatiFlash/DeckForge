@@ -18,6 +18,7 @@ use windows_sys::Win32::{
 };
 
 thread_local! { static MOUSE_WINDOW: std::cell::Cell<Option<(i32, i32, i32, i32)>> = const { std::cell::Cell::new(None) }; }
+thread_local! { static WORKSHOP_RUN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
 thread_local! { static ACTIVE_KEY: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) }; }
 static TOGGLE_STATES: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, bool>>> = std::sync::OnceLock::new();
 fn toggle_states() -> &'static std::sync::Mutex<std::collections::HashMap<String, bool>> {
@@ -85,7 +86,7 @@ fn press_decision(mode: Option<crate::model::RunMode>, running: bool, pending: u
         crate::model::RunMode::Queue => PressDecision::Full,
     }
 }
-type Job = (Key, bool, u64, crate::model::ObsSettings);
+type Job = (Key, bool, u64, crate::model::ObsSettings, bool);
 #[derive(Default)]
 struct ExecutionState {
     queue: std::collections::VecDeque<Job>,
@@ -121,6 +122,12 @@ impl Engine {
         at > *self.last_finished.lock().unwrap_or_else(|e| e.into_inner()) + Duration::from_millis(150)
     }
     pub fn start(&self, key: Key, dry: bool, initial_delay: u64, obs: crate::model::ObsSettings) {
+        self.start_inner(key, dry, initial_delay, obs, false);
+    }
+    pub fn start_workshop(&self, key: Key, dry: bool, obs: crate::model::ObsSettings) {
+        self.start_inner(key, dry, 0, obs, true);
+    }
+    fn start_inner(&self, key: Key, dry: bool, initial_delay: u64, obs: crate::model::ObsSettings, workshop: bool) {
         let now = Instant::now();
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let id = key.runtime_id.clone().unwrap_or_else(|| serde_json::to_string(&key).unwrap_or_default());
@@ -137,12 +144,12 @@ impl Engine {
         if decision == PressDecision::Restart {
             state.queue.clear();
             self.cancel.store(true, Ordering::SeqCst);
-            state.queue.push_back((key, dry, initial_delay, obs));
+            state.queue.push_back((key, dry, initial_delay, obs, workshop));
             let _ = self.tx.send(Event::Log("Macro relancée après interruption".into()));
             return;
         }
         if decision == PressDecision::Queue {
-            state.queue.push_back((key, dry, initial_delay, obs));
+            state.queue.push_back((key, dry, initial_delay, obs, workshop));
             let _ = self.tx.send(Event::Log(format!("Macro en attente ({}/5)", state.queue.len())));
             return;
         }
@@ -156,15 +163,17 @@ impl Engine {
         let last_finished = self.last_finished.clone();
         let state = self.state.clone();
         std::thread::spawn(move || {
-            let mut job = (key, dry, initial_delay, obs);
+            let mut job = (key, dry, initial_delay, obs, workshop);
             loop {
-                let (key, dry, initial_delay, obs) = job;
+                let (key, dry, initial_delay, obs, workshop) = job;
+                WORKSHOP_RUN.with(|flag| flag.set(workshop));
+                let run_started = Instant::now();
                 // Physical press: capture before spawning; delayed test: capture after countdown.
                 let mouse_window = (!dry && initial_delay == 0).then(capture_mouse_window);
                 let captured = if !dry && initial_delay == 0 && has_app_volume(&key.steps) {
                     Some(crate::app_audio::capture("foreground", true))
                 } else { None };
-                let cleanup = HoldCleanup(held.clone());
+                let cleanup = (!dry).then(|| HoldCleanup(held.clone()));
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     if !dry { wait(initial_delay, &cancel)?; }
                     MOUSE_WINDOW.with(|area| area.set(if dry { None } else { mouse_window.unwrap_or_else(capture_mouse_window) }));
@@ -180,6 +189,7 @@ impl Engine {
                     Ok(Err(e)) => format!("Macro arrêtée : {e}"),
                     Err(_) => "Erreur interne : macro interrompue".into(),
                 };
+                if workshop { let _ = tx.send(Event::WorkshopFinished { ok: message == "Macro terminée", elapsed: run_started.elapsed(), message: message.clone() }); }
                 let _ = tx.send(Event::Log(message));
                 let mut guard = state.lock().unwrap_or_else(|e| e.into_inner());
                 if cancel.load(Ordering::SeqCst) && guard.queue.is_empty() {
@@ -503,6 +513,8 @@ fn run_steps(
         *budget -= 1;
         let mut path = parent.to_vec();
         path.push(idx);
+        let started = Instant::now();
+        if WORKSHOP_RUN.with(|flag| flag.get()) { let _ = tx.send(Event::WorkshopStep { path: path.clone(), name: step.name().into(), elapsed: None }); }
         let _ = tx.send(Event::Block(path.clone()));
         let _ = tx.send(Event::Log(format!(
             "Bloc {} : {}",
@@ -596,6 +608,7 @@ fn run_steps(
                 )?,
                 _ => {}
             }
+            if WORKSHOP_RUN.with(|flag| flag.get()) { let _ = tx.send(Event::WorkshopStep { path, name: step.name().into(), elapsed: Some(started.elapsed()) }); }
             continue;
         }
         match step {
@@ -858,6 +871,7 @@ fn run_steps(
             }
         }
 
+        if WORKSHOP_RUN.with(|flag| flag.get()) { let _ = tx.send(Event::WorkshopStep { path, name: step.name().into(), elapsed: Some(started.elapsed()) }); }
         wait(10, cancel)?;
     }
     Ok(())

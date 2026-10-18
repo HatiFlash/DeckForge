@@ -205,6 +205,7 @@ pub struct App {
     audio: crate::audio::Snapshot,
     obs_state: crate::obs_monitor::Snapshot,
     running_block: Vec<usize>,
+    workshop_journal: crate::workshop_journal::Journal,
     open_requested: bool,
     tray_ready: bool,
     quitting: bool,
@@ -393,6 +394,7 @@ impl App {
             audio: Default::default(),
             obs_state: Default::default(),
             running_block: vec![],
+            workshop_journal: Default::default(),
             open_requested: false,
             tray_ready: false,
             quitting: false,
@@ -596,7 +598,7 @@ impl App {
                 break;
             };
             match event {
-                Event::Log(s) => self.log(s),
+                Event::Log(s) => { self.workshop_journal.log(&s); self.log(s); },
                 Event::Notification(title, message) => {
                     self.log(format!("Notification — {title} : {message}"));
                     if self.tray_ready {
@@ -604,6 +606,8 @@ impl App {
                     }
                 }
                 Event::Block(path) => self.running_block = path,
+                Event::WorkshopStep { path, name, elapsed } => self.workshop_journal.step(path, name, elapsed),
+                Event::WorkshopFinished { ok, elapsed, message } => self.workshop_journal.finish(ok, elapsed, message),
                 Event::D6Brightness(mode, value) => {
                     self.config.brightness = crate::model::d6_brightness(self.config.brightness, &mode, value);
                     if self.wanted && self.gate.connected && !self.sleep.sleeping {

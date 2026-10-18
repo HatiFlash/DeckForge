@@ -41,6 +41,7 @@ mod token_equal;
 mod theme;
 mod ui;
 mod workshop_ops;
+mod workshop_journal;
 mod video_mf;
 mod state_display;
 
@@ -50,6 +51,8 @@ pub enum Event {
     Notification(String, String),
     Audio(audio::Snapshot),
     Block(Vec<usize>),
+    WorkshopStep { path: Vec<usize>, name: String, elapsed: Option<std::time::Duration> },
+    WorkshopFinished { ok: bool, elapsed: std::time::Duration, message: String },
     D6Brightness(String, u8),
     D6Sleep,
     ToggleVisual,

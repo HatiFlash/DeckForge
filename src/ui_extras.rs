@@ -214,9 +214,11 @@ fn template_menu(ui: &mut egui::Ui, choice: &mut Option<usize>) {
     });
 }
 #[derive(Clone)]
+#[cfg(test)]
 struct TraceLine { path: Vec<usize>, text: String }
 // Reflects engine::run_steps dry mode: both conditional branches and one loop
 // iteration are previewed; it does not evaluate the window or invoke actions.
+#[cfg(test)]
 fn simulation_trace(steps: &[Step]) -> Vec<TraceLine> {
     fn walk(steps: &[Step], parent: &[usize], out: &mut Vec<TraceLine>, limit: usize) {
         for (i, step) in steps.iter().enumerate() {
@@ -683,6 +685,18 @@ impl App {
         });
         self.show_saved_variables = open;
     }
+    fn start_workshop_run(&mut self, dry: bool) {
+        if self.engine.running.load(Ordering::SeqCst) { return; }
+        let mut key = self.config.keys()[self.selected].clone();
+        if key.steps.is_empty() { self.fail("Ajoute un bloc avant de tester.".into()); return; }
+        if let Err(e) = validate_key(&key, &self.config) { self.fail(format!("Action à corriger : {e}")); return; }
+        key.runtime_id = Some(crate::engine::identity(&self.config.profiles[self.config.active].name, &self.config.page, self.selected));
+        // A workshop run never queues behind another macro; no real side effect on dry mode.
+        key.run_mode = Some(crate::model::RunMode::Ignore);
+        key.debounce_ms = 0;
+        self.workshop_journal.begin(dry);
+        self.engine.start_workshop(key, dry, self.config.obs.clone());
+    }
     pub(super) fn workflow(&mut self, ctx: &egui::Context) {
         if !self.show_workflow {
             return;
@@ -761,14 +775,6 @@ impl App {
                 if ui.selectable_value(&mut self.preferences.workshop_advanced, false, "Simple").changed() { self.save_preferences(); }
                 if ui.selectable_value(&mut self.preferences.workshop_advanced, true, "Avancé").changed() { self.save_preferences(); }
                 template_menu(ui, &mut template_choice);
-                if ui.button("Simuler").on_hover_text("Simulation sans effets réels").clicked() {
-                    if validate_key(&self.config.keys()[self.selected], &self.config).is_ok() {
-                        let trace = simulation_trace(&self.config.keys()[self.selected].steps);
-                        ctx.data_mut(|d| d.insert_temp(trace_id, trace.iter().map(|line| (line.path.clone(), line.text.clone())).collect::<Vec<_>>()));
-                    } else { ctx.data_mut(|d| d.remove::<Vec<(Vec<usize>, String)>>(trace_id)); }
-                    self.preview(true);
-                }
-                if self.preferences.workshop_advanced && ui.button("Tester dans 3 s").on_hover_text("Exécute réellement la macro sur le PC dans 3 secondes").clicked() { self.preview(false); }
                 if self.preferences.workshop_advanced && ui.button("Exporter AHK").clicked() { export = true; }
                 if ui.add(egui::Button::new("Enregistrer").fill(BLUE)).clicked() { self.save(); }
             });
@@ -803,6 +809,34 @@ impl App {
         let selected = self.selected;
         let target = (self.config.active, self.config.page.clone(), selected);
         let dialog_tx = self.dialog_tx.clone();
+        let can_run = !self.engine.running.load(Ordering::SeqCst) && !self.workshop_journal.confirm_real;
+        egui::TopBottomPanel::bottom("workshop_journal_bar").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                let arrow = if self.workshop_journal.open { "Masquer" } else { "Journal" };
+                if ui.button(arrow).clicked() { self.workshop_journal.open = !self.workshop_journal.open; }
+                ui.label(self.workshop_journal.summary());
+                if ui.add_enabled(can_run, egui::Button::new("Simuler")).clicked() { self.start_workshop_run(true); }
+                if ui.add_enabled(can_run, egui::Button::new("Tester pour de vrai")).clicked() {
+                    self.workshop_journal.confirm_real = true;
+                }
+            });
+            if self.workshop_journal.open {
+                ui.separator();
+                ui.label(if self.workshop_journal.mode == Some(false) { "EXÉCUTION RÉELLE" } else { "SIMULATION" });
+                egui::ScrollArea::vertical().id_salt("workshop_journal_lines").max_height(145.0).show(ui, |ui| {
+                    for line in &self.workshop_journal.lines {
+                        let title = if let Some(path) = &line.path {
+                            format!("{} · {}", path.iter().step_by(2).map(|i| (i + 1).to_string()).collect::<Vec<_>>().join("."), line.message)
+                        } else { line.message.clone() };
+                        let title = if let Some(elapsed) = line.elapsed { format!("{title} · {:.1} ms", elapsed.as_secs_f64() * 1000.0) } else { title };
+                        if let Some(path) = &line.path {
+                            if ui.button(title).clicked() { selection = Some(path.clone()); }
+                        } else { ui.label(title); }
+                    }
+                    if let Some(message) = &self.workshop_journal.error { ui.colored_label(Color32::LIGHT_RED, message); }
+                });
+            }
+        });
         let selected_trace = ctx.data(|d| d.get_temp::<Vec<usize>>(selected_id)).unwrap_or_default();
         let highlight = if selected_trace.is_empty() { &self.running_block } else { &selected_trace };
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -904,6 +938,20 @@ impl App {
                     });
                 if close { selection = None; }
             }
+        }
+        if self.workshop_journal.confirm_real {
+            egui::Window::new("Confirmer l'exécution réelle").collapsible(false).resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+                    ui.label(format!("Ceci va réellement exécuter {} blocs sur ce PC.", self.config.keys()[selected].steps.len()));
+                    ui.label("Les actions peuvent modifier les applications, le son et les périphériques.");
+                    ui.horizontal(|ui| {
+                        if ui.button("Annuler").clicked() { self.workshop_journal.confirm_real = false; }
+                        if ui.add(theme::danger_button("Confirmer l'exécution réelle")).clicked() {
+                            self.workshop_journal.confirm_real = false;
+                            self.start_workshop_run(false);
+                        }
+                    });
+                });
         }
         ctx.data_mut(|d| {
             if let Some(path) = selection {

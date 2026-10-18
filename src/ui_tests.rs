@@ -184,6 +184,44 @@ fn text_position(shapes: &[egui::epaint::ClippedShape], text: &str) -> Option<eg
 }
 
 #[test]
+fn workshop_journal_starts_closed_and_opens_on_injected_events() {
+    let size = vec2(1366.0, 768.0);
+    let mut h = Harness::new();
+    h.app.show_workflow = true;
+    h.app.config.keys_mut()[0].steps = vec![Step::Delay { ms: 100 }];
+    let output = h.warm(size);
+    assert!(text_position(&output.shapes, "Simulation · Aucun test effectué").is_some());
+    assert!(text_position(&output.shapes, "Journal").is_some());
+    assert!(text_position(&output.shapes, "SIMULATION").is_none());
+    h.app.workshop_journal.begin(true);
+    h.app.workshop_journal.step(vec![0], "Attendre".into(), None);
+    h.app.workshop_journal.step(vec![0], "Attendre".into(), Some(Duration::from_millis(5)));
+    h.app.workshop_journal.finish(true, Duration::from_millis(1200), "Macro terminée".into());
+    let output = h.warm(size);
+    assert!(text_position(&output.shapes, "Simulation · 1 étapes · OK · 1.2 s").is_some());
+    assert!(text_position(&output.shapes, "SIMULATION").is_some());
+    assert!(text_position(&output.shapes, "1 · Attendre · 5.0 ms").is_some());
+}
+
+#[test]
+fn workshop_real_run_requires_explicit_confirmation() {
+    let size = vec2(1366.0, 768.0);
+    let mut h = Harness::new();
+    h.app.show_workflow = true;
+    h.app.config.keys_mut()[0].steps = vec![Step::Delay { ms: 100 }];
+    let output = h.warm(size);
+    let button = text_position(&output.shapes, "Tester pour de vrai").unwrap();
+    h.click(size, button);
+    let output = h.warm(size);
+    assert!(h.app.workshop_journal.confirm_real);
+    assert!(text_position(&output.shapes, "Ceci va réellement exécuter 1 blocs sur ce PC.").is_some());
+    assert_eq!(h.app.workshop_journal.mode, None);
+    assert!(!h.app.engine.running.load(Ordering::SeqCst));
+    // Merely opening the confirmation never runs the macro.
+    assert_eq!(h.app.workshop_journal.mode, None);
+}
+
+#[test]
 fn real_widgets_assign_catalog_bind_swap_keys_and_undo() {
     let size = vec2(1380.0, 900.0);
     let mut h = Harness::new();

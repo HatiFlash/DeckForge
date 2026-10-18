@@ -1,5 +1,11 @@
 # DeckForge 0.5 (développement) — état au 17 octobre 2026
 
+## Atelier minimaliste & assistant — A3 (phase 3)
+
+- Livré : barre compacte de simulation en bas de la séquence, journal fermé par défaut ; ouverture au premier événement d'un essai, étapes imbriquées cliquables et chronométrées, messages et bilan de l'exécution. « Simuler » passe par le moteur en mode sec ; « Tester pour de vrai » exige une confirmation explicite, sans exécution à l'ouverture. Les simulations n'émettent aucune action : les blocs sont court-circuités avant les opérations clavier, souris, audio, réseau, OBS, USB, fichiers et navigation ; les conditions peuvent consulter l'état local en lecture seule. Les branches des conditions et un seul tour de répétition sont explorés ; ce n'est pas une prévision fidèle du comportement réel. L'ancien aperçu statique reste limité aux tests de compatibilité.
+- Testé automatiquement : agrégation des événements, état initial fermé, dépliage avec événements injectés et absence d'exécution réelle avant confirmation ; `cargo check` et build Windows complet (résultat au commit). Aucune macro réelle lancée pendant les tests.
+- À tester avec Hatim : lisibilité du panneau et clic des lignes imbriquées, annulation/confirmation de l'exécution réelle sur une macro volontairement bénigne, simultanéité avec les déclencheurs physiques. Les messages textuels du journal partagé peuvent inclure d'autres événements pendant un essai ; les durées par étape sont disponibles pour les étapes réussies, pas pour celle interrompue. Le chat flottant est un objectif ultérieur.
+
 ## Atelier minimaliste & assistant — A2 (phase 2)
 
 - Livré : menu de carte (dupliquer, supprimer, monter, descendre, désactiver/réactiver, insérer après), insertion à la ligne entre cartes via la bibliothèque, réorganisation par glisser-déposer au même niveau (pas entre branches), repère bleu, raccourcis de sélection et d’édition hors champs texte, erreurs de validation sur cartes et propriétés. Opérations pures sur chemins imbriqués ; modifications annulables.
