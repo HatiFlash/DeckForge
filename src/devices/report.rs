@@ -5,12 +5,35 @@ use hidapi::HidApi;
 pub struct Report { file: Mutex<fs::File>, started: Instant }
 
 fn system_command(program: &str, args: &[&str]) -> String {
-    Command::new(program).args(args).output().ok()
+    let mut command = Command::new(program);
+    command.args(args);
+    // Never flash a console window (the report is written on every connection attempt).
+    #[cfg(windows)] { use std::os::windows::process::CommandExt; command.creation_flags(0x0800_0000); }
+    command.output().ok()
         .filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
         .filter(|s| !s.is_empty()).unwrap_or_else(|| "indisponible".into())
 }
+fn windows_version() -> &'static str {
+    static VERSION: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    VERSION.get_or_init(|| system_command("cmd", &["/C", "ver"]))
+}
+/// UTC timestamp `AAAAMMJJ-HHMMSS`, computed without any external process.
 fn stamp() -> String {
-    system_command("powershell", &["-NoProfile", "-Command", "Get-Date -Format yyyyMMdd-HHmmss"])
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
+    stamp_from(secs)
+}
+fn stamp_from(secs: u64) -> String {
+    let (days, rem) = ((secs / 86_400) as i64, secs % 86_400);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}{month:02}{day:02}-{:02}{:02}{:02}", rem / 3600, rem % 3600 / 60, rem % 60)
 }
 fn rotate(dir: &Path) -> io::Result<()> {
     let mut files = fs::read_dir(dir)?.filter_map(Result::ok).map(|e| e.path())
@@ -55,7 +78,7 @@ impl Report {
         let file = OpenOptions::new().create(true).append(true).open(dir.join(format!("peripheriques-{}.log", stamp())))?;
         rotate(&dir)?;
         let report = Self { file: Mutex::new(file), started: Instant::now() };
-        report.log(&format!("DeckForge {} git {} | Windows {}", env!("CARGO_PKG_VERSION"), env!("DECKFORGE_GIT_HASH"), system_command("cmd", &["/C", "ver"])));
+        report.log(&format!("DeckForge {} git {} | Windows {}", env!("CARGO_PKG_VERSION"), env!("DECKFORGE_GIT_HASH"), windows_version()));
         Ok(report)
     }
     pub fn log(&self, line: &str) {
@@ -85,6 +108,7 @@ impl Report {
 }
 #[cfg(test)]
 mod tests {
+    #[test] fn stamp_is_computed_without_a_process() { assert_eq!(super::stamp_from(0), "19700101-000000"); assert_eq!(super::stamp_from(1_792_324_800), "20261018-120000"); }
     use super::*;
     #[test] fn redact_serial_and_home() {
         assert_eq!(mask_serial("AB123456"), "****3456");

@@ -44,9 +44,15 @@ pub fn spawn(tx: Sender<Event>, config_path: PathBuf) -> Sender<Command> {
 }
 fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
     // Rapport dès le démarrage, même si le D6 n’est pas connecté.
-    if let Ok(report) = Report::start(&config_path) {
-        match HidApi::new() { Ok(api) => report.inventory(&api), Err(e) => report.log(&format!("Inventaire HID indisponible : {e}")) }
-    } else { let _ = tx.send(Event::Log("Rapport périphérique : création impossible".into())); }
+    // One report file per session: retries append to it instead of rotating the first connection away.
+    let session_report: Option<Arc<Report>> = match Report::start(&config_path) {
+        Ok(report) => {
+            match HidApi::new() { Ok(api) => report.inventory(&api), Err(e) => report.log(&format!("Inventaire HID indisponible : {e}")) }
+            Some(Arc::new(report))
+        }
+        Err(_) => { let _ = tx.send(Event::Log("Rapport périphérique : création impossible".into())); None }
+    };
+    let mut attempts = 0u32;
     let mut test_running = false;
     let mut test_brightness_at: Option<Instant> = None;
     let mut wanted = false;
@@ -132,10 +138,12 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
         }
         if wanted && deck.is_none() && Instant::now() >= retry {
             retry = Instant::now() + Duration::from_secs(3);
-            let report = match Report::start(&config_path) {
-                Ok(report) => { let report = Arc::new(report); Some(report) },
-                Err(e) => { let _ = tx.send(Event::Log(format!("Rapport périphérique indisponible : {e}"))); None }
-            };
+            attempts += 1;
+            // Detailed trace for the first attempts, then a periodic one, to keep the log readable.
+            let report = if attempts <= 3 || attempts % 20 == 0 {
+                if let Some(r) = &session_report { r.log(&format!("--- Tentative de connexion n°{attempts} ---")); }
+                session_report.clone()
+            } else { None };
             let result = if vendor_running() {
                 if let Some(r) = &report { match HidApi::new() { Ok(api) => r.inventory(&api), Err(e) => r.log(&format!("Inventaire impossible : {e}")) } }
                 Err(anyhow::anyhow!(
@@ -153,6 +161,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                         cols: model.cols, experimental: !model.verified,
                     });
                     deck = Some(d);
+                    attempts = 0;
                     update = true;
                     beat = Instant::now();
                 }
@@ -601,9 +610,18 @@ impl Deck {
     fn note(&self, line: &str) { if let Some(r) = &self.report { r.log(line); } }
     fn report(&self, payload: &[u8]) -> Result<()> {
         anyhow::ensure!(payload.len() <= self.packet, "Rapport trop long");
-        let mut data = vec![0u8; self.packet + 1];
-        data[0] = self.rid;
-        data[1..1 + payload.len()].copy_from_slice(payload);
+        // Elgato reports already start with their report ID (0x02) and fill the whole output
+        // report: Windows rejects any other length (error 87), so they are written as-is.
+        let data = if self.driver.model().family == Family::Elgato {
+            let mut data = vec![0u8; self.packet];
+            data[..payload.len()].copy_from_slice(payload);
+            data
+        } else {
+            let mut data = vec![0u8; self.packet + 1];
+            data[0] = self.rid;
+            data[1..1 + payload.len()].copy_from_slice(payload);
+            data
+        };
         // windows-native reports 0 for a synchronously completed WriteFile.
         let n = self.hid.write(&data).map_err(|e| { self.note(&format!("Erreur écriture HID : {e} ; code Windows {:?}", std::io::Error::last_os_error().raw_os_error())); e })?;
         anyhow::ensure!(
