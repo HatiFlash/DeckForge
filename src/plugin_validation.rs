@@ -59,11 +59,11 @@ pub fn simulate(plugin: &Plugin) -> Report {
     };
     Report { plugin:plugin.uuid.clone(), version:plugin.version.clone(), actions:plugin.actions.iter().map(|a| {
         let (verdict, reason) = if a.uuid == ACTION {
-            match &result { Some(Ok(())) => (Verdict::Passed, "Deux instances, pas modifie, titre et reglages sauvegardes/recharges apres redemarrage observes sur WebSocket".into()),
+            match &result { Some(Ok(())) => (Verdict::Passed, "Observé sur WebSocket : deux instances indépendantes, pas modifié pris en compte, titre et réglages rechargés après redémarrage du plugin".into()),
                 Some(Err(e)) => (Verdict::Failed,e.clone()),
-                None => (Verdict::Unverified,"Aucun oracle maitrise : code temoin non identique aux sources du depot".into()) }
-        } else { (Verdict::Unverified,"Aucun oracle de resultat declare pour cette action".into()) };
-        ActionReport { action:a.uuid.clone(), verdict, reason, mode:"simule (appareil virtuel, aucun USB)".into(), tested_at_unix:now }
+                None => (Verdict::Unverified,"Aucun résultat attendu connu pour ce plugin : non exécuté par le test".into()) }
+        } else { (Verdict::Unverified,"Aucun résultat attendu déclaré pour cette action".into()) };
+        ActionReport { action:a.uuid.clone(), verdict, reason, mode:"simulé (appareil virtuel, aucun USB)".into(), tested_at_unix:now }
     }).collect() }
 }
 fn binding(settings: Value) -> PluginBinding {
@@ -96,7 +96,7 @@ fn observe(
         let left = until.saturating_duration_since(Instant::now());
         if left.is_zero() {
             return Err(format!(
-                "Delai depasse : titre {title} et setSettings non observes"
+                "Délai dépassé : titre {title} et setSettings non observés"
             ));
         }
         match manager.rx.recv_timeout(left) {
@@ -110,16 +110,16 @@ fn observe(
                 if name == "getSettings" {
                     let (_, settings) = contexts
                         .get(ctx)
-                        .ok_or_else(|| format!("Contexte etranger : {ctx}"))?;
+                        .ok_or_else(|| format!("Contexte étranger : {ctx}"))?;
                     manager.send(WITNESS,json!({"event":"didReceiveSettings","action":ACTION,"context":ctx,"device":"deckforge-virtual","payload":{"settings":settings}}));
                     continue;
                 }
                 if !contexts.contains_key(ctx) {
-                    return Err(format!("Contexte etranger : {ctx}"));
+                    return Err(format!("Contexte étranger : {ctx}"));
                 }
                 if ctx != target {
                     if matches!(name, "setTitle" | "setSettings") {
-                        return Err(format!("Instance {ctx} modifiee par l'appui de {target}"));
+                        return Err(format!("Instance {ctx} modifiée par l'appui de {target}"));
                     }
                     continue;
                 }
@@ -135,7 +135,7 @@ fn observe(
                             .as_object()
                             .map(|_| msg["payload"]["settings"].clone());
                         if updated.is_none() {
-                            return Err("setSettings malforme".into());
+                            return Err("setSettings malformé".into());
                         }
                     }
                     "logMessage" => {}
@@ -149,7 +149,7 @@ fn observe(
             }
             Err(_) => {
                 return Err(format!(
-                    "Delai depasse : titre {title} et setSettings non observes"
+                    "Délai dépassé : titre {title} et setSettings non observés"
                 ))
             }
         }
@@ -181,7 +181,7 @@ fn witness(plugin: &Plugin) -> Result<(), String> {
         .collect::<HashMap<_, _>>();
     let first = press(&manager, &contexts, 0, "1")?;
     if first["count"] != 1 {
-        return Err("Compteur non incremente apres appui".into());
+        return Err("Compteur non incrémenté après appui".into());
     }
     config.keys_mut()[0].plugin.as_mut().unwrap().settings = first;
     config.keys_mut()[0].plugin.as_mut().unwrap().settings["step"] = json!(3);
@@ -193,7 +193,7 @@ fn witness(plugin: &Plugin) -> Result<(), String> {
         .collect();
     let second = press(&manager, &contexts, 0, "4")?;
     if second["count"] != 4 {
-        return Err("Changement de pas non applique".into());
+        return Err("Changement de pas non appliqué".into());
     }
     config.keys_mut()[0].plugin.as_mut().unwrap().settings = second;
     let independent = press(&manager, &contexts, 1, "1")?;
@@ -215,7 +215,7 @@ fn witness(plugin: &Plugin) -> Result<(), String> {
         .collect();
     let after = press(&restarted, &contexts, 0, "7")?;
     if after["count"] != 7 {
-        return Err("Reglages non repris apres redemarrage".into());
+        return Err("Réglages non repris après redémarrage".into());
     }
     Ok(())
 }
@@ -254,10 +254,10 @@ mod tests {
     fn timeout_foreign_and_crash_are_not_successes() {
         let p = fixture();
         for (mode, expected) in [
-            ("timeout", "Delai depasse"),
-            ("foreign", "Contexte etranger"),
+            ("timeout", "Délai dépassé"),
+            ("foreign", "Contexte étranger"),
             ("crash", "Plugin en erreur"),
-            ("malformed", "Message JSON malforme"),
+            ("malformed", "Message JSON malformé"),
         ] {
             let mut config = configs();
             config.keys_mut()[0].plugin.as_mut().unwrap().settings = json!({"error":mode});

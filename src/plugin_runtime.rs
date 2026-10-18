@@ -86,7 +86,7 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
             }
             if matches!(name.as_str(),"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"getSettings")
                 && !current.get(value["context"].as_str().unwrap_or("")).is_some_and(|v:&Visible|v.plugin==*plugin) {
-                let _=reply.send(Reply::Error(plugin.clone(),"Contexte etranger ou absent".into()));continue;
+                let _=reply.send(Reply::Error(plugin.clone(),"Contexte étranger ou absent".into()));continue;
             }
             if let Some(id)=value["__pi"].as_str().map(str::to_owned){
                 let Some(v)=inspectors.get(&id).filter(|v|v.plugin==*plugin).cloned() else {continue};

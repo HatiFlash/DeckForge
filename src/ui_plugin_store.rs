@@ -32,7 +32,7 @@ impl App {
      if let Some(report)=report {
       for result in report.actions {
        let verdict=match result.verdict {crate::plugin_validation::Verdict::Passed=>"Réussi",crate::plugin_validation::Verdict::Failed=>"Échoué",crate::plugin_validation::Verdict::Unverified=>"Non vérifié"};
-       ui.label(format!("{} : {verdict} · {} · {} · date Unix {}",result.action,result.reason,result.mode,result.tested_at_unix));
+       ui.label(format!("{} : {verdict} · {} · {}",result.action,result.reason,result.mode));
       }
      } else { ui.label("Validation : non vérifiée (aucun rapport pour cette version)."); }
      if ui.button("Tester le plugin (simulation uniquement)").clicked(){self.plugin_test_request(plugin.clone());}
