@@ -159,6 +159,12 @@ Non livré dans le premier passage : opérations texte, persistance des variable
 
 Livré : option « Conserver entre les macros » pour Définir une variable (`set_variable`), Calculer (`math`) et Texte (`text_op`) ; fichier atomique `variables.json`, limite 256 noms et 4 Ko par valeur ; fenêtre Réglages → Variables enregistrées (édition/suppression). Les valeurs sont chargées au démarrage et accessibles par `{nom}`. Tests automatiques : compatibilité JSON, limites et persistance sur disque ; simulation sans écriture. À tester avec Hatim : enchaînement de deux macros, redémarrage puis modification/suppression depuis les Réglages.
 
+## Multi-périphériques M3 — pilote Mirabox expérimental
+
+- Livré : sélection automatique du modèle via le catalogue M1, priorité au D6 vérifié, journal des autres candidats, commandes Mirabox V1/V2 paramétrées (512/1024 octets), tailles et orientation des images, ACK borné pour les modèles expérimentaux, état du modèle affiché dans la barre périphérique. Le chemin D6 conserve ses octets et son calendrier d'envoi ; aucun périphérique tiers n'a été vérifié sur matériel.
+- Testé automatiquement : comparaison pure des en-têtes BAT D6 avec l'ancien calcul, tailles, indices, rendu et décodage ; build complet Windows vert (219 tests application, 8 MCP, aucun avertissement).
+- À tester avec Hatim : fonctionnement réel du D6 et des modèles Mirabox sur les appareils de collègues ; ordre physique des touches, firmware, ACK et orientation des images. Elgato et Mirabox V3 reconnus mais non pilotés ; touches supplémentaires et molettes Mirabox sont journalisées, sans assignation de macros.
+
 ## Multi-peripheriques M1 - catalogue et detection pure
 
 - Livre : table FIFINE D6, AKP153/HSV293S/293V3, AKP03/N3 et Elgato Original/Mini/MK.2/XL/Neo/Plus/Modules ; detection VID:PID et interface HID sans ouvrir de peripherique. D6 seul valide localement ; tous les autres modeles sont experimentaux. Collision documentaire 0300:1001 affectee provisoirement a AKP03, sans supposer le layout sur materiel.

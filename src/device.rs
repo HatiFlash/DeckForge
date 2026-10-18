@@ -2,6 +2,7 @@ use crate::key_render::for_device as render_key_or_default;
 #[cfg(test)]
 use crate::key_render::jpeg as render_key;
 use crate::{model::Config, Event};
+use crate::devices::{self, Detection, DeviceModel, Family, ImageFormat, Protocol};
 use crate::devices::report::{self, Report};
 use std::{path::PathBuf, sync::Arc, cell::Cell};
 #[cfg(test)]
@@ -81,7 +82,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                     wanted = false;
                     deck = None;
                     key_images.fill(None);
-                    let _ = tx.send(Event::Device(false, "D6 déconnecté de DeckForge".into()));
+                    let _ = tx.send(Event::Device(false, "Périphérique déconnecté de DeckForge".into()));
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => return,
@@ -103,13 +104,18 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
             };
             match result {
                 Ok(d) => {
-                    if let Some(r) = &report { r.log("Ouverture D6 OK ; version firmware non disponible via le protocole D6 connu"); }
+                    if let Some(r) = &report { r.log(&format!("Ouverture {} OK ; version firmware non disponible via le protocole connu", d.driver.model().name)); }
+                    let model = d.driver.model();
+                    let _ = tx.send(Event::DeviceModel {
+                        name: model.name.to_owned(), keys: model.keys, rows: model.rows,
+                        cols: model.cols, experimental: !model.verified,
+                    });
                     deck = Some(d);
                     update = true;
                     beat = Instant::now();
                 }
                 Err(e) => {
-                    if let Some(r) = &report { r.log(&format!("Ouverture D6 échouée : {e:#} ; code Windows : {:?}", std::io::Error::last_os_error().raw_os_error())); }
+                    if let Some(r) = &report { r.log(&format!("Ouverture périphérique échouée : {e:#} ; code Windows : {:?}", std::io::Error::last_os_error().raw_os_error())); }
                     let _ = tx.send(Event::Device(false, format!("En attente · {e}")));
                 }
             }
@@ -125,10 +131,10 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                     Ok(warnings) => {
                         let _ = tx.send(Event::Device(
                             true,
-                            format!("D6 connecté · 15 touches · rapports {} octets", d.packet),
+                            format!("{}{} connecté · {} touches ({} × {}) · rapports {} octets", d.driver.model().name, if d.driver.model().verified { "" } else { " (expérimental)" }, d.driver.model().keys, d.driver.model().rows, d.driver.model().cols, d.packet),
                         ));
                         let _ = tx.send(Event::Applied(revision));
-                        if config.d6_animations && config.keys().iter().any(|k| k.image.to_ascii_lowercase().ends_with(".gif")) {
+                        if d.driver.model().id == "fifine_d6" && config.d6_animations && config.keys().iter().any(|k| k.image.to_ascii_lowercase().ends_with(".gif")) {
                             let generation = animation_generation;
                             let c = config.clone();
                             let reply = animation_tx.clone();
@@ -148,7 +154,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
             }
             if failed.is_none() {
                 if let Some(value) = brightness {
-                    if let Err(e) = d.command(&[b'L', b'I', b'G', 0, 0, value]) {
+                    if let Err(e) = d.set_brightness(value) {
                         failed = Some(e.to_string());
                     }
                 }
@@ -166,7 +172,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                         "FIFINE a été relancé : connexion suspendue pour éviter les conflits"
                             .into(),
                     );
-                } else if let Err(e) = d.command(b"CONNECT") {
+                } else if let Err(e) = d.keepalive() {
                     failed = Some(e.to_string());
                 }
                 beat = Instant::now();
@@ -176,15 +182,19 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                 match d.hid.read_timeout(&mut data, 30) {
                     Ok(n) if n > 0 => {
                         if let Some(r) = &d.report { if d.inputs.get() < 20 { r.log(&format!("Entrée HID #{}{} : {}", d.inputs.get() + 1, if data.starts_with(b"ACK") || data.starts_with(b"\0ACK") { " (réponse/ACK)" } else { "" }, report::hex(&data[..n]))); d.inputs.set(d.inputs.get() + 1); } }
-                        if let Some((mut k, down)) = decode_input(&data[..n]) {
-                            if config.flip_input_rows { k = display_index(k); }
-                            if down {
-                                if last_press[k].elapsed() >= Duration::from_millis(150) {
-                                    last_press[k] = Instant::now();
-                                    let _ = tx.send(Event::Key(k, Instant::now()));
+                        for event in d.decode_input(&data[..n]) {
+                            match event {
+                                InputEvent::Key(mut k, down) if k < 15 => {
+                                    if config.flip_input_rows && d.driver.model().id == "fifine_d6" { k = display_index(k); }
+                                    if down {
+                                        if last_press[k].elapsed() >= Duration::from_millis(150) {
+                                            last_press[k] = Instant::now();
+                                            let _ = tx.send(Event::Key(k, Instant::now()));
+                                        }
+                                    } else { let _ = tx.send(Event::KeyRelease(k, Instant::now())); }
                                 }
-                            } else {
-                                let _ = tx.send(Event::KeyRelease(k, Instant::now()));
+                                InputEvent::Encoder(i, direction) => d.note(&format!("Molette {i} : {direction:+} (action non configurée)")),
+                                _ => {}
                             }
                         }
                     }
@@ -196,7 +206,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
             if failed.is_none() && !update {
                 if let Some(index) = key_images.iter().position(Option::is_some) {
                     if let Some(jpeg) = key_images[index].take() {
-                        if let Err(e)=d.send_frame(index,&jpeg,frame_end()) { failed=Some(e.to_string()); }
+                        if let Err(e)=d.set_key_image(index,&jpeg,frame_end()) { failed=Some(e.to_string()); }
                     }
                 }
             }
@@ -208,7 +218,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                 &last_per_key, last_frame, cursor) {
                 let frames = &animations[index];
                 let frame = &frames[next_frame[index] % frames.len()];
-                match d.send_frame(index, &frame.jpeg, frame_end()) {
+                match d.set_key_image(index, &frame.jpeg, frame_end()) {
                     Ok(()) => {
                         let sent = Instant::now();
                         due[index] = sent + frame.delay.max(Duration::from_millis(1000 / config.animation_fps.max(1) as u64));
@@ -345,7 +355,74 @@ struct Deck {
     rid: u8,
     report: Option<Arc<Report>>,
     inputs: Cell<u8>,
+    driver: Driver,
+    // For non-D6 Mirabox models the same tag can represent alternating edges.
+    transitions: Cell<u64>,
 }
+#[derive(Clone, Copy)]
+enum Driver { Mirabox(&'static DeviceModel) }
+impl Driver {
+    fn model(self) -> &'static DeviceModel { match self { Self::Mirabox(model) => model } }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InputEvent { Key(usize, bool), Encoder(usize, i8) }
+
+// Pure transformations and packet construction: no HID handle and no hardware in tests.
+fn mirabox_key(model: &DeviceModel, index: usize) -> Result<u8> {
+    anyhow::ensure!(index < model.keys as usize && index < 15, "Touche hors grille : {index}");
+    let index = if model.id == "fifine_d6" { display_index(index) } else { index };
+    Ok(index as u8 + 1)
+}
+fn bat_tail(model: &DeviceModel, index: usize, len: usize) -> Result<[u8; 8]> {
+    anyhow::ensure!(len <= 65535, "Image trop lourde");
+    Ok([b'B', b'A', b'T', 0, 0, (len >> 8) as u8, len as u8, mirabox_key(model, index)?])
+}
+fn canonical_image(jpeg: &[u8], model: &DeviceModel) -> Result<Vec<u8>> {
+    if model.id == "fifine_d6" { return Ok(jpeg.to_vec()); }
+    // key_render produces D6-oriented pixels (180 degrees). Undo that transform,
+    // then apply the catalogue orientation; no re-encoding on the D6 path.
+    let source = image::load_from_memory(jpeg)?.to_rgb8();
+    let source = image::imageops::rotate180(&source);
+    let mut out = image::imageops::resize(&source, model.image_w.into(), model.image_h.into(), image::imageops::FilterType::Lanczos3);
+    out = match model.rotation {
+        0 => out, 90 => image::imageops::rotate90(&out),
+        180 => image::imageops::rotate180(&out),
+        270 => image::imageops::rotate270(&out),
+        _ => anyhow::bail!("Rotation non prise en charge"),
+    };
+    if model.mirror_x { out = image::imageops::flip_horizontal(&out); }
+    if model.mirror_y { out = image::imageops::flip_vertical(&out); }
+    let mut bytes = Vec::new();
+    match model.image_format {
+        ImageFormat::Jpeg => image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, 88)
+            .encode(&out, out.width(), out.height(), image::ExtendedColorType::Rgb8)?,
+        ImageFormat::Bmp => anyhow::bail!("Transport BMP non disponible pour {}", model.name),
+    }
+    Ok(bytes)
+}
+fn decode_model_input(model: &DeviceModel, data: &[u8], transitions: &Cell<u64>) -> Vec<InputEvent> {
+    if model.id == "fifine_d6" {
+        return decode_input(data).map(|(k, down)| vec![InputEvent::Key(k, down)]).unwrap_or_default();
+    }
+    let d = if data.starts_with(b"\0ACK") { &data[1..] } else { data };
+    if d.len() < 11 || !(d.starts_with(b"ACK\0\0OK") || d[..9].iter().all(|&byte| byte == 0)) { return Vec::new(); }
+    let tag = d[9];
+    if (1..=model.keys).contains(&tag) {
+        let mask = 1u64 << (tag - 1);
+        let down = transitions.get() & mask == 0;
+        transitions.set(transitions.get() ^ mask);
+        return vec![InputEvent::Key(tag as usize - 1, down)];
+    }
+    let encoder = match tag {
+        0x90 => Some((0, -1)), 0x91 => Some((0, 1)),
+        0x50 => Some((1, -1)), 0x51 => Some((1, 1)),
+        0x60 => Some((2, -1)), 0x61 => Some((2, 1)),
+        _ => None,
+    };
+    encoder.filter(|(index, _)| *index < model.encoders as usize)
+        .map(|(index, direction)| vec![InputEvent::Encoder(index, direction)]).unwrap_or_default()
+}
+
 // Hardware hypothesis: a single BAT upload ends with STP, without CLE.
 // Change this constant to UlendStp if the D6 firmware requires the full terminator.
 #[derive(Clone, Copy)]
@@ -356,33 +433,77 @@ fn frame_end() -> FrameEnd {
 impl Deck {
     fn send_frame(&self, idx: usize, jpeg: &[u8], end: FrameEnd) -> Result<()> {
         let started = Instant::now();
-        anyhow::ensure!(idx < 15 && jpeg.len() <= 65535, "Image JPEG trop lourde");
-        self.command(&[b'B', b'A', b'T', 0, 0, (jpeg.len() >> 8) as u8, jpeg.len() as u8, display_index(idx) as u8 + 1])?;
-        for chunk in jpeg.chunks(self.packet) { self.report(chunk)?; }
+        let data = canonical_image(jpeg, self.driver.model())?;
+        self.command(&bat_tail(self.driver.model(), idx, data.len())?)?;
+        for chunk in data.chunks(self.packet) { self.report(chunk)?; }
+        self.await_ack()?;
         if matches!(end, FrameEnd::UlendStp) { self.command(b"ULEND")?; }
         let result = self.command(b"STP");
         self.note(&format!("Image touche {} : {} octets en {} ms ; résultat {:?}", idx + 1, jpeg.len(), started.elapsed().as_millis(), result.as_ref().err().map(ToString::to_string)));
         result
     }
+    fn set_key_image(&self, idx: usize, image: &[u8], end: FrameEnd) -> Result<()> { self.send_frame(idx, image, end) }
+    fn set_brightness(&self, value: u8) -> Result<()> { self.command(&[b'L', b'I', b'G', 0, 0, value.min(100)]) }
+    fn clear(&self) -> Result<()> { self.command(&[b'C', b'L', b'E', 0, 0, 0, 0xFF]) }
+    fn sleep(&self) -> Result<()> { self.report(b"HAN") }
+    fn wake(&self) -> Result<()> { self.command(b"DIS") }
+    fn keepalive(&self) -> Result<()> { self.command(b"CONNECT") }
+    fn decode_input(&self, data: &[u8]) -> Vec<InputEvent> { decode_model_input(self.driver.model(), data, &self.transitions) }
+    fn await_ack(&self) -> Result<()> {
+        if self.driver.model().id == "fifine_d6" { return Ok(()); } // Never change D6 timing.
+        let mut data = [0u8; 2048];
+        for _ in 0..4 {
+            let n = self.hid.read_timeout(&mut data, 50)?;
+            if n == 0 { continue; }
+            if data[..n].starts_with(b"ACK\0\0OK") || data[..n].starts_with(b"\0ACK\0\0OK") {
+                self.note("ACK image reçu"); return Ok(());
+            }
+            self.note(&format!("Entrée pendant attente ACK : {}", report::hex(&data[..n.min(32)])));
+        }
+        anyhow::bail!("ACK image absent après 200 ms pour {}", self.driver.model().name)
+    }
     fn open() -> Result<Self> { Self::open_with_report(None) }
     fn open_with_report(report: Option<Arc<Report>>) -> Result<Self> {
         let api = HidApi::new()?;
         if let Some(r) = &report { r.inventory(&api); }
-        let info = api
-            .device_list()
-            .find(|d| {
-                d.vendor_id() == 0x3142 && d.product_id() == 0x0060 && d.usage_page() >= 0xFF00
-            })
-            .context("D6 3142:0060 introuvable")?;
+        let infos: Vec<_> = api.device_list().collect();
+        let candidates: Vec<_> = infos.iter().map(|d| devices::HidInfo {
+            vid: d.vendor_id(), pid: d.product_id(), usage_page: d.usage_page(),
+            usage: d.usage(), interface: d.interface_number(),
+            product: d.product_string().map(str::to_owned),
+            manufacturer: d.manufacturer_string().map(str::to_owned),
+            path: d.path().to_string_lossy().into_owned(),
+        }).collect();
+        let mut matches: Vec<_> = devices::detect(&candidates).into_iter().filter_map(|item| {
+            if let Detection::Matched { info, model } = item { Some((info, model)) } else { None }
+        }).collect();
+        // Verified devices take priority regardless of HID enumeration order.
+        matches.sort_by_key(|(_, model)| (
+            !model.verified,
+            !(model.family == Family::Mirabox && matches!(model.protocol, Protocol::MiraboxV1 | Protocol::MiraboxV2)),
+        ));
+        if let Some(r) = &report {
+            for (info, model) in matches.iter().skip(1) {
+                r.log(&format!("Autre périphérique compatible ignoré : {} {:04X}:{:04X}{}", model.name, info.vid, info.pid, if model.verified { "" } else { " (expérimental)" }));
+            }
+        }
+        let (chosen, model) = matches.first().context("Aucun périphérique compatible détecté")?;
+        anyhow::ensure!(model.family == Family::Mirabox && matches!(model.protocol, Protocol::MiraboxV1 | Protocol::MiraboxV2),
+            "{} reconnu (expérimental) : pilote de ce protocole non disponible", model.name);
+        let info = infos.iter().find(|d| d.path().to_string_lossy() == chosen.path)
+            .context("Interface HID disparue pendant la détection")?;
+        if let Some(r) = &report { r.log(&format!("Pilote sélectionné : {}{} ; {} touches {}×{} ; protocole {:?}", model.name, if model.verified { "" } else { " expérimental, non vérifié sur matériel" }, model.keys, model.rows, model.cols, model.protocol)); }
         let hid = info.open_device(&api).map_err(|e| {
             if let Some(r) = &report { r.log(&format!("Ouverture HID refusée : {e} ; code Windows {:?}", std::io::Error::last_os_error().raw_os_error())); }
             e
-        }).context("Accès au D6 impossible")?;
+        }).context("Accès au périphérique impossible")?;
         let mut descriptor = [0u8; 4096];
         let n = hid.get_report_descriptor(&mut descriptor)?;
         let (packet, rid) = output_report(&descriptor[..n])?;
         if let Some(r) = &report { r.log(&format!("Rapport sortie={} octets, ID={rid} ; tampon entrée=2048 octets ; descripteur={} octets", packet, n)); }
-        Ok(Self { hid, packet, rid, report, inputs: Cell::new(0) })
+        if model.id != "fifine_d6" { anyhow::ensure!(packet == model.packet_len as usize,
+            "{} : rapport HID {} octets, {} attendus ; abandon prudent", model.name, packet, model.packet_len); }
+        Ok(Self { hid, packet, rid, report, inputs: Cell::new(0), driver: Driver::Mirabox(model), transitions: Cell::new(0) })
     }
     fn note(&self, line: &str) { if let Some(r) = &self.report { r.log(line); } }
     fn report(&self, payload: &[u8]) -> Result<()> {
@@ -411,30 +532,21 @@ impl Deck {
         let rendered = c
             .keys()
             .iter()
+            .take(self.driver.model().keys as usize)
             .map(|k| render_key_or_default(k, c.image_size, &font))
             .collect::<Result<Vec<_>>>()?;
         let (images, warnings): (Vec<_>, Vec<_>) = rendered.into_iter().unzip();
-        self.command(b"DIS")?;
-        self.command(&[b'L', b'I', b'G', 0, 0, c.brightness])?;
+        self.wake()?;
+        self.set_brightness(c.brightness)?;
         self.note("Commande HAN : 48 41 4E");
-        self.report(b"HAN")?;
-        self.command(&[b'C', b'L', b'E', 0, 0, 0, 0xFF])?;
+        self.sleep()?;
+        self.clear()?;
         for (idx, jpeg) in images.iter().enumerate() {
-            anyhow::ensure!(jpeg.len() <= 65535, "Image JPEG trop lourde");
-            self.command(&[
-                b'B',
-                b'A',
-                b'T',
-                0,
-                0,
-                (jpeg.len() >> 8) as u8,
-                jpeg.len() as u8,
-                display_index(idx) as u8 + 1,
-            ])?;
+            let data = canonical_image(jpeg, self.driver.model())?;
+            self.command(&bat_tail(self.driver.model(), idx, data.len())?)?;
             let started = Instant::now();
-            for chunk in jpeg.chunks(self.packet) {
-                self.report(chunk)?;
-            }
+            for chunk in data.chunks(self.packet) { self.report(chunk)?; }
+            self.await_ack()?;
             self.note(&format!("Image initialisation touche {} : {} octets en {} ms", idx + 1, jpeg.len(), started.elapsed().as_millis()));
         }
         self.command(b"ULEND")?;
@@ -633,6 +745,44 @@ mod tests {
         data[9] = 16;
         assert_eq!(decode_press(&data), None);
         assert_eq!(decode_press(&[0]), None);
+    }
+    #[test]
+    fn generic_mirabox_packets_preserve_legacy_d6_bytes() {
+        let d6 = &devices::MODELS[0];
+        for idx in 0..15 {
+            for len in [0, 1, 511, 512, 65535] {
+                let old = [b'B', b'A', b'T', 0, 0, (len >> 8) as u8, len as u8, display_index(idx) as u8 + 1];
+                assert_eq!(bat_tail(d6, idx, len).unwrap(), old);
+            }
+        }
+        assert!(bat_tail(d6, 15, 1).is_err());
+        assert!(bat_tail(d6, 0, 65536).is_err());
+        let other = devices::MODELS.iter().find(|m| m.id == "akp03").unwrap();
+        assert_eq!(bat_tail(other, 0, 0x1234).unwrap(), [b'B', b'A', b'T', 0, 0, 0x12, 0x34, 1]);
+        assert!(bat_tail(other, 6, 1).is_err());
+        let jpeg = crate::key_render::jpeg(&Config::default().keys()[0], 126, &crate::key_render::font().unwrap()).unwrap();
+        assert_eq!(canonical_image(&jpeg, d6).unwrap(), jpeg);
+        let converted = canonical_image(&jpeg, other).unwrap();
+        let img = image::load_from_memory(&converted).unwrap();
+        assert_eq!((img.width(), img.height()), (60, 60));
+    }
+    #[test]
+    fn input_events_are_pure_and_d6_release_is_unchanged() {
+        let d6 = &devices::MODELS[0];
+        let mut data = [0u8; 12]; data[..7].copy_from_slice(b"ACK\0\0OK"); data[9] = 1; data[10] = 1;
+        let state = Cell::new(0);
+        assert_eq!(decode_model_input(d6, &data, &state), vec![InputEvent::Key(0, true)]);
+        data[10] = 0;
+        assert_eq!(decode_model_input(d6, &data, &state), vec![InputEvent::Key(0, false)]);
+        let other = devices::MODELS.iter().find(|m| m.id == "akp03").unwrap();
+        assert_eq!(decode_model_input(other, &data, &state), vec![InputEvent::Key(0, true)]);
+        assert_eq!(decode_model_input(other, &data, &state), vec![InputEvent::Key(0, false)]);
+        data[..9].fill(0); // Some Mirabox models report raw zero-prefixed key transitions.
+        assert_eq!(decode_model_input(other, &data, &state), vec![InputEvent::Key(0, true)]);
+        data[9] = 0x91;
+        assert_eq!(decode_model_input(other, &data, &state), vec![InputEvent::Encoder(0, 1)]);
+        data[9] = 0xff;
+        assert!(decode_model_input(other, &data, &state).is_empty());
     }
     #[test]
     fn descriptor_sizes_are_not_hardcoded() {

@@ -72,7 +72,9 @@ impl Report {
             let decision = match model {
                 Some(m) if m.id == "fifine_d6" && d.usage_page() >= 0xff00 => "D6 choisi : usage_page vendeur; transport D6 actif".into(),
                 Some(m) if m.id == "fifine_d6" => "D6 écarté : usage_page hors plage vendeur".into(),
-                Some(m) => format!("{} expérimental : reconnu dans le catalogue, transport non activé", m.name),
+                Some(m) if m.family == super::Family::Mirabox && matches!(m.protocol, super::Protocol::MiraboxV1 | super::Protocol::MiraboxV2) && d.usage_page() >= 0xff00 =>
+                    format!("{} expérimental : pilote Mirabox disponible, matériel non vérifié", m.name),
+                Some(m) => format!("{} expérimental : reconnu dans le catalogue, transport non activé pour cette interface/protocole", m.name),
                 None => "Écarté : VID/PID absent du catalogue".into(),
             };
             self.log(&format!("VID={:04X} PID={:04X} usage_page={:04X} usage={:04X} interface={} fabricant={:?} produit={:?} série={} | {}",

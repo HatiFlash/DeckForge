@@ -634,6 +634,10 @@ impl App {
                         self.execute_key(key, false, false, &c);
                     }
                 }
+                Event::DeviceModel { name, keys, rows, cols, experimental } => {
+                    self.log(format!("Modèle HID détecté : {name} · {keys} touches ({rows} × {cols}){}",
+                        if experimental { " · EXPÉRIMENTAL, non vérifié sur matériel" } else { " · vérifié" }));
+                }
                 Event::Device(connected, message) => {
                     if self.status != message {
                         self.log(message.clone());
