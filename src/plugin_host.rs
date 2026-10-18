@@ -1,5 +1,5 @@
 //! Hôte local WebSocket pour les plugins Stream Deck classiques (exécutables et Node).
-use std::{collections::HashMap, net::TcpListener, process::{Child,Command,Stdio}, sync::{mpsc::{self,Receiver,Sender},Arc,atomic::{AtomicBool,Ordering}}, thread, time::Duration};
+use std::{collections::HashMap, net::TcpListener, process::{Child,Command,Stdio}, sync::{mpsc::{self,Receiver,Sender},Arc,atomic::{AtomicBool,Ordering}}, thread, time::{Duration,Instant}};
 use std::io::Write;
 use serde_json::{json,Value};
 use crate::plugins::{Plugin,Runtime};
@@ -34,7 +34,7 @@ impl Trace {fn open(uuid:&str)->Option<Self>{
  let path=std::env::temp_dir().join("deckforge-plugin-traces");std::fs::create_dir_all(&path).ok()?;
  let name=uuid.chars().map(|c|if c.is_ascii_alphanumeric()||c=='-'||c=='_'{c}else{'_'}).take(128).collect::<String>();
  let target=path.join(format!("{name}-{}.jsonl",std::process::id()));
- let truncate=target.metadata().is_ok_and(|m|m.len()>64_000);
+ let truncate=target.metadata().is_ok_and(|m|m.len()>40_000);
  let file=std::fs::OpenOptions::new().create(true).append(!truncate).write(true).truncate(truncate).open(target).ok()?;
  Some(Self{file,entries:0})
 }}
@@ -51,12 +51,28 @@ pub fn unsupported_events(uuid:&str)->Vec<String>{
  events.into_iter().take(32).collect()
 }
 fn trace_message(trace:&mut Option<Trace>,direction:&str,message:&Value,unsupported:bool){
- let Some(trace)=trace.as_mut() else{return};if trace.entries>=1024{return;}
+ let Some(trace)=trace.as_mut() else{return};if trace.entries>=128{return;}
  let label=message.get("event").and_then(Value::as_str).unwrap_or("<absent>");
- let label=label.chars().take(96).collect::<String>();
+ let label=event_label(label);
  let record=json!({"direction":direction,"event":label,"unsupported":unsupported});
  let _=writeln!(trace.file,"{record}");trace.entries+=1;
 }
+// Event names are identifiers, never arbitrary plugin text; all other fields are fixed vocabulary.
+fn event_label(name:&str)->String{name.chars().filter(|c|c.is_ascii_alphanumeric()||matches!(c,'_'|'-'|'.')).take(64).collect()}
+fn trace_stage(trace:&mut Option<Trace>,stage:&str){
+ let Some(trace)=trace.as_mut() else{return};if trace.entries>=128{return;}
+ let record=json!({"stage":stage});let _=writeln!(trace.file,"{record}");trace.entries+=1;
+}
+fn ws_error_kind(error:&tungstenite::Error)->&'static str{
+ match error {tungstenite::Error::Io(e) if matches!(e.kind(),std::io::ErrorKind::TimedOut|std::io::ErrorKind::WouldBlock)=>"timeout",
+ tungstenite::Error::Io(_)=>"io",tungstenite::Error::Protocol(_)=>"protocol",
+ tungstenite::Error::Capacity(_)=>"capacity",_=>"other"}
+}
+fn trace_ws_error(trace:&mut Option<Trace>,stage:&str,error:&tungstenite::Error){
+ let Some(trace)=trace.as_mut() else{return};if trace.entries>=128{return;}
+ let record=json!({"stage":stage,"category":ws_error_kind(error)});let _=writeln!(trace.file,"{record}");trace.entries+=1;
+}
+struct Pending {ws:tungstenite::WebSocket<std::net::TcpStream>,first:bool,accepted:Instant,warned:bool}
 #[cfg(windows)] struct Job(windows_sys::Win32::Foundation::HANDLE);
 #[cfg(windows)] impl Job {
  fn new()->std::io::Result<Self>{use windows_sys::Win32::System::JobObjects::*;
@@ -129,21 +145,35 @@ fn socket_loop(listener:TcpListener,commands:Receiver<Value>,messages:Sender<Val
 fn socket_loop_traced(listener:TcpListener,commands:Receiver<Value>,messages:Sender<Value>,stop:Arc<AtomicBool>,registry:Option<crate::plugin_http::Inspectors>,mut trace:Option<Trace>){
     let _=listener.set_nonblocking(true);
     let mut plugin:Option<tungstenite::WebSocket<std::net::TcpStream>>=None;
-    let mut pending=Vec::new();
+    let mut pending:Vec<Pending>=Vec::new();
+    let (mut tcp_count,mut handshake_count,mut register_count)=(0u32,0u32,0u32);
     let mut queued=std::collections::VecDeque::new();
     let mut inspectors:HashMap<String,tungstenite::WebSocket<std::net::TcpStream>>=HashMap::new();
     while !stop.load(Ordering::Relaxed){
-        match listener.accept(){Ok((stream,_))=>{let _=stream.set_nonblocking(false); // Windows : le socket accepté hérite du mode non bloquant de l'écouteur.
-            let _=stream.set_read_timeout(Some(Duration::from_secs(2)));let _=stream.set_write_timeout(Some(Duration::from_secs(1)));if let Ok(ws)=tungstenite::accept(stream){let _=ws.get_ref().set_read_timeout(Some(Duration::from_millis(50)));pending.push(ws);}},Err(e) if e.kind()==std::io::ErrorKind::WouldBlock=>{},Err(_)=>break}
+        match listener.accept(){Ok((stream,_))=>{tcp_count+=1;trace_stage(&mut trace,"tcp_accept");let _=stream.set_nonblocking(false); // Windows : le socket accepté hérite du mode non bloquant de l'écouteur.
+            let _=stream.set_read_timeout(Some(Duration::from_secs(2)));let _=stream.set_write_timeout(Some(Duration::from_secs(1)));
+            match tungstenite::accept(stream){Ok(ws)=>{handshake_count+=1;trace_stage(&mut trace,"handshake_ok");let _=ws.get_ref().set_read_timeout(Some(Duration::from_millis(50)));pending.push(Pending{ws,first:true,accepted:Instant::now(),warned:false});},Err(tungstenite::HandshakeError::Failure(e))=>trace_ws_error(&mut trace,"handshake_error",&e),Err(tungstenite::HandshakeError::Interrupted(_))=>trace_stage(&mut trace,"handshake_interrupted")}},Err(e) if e.kind()==std::io::ErrorKind::WouldBlock=>{},Err(_)=>break}
         for i in (0..pending.len()).rev(){
-            if let Ok(tungstenite::Message::Text(text))=pending[i].read(){
-                if let Ok(value)=serde_json::from_str::<Value>(&text){
-                    match value["event"].as_str(){
-                        Some("registerPlugin") if plugin.is_none()=>{trace_message(&mut trace,"plugin->host",&value,false);plugin=Some(pending.swap_remove(i));let _=messages.send(value);},
-                        Some("registerPropertyInspector")=>{if let Some(id)=value["uuid"].as_str().filter(|id|registry.as_ref().is_some_and(|r|r.lock().unwrap().contains_key(*id))){let id=id.to_owned();inspectors.insert(id.clone(),pending.swap_remove(i));let _=messages.send(json!({"event":"propertyInspectorDidAppear","__pi":id}));}},
-                        _=>{}
+            let mut removed=false;
+            match pending[i].ws.read(){
+                Ok(tungstenite::Message::Text(text))=>{
+                    let parsed=serde_json::from_str::<Value>(&text);
+                    if pending[i].first {pending[i].first=false;
+                        if let Ok(value)=&parsed {trace_stage(&mut trace,"first_message");trace_message(&mut trace,"pre-register",value,!supported_command(value));}
+                        else {trace_stage(&mut trace,"first_malformed_json");}
                     }
-                }
+                    if let Ok(value)=parsed{match value["event"].as_str(){
+                        Some("registerPlugin") if plugin.is_none()=>{register_count+=1;trace_stage(&mut trace,"register_plugin");trace_message(&mut trace,"plugin->host",&value,false);plugin=Some(pending.swap_remove(i).ws);removed=true;let _=messages.send(value);},
+                        Some("registerPropertyInspector")=>{if let Some(id)=value["uuid"].as_str().filter(|id|registry.as_ref().is_some_and(|r|r.lock().unwrap().contains_key(*id))){let id=id.to_owned();inspectors.insert(id.clone(),pending.swap_remove(i).ws);removed=true;let _=messages.send(json!({"event":"propertyInspectorDidAppear","__pi":id}));}},
+                        _=>{}
+                    }}
+                },
+                Ok(tungstenite::Message::Close(_))=>{trace_stage(&mut trace,"socket_closed_pre_register");pending.swap_remove(i);removed=true;},
+                Err(tungstenite::Error::Io(ref e)) if matches!(e.kind(),std::io::ErrorKind::WouldBlock|std::io::ErrorKind::TimedOut)=>{},
+                Err(e)=>{trace_ws_error(&mut trace,"socket_error_pre_register",&e);pending.swap_remove(i);removed=true;},_=>{}
+            }
+            if !removed && pending[i].accepted.elapsed()>=Duration::from_secs(3) && !pending[i].warned {
+                trace_stage(&mut trace,"no_register_timeout");pending[i].warned=true;
             }
         }
         while let Ok(cmd)=commands.try_recv(){ queued.push_back(cmd); }
@@ -155,12 +185,13 @@ fn socket_loop_traced(listener:TcpListener,commands:Receiver<Value>,messages:Sen
             if let Some(id)=target{if let Some(ws)=inspectors.get_mut(&id){let _=ws.send(tungstenite::Message::Text(cmd.to_string().into()));}}
             else if let Some(ws)=plugin.as_mut(){let _=ws.send(tungstenite::Message::Text(cmd.to_string().into()));}
         }
-        if let Some(ws)=plugin.as_mut(){match ws.read(){Ok(tungstenite::Message::Text(text))=>{match serde_json::from_str::<Value>(&text){Ok(value)=>{trace_message(&mut trace,"plugin->host",&value,!supported_command(&value));let _=messages.send(value);},Err(e)=>{let _=messages.send(json!({"event":"__hostError","reason":format!("Message JSON malformé : {e}")}));}}},Ok(tungstenite::Message::Close(_))=>{plugin=None;},Err(tungstenite::Error::Io(ref e)) if matches!(e.kind(),std::io::ErrorKind::WouldBlock|std::io::ErrorKind::TimedOut)=>{},Err(_)=>{plugin=None;},_=>{}}}
+        if let Some(ws)=plugin.as_mut(){match ws.read(){Ok(tungstenite::Message::Text(text))=>{match serde_json::from_str::<Value>(&text){Ok(value)=>{trace_message(&mut trace,"plugin->host",&value,!supported_command(&value));let _=messages.send(value);},Err(e)=>{let _=messages.send(json!({"event":"__hostError","reason":format!("Message JSON malformé : {e}")}));}}},Ok(tungstenite::Message::Close(_))=>{trace_stage(&mut trace,"socket_closed_plugin");plugin=None;},Err(tungstenite::Error::Io(ref e)) if matches!(e.kind(),std::io::ErrorKind::WouldBlock|std::io::ErrorKind::TimedOut)=>{},Err(e)=>{trace_ws_error(&mut trace,"socket_error_plugin",&e);plugin=None;},_=>{}}}
         let mut gone=Vec::new();
         for (id,ws) in &mut inspectors {match ws.read(){Ok(tungstenite::Message::Text(text))=>{if let Ok(mut value)=serde_json::from_str::<Value>(&text){if let Some(obj)=value.as_object_mut(){obj.insert("__pi".into(),json!(id));let _=messages.send(value);}}},Ok(tungstenite::Message::Close(_))=>gone.push(id.clone()),Err(tungstenite::Error::Io(ref e)) if matches!(e.kind(),std::io::ErrorKind::WouldBlock|std::io::ErrorKind::TimedOut)=>{},Err(_)=>gone.push(id.clone()),_=>{}}}
         for id in gone {inspectors.remove(&id);if let Some(r)=&registry{r.lock().unwrap().remove(&id);}let _=messages.send(json!({"event":"propertyInspectorDidDisappear","__pi":id}));}
         thread::sleep(Duration::from_millis(10));
     }
+    if let Some(t)=trace.as_mut(){if t.entries<128{let _=writeln!(t.file,"{}",json!({"stage":"startup_counts","tcp_accepted":tcp_count,"handshakes_ok":handshake_count,"registered":register_count}));}}
 }
 impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
  #[cfg(windows)] self.job.close();
@@ -176,6 +207,39 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
   let unknown=json!({"event":"alien","payload":{"token":"SECRET"}});
   trace_message(&mut trace,"plugin->host",&unknown,!supported_command(&unknown));
   let data=std::fs::read_to_string(path).unwrap();assert!(data.contains(r#""unsupported":true"#));assert!(!data.contains("SECRET"));
+ }
+ #[test] fn trace_pre_registration_fixture_redacts_and_keeps_unknown(){
+  let d=tempfile::tempdir().unwrap();let path=d.path().join("trace.jsonl");
+  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let port=listener.local_addr().unwrap().port();
+  let (_tx,commands)=mpsc::channel::<Value>();let (messages,rx)=mpsc::channel();let stop=Arc::new(AtomicBool::new(false));let flag=stop.clone();
+  let trace=Some(Trace{file:std::fs::File::create(&path).unwrap(),entries:0});
+  let worker=thread::spawn(move||socket_loop_traced(listener,commands,messages,flag,None,trace));
+  let (mut ws,_)=tungstenite::connect(format!("ws://127.0.0.1:{port}")).unwrap();
+  ws.send(tungstenite::Message::Text(json!({"event":"alien","payload":{"settings":"SECRET"}}).to_string().into())).unwrap();
+  ws.send(tungstenite::Message::Text(json!({"event":"registerPlugin","uuid":"fixture","info":"SECRET"}).to_string().into())).unwrap();
+  assert_eq!(rx.recv_timeout(Duration::from_secs(3)).unwrap()["event"],"registerPlugin");
+  stop.store(true,Ordering::Relaxed);worker.join().unwrap();
+  let data=std::fs::read_to_string(path).unwrap();
+  for marker in ["tcp_accept","handshake_ok","first_message","register_plugin","startup_counts","alien"] {assert!(data.contains(marker),"missing {marker}: {data}");}
+  assert!(data.contains("\"unsupported\":true"));assert!(!data.contains("SECRET"));assert!(!data.contains("fixture"));
+  assert_eq!(event_label("bad SECRET /path\n"),"badSECRETpath");
+ }
+ #[test] fn trace_handshake_failure_and_malformed_first_are_redacted(){
+  let d=tempfile::tempdir().unwrap();let path=d.path().join("trace.jsonl");let listener=TcpListener::bind("127.0.0.1:0").unwrap();let port=listener.local_addr().unwrap().port();
+  let (_tx,commands)=mpsc::channel::<Value>();let (messages,_rx)=mpsc::channel();let stop=Arc::new(AtomicBool::new(false));let flag=stop.clone();
+  let trace=Some(Trace{file:std::fs::File::create(&path).unwrap(),entries:0});let worker=thread::spawn(move||socket_loop_traced(listener,commands,messages,flag,None,trace));
+  let mut bad=std::net::TcpStream::connect(("127.0.0.1",port)).unwrap();bad.write_all(b"SECRET\r\n\r\n").unwrap();drop(bad);
+  let (mut ws,_)=tungstenite::connect(format!("ws://127.0.0.1:{port}")).unwrap();
+  ws.send(tungstenite::Message::Text("SECRET invalid json".into())).unwrap();
+  ws.close(None).unwrap();thread::sleep(Duration::from_millis(150));stop.store(true,Ordering::Relaxed);worker.join().unwrap();
+  let data=std::fs::read_to_string(path).unwrap();assert!(data.contains("handshake_error"),"{data}");assert!(data.contains("first_malformed_json"),"{data}");assert!(data.contains("socket_closed_pre_register"),"{data}");assert!(!data.contains("SECRET"));
+ }
+ #[test] fn trace_warns_without_register(){
+  let d=tempfile::tempdir().unwrap();let path=d.path().join("trace.jsonl");let listener=TcpListener::bind("127.0.0.1:0").unwrap();let port=listener.local_addr().unwrap().port();
+  let (_tx,commands)=mpsc::channel::<Value>();let (messages,_rx)=mpsc::channel();let stop=Arc::new(AtomicBool::new(false));let flag=stop.clone();
+  let trace=Some(Trace{file:std::fs::File::create(&path).unwrap(),entries:0});let worker=thread::spawn(move||socket_loop_traced(listener,commands,messages,flag,None,trace));
+  let (_ws,_)=tungstenite::connect(format!("ws://127.0.0.1:{port}")).unwrap();thread::sleep(Duration::from_millis(3200));
+  stop.store(true,Ordering::Relaxed);worker.join().unwrap();assert!(std::fs::read_to_string(path).unwrap().contains("no_register_timeout"));
  }
  #[test] fn launch_contract_and_unknown_command(){
   let d=tempfile::tempdir().unwrap();let p=crate::plugins::parse(d.path(),br#"{"UUID":"test","Version":"1.0"}"#).unwrap();
@@ -238,8 +302,7 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
   let p=crate::plugins::parse(&fixture,&std::fs::read(fixture.join("manifest.json")).unwrap()).unwrap();
   let node=node_executable(0).expect("Node.js required for the plugin fixture test");
   let support=Command::new(&node).args(["-p","typeof WebSocket"]).output().expect("Node.js fixture preflight failed");
-  assert!(support.status.success() && support.stdout==b"function
-", "Node.js fixture needs global WebSocket: {} {}", String::from_utf8_lossy(&support.stdout), String::from_utf8_lossy(&support.stderr));
+  assert!(support.status.success() && String::from_utf8_lossy(&support.stdout).trim()=="function", "Node.js fixture needs global WebSocket: {} {}", String::from_utf8_lossy(&support.stdout), String::from_utf8_lossy(&support.stderr));
   let host=Host::start(&p,&crate::plugin_runtime::Device::virtual_device()).expect("Failed to start plugin fixture");
   let register=host.incoming.recv_timeout(Duration::from_secs(15)).unwrap();
   assert_eq!(register["event"],"registerPlugin");
