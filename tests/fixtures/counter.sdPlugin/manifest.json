@@ -1,1 +1,1 @@
-{"UUID":"org.deckforge.counter","Name":"Compteur DeckForge","Author":"DeckForge","Version":"0.1.0","CodePath":"plugin.js","Actions":[{"UUID":"org.deckforge.counter.increment","Name":"Compteur","States":[{"Title":"0"}]}]}
+{"UUID":"org.deckforge.counter","Name":"Compteur DeckForge","Author":"DeckForge","Version":"0.1.0","CodePath":"plugin.js","Actions":[{"UUID":"org.deckforge.counter.increment","Name":"Compteur","States":[{"Title":"0"}]},{"UUID":"org.deckforge.counter.write_file","Name":"Écrire un fichier témoin","States":[{"Title":"Écrire"}]}]}

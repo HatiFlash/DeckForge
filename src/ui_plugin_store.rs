@@ -2,6 +2,7 @@
 use super::{App,DragItem};
 use crate::{model::{Key,Step,PluginBinding},plugins::{Plugin,Runtime},plugin_import::{self,Category}};
 use eframe::egui::{self,RichText};
+use crate::plugin_validation;
 impl App {
  pub(super) fn plugin_store(&mut self,ui:&mut egui::Ui,search:&str){
   ui.label(RichText::new("Découvrir / Installés / Importer").strong());
@@ -26,16 +27,17 @@ impl App {
      ui.label(format!("Runtime : {ty} · Windows · Compatibilité : non vérifiée · Installé / inactif si aucune touche liée"));
      ui.label("Droits de redistribution : non évalués ; processus tiers = droits utilisateur, aucune sandbox.");
      ui.label(format!("{} actions · {}",plugin.actions.len(),self.plugin_errors.get(&plugin.uuid).map(String::as_str).unwrap_or("arrêté")));
-     let report_path=plugin.folder.join("validation-report.json");
-     let report=std::fs::read(&report_path).ok().and_then(|data|serde_json::from_slice::<crate::plugin_validation::Report>(&data).ok())
-         .filter(|r|r.plugin==plugin.uuid && r.version==plugin.version);
+     let cache_key=format!("{}-{}",plugin.uuid,plugin.version);
+     let report=self.plugin_report_cache.entry(cache_key).or_insert_with(||plugin_validation::report_path(&plugin).and_then(|p|std::fs::read(p).ok()).and_then(|bytes|serde_json::from_slice::<plugin_validation::Report>(&bytes).ok()).filter(|r|r.plugin==plugin.uuid && r.version==plugin.version));
      if let Some(report)=report {
-      for result in report.actions {
+      for result in &report.actions {
        let verdict=match result.verdict {crate::plugin_validation::Verdict::Passed=>"Réussi",crate::plugin_validation::Verdict::Failed=>"Échoué",crate::plugin_validation::Verdict::Unverified=>"Non vérifié"};
-       ui.label(format!("{} : {verdict} · {} · {}",result.action,result.reason,result.mode));
+       ui.label(format!("{} : {verdict} · {} · {} · {} UTC",result.action,result.reason,result.mode,report_date(result.tested_at_unix)));
       }
      } else { ui.label("Validation : non vérifiée (aucun rapport pour cette version)."); }
-     if ui.button("Tester le plugin (simulation uniquement)").clicked(){self.plugin_test_request(plugin.clone());}
+     if ui.button("Tester le plugin (simulation uniquement)").clicked(){self.plugin_test_request(plugin.clone(),false);}
+     let oracle=self.plugin_oracle_cache.entry(format!("{}-{}",plugin.uuid,plugin.version)).or_insert_with(||plugin_validation::load_oracle(&plugin).ok().flatten());
+     if oracle.as_ref().is_some_and(|o|o.actions.iter().any(|a|a.real_effects)) && ui.button("Essai réel…").clicked(){self.plugin_real_confirmation=Some(plugin.clone());}
      ui.label("Actions disponibles (placer sur une touche peut lancer le plugin) :");
      for action in &plugin.actions{
       let name=plugin_import::action_name(&plugin,action);
@@ -109,14 +111,30 @@ impl App {
     for plugin in &protected{ui.label(plugin.display_name());}
    });
   });
+  self.plugin_confirm_real(ui);
  }
- fn plugin_test_request(&mut self,plugin:Plugin){
+ // Conversion UTC sans E/S disque et sans dépendance supplémentaire.
+ fn plugin_confirm_real(&mut self,ui:&egui::Ui){
+  if let Some(plugin)=self.plugin_real_confirmation.clone(){
+   let mut open=true;
+   egui::Window::new("Confirmer l’essai réel du plugin").open(&mut open).show(ui.ctx(),|ui|{
+    ui.label("Un plugin tiers agit avec vos droits. Vérifiez les effets avant de confirmer :");
+    if let Some(oracle)=self.plugin_oracle_cache.get(&format!("{}-{}",plugin.uuid,plugin.version)).and_then(Option::as_ref){for action in oracle.actions.iter().filter(|a|a.real_effects){
+     ui.label(format!("Action : {}",action.action));ui.label(format!("Effet attendu : {}",action.expected_effect));ui.label(format!("Observation : {:?} · délai {} ms",action.observation,action.timeout_ms));
+    }}
+    ui.horizontal(|ui|{if ui.button("Confirmer et lancer l’essai réel").clicked(){self.plugin_test_request(plugin.clone(),true);self.plugin_real_confirmation=None;}
+     if ui.button("Annuler").clicked(){self.plugin_real_confirmation=None;}});
+   });
+   if !open{self.plugin_real_confirmation=None;}
+  }
+ }
+ fn plugin_test_request(&mut self,plugin:Plugin,confirmed_real:bool){
   self.start_dialog(move||{
-   let report=crate::plugin_validation::simulate(&plugin);
-   let result=serde_json::to_vec_pretty(&report).map_err(anyhow::Error::from)
-      .and_then(|bytes|std::fs::write(plugin.folder.join("validation-report.json"),bytes).map_err(anyhow::Error::from));
+   let oracle=plugin_validation::load_oracle(&plugin);
+   let report=plugin_validation::run(&plugin,oracle.as_ref().ok().and_then(Option::as_ref),confirmed_real);
+   let result=oracle.map_err(anyhow::Error::msg).and_then(|_|plugin_validation::save_report(&plugin,&report).map_err(anyhow::Error::msg));
    Some(Box::new(move |app:&mut App|match result{
-    Ok(())=>{app.notice="Rapport de simulation enregistré (aucun essai matériel).".into();},
+    Ok(())=>{app.plugin_report_cache.insert(format!("{}-{}",plugin.uuid,plugin.version),Some(report));app.notice="Rapport de validation enregistré hors du plugin.".into();},
     Err(e)=>app.fail(format!("Rapport de plugin non enregistré : {e}")),
    }))
   });
@@ -159,4 +177,14 @@ fn egui_file_dialog_archive()->Option<std::path::PathBuf>{rfd::FileDialog::new()
   assert!(native_audio_switch(&audio,true).is_none());
  }
  #[test] fn binding_for_imported_action_roundtrips(){let k=Key{plugin:Some(PluginBinding{plugin:"fixture.plugin".into(),action:"fixture.action".into(),settings:serde_json::json!({}),state:0}),..Key::default()};let value=serde_json::to_value(&k).unwrap();assert_eq!(serde_json::from_value::<Key>(value).unwrap().plugin.unwrap().action,"fixture.action");}
+}
+
+fn report_date(timestamp:u64)->String {
+ let days=(timestamp/86400) as i64;let z=days+719468;
+ let era=if z>=0 {z} else {z-146096}/146097;let doe=z-era*146097;
+ let yoe=(doe-doe/1460+doe/36524-doe/146096)/365;
+ let mut y=yoe+era*400;let doy=doe-(365*yoe+yoe/4-yoe/100);
+ let mp=(5*doy+2)/153;let d=doy-(153*mp+2)/5+1;
+ let m=mp+if mp<10 {3} else {-9};if m<=2 {y+=1;}
+ format!("{d:02}/{m:02}/{y:04} {:02}:{:02}:{:02}",(timestamp%86400)/3600,(timestamp%3600)/60,timestamp%60)
 }

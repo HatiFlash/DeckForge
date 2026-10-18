@@ -31,6 +31,11 @@ socket.addEventListener('message', message => {
   } else if (data.event === 'willDisappear') {
     send('logMessage', context, { message: 'willDisappear:' + context });
   } else if (data.event === 'keyDown') {
+    if (data.action === 'org.deckforge.counter.write_file') {
+      const folder = settings.get(context)?.output_dir;
+      if (folder) require('node:fs').writeFileSync(require('node:path').join(folder, 'deckforge-witness.txt'), 'témoin');
+      return;
+    }
     const old = settings.get(context) || data.payload?.settings || {};
     if (old.error === 'crash') process.exit(7); // Controlled failure for the harness.
     if (old.error === 'malformed') { socket.send('{malformed'); return; }

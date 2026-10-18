@@ -1,9 +1,12 @@
-//! Virtual-device validation: same Manager::key routing as Event::Key/KeyRelease, never USB.
-use crate::plugins::{Plugin, Runtime};
+//! Oracles locaux pour vérifier une action par observation, jamais par simple lancement.
+use crate::plugins::Plugin;
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
-const WITNESS: &str = "org.deckforge.counter";
+#[cfg(test)]
 const ACTION: &str = "org.deckforge.counter.increment";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -28,37 +31,306 @@ pub struct Report {
     pub actions: Vec<ActionReport>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OracleFile {
+    pub schema_version: u32,
+    pub plugin: String,
+    pub version: String,
+    pub actions: Vec<ActionOracle>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ActionOracle {
+    pub action: String,
+    pub mode: Mode,
+    pub real_effects: bool,
+    pub expected_effect: String,
+    pub timeout_ms: u64,
+    #[serde(default)]
+    pub requirements: Requirements,
+    pub observation: Observation,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Requirements {
+    #[serde(default)]
+    pub software: Vec<String>,
+    #[serde(default)]
+    pub account: Option<String>,
+    #[serde(default)]
+    pub hardware: Option<String>,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Mode {
+    Simulated,
+    Real,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Observation {
+    Title {
+        equals: String,
+    },
+    State {
+        equals: u32,
+    },
+    Image {
+        starts_with: String,
+    },
+    File {
+        directory: Option<String>,
+        extension: String,
+    },
+    // Processus, fenêtres et registre demandent une sonde lecture seule dédiée : non vérifiés jusque-là.
+    WindowsRegistry {
+        key: String,
+        value: String,
+        equals: String,
+    },
+    Process {
+        name: String,
+    },
+    Window {
+        title: String,
+    },
+}
+fn safe_id(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() < 160
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+        && !s.contains("..")
+}
+fn safe_directory(s: &str) -> bool {
+    let p = Path::new(s);
+    p.is_absolute()
+        && !s.contains("..")
+        && !s.starts_with("\\")
+        && p.components().all(|c| {
+            matches!(
+                c,
+                std::path::Component::Prefix(_)
+                    | std::path::Component::RootDir
+                    | std::path::Component::Normal(_)
+            )
+        })
+}
+impl OracleFile {
+    pub fn parse(bytes: &[u8], plugin: &Plugin) -> Result<Self, String> {
+        if bytes.len() > 65536 {
+            return Err("Oracle trop volumineux".into());
+        }
+        let file: Self =
+            serde_json::from_slice(bytes).map_err(|e| format!("Oracle invalide : {e}"))?;
+        if file.schema_version != 1
+            || file.plugin != plugin.uuid
+            || file.version != plugin.version
+            || !safe_id(&file.plugin)
+            || !safe_id(&file.version)
+            || file.actions.len() > 256
+        {
+            return Err("Identité, version ou schéma d'oracle incorrect".into());
+        }
+        let mut seen = std::collections::HashSet::new();
+        for a in &file.actions {
+            if !safe_id(&a.action)
+                || !seen.insert(&a.action)
+                || !plugin.actions.iter().any(|p| p.uuid == a.action)
+                || a.timeout_ms < 100
+                || a.timeout_ms > 10000
+                || a.expected_effect.trim().is_empty()
+                || a.expected_effect.len() > 500
+                || a.real_effects != (a.mode == Mode::Real)
+            {
+                return Err(format!("Action oracle invalide : {}", a.action));
+            }
+            if a.requirements.software.iter().any(|s| !safe_directory(s))
+                || a.requirements
+                    .account
+                    .as_ref()
+                    .is_some_and(|s| s.trim().is_empty())
+                || a.requirements
+                    .hardware
+                    .as_ref()
+                    .is_some_and(|s| s.trim().is_empty())
+            {
+                return Err("Prérequis invalide".into());
+            }
+            match &a.observation {
+                Observation::File {
+                    directory,
+                    extension,
+                } if !matches!(
+                    extension.as_str(),
+                    "png" | "jpg" | "jpeg" | "bmp" | "webp" | "txt"
+                ) || directory.as_ref().is_some_and(|s| !safe_directory(s)) =>
+                {
+                    return Err("Dossier ou motif de fichier invalide".into())
+                }
+                Observation::Title { equals } if equals.len() > 256 => {
+                    return Err("Titre trop long".into())
+                }
+                Observation::Image { starts_with } if starts_with.len() > 256 => {
+                    return Err("Image : motif trop long".into())
+                }
+                _ => {}
+            }
+        }
+        Ok(file)
+    }
+}
+pub fn data_root() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir())
+        .join("DeckForge")
+}
+pub fn oracle_path(plugin: &Plugin) -> Option<PathBuf> {
+    if safe_id(&plugin.uuid) && safe_id(&plugin.version) {
+        Some(
+            data_root()
+                .join("plugin-oracles")
+                .join(format!("{}-{}.json", plugin.uuid, plugin.version)),
+        )
+    } else {
+        None
+    }
+}
+pub fn report_path(plugin: &Plugin) -> Option<PathBuf> {
+    if safe_id(&plugin.uuid) && safe_id(&plugin.version) {
+        Some(
+            data_root()
+                .join("plugin-reports")
+                .join(format!("{}-{}.json", plugin.uuid, plugin.version)),
+        )
+    } else {
+        None
+    }
+}
+pub fn load_oracle(plugin: &Plugin) -> Result<Option<OracleFile>, String> {
+    let Some(path) = oracle_path(plugin) else {
+        return Ok(None);
+    };
+    match std::fs::read(path) {
+        Ok(bytes) => OracleFile::parse(&bytes, plugin).map(Some),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+pub fn save_report(plugin: &Plugin, report: &Report) -> Result<(), String> {
+    let p = report_path(plugin).ok_or("Identité de plugin invalide")?;
+    std::fs::create_dir_all(p.parent().unwrap()).map_err(|e| e.to_string())?;
+    std::fs::write(
+        p,
+        serde_json::to_vec_pretty(report).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
+}
 fn stamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
 }
-fn trusted(plugin: &Plugin) -> bool {
-    plugin.uuid == WITNESS
-        && plugin.actions.len() == 1
-        && plugin.actions[0].uuid == ACTION
-        && matches!(&plugin.runtime, Runtime::Node(path) if std::fs::read_to_string(path).ok()
-            .is_some_and(|s| s.replace("\r\n", "\n") == include_str!("../tests/fixtures/counter.sdPlugin/plugin.js").replace("\r\n", "\n")))
-}
+#[cfg(test)]
 pub fn simulate(plugin: &Plugin) -> Report {
-    let now = stamp();
-    let result = if trusted(plugin) {
-        Some(witness(plugin))
-    } else {
-        None
-    };
-    Report { plugin:plugin.uuid.clone(), version:plugin.version.clone(), actions:plugin.actions.iter().map(|a| {
-        let (verdict, reason) = if a.uuid == ACTION {
-            match &result { Some(Ok(())) => (Verdict::Passed, "Observé via App et WebSocket Node : keyDown/keyUp, deux instances isolées, titres 1/4/1/7, getSettings/didReceiveSettings/setSettings sauvegardés et rechargés, getGlobalSettings/setGlobalSettings persistés et relus, image SVG, état 1, showOk/showAlert et willDisappear sur changement de page".into()),
-                Some(Err(e)) => (Verdict::Failed,e.clone()),
-                None => (Verdict::Unverified,"Aucun résultat attendu connu pour ce plugin : non exécuté par le test".into()) }
-        } else { (Verdict::Unverified,"Aucun résultat attendu déclaré pour cette action".into()) };
-        ActionReport { action:a.uuid.clone(), verdict, reason, mode:"simulé (appareil virtuel, aucun USB)".into(), tested_at_unix:now }
-    }).collect() }
+    run(plugin, load_oracle(plugin).ok().flatten().as_ref(), false)
 }
-fn witness(plugin: &Plugin) -> Result<(), String> {
-    crate::ui::validate_witness(plugin, None)
+pub fn run(plugin: &Plugin, oracle: Option<&OracleFile>, confirmed_real: bool) -> Report {
+    let now = stamp();
+    Report {
+        plugin: plugin.uuid.clone(),
+        version: plugin.version.clone(),
+        actions: plugin
+            .actions
+            .iter()
+            .map(|a| {
+                let entry = oracle.and_then(|o| o.actions.iter().find(|x| x.action == a.uuid));
+                let mode = entry
+                    .map(|o| {
+                        if o.mode == Mode::Real {
+                            "réel"
+                        } else {
+                            "simulé"
+                        }
+                    })
+                    .unwrap_or("simulé");
+                let (verdict, reason) = match entry {
+                    None => (
+                        Verdict::Unverified,
+                        "Aucun résultat attendu déclaré pour cette action".into(),
+                    ),
+                    Some(o) if o.real_effects && !confirmed_real => (
+                        Verdict::Unverified,
+                        "Effets réels : confirmation explicite requise ; non exécuté".into(),
+                    ),
+                    Some(o) if o.mode == Mode::Simulated && confirmed_real => (
+                        Verdict::Unverified,
+                        "Action simulée : non exécutée pendant l'essai réel".into(),
+                    ),
+                    Some(o) => {
+                        let missing = o
+                            .requirements
+                            .software
+                            .iter()
+                            .find(|s| !Path::new(s).exists())
+                            .map(|s| format!("Logiciel absent : {s}"));
+                        let missing = missing
+                            .or_else(|| {
+                                o.requirements
+                                    .account
+                                    .as_ref()
+                                    .map(|s| format!("Compte non vérifié : {s}"))
+                            })
+                            .or_else(|| {
+                                o.requirements
+                                    .hardware
+                                    .as_ref()
+                                    .map(|s| format!("Matériel non vérifié : {s}"))
+                            });
+                        if let Some(reason) = missing {
+                            (Verdict::Unverified, reason)
+                        } else if matches!(
+                            &o.observation,
+                            Observation::File {
+                                directory: None,
+                                ..
+                            }
+                        ) {
+                            (
+                                Verdict::Unverified,
+                                "Dossier de destination inconnu ; aucune exécution".into(),
+                            )
+                        } else if matches!(
+                            &o.observation,
+                            Observation::WindowsRegistry { .. }
+                                | Observation::Process { .. }
+                                | Observation::Window { .. }
+                        ) {
+                            (
+                                Verdict::Unverified,
+                                "Sonde Windows indisponible ; aucune exécution".into(),
+                            )
+                        } else {
+                            match crate::ui::validate_oracle(plugin, &a.uuid, o) {
+                                Ok(s) => (Verdict::Passed, s),
+                                Err(e) => (Verdict::Failed, e),
+                            }
+                        }
+                    }
+                };
+                ActionReport {
+                    action: a.uuid.clone(),
+                    verdict,
+                    reason,
+                    mode: mode.into(),
+                    tested_at_unix: now,
+                }
+            })
+            .collect(),
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -75,12 +347,7 @@ mod tests {
     #[test]
     fn real_node_virtual_device_counter() {
         let p = fixture();
-        let report = simulate(&p);
-        assert!(
-            matches!(report.actions[0].verdict, Verdict::Passed),
-            "{:?}",
-            report.actions
-        );
+        crate::ui::validate_witness(&p, None).unwrap();
     }
     #[test]
     fn unknown_oracle_is_unverified_and_never_launched() {
@@ -103,5 +370,100 @@ mod tests {
             let err = crate::ui::validate_witness(&p, Some(mode)).unwrap_err();
             assert!(err.contains(expected), "{mode}: {err}");
         }
+    }
+    fn oracle(p: &Plugin, action: &str, observation: Observation) -> OracleFile {
+        OracleFile {
+            schema_version: 1,
+            plugin: p.uuid.clone(),
+            version: p.version.clone(),
+            actions: vec![ActionOracle {
+                action: action.into(),
+                mode: Mode::Simulated,
+                real_effects: false,
+                expected_effect: "Résultat témoin".into(),
+                timeout_ms: 2000,
+                requirements: Requirements::default(),
+                observation,
+            }],
+        }
+    }
+    #[test]
+    fn format_strict_and_invalid_paths() {
+        let p = fixture();
+        let o = oracle(&p, ACTION, Observation::Title { equals: "1".into() });
+        assert!(OracleFile::parse(&serde_json::to_vec(&o).unwrap(), &p).is_ok());
+        let mut bad = serde_json::to_value(&o).unwrap();
+        bad["actions"][0]["observation"] =
+            serde_json::json!({"type":"file","directory":"../outside","extension":"png"});
+        assert!(OracleFile::parse(&serde_json::to_vec(&bad).unwrap(), &p).is_err());
+        bad["actions"][0]["observation"] =
+            serde_json::json!({"type":"title","equals":"1","command":"powershell"});
+        assert!(OracleFile::parse(&serde_json::to_vec(&bad).unwrap(), &p).is_err());
+    }
+    #[test]
+    fn no_oracle_or_prerequisite_or_confirmation() {
+        let p = fixture();
+        assert!(matches!(
+            run(&p, None, false).actions[1].verdict,
+            Verdict::Unverified
+        ));
+        let mut o = oracle(&p, ACTION, Observation::Title { equals: "1".into() });
+        o.actions[0]
+            .requirements
+            .software
+            .push("C:\\DeckForge-absent-987\\none.exe".into());
+        assert!(matches!(
+            run(&p, Some(&o), false).actions[0].verdict,
+            Verdict::Unverified
+        ));
+        o.actions[0].requirements.software.clear();
+        o.actions[0].mode = Mode::Real;
+        o.actions[0].real_effects = true;
+        assert!(matches!(
+            run(&p, Some(&o), false).actions[0].verdict,
+            Verdict::Unverified
+        ));
+    }
+    #[test]
+    fn title_and_file_observed_and_missing_file_fails() {
+        let p = fixture();
+        let title = oracle(&p, ACTION, Observation::Title { equals: "1".into() });
+        let result = run(&p, Some(&title), false);
+        assert!(
+            matches!(result.actions[0].verdict, Verdict::Passed),
+            "{:?}",
+            result.actions
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().to_string_lossy().into_owned();
+        let file = oracle(
+            &p,
+            "org.deckforge.counter.write_file",
+            Observation::File {
+                directory: Some(folder.clone()),
+                extension: "txt".into(),
+            },
+        );
+        let result = run(&p, Some(&file), false);
+        assert!(
+            matches!(result.actions[1].verdict, Verdict::Passed),
+            "{:?}",
+            result.actions
+        );
+        std::fs::remove_file(dir.path().join("deckforge-witness.txt")).unwrap();
+        let absent = oracle(
+            &p,
+            "org.deckforge.counter.write_file",
+            Observation::File {
+                directory: Some(folder),
+                extension: "png".into(),
+            },
+        );
+        let result = run(&p, Some(&absent), false);
+        assert!(
+            matches!(result.actions[1].verdict, Verdict::Failed),
+            "{:?}",
+            result.actions
+        );
     }
 }
