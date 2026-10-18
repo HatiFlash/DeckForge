@@ -423,9 +423,12 @@ pub struct Preferences {
     pub triggers: Vec<crate::desktop::Trigger>,
     #[serde(default)]
     pub workshop_advanced: bool,
+    #[serde(default = "default_chat_mode")]
+    pub workshop_chat_mode: String,
     #[serde(default)]
     pub allow_connected_ai: bool,
 }
+fn default_chat_mode() -> String { "auto".into() }
 impl Default for Preferences {
     fn default() -> Self {
         Self {
@@ -435,6 +438,7 @@ impl Default for Preferences {
             start_with_windows: false,
             triggers: vec![],
             workshop_advanced: false,
+            workshop_chat_mode: default_chat_mode(),
             allow_connected_ai: false,
         }
     }

@@ -746,6 +746,51 @@ fn background_tick_processes_physical_events_and_saves_without_drawing_a_frame()
 }
 
 #[test]
+fn workshop_chat_opens_previews_inserts_and_undoes_without_running() {
+    let size = vec2(1366.0, 768.0);
+    let mut h = Harness::new();
+    h.app.show_workflow = true;
+    h.app.config.keys_mut()[0].steps.clear();
+    let output = h.warm(size);
+    assert!(!h.app.workshop_chat.open);
+    assert!(text_position(&output.shapes, "Assistant · Atelier").is_none());
+    let pos = text_position(&output.shapes, "Assistant").expect("assistant launcher");
+    h.click(size, pos);
+    let output = h.warm(size);
+    assert!(h.app.workshop_chat.open);
+    assert!(text_position(&output.shapes, "Assistant · Atelier").is_some());
+    h.app.workshop_chat.input = "attends 2 s".into();
+    let pos = text_position(&output.shapes, "Envoyer").expect("send button");
+    h.click(size, pos);
+    let output = h.warm(size);
+    assert!(matches!(h.app.workshop_chat.pending.as_ref().unwrap().proposal.steps.as_slice(), [Step::Delay { ms: 2000 }]));
+    assert!(h.app.config.keys()[0].steps.is_empty());
+    let pos = text_position(&output.shapes, "Ajouter").expect("add button");
+    h.click(size, pos);
+    assert!(matches!(h.app.config.keys()[0].steps.as_slice(), [Step::Delay { ms: 2000 }]));
+    assert!(!h.app.engine.running.load(Ordering::SeqCst));
+    assert!(h.app.workshop_journal.lines.is_empty());
+    h.app.undo_edit();
+    assert!(h.app.config.keys()[0].steps.is_empty());
+}
+
+#[test]
+fn workshop_chat_pending_becomes_stale_on_key_change() {
+    let mut h = Harness::new();
+    let size = vec2(1366.0, 768.0);
+    h.app.show_workflow = true;
+    h.app.config.keys_mut()[1].steps.clear();
+    h.app.workshop_chat.open = true;
+    h.warm(size);
+    h.app.workshop_chat_send("attends 2 s".into(), None);
+    h.app.selected = 1;
+    let output = h.warm(size);
+    assert!(text_position(&output.shapes, "Proposition périmée : touche, page ou profil changé.").is_some());
+    assert!(h.app.config.keys()[1].steps.is_empty());
+    assert!(!h.app.engine.running.load(Ordering::SeqCst));
+}
+
+#[test]
 fn workshop_selection_shortcuts_duplicate_delete_and_undo() {
     let size = vec2(1366.0, 768.0);
     let mut h = Harness::new();

@@ -31,6 +31,9 @@ mod appearance;
 #[path = "ui_plugin_store.rs"]
 mod plugin_store_ui;
 
+#[path = "ui_workshop_chat.rs"]
+mod workshop_chat_ui;
+
 #[derive(Default,Clone)]
 struct PluginFace { title:String, image_bytes:Option<Vec<u8>>, state:u8, flash:Option<(bool,Instant)>, version:u64 }
 #[cfg(test)]
@@ -210,6 +213,7 @@ pub struct App {
     tray_ready: bool,
     quitting: bool,
     show_workflow: bool,
+    workshop_chat: workshop_chat_ui::WorkshopChat,
     show_assets: bool,
     show_desktop_settings: bool,
     available_icons: Vec<crate::assets::Icon>,
@@ -399,6 +403,7 @@ impl App {
             tray_ready: false,
             quitting: false,
             show_workflow: false,
+            workshop_chat: Default::default(),
             show_assets: false,
             show_desktop_settings: false,
             available_icons: vec![],

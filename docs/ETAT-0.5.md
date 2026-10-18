@@ -1,5 +1,11 @@
 # DeckForge 0.5 (développement) — état au 17 octobre 2026
 
+## Atelier minimaliste & assistant — B2 (phase 5)
+
+- Livré : chat flottant fermé par défaut, mode Local/Automatique/IA mémorisé dans preferences.json, historique en session, commandes rapides et propositions locales prévisualisées. Ajout via les opérations de l’Atelier, corrections locales avant/après ; Ctrl+Z annule, aucune macro déclenchée. IA via connecteur MCP existant uniquement, sans appel externe direct.
+- Testé automatiquement : ouverture et insertion d’une attente, annulation et proposition périmée au changement de touche ; cargo check et build complet Windows.
+- À tester avec Hatim : confort et lisibilité à 1366×768, variété des formulations, liaison avec propositions MCP. Les choix ambigus demandent une reformulation, les blocs incomplets nécessitent une demande corrigée avant insertion ; le mode Automatique reste local (pas de transmission implicite à une IA).
+
 ## Atelier minimaliste & assistant — B1 (phase 4)
 
 - Livré : moteur local déterministe et hors ligne (intention par synonymes, clauses, paramètres, propositions à compléter, validation par le modèle, explication, diagnostic et modèles du catalogue). Aucune exécution de macro ni insertion automatique ; l’interface/chat reste pour une autre phase.

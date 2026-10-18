@@ -136,7 +136,7 @@ fn palette(ui: &mut egui::Ui, search: &str, depth: usize, advanced: bool) -> Opt
 fn simple_fields_visible(step: &Step, advanced: bool) -> bool {
     advanced || !matches!(step.active(), Step::AutoHotkey { .. })
 }
-fn block_summary(step: &Step) -> String {
+pub(super) fn block_summary(step: &Step) -> String {
     match step.active() {
         Step::MouseClick { .. } | Step::MouseMove { .. } | Step::MouseScroll { .. } => super::step_summary(step),
         Step::Clipboard { .. } => step.clipboard_summary().unwrap_or_default(),
@@ -837,6 +837,12 @@ impl App {
                 });
             }
         });
+        egui::Area::new(egui::Id::new("workshop_chat_launcher"))
+            .anchor(egui::Align2::RIGHT_BOTTOM, [-18.0, -53.0])
+            .order(egui::Order::Foreground)
+            .show(ctx, |ui| {
+                if ui.add(theme::primary("Assistant")).clicked() { self.workshop_chat.open = !self.workshop_chat.open; }
+            });
         let selected_trace = ctx.data(|d| d.get_temp::<Vec<usize>>(selected_id)).unwrap_or_default();
         let highlight = if selected_trace.is_empty() { &self.running_block } else { &selected_trace };
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -858,7 +864,7 @@ impl App {
                                 if ui.button(crate::automation::NAMES[kind]).clicked() { add = Some(kind); }
                             }
                         });
-                        if ui.button("Demander à l'assistant").clicked() { self.assistant_settings = true; }
+                        if ui.button("Demander à l'assistant").clicked() { self.workshop_chat.open = true; }
                     } else {
                         sequence_cards(ui, steps, &[], &mut selection, &mut action, &mut insert_at, &validation_config);
                     }
@@ -953,6 +959,7 @@ impl App {
                     });
                 });
         }
+        self.workshop_chat(ctx, selection.as_deref());
         ctx.data_mut(|d| {
             if let Some(path) = selection {
                 if path.len() == 1 { d.insert_temp(egui::Id::new("workshop_selected"), path[0]); }
