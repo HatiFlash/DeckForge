@@ -16,3 +16,12 @@ Application habituelle Desktop\DeckForge-0.5-diagnostic restaurée après les es
 ## Automatisation et limites
 Build complet vert : 266 tests applicatifs, 1 ignoré, 9 MCP. Test egui tailles/DPI ajouté. Cargo check et rustfmt ciblé vérifiés séparément. Formatage global historique non repris.
 Les changements de DPI 100/125/150 % sont couverts par le harness, pas par des changements globaux des réglages Windows. Le mode flottant des très grandes largeurs logiques n'a pas été testé dans une vraie fenêtre dans cette passe. Aucun essai d'exécution réelle, envoi IA ou publication.
+
+## Finition des cartes et du chat — même journée
+
+- Avancé : cartes repliées par défaut, paramètres au clic, menu secondaire. Simple : largeur bornée, icônes vectorielles, résumé sans répétition du nom quand déjà présent, sélection refermable.
+- Chat : panneau réservé même en grande largeur, bulles distinguées par le préfixe utilisateur et non par parité des messages, propositions en cartes, explications longues conservées (limite 4000 caractères au lieu de 240).
+- Explications locales enrichies notamment attente, raccourci, lancement, OBS, volumes, conditions/boucles, média, texte, URL, notification, fenêtre et navigation. Les autres familles gardent une réponse de repli : aucune prétention d'aide exhaustive de chaque paramètre.
+- Build complet : 268 tests applicatifs verts, 1 ignoré, 9 MCP ; cargo check --locked vert. Formatage ciblé chat/validator.
+- Vrais essais sur copie : Avancé replié et développé (Média), bascule Simple, ouverture chat, demande « Attends 2 s », bulles et proposition, redimensionnement à 1000×700 pixels client et aux extérieurs 1366×768 et 1920×1080 avec DPI courant. Captures examinées. En petite taille, une partie de la proposition nécessite le défilement ; saisie reste visible. Aucun test macro réelle ni requête IA.
+- Application habituelle relancée et répondante, aucun remplacement du binaire habituel. Copies et captures restent dans le dossier de test. Ne pas confondre ces parcours avec une validation manuelle de toutes les familles de blocs et de toutes les branches imbriquées.

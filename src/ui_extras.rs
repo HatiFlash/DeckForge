@@ -287,6 +287,7 @@ pub(super) fn block_editor(
     let mut insertion = None;
     let mut duplicate = None;
     let mut toggle = None;
+    let step_count = steps.len();
     for (i, step) in steps.iter_mut().enumerate() {
         let mut path = parent.to_vec();
         path.push(i);
@@ -337,34 +338,23 @@ pub(super) fn block_editor(
                                 .join("."),
                             color,
                         );
+                        block_glyph(ui, step, color);
                         let folded_id = egui::Id::new("block_fold").with(&path);
-                        let folded = ui.data(|d| d.get_temp::<bool>(folded_id)).unwrap_or(false);
-                        if ui.selectable_label(
-                            !folded,
-                            if block_summary(step) == step.name() { step.name().to_owned() } else { block_summary(step) },
-                        ).clicked() {
+                        let folded = ui.data(|d| d.get_temp::<bool>(folded_id)).unwrap_or(true);
+                        let summary = block_summary(step);
+                        if ui.selectable_label(!folded, if summary.starts_with(step.name()) { summary.clone() } else { format!("{} · {}", step.name(), summary) })
+                            .on_hover_text(format!("{} — {}", step.name(), summary)).clicked() {
                             ui.data_mut(|d| d.insert_temp(folded_id, !folded));
                             if parent.is_empty() {
                                 ui.data_mut(|d| d.insert_temp(egui::Id::new("workshop_selected"), i));
                             }
                         }
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("Retirer").clicked() {
-                                remove = Some(i);
-                            }
-                            if ui.small_button(if disabled { "Activer" } else { "Désactiver" }).clicked() { toggle = Some(i); }
-                            if ui.small_button("Dupliquer").clicked() {
-                                duplicate = Some(i);
-                            }
-                            if ui.small_button("↓").clicked() {
-                                movement = Some((i, i + 1));
-                            }
-                            if ui
-                                .add_enabled(i > 0, egui::Button::new("↑").small())
-                                .clicked()
-                            {
-                                movement = Some((i, i - 1));
-                            }
+                        ui.menu_button("...", |ui| {
+                            if ui.button("Dupliquer").clicked() { duplicate = Some(i); ui.close_menu(); }
+                            if ui.button("Retirer").clicked() { remove = Some(i); ui.close_menu(); }
+                            if ui.button(if disabled { "Activer" } else { "Désactiver" }).clicked() { toggle = Some(i); ui.close_menu(); }
+                            if ui.add_enabled(i > 0, egui::Button::new("Monter")).clicked() { movement = Some((i, i - 1)); ui.close_menu(); }
+                            if ui.add_enabled(i + 1 < step_count, egui::Button::new("Descendre")).clicked() { movement = Some((i, i + 1)); ui.close_menu(); }
                         });
                     });
                     if let Some(e) = &error { if !disabled { ui.colored_label(Color32::from_rgb(255, 170, 70), format!("À compléter : {e}")); } }
@@ -377,7 +367,7 @@ pub(super) fn block_editor(
                         Step::SetVariable { .. } => 16, Step::IfVariable { .. } => 17, Step::Math { .. } => 42, Step::TextOp { .. } => 43,
                         Step::AutoHotkey { .. } => 18, _ => 7,
                     })).small()); }
-                    if ui.data(|d| d.get_temp::<bool>(egui::Id::new("block_fold").with(&path))).unwrap_or(false) {
+                    if ui.data(|d| d.get_temp::<bool>(egui::Id::new("block_fold").with(&path))).unwrap_or(true) {
                         return;
                     }
                     ui.add_space(6.0);
@@ -532,6 +522,32 @@ fn family_bar(ui: &mut egui::Ui, color: Color32) {
     let (r, _) = ui.allocate_exact_size(egui::vec2(3.0, 14.0), egui::Sense::hover());
     ui.painter().rect_filled(r, 1.0, color);
 }
+// Small vector icons: no dependency on glyph coverage in the UI font.
+fn block_glyph(ui: &mut egui::Ui, step: &Step, color: Color32) {
+    let (r, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+    let p = ui.painter();
+    let c = r.center();
+    let stroke = egui::Stroke::new(1.4_f32, color);
+    match step.active() {
+        Step::Delay { .. } | Step::WaitWindow { .. } | Step::WaitUntil { .. } => {
+            p.circle_stroke(c, 7.0, stroke);
+            p.line_segment([c, c + egui::vec2(0.0, -4.0)], stroke);
+            p.line_segment([c, c + egui::vec2(4.0, 2.0)], stroke);
+        }
+        Step::IfCondition { .. } | Step::IfWindow { .. } | Step::IfVariable { .. } | Step::Toggle { .. } => {
+            for dy in [-5.0, 5.0] { p.line_segment([c - egui::vec2(6.0, 0.0), c + egui::vec2(6.0, dy)], stroke); }
+        }
+        Step::Media { .. } | Step::AppVolume { .. } | Step::DeviceVolume { .. } => {
+            for (x, h) in [(-5.0, 3.0), (0.0, 6.0), (5.0, 4.0)] {
+                p.line_segment([c + egui::vec2(x, -h), c + egui::vec2(x, h)], stroke);
+            }
+        }
+        _ => {
+            p.rect_filled(r.shrink(2.0), 3.0, color.gamma_multiply(0.25));
+            p.line_segment([c - egui::vec2(4.0, 0.0), c + egui::vec2(4.0, 0.0)], stroke);
+        }
+    }
+}
 // A compact card tree; structural edits are applied only after the immutable render pass.
 fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection: &mut Option<Vec<usize>>,
     action: &mut Option<WorkshopAction>, insert_at: &mut Option<Vec<usize>>, config: &crate::model::Config,
@@ -542,7 +558,7 @@ fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection
         ui.push_id(&path, |ui| {
             let chosen = selection.as_ref() == Some(&path);
             if i > 0 {
-                let line = ui.allocate_response(egui::vec2(ui.available_width().max(180.0), 15.0), egui::Sense::hover());
+                let line = ui.allocate_response(egui::vec2(ui.available_width().min(520.0).max(120.0), 6.0), egui::Sense::hover());
                 ui.painter().line_segment([egui::pos2(line.rect.center().x, line.rect.top()),
                     egui::pos2(line.rect.center().x, line.rect.bottom())], egui::Stroke::new(1.0_f32, p.line));
                 if line.hovered() {
@@ -556,17 +572,19 @@ fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection
             let frame = egui::Frame::new().fill(p.surface)
                 .stroke(egui::Stroke::new(if chosen { 1.5_f32 } else { 1.0_f32 }, if chosen { BLUE } else { p.line }))
                 .corner_radius(10).inner_margin(9).show(ui, |ui| {
-                    ui.set_min_width((ui.available_width() - 20.0).max(180.0));
+                    ui.set_width((ui.available_width() - 20.0).clamp(120.0, 520.0));
                     let color = if matches!(step.active(), Step::IfCondition { .. } | Step::IfWindow { .. } | Step::IfVariable { .. }) {
                         Color32::from_rgb(164, 123, 239)
                     } else if matches!(step.active(), Step::Repeat { .. }) { Color32::from_rgb(239, 169, 83) } else { BLUE };
                     ui.horizontal(|ui| {
-                        family_bar(ui, color);
+                        block_glyph(ui, step, color);
                         ui.colored_label(color, path.iter().step_by(2).map(|n| (n + 1).to_string()).collect::<Vec<_>>().join("."));
-                        let title = format!("{} · {}", step.name(), block_summary(step));
-                        let label = ui.add(egui::Button::new(title).selected(chosen).sense(egui::Sense::click_and_drag()))
-                            .on_hover_text("Sélectionner ou glisser pour déplacer ce bloc");
-                        if label.clicked() { *selection = Some(path.clone()); }
+                        let summary = block_summary(step);
+                        let title = if summary.starts_with(step.name()) { summary.clone() } else { format!("{} · {}", step.name(), summary) };
+                        let label = ui.add(egui::Button::new(egui::RichText::new(title)).selected(chosen)
+                            .truncate().sense(egui::Sense::click_and_drag()))
+                            .on_hover_text(format!("{} : {}. Cliquer pour afficher les propriétés ; glisser pour déplacer.", step.name(), summary));
+                        if label.clicked() { *selection = if chosen { None } else { Some(path.clone()) }; }
                         if label.drag_started() { ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("workshop_drag"), path.clone())); }
                         if let Some(e) = &error { ui.colored_label(Color32::LIGHT_RED, "Erreur").on_hover_text(e.to_string()); }
                         ui.menu_button("...", |ui| {

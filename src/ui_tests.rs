@@ -86,14 +86,49 @@ fn workshop_responsive_panels_reserve_space_at_multiple_sizes_and_dpi() {
 }
 
 #[test]
+fn workshop_advanced_cards_start_folded_and_reveal_real_controls() {
+    for (physical, dpi) in [(vec2(1000.0, 700.0), 1.0), (vec2(1366.0, 768.0), 1.25),
+        (vec2(1920.0, 1080.0), 1.5)] {
+        let size = physical / dpi;
+        let mut h = Harness::new();
+        h.ctx.set_pixels_per_point(dpi);
+        h.app.show_workflow = true;
+        h.app.preferences.workshop_advanced = true;
+        h.app.config.keys_mut()[0].steps = vec![Step::Delay { ms: 125 }];
+        let output = h.warm(size);
+        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+            let snapshot = h.warm(size);
+            h.png(size, snapshot, &PathBuf::from(dir).join(format!("atelier-advanced-folded-{}-{}.png", physical.x as u32, (dpi * 100.0) as u32)));
+        }
+        assert!(text_position(&output.shapes, "ms").is_none(), "folded {physical:?} {dpi}");
+        let id = egui::Id::new("block_fold").with(vec![0_usize]);
+        h.ctx.data_mut(|d| d.insert_temp(id, false));
+        let output = h.warm(size);
+        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+            let snapshot = h.warm(size);
+            h.png(size, snapshot, &PathBuf::from(dir).join(format!("atelier-advanced-expanded-{}-{}.png", physical.x as u32, (dpi * 100.0) as u32)));
+        }
+        assert!(text_position(&output.shapes, "ms").is_some(), "expanded {physical:?} {dpi}");
+    }
+}
+
+#[test]
 fn workshop_chat_and_properties_fit_both_screen_sizes() {
     for size in [vec2(1366.0, 768.0), vec2(1920.0, 1080.0)] {
         let mut h = Harness::new();
         h.app.show_workflow = true;
+        h.app.config.keys_mut()[0].steps = vec![Step::Delay { ms: 100 }];
         h.app.workshop_chat.open = true;
         let output = h.warm(size);
         assert!(!output.shapes.is_empty());
+        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+            let snapshot = h.warm(size);
+            h.png(size, snapshot, &PathBuf::from(dir).join(format!("atelier-chat-{}.png", size.x as u32)));
+        }
         assert!(text_position(&output.shapes, "Assistant · Atelier").is_some());
+        let panel = egui::containers::panel::PanelState::load(&h.ctx, egui::Id::new("workshop_chat_panel")).unwrap().rect;
+        let canvas = text_position(&output.shapes, "Construis ton automatisation").unwrap();
+        assert!(canvas.x < panel.left() && panel.right() <= size.x + 1.0, "chat {panel:?} canvas {canvas:?}");
     }
 }
 use super::*;
@@ -896,7 +931,7 @@ fn workshop_selection_shortcuts_duplicate_delete_and_undo() {
     h.app.config.keys_mut()[0].steps = vec![Step::Delay { ms: 120 }];
     let output = h.warm(size);
     let title = output.shapes.iter().filter_map(|shape| if let egui::Shape::Text(t) = &shape.shape {
-        (t.galley.job.text.contains("120") && t.galley.job.text.contains("·")).then_some(t.galley.job.text.clone())
+        (t.galley.job.text.contains("Attendre 120 ms")).then_some(t.galley.job.text.clone())
     } else { None }).next().expect("step card title");
     let pos = text_position(&output.shapes, &title).unwrap();
     h.click(size, pos);

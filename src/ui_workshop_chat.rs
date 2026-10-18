@@ -63,7 +63,7 @@ pub(super) struct ChatPreview {
 impl WorkshopChat {
     pub(super) fn say(&mut self, text: impl Into<String>) {
         self.messages
-            .push_back(text.into().chars().take(240).collect());
+            .push_back(text.into().chars().take(4000).collect());
         while self.messages.len() > 30 {
             self.messages.pop_front();
         }
@@ -203,16 +203,13 @@ impl App {
         let mut save_mode = false;
         let mut consent_action = None;
         let screen = ctx.screen_rect();
-        let compact = screen.width() < 1500.0;
         let chat_content = |ui: &mut egui::Ui| {
-            if compact {
-                ui.horizontal(|ui| {
-                    ui.label("Assistant · Atelier");
-                    if ui.button("Retour à la séquence").clicked() {
-                        open = false;
-                    }
-                });
-            }
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Assistant · Atelier").strong());
+                if ui.button("Retour à la séquence").clicked() {
+                    open = false;
+                }
+            });
             ui.horizontal(|ui| {
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut self.workshop_chat.input)
@@ -292,9 +289,15 @@ impl App {
                         }
                     }
                     if let Some(p) = self.proposals.pending.front() {
-                        ui.label("Proposition de ton IA reçue");
-                        ui.label(&p.title);
-                        ui.label(p.details.chars().take(180).collect::<String>());
+                        egui::Frame::new()
+                            .fill(theme::palette(ctx).surface)
+                            .corner_radius(8)
+                            .inner_margin(8)
+                            .show(ui, |ui| {
+                                ui.label(RichText::new("Proposition de ton IA reçue").strong());
+                                ui.label(&p.title);
+                                ui.label(p.details.chars().take(180).collect::<String>());
+                            });
                         if ui.button("Voir et valider la proposition").clicked() {
                             self.workshop_chat.open = false;
                         }
@@ -304,7 +307,28 @@ impl App {
                         .max_height((screen.height() * 0.22).min(150.0))
                         .show(ui, |ui| {
                             for message in &self.workshop_chat.messages {
-                                ui.label(message);
+                                let user = message.starts_with("Vous : ");
+                                ui.with_layout(
+                                    if user {
+                                        egui::Layout::right_to_left(egui::Align::TOP)
+                                    } else {
+                                        egui::Layout::left_to_right(egui::Align::TOP)
+                                    },
+                                    |ui| {
+                                        egui::Frame::new()
+                                            .fill(if user {
+                                                theme::BLUE.gamma_multiply(0.35)
+                                            } else {
+                                                theme::palette(ctx).surface
+                                            })
+                                            .corner_radius(8)
+                                            .inner_margin(8)
+                                            .show(ui, |ui| {
+                                                ui.set_max_width(ui.available_width().min(290.0));
+                                                ui.label(message);
+                                            });
+                                    },
+                                );
                             }
                         });
                     if let Some(pending) = &self.workshop_chat.pending {
@@ -354,11 +378,14 @@ impl App {
                                             ));
                                         }
                                         for (i, step) in pending.proposal.steps.iter().enumerate() {
-                                            ui.label(format!(
-                                                "{}  {}",
-                                                step.name(),
-                                                super::extras::block_summary(step)
-                                            ));
+                                            egui::Frame::new()
+                                                .fill(theme::palette(ctx).surface)
+                                                .corner_radius(8)
+                                                .inner_margin(7)
+                                                .show(ui, |ui| {
+                                                    ui.label(RichText::new(step.name()).strong());
+                                                    ui.label(super::extras::block_summary(step));
+                                                });
                                             for missing in pending
                                                 .proposal
                                                 .missing
@@ -432,23 +459,11 @@ impl App {
                     });
                 });
         };
-        if compact {
-            egui::SidePanel::right("workshop_chat_panel")
-                .resizable(false)
-                .exact_width((screen.width() * 0.38).clamp(290.0, 360.0))
-                .show(ctx, chat_content);
-        } else {
-            let x = screen.right() - 360.0;
-            egui::Window::new("Assistant · Atelier")
-                .id(egui::Id::new("workshop_chat_window"))
-                .current_pos(egui::pos2(x.max(8.0), (screen.bottom() - 410.0).max(32.0)))
-                .default_width(340.0)
-                .min_width(280.0)
-                .max_width(360.0)
-                .max_height((screen.height() - 100.0).max(250.0))
-                .resizable(false)
-                .show(ctx, chat_content);
-        }
+        // Reserve room for the assistant before laying out the canvas at every size.
+        egui::SidePanel::right("workshop_chat_panel")
+            .resizable(false)
+            .exact_width((screen.width() * 0.38).clamp(290.0, 360.0))
+            .show(ctx, chat_content);
         self.workshop_chat.open = open;
         if let Some(agree) = consent_action {
             if agree {
