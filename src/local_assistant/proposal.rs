@@ -26,8 +26,10 @@ pub struct Proposal {
 }
 
 impl Proposal {
+    /// Recognised proposals can be inserted even with fields left to complete: they
+    /// become visible drafts (error badge on the card) and nothing is ever guessed.
     pub fn insertable(&self) -> bool {
-        self.status == Status::Reconnue && self.missing.is_empty()
+        self.status == Status::Reconnue
     }
 }
 

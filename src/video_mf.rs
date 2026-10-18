@@ -20,7 +20,9 @@ pub fn decode(path: &Path, fps: u32, max_secs: u32, size: u32) -> Result<Vec<Rgb
             Ok(()) => { let r = read(path, fps, max_secs, size); let _ = MFShutdown(); r }
             Err(e) => Err(anyhow!("Media Foundation indisponible ({e}) : édition N de Windows sans Media Feature Pack ?")),
         };
-        if com { CoUninitialize(); }
+        if com {
+            CoUninitialize();
+        }
         result
     }
 }
@@ -33,39 +35,74 @@ unsafe fn read(path: &Path, fps: u32, max_secs: u32, size: u32) -> Result<Vec<Rg
     let reader = MFCreateSourceReaderFromURL(&HSTRING::from(path.as_os_str()), &attributes)
         .map_err(|e| anyhow!("Windows ne sait pas ouvrir cette vidéo ({})", e.message()))?;
     reader.SetStreamSelection(ALL, false)?;
-    reader.SetStreamSelection(VIDEO, true).map_err(|_| anyhow!("Aucune piste vidéo dans ce fichier"))?;
+    reader
+        .SetStreamSelection(VIDEO, true)
+        .map_err(|_| anyhow!("Aucune piste vidéo dans ce fichier"))?;
     let wanted = MFCreateMediaType()?;
     wanted.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
     wanted.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_RGB32)?;
-    reader.SetCurrentMediaType(VIDEO, None, &wanted)
-        .map_err(|e| anyhow!("Codec vidéo non pris en charge par Windows ({})", e.message()))?;
+    reader
+        .SetCurrentMediaType(VIDEO, None, &wanted)
+        .map_err(|e| {
+            anyhow!(
+                "Codec vidéo non pris en charge par Windows ({})",
+                e.message()
+            )
+        })?;
     let current = reader.GetCurrentMediaType(VIDEO)?;
     let packed = current.GetUINT64(&MF_MT_FRAME_SIZE)?;
     let (width, height) = ((packed >> 32) as u32, packed as u32);
-    ensure!(width > 0 && height > 0 && width <= 8192 && height <= 8192, "Taille de vidéo invalide ({width}×{height})");
-    let stride = current.GetUINT32(&MF_MT_DEFAULT_STRIDE).map(|s| s as i32).unwrap_or((width * 4) as i32);
+    ensure!(
+        width > 0 && height > 0 && width <= 8192 && height <= 8192,
+        "Taille de vidéo invalide ({width}×{height})"
+    );
+    let stride = current
+        .GetUINT32(&MF_MT_DEFAULT_STRIDE)
+        .map(|s| s as i32)
+        .unwrap_or((width * 4) as i32);
     let step = 10_000_000i64 / fps as i64;
     let limit = max_secs as i64 * 10_000_000;
     let mut next = 0i64;
     let mut frames = Vec::new();
     loop {
         let (mut flags, mut stamp, mut sample) = (0u32, 0i64, None::<IMFSample>);
-        reader.ReadSample(VIDEO, 0, None, Some(&mut flags), Some(&mut stamp), Some(&mut sample))?;
-        if flags & MF_SOURCE_READERF_ERROR.0 as u32 != 0 { anyhow::bail!("Erreur de décodage vidéo"); }
-        if stamp >= limit || frames.len() as u32 >= fps * max_secs { break; }
+        reader.ReadSample(
+            VIDEO,
+            0,
+            None,
+            Some(&mut flags),
+            Some(&mut stamp),
+            Some(&mut sample),
+        )?;
+        if flags & MF_SOURCE_READERF_ERROR.0 as u32 != 0 {
+            anyhow::bail!("Erreur de décodage vidéo");
+        }
+        if stamp >= limit || frames.len() as u32 >= fps * max_secs {
+            break;
+        }
         if let Some(sample) = sample {
             if stamp >= next {
                 frames.push(to_square(&sample, width, height, stride, size)?);
-                while next <= stamp { next += step; }
+                while next <= stamp {
+                    next += step;
+                }
             }
         }
-        if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 { break; }
+        if flags & MF_SOURCE_READERF_ENDOFSTREAM.0 as u32 != 0 {
+            break;
+        }
     }
     ensure!(!frames.is_empty(), "Aucune image lisible dans cette vidéo");
     Ok(frames)
 }
 
-unsafe fn to_square(sample: &IMFSample, width: u32, height: u32, stride: i32, size: u32) -> Result<RgbaImage> {
+unsafe fn to_square(
+    sample: &IMFSample,
+    width: u32,
+    height: u32,
+    stride: i32,
+    size: u32,
+) -> Result<RgbaImage> {
     let buffer = sample.ConvertToContiguousBuffer()?;
     let mut data = std::ptr::null_mut();
     let mut length = 0u32;
@@ -77,15 +114,27 @@ unsafe fn to_square(sample: &IMFSample, width: u32, height: u32, stride: i32, si
 }
 
 /// Converts Media Foundation RGB32 (BGRX, top-down if stride > 0) to opaque RGBA.
-pub(crate) fn bgra_to_rgba(bytes: &[u8], width: u32, height: u32, stride: i32) -> Result<RgbaImage> {
+pub(crate) fn bgra_to_rgba(
+    bytes: &[u8],
+    width: u32,
+    height: u32,
+    stride: i32,
+) -> Result<RgbaImage> {
     let row = stride.unsigned_abs() as usize;
-    ensure!(row >= width as usize * 4 && bytes.len() >= row * height as usize, "Image vidéo tronquée");
+    ensure!(
+        row >= width as usize * 4 && bytes.len() >= row * height as usize,
+        "Image vidéo tronquée"
+    );
     let mut out = RgbaImage::new(width, height);
     for y in 0..height {
         let source = if stride >= 0 { y } else { height - 1 - y } as usize * row;
         for x in 0..width {
             let p = source + x as usize * 4;
-            out.put_pixel(x, y, image::Rgba([bytes[p + 2], bytes[p + 1], bytes[p], 255]));
+            out.put_pixel(
+                x,
+                y,
+                image::Rgba([bytes[p + 2], bytes[p + 1], bytes[p], 255]),
+            );
         }
     }
     Ok(out)
@@ -95,7 +144,10 @@ pub(crate) fn bgra_to_rgba(bytes: &[u8], width: u32, height: u32, stride: i32) -
 pub(crate) fn cover(image: &RgbaImage, size: u32) -> RgbaImage {
     let (w, h) = image.dimensions();
     let scale = size as f32 / w.min(h) as f32;
-    let (nw, nh) = (((w as f32 * scale).round() as u32).max(size), ((h as f32 * scale).round() as u32).max(size));
+    let (nw, nh) = (
+        ((w as f32 * scale).round() as u32).max(size),
+        ((h as f32 * scale).round() as u32).max(size),
+    );
     let scaled = imageops::resize(image, nw, nh, imageops::FilterType::Triangle);
     imageops::crop_imm(&scaled, (nw - size) / 2, (nh - size) / 2, size, size).to_image()
 }
@@ -108,7 +160,11 @@ pub fn encode_gif(frames: Vec<RgbaImage>, fps: u32) -> Result<Vec<u8>> {
         let mut encoder = GifEncoder::new_with_speed(&mut bytes, 10);
         encoder.set_repeat(Repeat::Infinite)?;
         let delay = image::Delay::from_numer_denom_ms(1000, fps.max(1));
-        encoder.encode_frames(frames.into_iter().map(|f| image::Frame::from_parts(f, 0, 0, delay)))?;
+        encoder.encode_frames(
+            frames
+                .into_iter()
+                .map(|f| image::Frame::from_parts(f, 0, 0, delay)),
+        )?;
     }
     Ok(bytes)
 }

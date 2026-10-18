@@ -407,7 +407,8 @@ mod tests {
         );
         assert_eq!(p.missing[0].field, "program");
         assert_eq!(p.missing[0].path, vec![0]);
-        assert!(!p.insertable());
+        // Insertable as a draft: the path stays empty for the user to fill in.
+        assert!(p.insertable());
     }
     #[test]
     fn volume_ambigu() {

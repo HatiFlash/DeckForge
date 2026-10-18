@@ -26,7 +26,11 @@ impl ConsentRequest {
             text,
             destination: serde_json::json!({"profile":config.profiles[scope.0].name,"page":scope.1,"key":key+1}),
             // Names only: summaries can contain local paths, scripts and secrets.
-            blocks: config.keys()[key].steps.iter().map(|s| s.name().to_owned()).collect(),
+            blocks: config.keys()[key]
+                .steps
+                .iter()
+                .map(|s| s.name().to_owned())
+                .collect(),
             scope,
             created: std::time::Instant::now(),
         }
@@ -39,8 +43,13 @@ impl ConsentRequest {
     }
 }
 
-pub(super) fn mcp_request(chat: &mut WorkshopChat, scope: &(usize, String, usize)) -> Option<serde_json::Value> {
-    if chat.awaiting.as_ref().is_some_and(|r| !r.valid(scope)) { chat.awaiting = None; }
+pub(super) fn mcp_request(
+    chat: &mut WorkshopChat,
+    scope: &(usize, String, usize),
+) -> Option<serde_json::Value> {
+    if chat.awaiting.as_ref().is_some_and(|r| !r.valid(scope)) {
+        chat.awaiting = None;
+    }
     chat.awaiting.as_ref().map(ConsentRequest::public)
 }
 
@@ -87,7 +96,8 @@ impl App {
         let scope = (self.config.active, self.config.page.clone(), self.selected);
         let mode = self.preferences.workshop_chat_mode.as_str();
         if mode == "ia" {
-            self.workshop_chat.consent = Some(ConsentRequest::new(request, &self.config, self.selected));
+            self.workshop_chat.consent =
+                Some(ConsentRequest::new(request, &self.config, self.selected));
             return;
         }
         let normalized = request.to_lowercase();
@@ -148,7 +158,11 @@ impl App {
             Status::Reconnue => self.workshop_chat.say(format!("Aperçu de {} bloc(s), sans exécution.", proposal.steps.len())),
         }
         if matches!(proposal.status, Status::Inconnue) && mode == "auto" {
-            self.workshop_chat.consent = Some(ConsentRequest::new(request.clone(), &self.config, self.selected));
+            self.workshop_chat.consent = Some(ConsentRequest::new(
+                request.clone(),
+                &self.config,
+                self.selected,
+            ));
         }
         self.workshop_chat.pending = Some(ChatPreview {
             proposal,
@@ -166,12 +180,18 @@ impl App {
             .as_ref()
             .is_some_and(|p| p.scope != scope);
         mcp_request(&mut self.workshop_chat, &scope);
-        if self.workshop_chat.consent.as_ref().is_some_and(|r| !r.valid(&scope)) {
+        if self
+            .workshop_chat
+            .consent
+            .as_ref()
+            .is_some_and(|r| !r.valid(&scope))
+        {
             self.workshop_chat.consent = None;
         }
         if self.proposals.pending.front().is_some() && self.workshop_chat.awaiting.is_some() {
             self.workshop_chat.awaiting = None;
-            self.workshop_chat.say("Proposition de ton IA reçue. Vérifie-la dans la fenêtre de validation.");
+            self.workshop_chat
+                .say("Proposition de ton IA reçue. Vérifie-la dans la fenêtre de validation.");
         }
         if !self.workshop_chat.open {
             return;
@@ -230,28 +250,41 @@ impl App {
                     ui.label("Contexte transmis uniquement après ton accord :");
                     ui.label(format!("Demande : {}", request.text));
                     ui.label(format!("Destination : {}", request.destination));
-                    ui.label(format!("Blocs actuels (types uniquement) : {}", request.blocks.join(", ")));
+                    ui.label(format!(
+                        "Blocs actuels (types uniquement) : {}",
+                        request.blocks.join(", ")
+                    ));
                     ui.label("Aucun chemin personnel ni secret des blocs n'est transmis.");
                     ui.horizontal(|ui| {
-                        if ui.button("Transmettre à mon IA").clicked() { consent_action = Some(true); }
-                        if ui.button("Non merci").clicked() { consent_action = Some(false); }
+                        if ui.button("Transmettre à mon IA").clicked() {
+                            consent_action = Some(true);
+                        }
+                        if ui.button("Non merci").clicked() {
+                            consent_action = Some(false);
+                        }
                     });
                 }
                 if self.workshop_chat.consent.is_some() || self.workshop_chat.awaiting.is_some() {
                     if !self.assistant.as_ref().is_some_and(|s| s.enabled()) {
                         ui.label("Indisponible");
-                        if ui.button("Connecter une IA").clicked() { self.connect_window = true; }
+                        if ui.button("Connecter une IA").clicked() {
+                            self.connect_window = true;
+                        }
                     }
                 }
                 if self.workshop_chat.awaiting.is_some() {
                     ui.label("En attente de ton IA…");
-                    if ui.button("Annuler la demande IA").clicked() { consent_action = Some(false); }
+                    if ui.button("Annuler la demande IA").clicked() {
+                        consent_action = Some(false);
+                    }
                 }
                 if let Some(p) = self.proposals.pending.front() {
                     ui.label("Proposition de ton IA reçue");
                     ui.label(&p.title);
                     ui.label(p.details.chars().take(180).collect::<String>());
-                    if ui.button("Voir et valider la proposition").clicked() { self.workshop_chat.open = false; }
+                    if ui.button("Voir et valider la proposition").clicked() {
+                        self.workshop_chat.open = false;
+                    }
                 }
                 egui::ScrollArea::vertical()
                     .id_salt("chat_history")
@@ -272,10 +305,16 @@ impl App {
                     match &pending.proposal.status {
                         Status::Ambigue { question, choix } => {
                             ui.label(question);
-                            if self.preferences.workshop_chat_mode == "auto" && !stale
-                                && ui.button("Demander à mon IA").clicked() {
+                            if self.preferences.workshop_chat_mode == "auto"
+                                && !stale
+                                && ui.button("Demander à mon IA").clicked()
+                            {
                                 consent_action = Some(true);
-                                self.workshop_chat.consent = Some(ConsentRequest::new(pending.request.clone(), &self.config, self.selected));
+                                self.workshop_chat.consent = Some(ConsentRequest::new(
+                                    pending.request.clone(),
+                                    &self.config,
+                                    self.selected,
+                                ));
                             }
                             for option in choix {
                                 if ui.button(option).clicked() {
@@ -393,15 +432,22 @@ impl App {
         self.workshop_chat.open = open;
         if let Some(agree) = consent_action {
             if agree {
-                if let Some(request) = self.workshop_chat.consent.take().filter(|r| r.valid(&scope)) {
+                if let Some(request) = self
+                    .workshop_chat
+                    .consent
+                    .take()
+                    .filter(|r| r.valid(&scope))
+                {
                     if self.assistant.as_ref().is_some_and(|s| s.enabled()) {
                         self.assistant_request = request.text.clone();
                         ctx.copy_text(self.automation_prompt());
                         self.workshop_chat.pending = None;
                         self.workshop_chat.awaiting = Some(request);
-                        self.workshop_chat.say("Demande copiée. Colle-la dans ton client IA MCP.");
+                        self.workshop_chat
+                            .say("Demande copiée. Colle-la dans ton client IA MCP.");
                     } else {
-                        self.workshop_chat.say("Indisponible : active et connecte ton IA MCP.");
+                        self.workshop_chat
+                            .say("Indisponible : active et connecte ton IA MCP.");
                         self.connect_window = true;
                     }
                 }
@@ -433,6 +479,7 @@ impl App {
                 self.workshop_chat.pending = None;
             } else if !stale {
                 if let Some(p) = self.workshop_chat.pending.take() {
+                    let p_missing = p.proposal.missing.clone();
                     if p.proposal.insertable() {
                         if p.original.is_some() {
                             self.config.keys_mut()[self.selected].steps = p.proposal.steps;
@@ -457,7 +504,13 @@ impl App {
                                 self.edited();
                             }
                         }
-                        self.workshop_chat.say("Modification ajoutée au brouillon ; Ctrl+Z pour annuler. Aucun lancement.");
+                        let todo: Vec<String> =
+                            p_missing.iter().map(|m| m.reason.clone()).collect();
+                        if todo.is_empty() {
+                            self.workshop_chat.say("Modification ajoutée au brouillon ; Ctrl+Z pour annuler. Aucun lancement.");
+                        } else {
+                            self.workshop_chat.say(format!("Ajouté en brouillon. À compléter dans les propriétés : {}. Ctrl+Z pour annuler.", todo.join(", ")));
+                        }
                     }
                 }
             }
@@ -493,8 +546,14 @@ mod consent_tests {
     #[test]
     fn request_exports_only_block_names_not_parameters_or_paths() {
         let mut config = Config::default();
-        config.keys_mut()[0].steps.push(Step::Launch { program: "C:\\Private\\secret.exe".into(), args: vec!["password".into()], focus_if_running: false });
-        let request = ConsentRequest::new("ouvre".into(), &config, 0).public().to_string();
+        config.keys_mut()[0].steps.push(Step::Launch {
+            program: "C:\\Private\\secret.exe".into(),
+            args: vec!["password".into()],
+            focus_if_running: false,
+        });
+        let request = ConsentRequest::new("ouvre".into(), &config, 0)
+            .public()
+            .to_string();
         assert!(!request.contains("Private"));
         assert!(!request.contains("password"));
         assert!(request.contains("destination"));
