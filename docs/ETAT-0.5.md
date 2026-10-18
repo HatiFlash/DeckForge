@@ -152,3 +152,9 @@ Non livré dans le premier passage : opérations texte, persistance des variable
 ## B3 — variables persistantes
 
 Livré : option « Conserver entre les macros » pour Définir une variable (`set_variable`), Calculer (`math`) et Texte (`text_op`) ; fichier atomique `variables.json`, limite 256 noms et 4 Ko par valeur ; fenêtre Réglages → Variables enregistrées (édition/suppression). Les valeurs sont chargées au démarrage et accessibles par `{nom}`. Tests automatiques : compatibilité JSON, limites et persistance sur disque ; simulation sans écriture. À tester avec Hatim : enchaînement de deux macros, redémarrage puis modification/suppression depuis les Réglages.
+
+## Multi-peripheriques M1 - catalogue et detection pure
+
+- Livre : table FIFINE D6, AKP153/HSV293S/293V3, AKP03/N3 et Elgato Original/Mini/MK.2/XL/Neo/Plus/Modules ; detection VID:PID et interface HID sans ouvrir de peripherique. D6 seul valide localement ; tous les autres modeles sont experimentaux. Collision documentaire 0300:1001 affectee provisoirement a AKP03, sans supposer le layout sur materiel.
+- Teste automatiquement : unicite et geometrie de la table, filtre D6 identique au code actuel, candidats PID inconnu et interface non retenue ; build complet Windows.
+- A tester avec Hatim et ses collegues : enumeration reelle et identification de chaque modele, rapports HID, affichage et controles ; aucune integration au transport, aucune image envoyee par M1.

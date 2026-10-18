@@ -10,6 +10,8 @@ mod conditions;
 mod control;
 mod desktop;
 mod device;
+#[allow(dead_code)] // Catalogue M1 : branchement HID dans un lot ulterieur.
+mod devices;
 mod elgato;
 mod engine;
 mod flicker_diagnostic;
