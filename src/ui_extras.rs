@@ -526,14 +526,28 @@ fn family_bar(ui: &mut egui::Ui, color: Color32) {
     let (r, _) = ui.allocate_exact_size(egui::vec2(3.0, 14.0), egui::Sense::hover());
     ui.painter().rect_filled(r, 1.0, color);
 }
-// The simple canvas is a read-only tree: editing is confined to the contextual inspector.
-fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection: &mut Option<Vec<usize>>) {
+// A compact card tree; structural edits are applied only after the immutable render pass.
+fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection: &mut Option<Vec<usize>>,
+    action: &mut Option<WorkshopAction>, insert_at: &mut Option<Vec<usize>>, config: &crate::model::Config,
+    ) {
     let p = theme::palette(ui.ctx());
     for (i, step) in steps.iter().enumerate() {
         let mut path = parent.to_vec(); path.push(i);
         ui.push_id(&path, |ui| {
             let chosen = selection.as_ref() == Some(&path);
-            egui::Frame::new().fill(p.surface)
+            if i > 0 {
+                let line = ui.allocate_response(egui::vec2(ui.available_width().max(180.0), 15.0), egui::Sense::hover());
+                ui.painter().line_segment([egui::pos2(line.rect.center().x, line.rect.top()),
+                    egui::pos2(line.rect.center().x, line.rect.bottom())], egui::Stroke::new(1.0_f32, p.line));
+                if line.hovered() {
+                    let plus = egui::Rect::from_center_size(line.rect.center(), egui::vec2(22.0, 16.0));
+                    if ui.put(plus, egui::Button::new("+").small()).clicked() { *insert_at = Some(path.clone()); }
+                }
+            }
+            let error = if step.is_disabled() { None } else {
+                crate::model::validate_key(&Key { steps: vec![step.clone()], ..Key::default() }, config).err()
+            };
+            let frame = egui::Frame::new().fill(p.surface)
                 .stroke(egui::Stroke::new(if chosen { 1.5_f32 } else { 1.0_f32 }, if chosen { BLUE } else { p.line }))
                 .corner_radius(10).inner_margin(9).show(ui, |ui| {
                     ui.set_min_width((ui.available_width() - 20.0).max(180.0));
@@ -542,11 +556,30 @@ fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection
                     } else if matches!(step.active(), Step::Repeat { .. }) { Color32::from_rgb(239, 169, 83) } else { BLUE };
                     ui.horizontal(|ui| {
                         family_bar(ui, color);
-                        ui.colored_label(color, format!("{}", path.iter().step_by(2).map(|n| (n + 1).to_string()).collect::<Vec<_>>().join(".")));
+                        ui.colored_label(color, path.iter().step_by(2).map(|n| (n + 1).to_string()).collect::<Vec<_>>().join("."));
                         let title = format!("{} · {}", step.name(), block_summary(step));
-                        if ui.selectable_label(chosen, title).on_hover_text("Sélectionner et modifier ce bloc").clicked() {
-                            *selection = Some(path.clone());
-                        }
+                        let label = ui.add(egui::Button::new(title).selected(chosen).sense(egui::Sense::click_and_drag()))
+                            .on_hover_text("Sélectionner ou glisser pour déplacer ce bloc");
+                        if label.clicked() { *selection = Some(path.clone()); }
+                        if label.drag_started() { ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("workshop_drag"), path.clone())); }
+                        if let Some(e) = &error { ui.colored_label(Color32::LIGHT_RED, "Erreur").on_hover_text(e.to_string()); }
+                        ui.menu_button("...", |ui| {
+                            if ui.button("Dupliquer").clicked() { *action = Some(WorkshopAction::Edit(crate::workshop_ops::Edit::Duplicate(path.clone()))); ui.close_menu(); }
+                            if ui.button("Supprimer").clicked() { *action = Some(WorkshopAction::Remove(path.clone())); ui.close_menu(); }
+                            if ui.add_enabled(i > 0, egui::Button::new("Monter")).clicked() {
+                                *action = Some(WorkshopAction::Edit(crate::workshop_ops::Edit::Move(path.clone(), i - 1))); ui.close_menu();
+                            }
+                            if ui.add_enabled(i + 1 < steps.len(), egui::Button::new("Descendre")).clicked() {
+                                *action = Some(WorkshopAction::Edit(crate::workshop_ops::Edit::Move(path.clone(), i + 1))); ui.close_menu();
+                            }
+                            if ui.button(if step.is_disabled() { "Réactiver" } else { "Désactiver" }).clicked() {
+                                *action = Some(WorkshopAction::Edit(crate::workshop_ops::Edit::Toggle(path.clone()))); ui.close_menu();
+                            }
+                            if ui.button("Insérer un bloc après").clicked() {
+                                let mut dest = path.clone(); *dest.last_mut().unwrap() += 1;
+                                *insert_at = Some(dest); ui.close_menu();
+                            }
+                        });
                     });
                     let branches: Vec<(&str, &[Step])> = match step.active() {
                         Step::IfCondition { then_steps, else_steps, .. }
@@ -560,18 +593,28 @@ fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection
                         ui.indent(branch, |ui| {
                             ui.label(RichText::new(label).small().color(p.muted));
                             let mut nested = path.clone(); nested.push(branch);
-                            sequence_cards(ui, children, &nested, selection);
+                            sequence_cards(ui, children, &nested, selection, action, insert_at, config);
                         });
                     }
                 });
-            ui.add_space(5.0);
-            if i + 1 < steps.len() {
-                let (r, _) = ui.allocate_exact_size(egui::vec2(24.0, 10.0), egui::Sense::hover());
-                ui.painter().line_segment([egui::pos2(r.left() + 14.0, r.top()), egui::pos2(r.left() + 14.0, r.bottom())], egui::Stroke::new(1.0_f32, p.line));
+            if frame.response.hovered() && ui.ctx().input(|input| input.pointer.any_released()) {
+                if let Some(from) = ui.ctx().data(|d| d.get_temp::<Vec<usize>>(egui::Id::new("workshop_drag"))) {
+                    if from != path && from[..from.len() - 1] == path[..path.len() - 1] {
+                        let dest = i;
+                        *action = Some(WorkshopAction::Edit(crate::workshop_ops::Edit::Move(from, dest)));
+                    }
+                }
+            }
+            if ui.ctx().data(|d| d.get_temp::<Vec<usize>>(egui::Id::new("workshop_drag"))).is_some()
+                && frame.response.hovered() && ui.ctx().input(|input| input.pointer.primary_down()) {
+                let r = frame.response.rect;
+                let y = if ui.ctx().input(|input| input.pointer.hover_pos()).is_some_and(|pos| pos.y > r.center().y) { r.bottom() } else { r.top() };
+                ui.painter().line_segment([egui::pos2(r.left(), y), egui::pos2(r.right(), y)], egui::Stroke::new(2.0_f32, BLUE));
             }
         });
     }
 }
+enum WorkshopAction { Edit(crate::workshop_ops::Edit), Remove(Vec<usize>) }
 impl App {
     pub(super) fn automation_prompt(&self) -> String {
         let profile = &self.config.profiles[self.config.active].name;
@@ -653,29 +696,6 @@ impl App {
         let mut template_action = None;
         let selected_id = egui::Id::new("workshop_trace_selected");
         let trace_id = egui::Id::new("workshop_trace");
-        // Text inputs must retain Delete, Alt+arrows and Ctrl+D.
-        if !ctx.wants_keyboard_input() {
-            let index = ctx.data(|d| d.get_temp::<usize>(egui::Id::new("workshop_selected")));
-            if let Some(i) = index {
-                let steps = &mut self.config.keys_mut()[self.selected].steps;
-                if i < steps.len() {
-                    let operation = ctx.input(|input| {
-                        if input.modifiers.ctrl && input.key_pressed(egui::Key::D) { Some(0) }
-                        else if !input.modifiers.ctrl && input.key_pressed(egui::Key::Delete) { Some(1) }
-                        else if input.modifiers.alt && input.key_pressed(egui::Key::ArrowUp) { Some(2) }
-                        else if input.modifiers.alt && input.key_pressed(egui::Key::ArrowDown) { Some(3) }
-                        else { None }
-                    });
-                    match operation {
-                        Some(0) if steps.len() < 256 => { steps.insert(i + 1, steps[i].clone()); changed = true; },
-                        Some(1) => { steps.remove(i); changed = true; ctx.data_mut(|d| d.remove::<Vec<usize>>(egui::Id::new("workshop_path"))); },
-                        Some(2) if i > 0 => { steps.swap(i, i - 1); changed = true; },
-                        Some(3) if i + 1 < steps.len() => { steps.swap(i, i + 1); changed = true; },
-                        _ => {}
-                    }
-                }
-            }
-        }
         let context_id = egui::Id::new("workshop_context");
         let current = (self.config.active, self.config.page.clone(), self.selected);
         if ctx.data(|d| d.get_temp::<(usize, String, usize)>(context_id)).as_ref() != Some(&current) {
@@ -683,12 +703,53 @@ impl App {
                 d.insert_temp(context_id, current.clone());
                 d.remove::<Vec<usize>>(egui::Id::new("workshop_path"));
                 d.remove::<usize>(egui::Id::new("workshop_selected"));
+                d.remove::<Vec<usize>>(egui::Id::new("workshop_insert_at"));
             });
         }
         let path_id = egui::Id::new("workshop_path");
         let mut selection = ctx.data(|d| d.get_temp::<Vec<usize>>(path_id));
         if selection.as_ref().is_some_and(|path| step_mut(&mut self.config.keys_mut()[self.selected].steps, path).is_none()) {
             selection = None;
+        }
+        let mut action: Option<WorkshopAction> = None;
+        let mut insert_at = ctx.data(|d| d.get_temp::<Vec<usize>>(egui::Id::new("workshop_insert_at")));
+        if !ctx.wants_keyboard_input() {
+            if let Some(path) = selection.clone() {
+                let index = *path.last().unwrap();
+                let len = { let mut tree = self.config.keys()[self.selected].steps.clone();
+                    let mut p = path.clone(); p.pop(); if !p.is_empty() { p.pop(); }
+                    if p.is_empty() { tree.len() } else {
+                        if let Some(parent) = crate::workshop_ops::get(&mut tree, &p) {
+                        match (parent.active(), path[path.len() - 2]) {
+                            (Step::Repeat { steps, .. }, 0) => steps.len(),
+                            (Step::Toggle { a, .. }, 0) => a.len(), (Step::Toggle { b, .. }, 1) => b.len(),
+                            (Step::IfCondition { then_steps, .. } | Step::IfWindow { then_steps, .. } | Step::IfVariable { then_steps, .. }, 0) => then_steps.len(),
+                            (Step::IfCondition { else_steps, .. } | Step::IfWindow { else_steps, .. } | Step::IfVariable { else_steps, .. }, 1) => else_steps.len(),
+                            _ => 0,
+                        }
+                        } else { 0 }
+                    }
+                };
+                let op = ctx.input(|input| {
+                    if input.modifiers.ctrl && input.key_pressed(egui::Key::D) { Some(0) }
+                    else if !input.modifiers.ctrl && input.key_pressed(egui::Key::Delete) { Some(1) }
+                    else if input.modifiers.ctrl && input.key_pressed(egui::Key::ArrowUp) { Some(2) }
+                    else if input.modifiers.ctrl && input.key_pressed(egui::Key::ArrowDown) { Some(3) }
+                    else if !input.modifiers.ctrl && input.key_pressed(egui::Key::ArrowUp) { Some(4) }
+                    else if !input.modifiers.ctrl && input.key_pressed(egui::Key::ArrowDown) { Some(5) }
+                    else if input.key_pressed(egui::Key::Escape) { Some(6) } else { None }
+                });
+                match op {
+                    Some(0) => action = Some(WorkshopAction::Edit(crate::workshop_ops::Edit::Duplicate(path))),
+                    Some(1) => action = Some(WorkshopAction::Remove(path)),
+                    Some(2) if index > 0 => action = Some(WorkshopAction::Edit(crate::workshop_ops::Edit::Move(path, index - 1))),
+                    Some(3) if index + 1 < len => action = Some(WorkshopAction::Edit(crate::workshop_ops::Edit::Move(path, index + 1))),
+                    Some(4) if index > 0 => { *selection.as_mut().unwrap().last_mut().unwrap() -= 1; },
+                    Some(5) if index + 1 < len => { *selection.as_mut().unwrap().last_mut().unwrap() += 1; },
+                    Some(6) => selection = None,
+                    _ => {}
+                }
+            }
         }
         egui::TopBottomPanel::top("workshop_header").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
@@ -765,7 +826,7 @@ impl App {
                         });
                         if ui.button("Demander à l'assistant").clicked() { self.assistant_settings = true; }
                     } else {
-                        sequence_cards(ui, steps, &[], &mut selection);
+                        sequence_cards(ui, steps, &[], &mut selection, &mut action, &mut insert_at, &validation_config);
                     }
                     ui.menu_button("+ Ajouter un bloc", |ui| {
                         for &(category, kinds) in BLOCK_CATEGORIES {
@@ -784,13 +845,36 @@ impl App {
             }
         });
         if let Some(kind) = add {
-            let steps = &mut self.config.keys_mut()[selected].steps;
-            if steps.len() < 256 {
-                let index = selection.as_ref().and_then(|path| path.first()).map_or(steps.len(), |i| (i + 1).min(steps.len()));
-                steps.insert(index, new_block(kind, &profiles));
-                changed = true;
+            let mut at = insert_at.take().unwrap_or_else(|| {
+                let steps = &self.config.keys()[selected].steps;
+                vec![selection.as_ref().and_then(|path| path.first()).map_or(steps.len(), |i| (i + 1).min(steps.len()))]
+            });
+            if let Some(new_path) = crate::workshop_ops::apply(&mut self.config.keys_mut()[selected].steps,
+                crate::workshop_ops::Edit::Insert(std::mem::take(&mut at), new_block(kind, &profiles))) {
+                selection = Some(new_path); changed = true;
             }
         }
+        if let Some(operation) = action {
+            match operation {
+                WorkshopAction::Edit(edit) => {
+                    if let Some(path) = crate::workshop_ops::apply(&mut self.config.keys_mut()[selected].steps, edit) {
+                        selection = Some(path); changed = true;
+                    }
+                }
+                WorkshopAction::Remove(path) => {
+                    if crate::workshop_ops::remove(&mut self.config.keys_mut()[selected].steps, &path) {
+                        selection = None; changed = true;
+                    }
+                }
+            }
+        }
+        if ctx.input(|i| i.pointer.any_released()) {
+            ctx.data_mut(|d| d.remove::<Vec<usize>>(egui::Id::new("workshop_drag")));
+        }
+        ctx.data_mut(|d| {
+            if let Some(path) = insert_at { d.insert_temp(egui::Id::new("workshop_insert_at"), path); }
+            else { d.remove::<Vec<usize>>(egui::Id::new("workshop_insert_at")); }
+        });
         if !self.preferences.workshop_advanced {
             if let Some(path) = selection.clone() {
                 let mut close = false;
@@ -804,6 +888,11 @@ impl App {
                                 ui.label(RichText::new("Propriétés du bloc").strong());
                                 ui.label(RichText::new(step.name()).strong());
                                 ui.label(block_summary(step));
+                                 if !step.is_disabled() {
+                                     if let Err(e) = validate_key(&Key { steps: vec![step.clone()], ..Key::default() }, &validation_config) {
+                                         ui.colored_label(Color32::LIGHT_RED, format!("À corriger : {e}"));
+                                     }
+                                 }
                                 let mut capture = false;
                                 let mut icon = None;
                                 changed |= edit_step(ui, step, &profiles, &pages, &mut capture, &self.audio, &mut icon,

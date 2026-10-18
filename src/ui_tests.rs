@@ -44,6 +44,7 @@ impl Harness {
         let input = egui::RawInput {
             screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, size)),
             time: Some(self.time),
+            modifiers: events.iter().find_map(|e| if let Input::Key { modifiers, .. } = e { Some(*modifiers) } else { None }).unwrap_or_default(),
             events,
             focused: true,
             ..Default::default()
@@ -704,6 +705,30 @@ fn background_tick_processes_physical_events_and_saves_without_drawing_a_frame()
         store::load(&h.app.path).unwrap().keys()[6].label,
         "Attente locale"
     );
+}
+
+#[test]
+fn workshop_selection_shortcuts_duplicate_delete_and_undo() {
+    let size = vec2(1366.0, 768.0);
+    let mut h = Harness::new();
+    h.app.show_workflow = true;
+    h.app.preferences.workshop_advanced = false;
+    h.app.config.keys_mut()[0].steps = vec![Step::Delay { ms: 120 }];
+    let output = h.warm(size);
+    let title = output.shapes.iter().filter_map(|shape| if let egui::Shape::Text(t) = &shape.shape {
+        (t.galley.job.text.contains("120") && t.galley.job.text.contains("·")).then_some(t.galley.job.text.clone())
+    } else { None }).next().expect("step card title");
+    let pos = text_position(&output.shapes, &title).unwrap();
+    h.click(size, pos);
+    h.warm(size);
+    assert_eq!(h.ctx.data(|d| d.get_temp::<Vec<usize>>(egui::Id::new("workshop_path"))), Some(vec![0]));
+    let key = |key, modifiers| Input::Key { key, physical_key: Some(key), pressed: true, repeat: false, modifiers };
+    h.frame(size, vec![key(egui::Key::D, Modifiers { ctrl: true, ..Default::default() })]);
+    assert_eq!(h.app.config.keys()[0].steps.len(), 2);
+    h.frame(size, vec![key(egui::Key::Delete, Modifiers::NONE)]);
+    assert_eq!(h.app.config.keys()[0].steps.len(), 1);
+    h.app.undo_edit();
+    assert_eq!(h.app.config.keys()[0].steps.len(), 2);
 }
 
 #[test]

@@ -40,6 +40,7 @@ mod persistent_variables;
 mod token_equal;
 mod theme;
 mod ui;
+mod workshop_ops;
 mod video_mf;
 mod state_display;
 

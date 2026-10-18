@@ -1,5 +1,11 @@
 # DeckForge 0.5 (développement) — état au 17 octobre 2026
 
+## Atelier minimaliste & assistant — A2 (phase 2)
+
+- Livré : menu de carte (dupliquer, supprimer, monter, descendre, désactiver/réactiver, insérer après), insertion à la ligne entre cartes via la bibliothèque, réorganisation par glisser-déposer au même niveau (pas entre branches), repère bleu, raccourcis de sélection et d’édition hors champs texte, erreurs de validation sur cartes et propriétés. Opérations pures sur chemins imbriqués ; modifications annulables.
+- Testé automatiquement : opérations imbriquées, bornes et chemins invalides, scénario egui sélection → Ctrl+D → Suppr → annuler ; `cargo check`, build Windows complet. Aucun déclenchement de macro réelle.
+- À tester avec Hatim : visibilité du « + » au survol, confort du glisser-déposer et du panneau d’erreurs, raccourcis sur clavier réel et branches profondes. Glisser-déposer interbranches non livré ; simulation/journal et mini chat restent pour les phases suivantes.
+
 ## Atelier minimaliste & assistant — A1 (phase 1)
 
 - Livré : deux zones permanentes, bibliothèque redimensionnable avec recherche et catégories repliables, séquence simple en cartes imbriquées et état vide ; inspecteur flottant uniquement sur sélection, réinitialisé au changement de touche/page/profil. Mode Avancé et éditeur détaillé préservés ; bouton Assistant ouvre le connecteur MCP existant, sans nouveau chat ni appel IA.
