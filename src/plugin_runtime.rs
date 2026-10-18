@@ -3,6 +3,18 @@ use std::{collections::HashMap, sync::mpsc::{self, Receiver, Sender}, thread, ti
 use serde_json::{json, Value};
 use crate::{model::Config, plugin_host::Host, plugins::Plugin};
 
+/// Identité SDK d'un appareil physique, ou de l'appareil virtuel d'essai.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Device { pub id:String, pub name:String, pub columns:usize, pub rows:usize, pub kind:u8 }
+impl Device {
+    pub fn virtual_device()->Self { let model=&crate::devices::MODELS[0];Self{id:"deckforge-virtual".into(),name:format!("{} (virtuel)",model.name),columns:model.cols as usize,rows:model.rows as usize,kind:0} }
+    pub fn from_grid(name:String,columns:usize,rows:usize)->Self {
+        let kind=crate::devices::MODELS.iter().find(|m|m.name==name && m.cols as usize==columns && m.rows as usize==rows).map_or(0,|m| match m.keys {6=>1,32=>2,_=>0});
+        Self{id:format!("deckforge-{}x{}",columns,rows),name,columns,rows,kind}
+    }
+    pub fn info(&self)->Value {json!({"id":self.id,"name":self.name,"size":{"columns":self.columns,"rows":self.rows},"type":self.kind})}
+    fn event(&self,name:&str)->Value {json!({"event":name,"device":self.id,"deviceInfo":{"name":self.name,"size":{"columns":self.columns,"rows":self.rows},"type":self.kind}})}
+}
 #[derive(Clone, Debug, PartialEq)]
 pub struct Visible {
     pub context: String,
@@ -24,10 +36,12 @@ pub fn diff(old:&HashMap<String,Visible>,new:&HashMap<String,Visible>) -> (Vec<V
     let added=new.iter().filter(|(id,v)|old.get(*id)!=Some(*v)).map(|(_,v)|v.clone()).collect();
     (gone,added)
 }
-fn event(name:&str,v:&Visible)->Value {
-    json!({"event":name,"action":v.action,"context":v.context,"device":"deckforge-d6","payload":{"settings":v.settings,"coordinates":{"column":v.index%5,"row":v.index/5},"state":v.state,"isInMultiAction":false,"controller":"Keypad"}})
+pub(crate) fn event(name:&str,v:&Visible,device:&Device)->Value {
+    let mut payload=json!({"settings":v.settings,"coordinates":{"column":v.index%device.columns,"row":v.index/device.columns},"state":v.state,"isInMultiAction":false});
+    if matches!(name,"willAppear"|"willDisappear"|"didReceiveSettings") {payload["controller"]=json!("Keypad");}
+    json!({"event":name,"action":v.action,"context":v.context,"device":device.id,"payload":payload})
 }
-enum Request { Sync(HashMap<String,Visible>), Key(String,bool), Send(String,Value), Open(String), Stop }
+enum Request { Sync(HashMap<String,Visible>), Device(Device), Key(String,bool), Send(String,Value), Open(String), Stop }
 pub enum Reply { Message(String,Value), Error(String,String) }
 pub struct Manager { tx:Sender<Request>,pub rx:Receiver<Reply>,visible:HashMap<String,Visible>,pub catalog:Vec<Plugin> }
 impl Manager {
@@ -36,6 +50,7 @@ impl Manager {
         let catalog=plugins.clone();thread::spawn(move||run(plugins,requests,reply));
         Self{tx,rx,visible:HashMap::new(),catalog}
     }
+    pub fn device(&self,device:Device){let _=self.tx.send(Request::Device(device));}
     pub fn sync(&mut self, config:&Config) {
         let next=visible(config);
         if next!=self.visible {self.visible=next.clone();let _=self.tx.send(Request::Sync(next));}
@@ -51,30 +66,32 @@ impl Manager {
 impl Drop for Manager {fn drop(&mut self){let _=self.tx.send(Request::Stop);}}
 fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
     let mut hosts:HashMap<String,Host>=HashMap::new();let mut current=HashMap::new();
+    let mut device=Device::virtual_device();
     let mut inspectors:HashMap<String,Visible>=HashMap::new();
     let mut idle:HashMap<String,Instant>=HashMap::new();
     let mut restarts:HashMap<String,Vec<Instant>>=HashMap::new();
     loop {
         match requests.recv_timeout(Duration::from_millis(50)) {
             Ok(Request::Stop)|Err(mpsc::RecvTimeoutError::Disconnected)=>break,
+            Ok(Request::Device(next))=>{if next!=device {for host in hosts.values(){let _=host.send(device.event("deviceDidDisconnect"));let _=host.send(next.event("deviceDidConnect"));}device=next;}}
             Ok(Request::Sync(next))=>{
                 let (gone,added)=diff(&current,&next);
-                for v in gone {if let Some(host)=hosts.get(&v.plugin){let _=host.send(event("willDisappear",&v));}}
+                for v in gone {if let Some(host)=hosts.get(&v.plugin){let _=host.send(event("willDisappear",&v,&device));}}
                 for v in added {if !hosts.contains_key(&v.plugin){
-                    if let Some(p)=plugins.iter().find(|p|p.uuid==v.plugin){match Host::start(p){Ok(h)=>{hosts.insert(v.plugin.clone(),h);},Err(e)=>{let _=reply.send(Reply::Error(v.plugin.clone(),e.to_string()));}}}
+                    if let Some(p)=plugins.iter().find(|p|p.uuid==v.plugin){match Host::start(p,&device){Ok(h)=>{let _=h.send(device.event("deviceDidConnect"));hosts.insert(v.plugin.clone(),h);},Err(e)=>{let _=reply.send(Reply::Error(v.plugin.clone(),e.to_string()));}}}
                     else{let _=reply.send(Reply::Error(v.plugin.clone(),"Plugin installé introuvable".into()));}
                 }
-                if let Some(host)=hosts.get(&v.plugin){let _=host.send(event("willAppear",&v));}}
+                if let Some(host)=hosts.get(&v.plugin){let _=host.send(event("willAppear",&v,&device));}}
                 current=next;inspectors.retain(|_,v|current.get(&v.context)==Some(v));
                 for plugin in hosts.keys(){if current.values().any(|v|&v.plugin==plugin){idle.remove(plugin);}else{idle.entry(plugin.clone()).or_insert_with(Instant::now);}}
             }
             Ok(Request::Open(context))=>{if let Some(v)=current.get(&context){if let (Some(p),Some(host))=(plugins.iter().find(|p|p.uuid==v.plugin),hosts.get(&v.plugin)){
                 let path=p.actions.iter().find(|a|a.uuid==v.action).and_then(|a|a.inspector.as_ref()).or(p.inspector.as_ref());
-                if let Some(path)=path {let action_info=json!({"action":v.action,"context":v.context,"device":"deckforge-d6","payload":{"settings":v.settings,"coordinates":{"column":v.index%5,"row":v.index/5}}});
+                if let Some(path)=path {let action_info=json!({"action":v.action,"context":v.context,"device":device.id,"payload":{"settings":v.settings,"coordinates":{"column":v.index%device.columns,"row":v.index/device.columns}}});
                     match host.open_inspector(path,action_info){Ok(id)=>{inspectors.insert(id,v.clone());},Err(e)=>{let _=reply.send(Reply::Error(v.plugin.clone(),format!("Inspecteur : {e}")));}}
                 }
             }}}
-            Ok(Request::Key(context,down))=>{if let Some(v)=current.get(&context){if let Some(host)=hosts.get(&v.plugin){let _=host.send(event(if down{"keyDown"}else{"keyUp"},v));}}}
+            Ok(Request::Key(context,down))=>{if let Some(v)=current.get(&context){if let Some(host)=hosts.get(&v.plugin){let _=host.send(event(if down{"keyDown"}else{"keyUp"},v,&device));}}}
             Ok(Request::Send(plugin,value))=>{if let Some(host)=hosts.get(&plugin){let _=host.send(value);}}
             Err(mpsc::RecvTimeoutError::Timeout)=>{}
         }
@@ -93,8 +110,8 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
                 if name=="propertyInspectorDidDisappear" {inspectors.remove(&id);}
                 if name=="propertyInspectorDidAppear" {
                     // Comme Stream Dock/Stream Deck : le PI reçoit tout de suite les réglages de sa touche.
-                    let _=host.send(json!({"event":"didReceiveSettings","action":v.action,"context":v.context,"device":"deckforge-d6","__pi":id,
-                        "payload":{"settings":v.settings,"coordinates":{"column":v.index%5,"row":v.index/5},"isInMultiAction":false}}));
+                    let _=host.send(json!({"event":"didReceiveSettings","action":v.action,"context":v.context,"device":device.id,"__pi":id,
+                        "payload":{"settings":v.settings,"coordinates":{"column":v.index%device.columns,"row":v.index/device.columns},"isInMultiAction":false}}));
                 }
                 if !matches!(name.as_str(),"setSettings"|"getSettings"|"setGlobalSettings"|"getGlobalSettings"|"sendToPlugin"|"propertyInspectorDidAppear"|"propertyInspectorDidDisappear"){continue;}
                 value["context"]=json!(v.context);value["action"]=json!(v.action);
@@ -121,9 +138,10 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
             }
             attempts.push(Instant::now());
             if let Some(p)=plugins.iter().find(|p|p.uuid==id) {
-                match Host::start(p) {
+                match Host::start(p,&device) {
                     Ok(host)=>{
-                        for v in current.values().filter(|v|v.plugin==id) {let _=host.send(event("willAppear",v));}
+                        let _=host.send(device.event("deviceDidConnect"));
+                        for v in current.values().filter(|v|v.plugin==id) {let _=host.send(event("willAppear",v,&device));}
                         hosts.insert(id.clone(),host);
                     },
                     Err(e)=>{let _=reply.send(Reply::Error(id.clone(),format!("Erreur : redémarrage impossible : {e}")));}
@@ -137,5 +155,21 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
 }
 #[cfg(test)]mod tests {use super::*;use crate::model::{Config,PluginBinding};
     #[test]fn page_diff(){let mut c=Config::default();c.keys_mut()[0].plugin=Some(PluginBinding{plugin:"fixture".into(),action:"fixture.a".into(),settings:json!({}),state:0});let old=visible(&c);c.profiles[c.active].pages.push(crate::model::Page::new("other".into(),"Other".into(),false));c.page="other".into();let next=visible(&c);let (gone,added)=diff(&old,&next);assert_eq!(gone.len(),1);assert!(added.is_empty());}
-    #[test]fn event_coordinates(){let v=Visible{context:"ctx".into(),plugin:"p".into(),action:"a".into(),index:7,settings:json!({"x":1}),state:2};let message=event("keyDown",&v);assert_eq!(message["payload"]["coordinates"],json!({"column":2,"row":1}));assert_eq!(message["context"],"ctx");}
+    #[test]fn sdk_device_and_payload_contract(){
+        let d=Device::from_grid("Elgato Stream Deck XL".into(),8,4);
+        let v=Visible{context:"x".into(),plugin:"p".into(),action:"a".into(),index:17,settings:json!({"n":1}),state:1};
+        let connect=d.event("deviceDidConnect");
+        assert_eq!(connect["deviceInfo"]["size"],json!({"columns":8,"rows":4}));
+        assert_eq!(connect["device"],d.id);
+        for name in ["willAppear","willDisappear","keyDown","keyUp"] {
+            let msg=event(name,&v,&d);assert_eq!(msg["device"],connect["device"]);
+            assert_eq!(msg["payload"]["coordinates"],json!({"column":1,"row":2}));
+            assert_eq!(msg["payload"]["settings"],json!({"n":1}));
+            assert_eq!(msg["payload"]["isInMultiAction"],false);
+            assert_eq!(msg["payload"]["state"],1);
+        }
+        assert_eq!(event("willAppear",&v,&d)["payload"]["controller"],"Keypad");
+        assert_eq!(Device::virtual_device().info()["size"]["columns"],5);
+    }
+    #[test]fn event_coordinates(){let v=Visible{context:"ctx".into(),plugin:"p".into(),action:"a".into(),index:7,settings:json!({"x":1}),state:2};let message=event("keyDown",&v,&Device::virtual_device());assert_eq!(message["payload"]["coordinates"],json!({"column":2,"row":1}));assert_eq!(message["context"],"ctx");}
 }

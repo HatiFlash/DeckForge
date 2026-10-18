@@ -16,6 +16,8 @@ Matrice vérifiée dans `plugin_runtime.rs:run`, `ui.rs` et `plugin_host.rs` : �
 | showOk / showAlert | partiel | retour UI non testé sur toutes les surfaces |
 | getSettings / setSettings / didReceiveSettings | partiel | traitement par instance et inspecteur ; reprise complète à tester |
 | getGlobalSettings / setGlobalSettings | partiel | chemin de message existant, persistance à confirmer |
+| deviceDidConnect / deviceDidDisconnect (D2) | partiel | lancement/redémarrage et changement de grille ; pas de preuve matérielle ni identifiant série |
+| titleParametersDidChange / systemDidWakeUp / applicationDidLaunch / applicationDidTerminate (D2) | absent | émission non implémentée, voir limites D2 |
 
 Les plugins exécutables tournent avec les droits de l'utilisateur : processus séparé ≠ sandbox. Le catalogue n'accorde aucun droit ; la compatibilité est « non vérifiée » jusqu'à un essai explicite. Ni archive chiffrée ni API non reconnue ne sont déchiffrées ou adaptées automatiquement. L'installation est une copie atomique sans liaison de touche ; affecter une action ultérieurement peut démarrer le plugin. SHA256 en métadonnée locale pour les archives seulement, non preuve d'éditeur.
 
@@ -44,5 +46,11 @@ Le Job Object Windows KILL_ON_JOB_CLOSE regroupe le plugin et les inspecteurs la
 
 Trace opt-in : `DECKFORGE_PLUGIN_TRACE_UUID=<uuid>` avant lancement ; JSONL dans `%TEMP%/deckforge-plugin-traces/<uuid>-<pid>.jsonl`, métadonnées seulement (sens, commande, non-pris-en-charge), jamais de payload ni de réglages ; taille par processus limitée, événements inconnus listés dans la fiche. Ce n’est pas une preuve du comportement du plugin. La réponse `-info` utilise la version réelle de DeckForge, mais le modèle de périphérique est encore fixe (D6), les couleurs sont vides et `platformVersion` reste à lire dans Windows.
 
-Restent à implémenter et vérifier : deviceDidConnect/deviceDidDisconnect et autres événements SDK (titleParametersDidChange, didReceiveGlobalSettings, systemDidWakeUp, applications surveillées), `switchToProfile` limité, version Nodejs.Version et contraintes OS/MinimumVersion, profil navigateur éphémère avec blocage et observation CDP de window.open/navigation/réseau, banc de conformité sur copies des plugins en clair (sans appui), et analyse causale Gizmos par trace. Aucun effet ni capture Gizmos lancés dans D1.
+Restent à implémenter et vérifier : titleParametersDidChange, systemDidWakeUp et applications surveillées (didReceiveGlobalSettings est déjà envoyé depuis l’App), `switchToProfile` limité, version Nodejs.Version et contraintes OS/MinimumVersion, profil navigateur éphémère avec blocage et observation CDP de window.open/navigation/réseau, banc de conformité sur copies des plugins en clair (sans appui), et analyse causale Gizmos par trace. Aucun effet ni capture Gizmos lancés dans D1.
+
+## D2 — tranche partielle, événements et appareil
+
+Le lancement Exe/Node conserve -port, -pluginUUID, -registerEvent et -info ; l’injection HTML appelle connectElgatoStreamDeckSocket ou l’ancien connectSocket. Les appareils du champ devices reflètent la grille remontée par Event::DeviceModel au thread du gestionnaire, sinon la grille D6 virtuelle en validation. deviceDidConnect précède willAppear au lancement et au redémarrage ; le changement de modèle émet deviceDidDisconnect puis deviceDidConnect. willAppear, willDisappear, keyDown, keyUp, didReceiveSettings et l’inspecteur emploient les colonnes réelles de la grille ; test de contrat XL 8 × 4, index 17 → (1, 2). Le témoin Node WebSocket continue de tester le parcours. Aucun appareil physique n’a été ouvert ni pressé pour cette étape.
+
+Limites D2 : l’identifiant SDK physique reste dérivé de la taille de grille et non du numéro de série (deux appareils de même grille sont confondus) ; le type SDK des modèles non reconnus est par défaut 0 ; connexion initiale sans modèle remonte comme virtuel. platformVersion est toujours la valeur de repli 10.0, colors vide et police vide. L’événement de déconnexion à l’arrêt de l’hôte n’est pas garanti, ni les transitions matérielles sans changement de grille. Pas encore de titleParametersDidChange, systemDidWakeUp, applicationDidLaunch/applicationDidTerminate ni sonde de processus. Ces points réclament une tranche ultérieure et des tests dédiés ; aucune conformité intégrale SDK v2 revendiquée.
 

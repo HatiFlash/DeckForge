@@ -12,9 +12,9 @@ fn node_executable()->Option<std::path::PathBuf>{
  if let Some(p)=std::env::var_os("APPDATA"){if let Ok(entries)=std::fs::read_dir(std::path::PathBuf::from(p).join("Elgato/StreamDeck/NodeJS")){for entry in entries.flatten().take(32){candidates.push(entry.path().join("node.exe"));}}}
  candidates.into_iter().find(|p|p.is_file())
 }
-fn launch_info(plugin:&Plugin)->Value {
+fn launch_info(plugin:&Plugin,device:&crate::plugin_runtime::Device)->Value {
  let platform_version=std::env::var("DECKFORGE_PLATFORM_VERSION").unwrap_or_else(|_|"10.0".into());
- json!({"application":{"font":"","language":"fr","platform":"windows","platformVersion":platform_version,"version":env!("CARGO_PKG_VERSION")},"plugin":{"uuid":plugin.uuid,"version":plugin.version},"devicePixelRatio":1,"colors":{},"devices":[{"id":"deckforge-d6","name":"FIFINE D6","size":{"columns":5,"rows":3},"type":0}]})
+ json!({"application":{"font":"","language":"fr","platform":"windows","platformVersion":platform_version,"version":env!("CARGO_PKG_VERSION")},"plugin":{"uuid":plugin.uuid,"version":plugin.version},"devicePixelRatio":1,"colors":{},"devices":[device.info()]})
 }
 // Trace opt-in : uniquement le sens, le nom de commande et les identifiants non secrets. Jamais payload/settings.
 struct Trace { file:std::fs::File, entries:usize }
@@ -65,7 +65,7 @@ fn trace_message(trace:&mut Option<Trace>,direction:&str,message:&Value,unsuppor
 #[cfg(windows)] impl Drop for Job {fn drop(&mut self){self.close();}}
 pub struct Host { #[cfg(windows)] job:Job, pub incoming:Receiver<Value>, outgoing:Sender<Value>, pub ws_port:u16, pub http_port:Option<u16>, pub inspectors:Option<crate::plugin_http::Inspectors>, pub folder:std::path::PathBuf, pub uuid:String, child:Child, worker:Option<thread::JoinHandle<()>>, stop:Arc<AtomicBool>, _http:Option<crate::plugin_http::HtmlServer> }
 impl Host {
- pub fn start(plugin:&Plugin)->anyhow::Result<Self>{
+ pub fn start(plugin:&Plugin,device:&crate::plugin_runtime::Device)->anyhow::Result<Self>{
   let listener=TcpListener::bind("127.0.0.1:0")?;
   let port=listener.local_addr()?.port();
   let mut process=match &plugin.runtime {
@@ -74,7 +74,7 @@ impl Host {
    Runtime::Html(_)=>{let edge=std::path::Path::new(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe");anyhow::ensure!(edge.is_file(),"Microsoft Edge introuvable");Command::new(edge)},
    _=>anyhow::bail!("Plugin protégé ou type non pris en charge"),
   };
-  let info=launch_info(plugin);
+  let info=launch_info(plugin,device);
   let needs_http=matches!(plugin.runtime,Runtime::Html(_)) || plugin.inspector.is_some() || plugin.actions.iter().any(|a|a.inspector.is_some());
   let http=if needs_http {Some(crate::plugin_http::HtmlServer::start(plugin.folder.clone(),plugin.uuid.clone(),info.to_string(),port)?)}else{None};
   if let (Runtime::Html(path),Some(server))=(&plugin.runtime,&http){let name=path.strip_prefix(&plugin.folder)?.to_string_lossy().replace(std::path::MAIN_SEPARATOR,"/");let profile=std::env::current_exe()?.parent().ok_or_else(||anyhow::anyhow!("Dossier exécutable absent"))?.join("plugin-browser").join(plugin.uuid.chars().map(|c|if c.is_ascii_alphanumeric()||c=='-'||c=='_'{c}else{'_'}).collect::<String>());process.arg("--headless=new").arg("--disable-gpu").arg("--no-first-run").arg("--no-default-browser-check").arg(format!("--user-data-dir={}",profile.display())).arg(format!("http://127.0.0.1:{}/{}/{}",server.port,plugin.uuid,name));}
@@ -166,9 +166,11 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
  }
  #[test] fn launch_contract_and_unknown_command(){
   let d=tempfile::tempdir().unwrap();let p=crate::plugins::parse(d.path(),br#"{"UUID":"test","Version":"1.0"}"#).unwrap();
-  let info=launch_info(&p);assert_eq!(info["application"]["platform"],"windows");
+  let info=launch_info(&p,&crate::plugin_runtime::Device::virtual_device());assert_eq!(info["application"]["platform"],"windows");
   assert!(info["application"]["platformVersion"].is_string());assert_eq!(info["plugin"]["uuid"],"test");
-  assert_eq!(info["devices"][0]["size"]["columns"],5);assert!(!supported_command(&json!({"event":"alien"})));
+  assert_eq!(info["devices"][0]["size"]["columns"],5);
+  let xl=crate::plugin_runtime::Device::from_grid("Elgato Stream Deck XL".into(),8,4);
+  assert_eq!(launch_info(&p,&xl)["devices"][0]["size"],json!({"columns":8,"rows":4}));assert!(!supported_command(&json!({"event":"alien"})));
   assert!(supported_command(&json!({"event":"setTitle"})));
  }
  #[cfg(windows)] #[test] fn job_closing_kills_descendant(){
@@ -225,14 +227,15 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
   let support=Command::new(&node).args(["-p","typeof WebSocket"]).output().expect("Node.js fixture preflight failed");
   assert!(support.status.success() && support.stdout==b"function
 ", "Node.js fixture needs global WebSocket: {} {}", String::from_utf8_lossy(&support.stdout), String::from_utf8_lossy(&support.stderr));
-  let host=Host::start(&p).expect("Failed to start plugin fixture");
+  let host=Host::start(&p,&crate::plugin_runtime::Device::virtual_device()).expect("Failed to start plugin fixture");
   let register=host.incoming.recv_timeout(Duration::from_secs(15)).unwrap();
   assert_eq!(register["event"],"registerPlugin");
   let payload=json!({"settings":{},"coordinates":{"column":0,"row":0},"state":0,"isInMultiAction":false,"controller":"Keypad"});
-  let event=|name|json!({"event":name,"action":"test.deckforge.fixture.action","context":"ctx-1","device":"deckforge-d6","payload":payload});
+  let event=|name|json!({"event":name,"action":"test.deckforge.fixture.action","context":"ctx-1","device":"deckforge-virtual","payload":payload});
+  host.send(json!({"event":"deviceDidConnect","device":"deckforge-virtual","deviceInfo":crate::plugin_runtime::Device::virtual_device().info()})).unwrap();
   host.send(event("willAppear")).unwrap();host.send(event("keyDown")).unwrap();
   let mut names=std::collections::HashSet::new();
   for _ in 0..4 {let message=host.incoming.recv_timeout(Duration::from_secs(15)).unwrap();assert_eq!(message["context"],"ctx-1");if message["event"]=="setTitle"{assert_eq!(message["payload"]["title"],"OK 1");}if message["event"]=="setSettings"{assert_eq!(message["payload"]["settings"]["presses"],1);}names.insert(message["event"].as_str().unwrap().to_string());}
   assert_eq!(names,std::collections::HashSet::from(["setTitle".into(),"setImage".into(),"setSettings".into(),"showOk".into()]));
- } #[test] fn rejected_protected_plugin_does_not_spawn(){let d=tempfile::tempdir().unwrap();let p=crate::plugins::parse(d.path(),b"ELGATO\x01payload").unwrap();assert!(Host::start(&p).is_err());}
+ } #[test] fn rejected_protected_plugin_does_not_spawn(){let d=tempfile::tempdir().unwrap();let p=crate::plugins::parse(d.path(),b"ELGATO\x01payload").unwrap();assert!(Host::start(&p,&crate::plugin_runtime::Device::virtual_device()).is_err());}
 }
