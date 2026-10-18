@@ -16,6 +16,12 @@ Exécutables prêts sur le PC fixe : `Bureau\DeckForge-0.5-fusion\DeckForge.exe`
 - Testé automatiquement : transitions pures et compatibilité des anciennes préférences ; build complet Windows.
 - À tester avec Hatim : vrais lancements/fermetures d’application, connexion/déconnexion d’un périphérique audio, heure locale et passage de minute, pause globale et fonctionnement sans D6. Aucun test automatisé ne déclenche de macro réelle.
 
+## M4 — Elgato (expérimental)
+
+- Livré : pilote HID Elgato Original, Mini, générations v2 et modules ; images BMP/JPEG, découpage des rapports, luminosité, reset, firmware, touches. Stream Deck Plus : touches uniquement ; événements de molettes et écran ignorés et journalisés. Tous les modèles Elgato restent non vérifiés sur matériel.
+- Testé automatiquement : vecteurs purs de rapports, fonctionnalités, mapping et décodage, sans ouvrir de périphérique HID.
+- À tester avec Hatim et ses collègues : tailles réelles des rapports HID, écran/touches/firmware de chaque variante, coexistence avec application Elgato, touches au-delà de 15 (limite actuelle de l’interface), déconnexion. Aucun essai matériel effectué.
+
 ## E2 — Contrôle d’exécution par touche (17/10/2026)
 
 - Livré : `run_mode` facultatif (`ignore`, `restart`, `queue`) et `debounce_ms` (défaut 0) sur chaque touche ; inspecteur Avancé, file globale bornée à cinq macros, arrêt et redémarrage annulables.

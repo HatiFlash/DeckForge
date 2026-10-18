@@ -4,6 +4,7 @@ use crate::key_render::jpeg as render_key;
 use crate::{model::Config, Event};
 use crate::devices::{self, Detection, DeviceModel, Family, ImageFormat, Protocol};
 use crate::devices::report::{self, Report};
+use crate::devices::elgato;
 use std::{path::PathBuf, sync::Arc, cell::Cell};
 #[cfg(test)]
 use ab_glyph::FontArc;
@@ -172,8 +173,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                         "FIFINE a été relancé : connexion suspendue pour éviter les conflits"
                             .into(),
                     );
-                } else if let Err(e) = d.keepalive() {
-                    failed = Some(e.to_string());
+                } else if d.driver.model().family == Family::Mirabox { if let Err(e) = d.keepalive() { failed = Some(e.to_string()); }
                 }
                 beat = Instant::now();
             }
@@ -182,6 +182,9 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                 match d.hid.read_timeout(&mut data, 30) {
                     Ok(n) if n > 0 => {
                         if let Some(r) = &d.report { if d.inputs.get() < 20 { r.log(&format!("Entrée HID #{}{} : {}", d.inputs.get() + 1, if data.starts_with(b"ACK") || data.starts_with(b"\0ACK") { " (réponse/ACK)" } else { "" }, report::hex(&data[..n]))); d.inputs.set(d.inputs.get() + 1); } }
+                        if d.driver.model().id == "elgato_plus" && data.get(1).is_some_and(|tag| *tag == 2 || *tag == 3) {
+                            d.note(&format!("Stream Deck Plus : écran/molette ignoré (type {})", data[1]));
+                        }
                         for event in d.decode_input(&data[..n]) {
                             match event {
                                 InputEvent::Key(mut k, down) if k < 15 => {
@@ -396,13 +399,28 @@ fn canonical_image(jpeg: &[u8], model: &DeviceModel) -> Result<Vec<u8>> {
     match model.image_format {
         ImageFormat::Jpeg => image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, 88)
             .encode(&out, out.width(), out.height(), image::ExtendedColorType::Rgb8)?,
-        ImageFormat::Bmp => anyhow::bail!("Transport BMP non disponible pour {}", model.name),
+        ImageFormat::Bmp => image::codecs::bmp::BmpEncoder::new(&mut bytes)
+            .encode(&out, out.width(), out.height(), image::ExtendedColorType::Rgb8)?,
     }
     Ok(bytes)
 }
 fn decode_model_input(model: &DeviceModel, data: &[u8], transitions: &Cell<u64>) -> Vec<InputEvent> {
     if model.id == "fifine_d6" {
         return decode_input(data).map(|(k, down)| vec![InputEvent::Key(k, down)]).unwrap_or_default();
+    }
+    if model.family == Family::Elgato {
+        if let Some(states) = elgato::keys(model, data) {
+            let mut events = Vec::new();
+            for (index, down) in states {
+                let mask = 1u64 << index;
+                if (transitions.get() & mask != 0) != down {
+                    transitions.set(transitions.get() ^ mask);
+                    events.push(InputEvent::Key(index, down));
+                }
+            }
+            return events;
+        }
+        return Vec::new();
     }
     let d = if data.starts_with(b"\0ACK") { &data[1..] } else { data };
     if d.len() < 11 || !(d.starts_with(b"ACK\0\0OK") || d[..9].iter().all(|&byte| byte == 0)) { return Vec::new(); }
@@ -434,6 +452,11 @@ impl Deck {
     fn send_frame(&self, idx: usize, jpeg: &[u8], end: FrameEnd) -> Result<()> {
         let started = Instant::now();
         let data = canonical_image(jpeg, self.driver.model())?;
+        if self.driver.model().family == Family::Elgato {
+            for page in elgato::image_reports(self.driver.model(), idx, &data)? { self.report(&page)?; }
+            self.note(&format!("Image Elgato touche {} : {} octets", idx + 1, data.len()));
+            return Ok(());
+        }
         self.command(&bat_tail(self.driver.model(), idx, data.len())?)?;
         for chunk in data.chunks(self.packet) { self.report(chunk)?; }
         self.await_ack()?;
@@ -443,8 +466,12 @@ impl Deck {
         result
     }
     fn set_key_image(&self, idx: usize, image: &[u8], end: FrameEnd) -> Result<()> { self.send_frame(idx, image, end) }
-    fn set_brightness(&self, value: u8) -> Result<()> { self.command(&[b'L', b'I', b'G', 0, 0, value.min(100)]) }
-    fn clear(&self) -> Result<()> { self.command(&[b'C', b'L', b'E', 0, 0, 0, 0xFF]) }
+    fn set_brightness(&self, value: u8) -> Result<()> {
+        if self.driver.model().family == Family::Elgato { self.feature(&elgato::brightness(self.driver.model(), value)) }
+        else { self.command(&[b'L', b'I', b'G', 0, 0, value.min(100)]) }
+    }
+    fn clear(&self) -> Result<()> { if self.driver.model().family == Family::Elgato { self.feature(&elgato::reset(self.driver.model())) } else { self.command(&[b'C', b'L', b'E', 0, 0, 0, 0xFF]) } }
+    fn feature(&self, bytes: &[u8]) -> Result<()> { self.hid.send_feature_report(bytes).context("Rapport de fonctionnalité Elgato refusé") }
     fn sleep(&self) -> Result<()> { self.report(b"HAN") }
     fn wake(&self) -> Result<()> { self.command(b"DIS") }
     fn keepalive(&self) -> Result<()> { self.command(b"CONNECT") }
@@ -488,7 +515,7 @@ impl Deck {
             }
         }
         let (chosen, model) = matches.first().context("Aucun périphérique compatible détecté")?;
-        anyhow::ensure!(model.family == Family::Mirabox && matches!(model.protocol, Protocol::MiraboxV1 | Protocol::MiraboxV2),
+        anyhow::ensure!(model.family == Family::Elgato || model.family == Family::Mirabox && matches!(model.protocol, Protocol::MiraboxV1 | Protocol::MiraboxV2),
             "{} reconnu (expérimental) : pilote de ce protocole non disponible", model.name);
         let info = infos.iter().find(|d| d.path().to_string_lossy() == chosen.path)
             .context("Interface HID disparue pendant la détection")?;
@@ -499,10 +526,18 @@ impl Deck {
         }).context("Accès au périphérique impossible")?;
         let mut descriptor = [0u8; 4096];
         let n = hid.get_report_descriptor(&mut descriptor)?;
-        let (packet, rid) = output_report(&descriptor[..n])?;
+        let (packet, rid) = if model.family == Family::Elgato { (model.packet_len as usize, 0) } else { output_report(&descriptor[..n])? };
         if let Some(r) = &report { r.log(&format!("Rapport sortie={} octets, ID={rid} ; tampon entrée=2048 octets ; descripteur={} octets", packet, n)); }
         if model.id != "fifine_d6" { anyhow::ensure!(packet == model.packet_len as usize,
             "{} : rapport HID {} octets, {} attendus ; abandon prudent", model.name, packet, model.packet_len); }
+        if model.family == Family::Elgato {
+            let (id, len, _) = elgato::firmware_layout(model);
+            let mut buf = vec![0; len]; buf[0] = id;
+            match hid.get_feature_report(&mut buf) {
+                Ok(n) => if let Some(r) = &report { r.log(&format!("Firmware Elgato : {}", elgato::firmware(model, &buf[..n]).unwrap_or_else(|| "réponse non décodable".into()))); },
+                Err(e) => if let Some(r) = &report { r.log(&format!("Firmware Elgato indisponible : {e}")); },
+            }
+        }
         Ok(Self { hid, packet, rid, report, inputs: Cell::new(0), driver: Driver::Mirabox(model), transitions: Cell::new(0) })
     }
     fn note(&self, line: &str) { if let Some(r) = &self.report { r.log(line); } }
@@ -536,6 +571,11 @@ impl Deck {
             .map(|k| render_key_or_default(k, c.image_size, &font))
             .collect::<Result<Vec<_>>>()?;
         let (images, warnings): (Vec<_>, Vec<_>) = rendered.into_iter().unzip();
+        if self.driver.model().family == Family::Elgato {
+            self.set_brightness(c.brightness)?;
+            for (idx, jpeg) in images.iter().enumerate() { self.send_frame(idx, jpeg, FrameEnd::Stp)?; }
+            return Ok(warnings.into_iter().flatten().collect());
+        }
         self.wake()?;
         self.set_brightness(c.brightness)?;
         self.note("Commande HAN : 48 41 4E");

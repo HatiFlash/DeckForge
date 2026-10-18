@@ -57,7 +57,7 @@ pub const MODELS: &[DeviceModel] = &[
     DeviceModel { id: "elgato_xl", name: "Elgato Stream Deck XL", family: Family::Elgato, vid: 0x0fd9, pid: 0x006c, rows: 4, cols: 8, keys: 32, image_w: 96, image_h: 96, image_format: ImageFormat::Jpeg, rotation: 0, mirror_x: true, mirror_y: true, packet_len: 1024, protocol: Protocol::ElgatoV2, encoders: 0, verified: false, notes: "" },
     DeviceModel { id: "elgato_xl_v2", name: "Elgato Stream Deck XL V2", family: Family::Elgato, vid: 0x0fd9, pid: 0x008f, rows: 4, cols: 8, keys: 32, image_w: 96, image_h: 96, image_format: ImageFormat::Jpeg, rotation: 0, mirror_x: true, mirror_y: true, packet_len: 1024, protocol: Protocol::ElgatoV2, encoders: 0, verified: false, notes: "" },
     DeviceModel { id: "elgato_neo", name: "Elgato Stream Deck Neo", family: Family::Elgato, vid: 0x0fd9, pid: 0x009a, rows: 2, cols: 4, keys: 8, image_w: 96, image_h: 96, image_format: ImageFormat::Jpeg, rotation: 0, mirror_x: true, mirror_y: true, packet_len: 1024, protocol: Protocol::ElgatoV2, encoders: 0, verified: false, notes: "Bande LCD et touches tactiles hors perimetre M1." },
-    DeviceModel { id: "elgato_plus", name: "Elgato Stream Deck Plus (touches)", family: Family::Elgato, vid: 0x0fd9, pid: 0x0084, rows: 2, cols: 4, keys: 8, image_w: 120, image_h: 120, image_format: ImageFormat::Jpeg, rotation: 0, mirror_x: false, mirror_y: false, packet_len: 1024, protocol: Protocol::ElgatoV2, encoders: 4, verified: false, notes: "Ecran tactile et commandes des molettes hors perimetre M1." },
+    DeviceModel { id: "elgato_plus", name: "Elgato Stream Deck Plus (touches)", family: Family::Elgato, vid: 0x0fd9, pid: 0x0084, rows: 2, cols: 4, keys: 8, image_w: 120, image_h: 120, image_format: ImageFormat::Jpeg, rotation: 0, mirror_x: false, mirror_y: false, packet_len: 1024, protocol: Protocol::ElgatoV2, encoders: 4, verified: false, notes: "Écran tactile et commandes des molettes ignorés (journalisés) ; pilote expérimental." },
     DeviceModel { id: "elgato_module_6", name: "Elgato Module 6", family: Family::Elgato, vid: 0x0fd9, pid: 0x00b8, rows: 2, cols: 3, keys: 6, image_w: 80, image_h: 80, image_format: ImageFormat::Bmp, rotation: 90, mirror_x: true, mirror_y: false, packet_len: 1024, protocol: Protocol::ElgatoModule, encoders: 0, verified: false, notes: "" },
     DeviceModel { id: "elgato_module_15", name: "Elgato Module 15", family: Family::Elgato, vid: 0x0fd9, pid: 0x00b9, rows: 3, cols: 5, keys: 15, image_w: 72, image_h: 72, image_format: ImageFormat::Jpeg, rotation: 0, mirror_x: true, mirror_y: true, packet_len: 1024, protocol: Protocol::ElgatoModule, encoders: 0, verified: false, notes: "" },
     DeviceModel { id: "elgato_module_15_scissor", name: "Elgato Module 15 scissor", family: Family::Elgato, vid: 0x0fd9, pid: 0x00e4, rows: 3, cols: 5, keys: 15, image_w: 72, image_h: 72, image_format: ImageFormat::Jpeg, rotation: 0, mirror_x: true, mirror_y: true, packet_len: 1024, protocol: Protocol::ElgatoModule, encoders: 0, verified: false, notes: "" },
@@ -65,6 +65,7 @@ pub const MODELS: &[DeviceModel] = &[
  ];
 
 pub mod report;
+pub mod elgato;
 
 /// Descripteur HID reduit : construire depuis hidapi plus tard, sans ouvrir le materiel ici.
 #[derive(Debug, Clone, PartialEq, Eq)]
