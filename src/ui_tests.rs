@@ -707,6 +707,42 @@ fn background_tick_processes_physical_events_and_saves_without_drawing_a_frame()
 }
 
 #[test]
+fn workshop_simple_layout_keeps_canvas_visible_at_both_sizes() {
+    for size in [vec2(1366.0, 768.0), vec2(1920.0, 1080.0)] {
+        let mut h = Harness::new();
+        h.app.show_workflow = true;
+        h.app.preferences.workshop_advanced = false;
+        h.app.config.keys_mut()[0].steps = vec![Step::Repeat {
+            count: 2, steps: vec![Step::IfVariable {
+                name: "mode".into(), value: "on".into(), then_steps: vec![Step::Delay { ms: 100 }], else_steps: vec![],
+            }],
+        }];
+        let output = h.warm(size);
+        assert!(text_position(&output.shapes, "Construis ton automatisation").is_some());
+        assert!(text_position(&output.shapes, "Propriétés du bloc").is_none());
+        assert!(text_position(&output.shapes, "RÉPÉTER").is_some());
+        assert!(text_position(&output.shapes, "ALORS").is_some());
+        assert!(text_position(&output.shapes, "SINON").is_some());
+        assert_eq!(h.ctx.data(|d| d.get_temp::<(usize, String, usize)>(egui::Id::new("workshop_context"))), Some((0, String::new(), 0)));
+        h.ctx.data_mut(|d| d.insert_temp(egui::Id::new("workshop_path"), vec![0_usize, 0, 0]));
+        assert_eq!(h.ctx.data(|d| d.get_temp::<Vec<usize>>(egui::Id::new("workshop_path"))), Some(vec![0, 0, 0]));
+        // A new egui Window is invisible during its first sizing pass.
+        let output = h.warm(size);
+        assert!(text_position(&output.shapes, "Propriétés du bloc").is_some(), "path={:?}, shown={:?}, texts={:?}", h.ctx.data(|d| d.get_temp::<Vec<usize>>(egui::Id::new("workshop_path"))), h.app.show_workflow, output.shapes.iter().filter_map(|shape| if let egui::Shape::Text(t) = &shape.shape {Some(t.galley.job.text.clone())} else {None}).collect::<Vec<_>>());
+        assert!(text_position(&output.shapes, "Construis ton automatisation").is_some());
+        assert!(text_position(&output.shapes, "BIBLIOTHÈQUE DE BLOCS").is_some());
+        h.app.config.keys_mut()[1].steps.clear();
+        h.app.selected = 1;
+        let output = h.warm(size);
+        assert!(text_position(&output.shapes, "Propriétés du bloc").is_none());
+        assert!(text_position(&output.shapes, "Ajoute ton premier bloc").is_some());
+        h.ctx.data_mut(|d| d.insert_temp(egui::Id::new("workshop_search"), "aucun-bloc-xyz".to_owned()));
+        let output = h.warm(size);
+        assert!(text_position(&output.shapes, "Aucun bloc trouvé. Essaie un autre mot-clé.").is_some());
+    }
+}
+
+#[test]
 fn workflow_preview_shows_conditional_blocks() {
     let mut h = Harness::new();
     let size = vec2(1380.0, 900.0);

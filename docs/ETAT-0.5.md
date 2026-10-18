@@ -1,5 +1,11 @@
 # DeckForge 0.5 (développement) — état au 17 octobre 2026
 
+## Atelier minimaliste & assistant — A1 (phase 1)
+
+- Livré : deux zones permanentes, bibliothèque redimensionnable avec recherche et catégories repliables, séquence simple en cartes imbriquées et état vide ; inspecteur flottant uniquement sur sélection, réinitialisé au changement de touche/page/profil. Mode Avancé et éditeur détaillé préservés ; bouton Assistant ouvre le connecteur MCP existant, sans nouveau chat ni appel IA.
+- Testé automatiquement : affichage egui 1366×768 et 1920×1080, blocs imbriqués, inspecteur contextuel, touche vide, recherche sans résultat et changement de touche ; compilation et build Windows complet (voir commit). Aucune macro réelle exécutée.
+- À tester avec Hatim : lisibilité et manipulation à l'écran, édition de paramètres dans l'inspecteur, redimensionnement de la bibliothèque et ergonomie tactile/souris. Glisser-déposer et édition avancée des sous-blocs restent dans les phases suivantes ; le journal de simulation et le mini chat flottant ne sont pas livrés par A1.
+
 ## M5 — Grille dynamique (code livré)
 
 Mini 2×3, D6 5×3 et XL 8×4 : pavé et aperçu des touches visibles selon le modèle HID détecté. Les 15 touches historiques restent inchangées et conservées quand un modèle plus petit est connecté ; XL étend les pages jusqu’à 32 touches. MCP : indices limités à la grille active (15 hors connexion). Grilles alternatives expérimentales, non vérifiées sur matériel ; à tester avec Hatim et ses collègues. Tests purs, rendu egui hors écran et build Windows complet réalisés.

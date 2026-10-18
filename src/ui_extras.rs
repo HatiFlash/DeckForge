@@ -107,24 +107,30 @@ fn matches_palette(kind: usize, category: &str, search: &str) -> bool {
     };
     search.is_empty() || format!("{} {} {}", category, crate::automation::NAMES[kind], aliases).to_lowercase().contains(&search.to_lowercase())
 }
-fn palette(ui: &mut egui::Ui, search: &mut String, depth: usize, advanced: bool) -> Option<usize> {
+fn palette(ui: &mut egui::Ui, search: &str, depth: usize, advanced: bool) -> Option<usize> {
     let mut selected = None;
-    ui.add(egui::TextEdit::singleline(search).hint_text("Rechercher un bloc"));
+    let mut found = false;
     for &(category, kinds) in BLOCK_CATEGORIES {
         let matches: Vec<_> = kinds.iter().copied().filter(|&kind| {
             (depth == 0 || !(7..=11).contains(&kind)) &&
-            (advanced || kind != 18) &&
-            matches_palette(kind, category, search)
+            (advanced || kind != 18) && matches_palette(kind, category, search)
         }).collect();
         if matches.is_empty() { continue; }
-        ui.label(RichText::new(category).strong().color(BLUE));
-        for kind in matches {
-            if ui.button(crate::automation::NAMES[kind]).on_hover_text(block_help(kind)).clicked() {
-                selected = Some(kind);
-            }
-        }
-        ui.add_space(7.0);
+        found = true;
+        egui::CollapsingHeader::new(category).default_open(search.is_empty() && category == "Clavier" || !search.is_empty())
+            .show(ui, |ui| {
+                for kind in matches {
+                    ui.horizontal(|ui| {
+                        let color = if category.contains("Logique") { Color32::from_rgb(164, 123, 239) }
+                            else if category.contains("Streaming") { Color32::from_rgb(239, 169, 83) } else { BLUE };
+                        ui.colored_label(color, "▏");
+                        if ui.add(egui::Button::new(crate::automation::NAMES[kind]).frame(false))
+                            .on_hover_text(block_help(kind)).clicked() { selected = Some(kind); }
+                    });
+                }
+            });
     }
+    if !found { ui.label("Aucun bloc trouvé. Essaie un autre mot-clé."); }
     selected
 }
 fn simple_fields_visible(step: &Step, advanced: bool) -> bool {
@@ -515,6 +521,48 @@ pub(super) fn block_editor(
     }
     changed
 }
+// The simple canvas is a read-only tree: editing is confined to the contextual inspector.
+fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection: &mut Option<Vec<usize>>) {
+    let p = theme::palette(ui.ctx());
+    for (i, step) in steps.iter().enumerate() {
+        let mut path = parent.to_vec(); path.push(i);
+        ui.push_id(&path, |ui| {
+            let chosen = selection.as_ref() == Some(&path);
+            egui::Frame::new().fill(p.surface)
+                .stroke(egui::Stroke::new(if chosen { 1.5_f32 } else { 1.0_f32 }, if chosen { BLUE } else { p.line }))
+                .corner_radius(10).inner_margin(9).show(ui, |ui| {
+                    ui.set_min_width((ui.available_width() - 20.0).max(180.0));
+                    let color = if matches!(step.active(), Step::IfCondition { .. } | Step::IfWindow { .. } | Step::IfVariable { .. }) {
+                        Color32::from_rgb(164, 123, 239)
+                    } else if matches!(step.active(), Step::Repeat { .. }) { Color32::from_rgb(239, 169, 83) } else { BLUE };
+                    ui.horizontal(|ui| {
+                        ui.colored_label(color, format!("▏{}", path.iter().step_by(2).map(|n| (n + 1).to_string()).collect::<Vec<_>>().join(".")));
+                        let title = format!("{} · {}", step.name(), block_summary(step));
+                        if ui.selectable_label(chosen, title).on_hover_text("Sélectionner et modifier ce bloc").clicked() {
+                            *selection = Some(path.clone());
+                        }
+                    });
+                    let branches: Vec<(&str, &[Step])> = match step.active() {
+                        Step::IfCondition { then_steps, else_steps, .. }
+                        | Step::IfWindow { then_steps, else_steps, .. }
+                        | Step::IfVariable { then_steps, else_steps, .. } => vec![("ALORS", then_steps), ("SINON", else_steps)],
+                        Step::Repeat { steps, .. } => vec![("RÉPÉTER", steps)],
+                        Step::Toggle { a, b } => vec![("ÉTAT 1", a), ("ÉTAT 2", b)],
+                        _ => vec![],
+                    };
+                    for (branch, (label, children)) in branches.into_iter().enumerate() {
+                        ui.indent(branch, |ui| {
+                            ui.label(RichText::new(label).small().color(p.muted));
+                            let mut nested = path.clone(); nested.push(branch);
+                            sequence_cards(ui, children, &nested, selection);
+                        });
+                    }
+                });
+            ui.add_space(5.0);
+            if i + 1 < steps.len() { ui.colored_label(p.muted, "  │"); }
+        });
+    }
+}
 impl App {
     pub(super) fn automation_prompt(&self) -> String {
         let profile = &self.config.profiles[self.config.active].name;
@@ -611,7 +659,7 @@ impl App {
                     });
                     match operation {
                         Some(0) if steps.len() < 256 => { steps.insert(i + 1, steps[i].clone()); changed = true; },
-                        Some(1) => { steps.remove(i); changed = true; },
+                        Some(1) => { steps.remove(i); changed = true; ctx.data_mut(|d| d.remove::<Vec<usize>>(egui::Id::new("workshop_path"))); },
                         Some(2) if i > 0 => { steps.swap(i, i - 1); changed = true; },
                         Some(3) if i + 1 < steps.len() => { steps.swap(i, i + 1); changed = true; },
                         _ => {}
@@ -619,92 +667,160 @@ impl App {
                 }
             }
         }
-        let title = format!(
-            "Atelier · touche {:02} · {}",
-            self.selected + 1,
-            self.config.keys()[self.selected].label
-        );
-        egui::CentralPanel::default().show(ctx, |ui| {
-            if ui.button(format!("< Retour au deck · {title}")).clicked() {
-                self.show_workflow = false;
-            }
-            ui.label(RichText::new("Construis ton automatisation").size(23.0).strong());
-            ui.label("Assemble les blocs de haut en bas. Les variables enregistrées sont réutilisables entre les macros.");
+        let context_id = egui::Id::new("workshop_context");
+        let current = (self.config.active, self.config.page.clone(), self.selected);
+        if ctx.data(|d| d.get_temp::<(usize, String, usize)>(context_id)).as_ref() != Some(&current) {
+            ctx.data_mut(|d| {
+                d.insert_temp(context_id, current.clone());
+                d.remove::<Vec<usize>>(egui::Id::new("workshop_path"));
+                d.remove::<usize>(egui::Id::new("workshop_selected"));
+            });
+        }
+        let path_id = egui::Id::new("workshop_path");
+        let mut selection = ctx.data(|d| d.get_temp::<Vec<usize>>(path_id));
+        if selection.as_ref().is_some_and(|path| step_mut(&mut self.config.keys_mut()[self.selected].steps, path).is_none()) {
+            selection = None;
+        }
+        egui::TopBottomPanel::top("workshop_header").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.label("Mode :");
+                if ui.button("← Retour au deck").clicked() { self.show_workflow = false; selection = None; }
+                let key = &self.config.keys()[self.selected];
+                ui.label(RichText::new(format!("Atelier · Touche {:02}{}", self.selected + 1,
+                    if key.label.is_empty() { String::new() } else { format!(" · {}", key.label) })).strong());
+                ui.separator();
                 if ui.selectable_value(&mut self.preferences.workshop_advanced, false, "Simple").changed() { self.save_preferences(); }
-                ui.label("|");
                 if ui.selectable_value(&mut self.preferences.workshop_advanced, true, "Avancé").changed() { self.save_preferences(); }
                 template_menu(ui, &mut template_choice);
-                if ui.button("Créer avec mon IA").clicked() { self.assistant_settings = true; }
-                if ui.add(egui::Button::new("Simuler les blocs").fill(BLUE)).clicked() {
+                if ui.button("Simuler").on_hover_text("Simulation sans effets réels").clicked() {
                     if validate_key(&self.config.keys()[self.selected], &self.config).is_ok() {
                         let trace = simulation_trace(&self.config.keys()[self.selected].steps);
                         ctx.data_mut(|d| d.insert_temp(trace_id, trace.iter().map(|line| (line.path.clone(), line.text.clone())).collect::<Vec<_>>()));
                     } else { ctx.data_mut(|d| d.remove::<Vec<(Vec<usize>, String)>>(trace_id)); }
                     self.preview(true);
                 }
-                if ui.button("Tester dans 3 s").on_hover_text("Exécute réellement la macro sur le PC dans 3 secondes").clicked() { self.preview(false); }
+                if self.preferences.workshop_advanced && ui.button("Tester dans 3 s").on_hover_text("Exécute réellement la macro sur le PC dans 3 secondes").clicked() { self.preview(false); }
                 if self.preferences.workshop_advanced && ui.button("Exporter AHK").clicked() { export = true; }
+                if ui.add(egui::Button::new("Enregistrer").fill(BLUE)).clicked() { self.save(); }
             });
             if let Some(index) = template_choice {
                 let existing = self.config.keys()[self.selected].steps.len();
                 if existing == 0 { template_action = Some((index, false)); }
-                else { ui.label("Cette touche contient déjà des blocs. Choisis comment utiliser le modèle :");
+                else {
+                    ui.label("Cette touche contient déjà des blocs. Choisis comment utiliser le modèle :");
                     ui.horizontal(|ui| {
                         if ui.button("Ajouter à la fin").clicked() { template_action = Some((index, false)); }
                         if ui.button("Remplacer les blocs").clicked() { template_action = Some((index, true)); }
                     });
                 }
             }
-            if !self.engine.running.load(Ordering::SeqCst){self.running_block.clear();}
-            let validation_config = self.config.clone();
-            let profiles=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();let pages=self.config.profiles[self.config.active].pages.clone();let selected=self.selected;let target=(self.config.active,self.config.page.clone(),selected);let dialog_tx=self.dialog_tx.clone();
-            let search_id = egui::Id::new("workshop_search");
-            let mut search = ui.data(|d| d.get_temp::<String>(search_id)).unwrap_or_default();
-            let mut add = None;
-            let selected_trace = ctx.data(|d| d.get_temp::<Vec<usize>>(selected_id)).unwrap_or_default();
-            let highlight = if selected_trace.is_empty() { &self.running_block } else { &selected_trace };
-            ui.horizontal_top(|ui| {
-                ui.vertical(|ui| {
-                    ui.set_width(205.0);
-                    ui.label(RichText::new("BIBLIOTHÈQUE DE BLOCS").strong());
-                    egui::ScrollArea::vertical().id_salt("block_palette").show(ui, |ui| {
-                        add = palette(ui, &mut search, 0, self.preferences.workshop_advanced);
+        });
+        let search_id = egui::Id::new("workshop_search");
+        let mut search = ctx.data(|d| d.get_temp::<String>(search_id)).unwrap_or_default();
+        let mut add = None;
+        egui::SidePanel::left("workshop_library").resizable(true).default_width(280.0).min_width(220.0).max_width(350.0).show(ctx, |ui| {
+            ui.label(RichText::new("BIBLIOTHÈQUE DE BLOCS").strong());
+            ui.add(egui::TextEdit::singleline(&mut search).hint_text("Rechercher un bloc"));
+            ui.separator();
+            egui::ScrollArea::vertical().id_salt("block_palette").show(ui, |ui| {
+                add = palette(ui, &search, 0, self.preferences.workshop_advanced);
+            });
+        });
+        ctx.data_mut(|d| d.insert_temp(search_id, search));
+        if !self.engine.running.load(Ordering::SeqCst) { self.running_block.clear(); }
+        let validation_config = self.config.clone();
+        let profiles = self.config.profiles.iter().map(|p| p.name.clone()).collect::<Vec<_>>();
+        let pages = self.config.profiles[self.config.active].pages.clone();
+        let selected = self.selected;
+        let target = (self.config.active, self.config.page.clone(), selected);
+        let dialog_tx = self.dialog_tx.clone();
+        let selected_trace = ctx.data(|d| d.get_temp::<Vec<usize>>(selected_id)).unwrap_or_default();
+        let highlight = if selected_trace.is_empty() { &self.running_block } else { &selected_trace };
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.label(RichText::new("Construis ton automatisation").size(21.0).strong());
+            if self.preferences.workshop_advanced {
+                egui::ScrollArea::vertical().id_salt("workflow_advanced_scroll").show(ui, |ui| {
+                    changed |= block_editor(ui, &mut self.config.keys_mut()[selected].steps, &profiles, &pages, &self.audio,
+                        &[], &mut record, 0, highlight, &mut pick_audio, &dialog_tx, &target, &validation_config, true);
+                });
+            } else {
+                egui::ScrollArea::vertical().id_salt("workflow_scroll").show(ui, |ui| {
+                    let steps = &self.config.keys()[selected].steps;
+                    if steps.is_empty() {
+                        ui.add_space(24.0);
+                        ui.label(RichText::new("Ajoute ton premier bloc").size(20.0).strong());
+                        ui.label("Commence par une action, puis compose ta séquence.");
+                        ui.horizontal_wrapped(|ui| {
+                            for kind in [0, 2, 5, 39] {
+                                if ui.button(crate::automation::NAMES[kind]).clicked() { add = Some(kind); }
+                            }
+                        });
+                        if ui.button("Demander à l'assistant").clicked() { self.assistant_settings = true; }
+                    } else {
+                        sequence_cards(ui, steps, &[], &mut selection);
+                    }
+                    ui.menu_button("+ Ajouter un bloc", |ui| {
+                        for &(category, kinds) in BLOCK_CATEGORIES {
+                            ui.menu_button(category, |ui| {
+                                for &kind in kinds {
+                                    if !self.preferences.workshop_advanced && kind == 18 { continue; }
+                                    if ui.button(crate::automation::NAMES[kind]).clicked() { add = Some(kind); ui.close_menu(); }
+                                }
+                            });
+                        }
                     });
                 });
-                ui.separator();
-                egui::ScrollArea::vertical().id_salt("workflow_scroll").show(ui,|ui|{ ui.vertical(|ui| {
-                    changed=block_editor(ui,&mut self.config.keys_mut()[selected].steps,&profiles,&pages,&self.audio,&[],&mut record,0,highlight,&mut pick_audio,&dialog_tx,&target,&validation_config,self.preferences.workshop_advanced);
-                }); });
-            });
-            ui.data_mut(|d| d.insert_temp(search_id, search));
-            if let Some(kind) = add {
-                let position = ui.data(|d| d.get_temp::<usize>(egui::Id::new("workshop_selected")));
-                let steps = &mut self.config.keys_mut()[selected].steps;
-                if steps.len() < 256 {
-                    steps.insert(position.map_or(steps.len(), |i| (i + 1).min(steps.len())), new_block(kind, &profiles));
-                    changed = true;
-                }
             }
-            if let Some(trace) = ctx.data(|d| d.get_temp::<Vec<(Vec<usize>, String)>>(trace_id)) {
-                ui.separator();
-                ui.label(RichText::new("Déroulé de la simulation").strong());
-                ui.label("Aucune action réelle. Les deux branches sont explorées et les répétitions parcourues une seule fois.");
-                egui::ScrollArea::vertical().max_height(165.0).show(ui, |ui| {
-                    for (path, label) in trace {
-                        if ui.selectable_label(selected_trace == path, label).clicked() {
-                            ctx.data_mut(|d| d.insert_temp(selected_id, path));
-                        }
-                    }
-                });
+            if let Err(e) = validate_key(&self.config.keys()[selected], &self.config) {
+                ui.colored_label(Color32::LIGHT_RED, format!("Brouillon : {e}"));
             }
-            if let Err(e)=validate_key(&self.config.keys()[selected],&self.config){ui.colored_label(Color32::LIGHT_RED,format!("Brouillon : {e}"));}
+        });
+        if let Some(kind) = add {
+            let steps = &mut self.config.keys_mut()[selected].steps;
+            if steps.len() < 256 {
+                let index = selection.as_ref().and_then(|path| path.first()).map_or(steps.len(), |i| (i + 1).min(steps.len()));
+                steps.insert(index, new_block(kind, &profiles));
+                changed = true;
+            }
+        }
+        if !self.preferences.workshop_advanced {
+            if let Some(path) = selection.clone() {
+                let mut close = false;
+                egui::Window::new("Propriétés du bloc").id(egui::Id::new("workshop_properties"))
+                    .anchor(egui::Align2::RIGHT_CENTER, [-12.0, 0.0])
+                    .default_width(320.0).min_width(270.0).max_width(350.0)
+                    .resizable(true).show(ctx, |ui| {
+                        if ui.small_button("× Fermer les propriétés").clicked() { close = true; }
+                        egui::ScrollArea::vertical().max_height((ctx.screen_rect().height() - 140.0).max(240.0)).show(ui, |ui| {
+                            if let Some(step) = step_mut(&mut self.config.keys_mut()[selected].steps, &path) {
+                                ui.label(RichText::new("Propriétés du bloc").strong());
+                                ui.label(RichText::new(step.name()).strong());
+                                ui.label(block_summary(step));
+                                let mut capture = false;
+                                let mut icon = None;
+                                changed |= edit_step(ui, step, &profiles, &pages, &mut capture, &self.audio, &mut icon,
+                                    &dialog_tx, &(target.0, target.1.clone(), target.2, path.clone()));
+                                if capture { record = Some(path.clone()); }
+                                if let Some(state) = icon { pick_audio = Some((path.clone(), state)); }
+                            }
+                        });
+                    });
+                if close { selection = None; }
+            }
+        }
+        ctx.data_mut(|d| {
+            if let Some(path) = selection {
+                if path.len() == 1 { d.insert_temp(egui::Id::new("workshop_selected"), path[0]); }
+                else { d.remove::<usize>(egui::Id::new("workshop_selected")); }
+                d.insert_temp(path_id, path);
+            } else {
+                d.remove::<Vec<usize>>(path_id);
+                d.remove::<usize>(egui::Id::new("workshop_selected"));
+            }
         });
         if let Some((index, replace)) = template_action {
             let steps = &mut self.config.keys_mut()[self.selected].steps;
             let model = template(index);
-            if replace { steps.clear(); }
+            if replace { steps.clear(); ctx.data_mut(|d| d.remove::<Vec<usize>>(egui::Id::new("workshop_path"))); }
             if steps.len() + model.len() <= 256 { steps.extend(model); changed = true; }
             template_choice = None;
         }
