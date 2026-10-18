@@ -58,7 +58,11 @@ fn trace_message(trace:&mut Option<Trace>,direction:&str,message:&Value,unsuppor
  let _=writeln!(trace.file,"{record}");trace.entries+=1;
 }
 // Event names are identifiers, never arbitrary plugin text; all other fields are fixed vocabulary.
-fn event_label(name:&str)->String{name.chars().filter(|c|c.is_ascii_alphanumeric()||matches!(c,'_'|'-'|'.')).take(64).collect()}
+fn event_label(name:&str)->String{
+ // Never persist arbitrary plugin-controlled text: an "event" field may contain a secret.
+ // Recognized protocol identifiers are fixed vocabulary; unknown values stay anonymous.
+ if matches!(name,"registerPlugin"|"registerPropertyInspector"|"logMessage"|"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"getSettings"|"setGlobalSettings"|"getGlobalSettings"|"openUrl"|"sendToPlugin"|"sendToPropertyInspector"|"switchToProfile"|"keyDown"|"keyUp"|"willAppear"|"willDisappear"|"didReceiveSettings"|"didReceiveGlobalSettings"|"titleParametersDidChange"|"deviceDidConnect"|"deviceDidDisconnect"|"propertyInspectorDidAppear"|"propertyInspectorDidDisappear") {name.to_owned()} else {"<unknown>".into()}
+}
 fn trace_stage(trace:&mut Option<Trace>,stage:&str){
  let Some(trace)=trace.as_mut() else{return};if trace.entries>=128{return;}
  let record=json!({"stage":stage});let _=writeln!(trace.file,"{record}");trace.entries+=1;
@@ -220,9 +224,9 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
   assert_eq!(rx.recv_timeout(Duration::from_secs(3)).unwrap()["event"],"registerPlugin");
   stop.store(true,Ordering::Relaxed);worker.join().unwrap();
   let data=std::fs::read_to_string(path).unwrap();
-  for marker in ["tcp_accept","handshake_ok","first_message","register_plugin","startup_counts","alien"] {assert!(data.contains(marker),"missing {marker}: {data}");}
+  for marker in ["tcp_accept","handshake_ok","first_message","register_plugin","startup_counts","<unknown>"] {assert!(data.contains(marker),"missing {marker}: {data}");}
   assert!(data.contains("\"unsupported\":true"));assert!(!data.contains("SECRET"));assert!(!data.contains("fixture"));
-  assert_eq!(event_label("bad SECRET /path\n"),"badSECRETpath");
+  assert_eq!(event_label("bad SECRET /path\n"),"<unknown>");
  }
  #[test] fn trace_handshake_failure_and_malformed_first_are_redacted(){
   let d=tempfile::tempdir().unwrap();let path=d.path().join("trace.jsonl");let listener=TcpListener::bind("127.0.0.1:0").unwrap();let port=listener.local_addr().unwrap().port();
