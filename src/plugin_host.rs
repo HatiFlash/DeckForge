@@ -23,6 +23,11 @@ fn required_node(plugin:&Plugin)->u32{
  let sdk_v2=matches!(&plugin.runtime,Runtime::Node(p) if p.to_string_lossy().replace('\\',"/").ends_with("bin/plugin.js"));
  declared.max(if sdk_v2 {20}else{0})
 }
+/// Dossier de travail du processus : celui de l'exécutable natif (Gizmos lance `../cmd/scripts/*.ps1`
+/// depuis bin/, les plugins Mirabox chargent leurs fichiers depuis plugin/), sinon la racine du plugin.
+fn working_dir(plugin:&Plugin)->std::path::PathBuf{
+ match &plugin.runtime {Runtime::Exe(p)=>p.parent().filter(|d|d.starts_with(&plugin.folder)).map(|d|d.to_path_buf()).unwrap_or_else(||plugin.folder.clone()),_=>plugin.folder.clone()}
+}
 fn launch_info(plugin:&Plugin,device:&crate::plugin_runtime::Device)->Value {
  let platform_version=std::env::var("DECKFORGE_PLATFORM_VERSION").unwrap_or_else(|_|"10.0".into());
  json!({"application":{"font":"","language":"fr","platform":"windows","platformVersion":platform_version,"version":env!("CARGO_PKG_VERSION")},"plugin":{"uuid":plugin.uuid,"version":plugin.version},"devicePixelRatio":1,"colors":{},"devices":[device.info()]})
@@ -112,7 +117,9 @@ impl Host {
   if let (Runtime::Html(path),Some(server))=(&plugin.runtime,&http){let name=path.strip_prefix(&plugin.folder)?.to_string_lossy().replace(std::path::MAIN_SEPARATOR,"/");let profile=std::env::current_exe()?.parent().ok_or_else(||anyhow::anyhow!("Dossier exécutable absent"))?.join("plugin-browser").join(plugin.uuid.chars().map(|c|if c.is_ascii_alphanumeric()||c=='-'||c=='_'{c}else{'_'}).collect::<String>());process.arg("--headless=new").arg("--disable-gpu").arg("--no-first-run").arg("--no-default-browser-check").arg(format!("--user-data-dir={}",profile.display())).arg(format!("http://127.0.0.1:{}/{}/{}",server.port,plugin.uuid,name));}
   if !matches!(plugin.runtime,Runtime::Html(_)){process.arg("-port").arg(port.to_string()).arg("-pluginUUID").arg(&plugin.uuid).arg("-registerEvent").arg("registerPlugin").arg("-info").arg(info.to_string());}
   #[cfg(windows)] let job=Job::new()?;
-  let mut child=process.current_dir(&plugin.folder).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).creation_flags(0x08000000).spawn()?;
+  // Comme Stream Dock/Stream Deck sous Windows : un exécutable natif démarre dans son propre dossier
+  // (ex. bin/ ou plugin/), ses chemins relatifs y sont résolus ; Node et HTML restent à la racine du plugin.
+  let mut child=process.current_dir(working_dir(plugin)).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).creation_flags(0x08000000).spawn()?;
   #[cfg(windows)] if let Err(e)=job.assign(&child){let _=child.kill();let _=child.wait();return Err(e.into());}
   let (outgoing,commands)=mpsc::sync_channel::<Value>(64);let (messages,incoming)=mpsc::channel();let feedback=messages.clone();
   let stop=Arc::new(AtomicBool::new(false));let stopped=stop.clone();
@@ -273,6 +280,13 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
   let (_ws,_)=tungstenite::connect(format!("ws://127.0.0.1:{port}")).unwrap();thread::sleep(Duration::from_millis(3200));
   stop.store(true,Ordering::Relaxed);worker.join().unwrap();assert!(std::fs::read_to_string(path).unwrap().contains("no_register_timeout"));
  }
+ #[test] fn native_plugins_start_in_their_executable_folder(){
+  let d=tempfile::tempdir().unwrap();std::fs::create_dir(d.path().join("bin")).unwrap();std::fs::write(d.path().join("bin/tool.exe"),b"").unwrap();std::fs::write(d.path().join("plugin.js"),b"").unwrap();
+  let exe=crate::plugins::parse(d.path(),br#"{"UUID":"t","CodePathWin":"bin/tool.exe"}"#).unwrap();
+  assert_eq!(working_dir(&exe),d.path().join("bin"));
+  let node=crate::plugins::parse(d.path(),br#"{"UUID":"t","CodePath":"plugin.js"}"#).unwrap();
+  assert_eq!(working_dir(&node),d.path().to_path_buf());
+ }
  #[test] fn launch_contract_and_unknown_command(){
   let d=tempfile::tempdir().unwrap();let p=crate::plugins::parse(d.path(),br#"{"UUID":"test","Version":"1.0"}"#).unwrap();
   let info=launch_info(&p,&crate::plugin_runtime::Device::virtual_device());assert_eq!(info["application"]["platform"],"windows");
@@ -391,8 +405,15 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
  #[test] #[ignore="set DECKFORGE_TEST_PLUGIN_DIR and DECKFORGE_TEST_PLUGIN_ACTION; starts third-party code"]
  fn external_plugin_folder_reacts_to_key_press(){
   let var=|name:&str|std::env::var(name).unwrap_or_else(|_|panic!("set {name}"));
-  let folder=std::path::PathBuf::from(var("DECKFORGE_TEST_PLUGIN_DIR"));let action=var("DECKFORGE_TEST_PLUGIN_ACTION");
-  let plugin=crate::plugins::parse(&folder,&std::fs::read(folder.join("manifest.json")).unwrap()).unwrap();
+  let action=var("DECKFORGE_TEST_PLUGIN_ACTION");let imported=tempfile::tempdir().unwrap();
+  // DECKFORGE_TEST_PLUGIN_ARCHIVE : même chemin que le bouton d'import (.streamDeckPlugin/.zip), dans un dossier temporaire.
+  let plugin=if let Ok(archive)=std::env::var("DECKFORGE_TEST_PLUGIN_ARCHIVE"){
+   assert!(crate::plugin_import::import_archive(std::path::Path::new(&archive),imported.path()).unwrap());
+   crate::plugin_import::inventory(imported.path()).into_iter().find(|p|p.actions.iter().any(|a|a.uuid==action)).expect("imported plugin with this action")
+  }else{
+   let folder=std::path::PathBuf::from(var("DECKFORGE_TEST_PLUGIN_DIR"));
+   crate::plugins::parse(&folder,&std::fs::read(folder.join("manifest.json")).unwrap()).unwrap()
+  };
   let device=crate::plugin_runtime::Device::virtual_device();
   let host=Host::start(&plugin,&device).expect("plugin start");
   assert_eq!(host.incoming.recv_timeout(Duration::from_secs(20)).expect("no registerPlugin")["event"],"registerPlugin");

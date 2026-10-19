@@ -31,7 +31,7 @@ pub fn parse(folder:&Path,bytes:&[u8])->anyhow::Result<Plugin>{
  let v:Value=serde_json::from_slice(bytes.strip_prefix(&[239,187,191]).unwrap_or(bytes))?;
  let field=|k:&str|v[k].as_str().unwrap_or("").to_owned();
  let code={let w=field("CodePathWin");if w.trim().is_empty(){field("CodePath")}else{w}};
-    let runtime=if let Some(path)=safe(folder,&code) {match path.extension().and_then(|e|e.to_str()).unwrap_or("").to_ascii_lowercase().as_str(){"html"|"htm" if path.is_file()=>Runtime::Html(path),"js" if path.is_file()=>Runtime::Node(path),"exe" if path.is_file()=>Runtime::Exe(path),"" if path.with_extension("exe").is_file()=>Runtime::Exe(path.with_extension("exe")),_=>Runtime::Unsupported}}else{Runtime::Unsupported};
+    let runtime=if let Some(path)=safe(folder,&code) {match path.extension().and_then(|e|e.to_str()).unwrap_or("").to_ascii_lowercase().as_str(){"html"|"htm" if path.is_file()=>Runtime::Html(path),"js" if path.is_file()=>Runtime::Node(path),"exe" if path.is_file()=>Runtime::Exe(path),"" if path.with_extension("exe").is_file()=>Runtime::Exe(path.with_extension("exe")),_ if PathBuf::from(format!("{}.exe",path.display())).is_file()=>Runtime::Exe(PathBuf::from(format!("{}.exe",path.display()))),_=>Runtime::Unsupported}}else{Runtime::Unsupported};
  let prerequisite=windows_prerequisite(&v);
  let node_version=v["Nodejs"]["Version"].as_str().map(str::to_owned);
  // ApplicationsToMonitor : noms d'exécutables Windows dont le plugin attend applicationDidLaunch/Terminate.
@@ -42,6 +42,10 @@ pub fn parse(folder:&Path,bytes:&[u8])->anyhow::Result<Plugin>{
 }
 pub fn discover()->Vec<Plugin>{let mut roots=vec![];if let Some(p)=std::env::var_os("APPDATA"){roots.push(PathBuf::from(p).join("Elgato/StreamDeck/Plugins"));}if let Ok(exe)=std::env::current_exe(){if let Some(p)=exe.parent(){roots.push(p.join("plugins"));}}roots.into_iter().flat_map(|r|std::fs::read_dir(r).into_iter().flatten().flatten().take(256)).filter_map(|e|{let p=e.path();parse(&p,&std::fs::read(p.join("manifest.json")).ok()?).ok()}).collect()}
 #[cfg(test)] mod tests {use super::*;
+ #[test] fn dotted_code_path_without_exe_suffix(){let d=tempfile::tempdir().unwrap();std::fs::write(d.path().join("com.vendor.tool.exe"),b"").unwrap();
+  // Stream Deck Windows ajoute .exe à CodePath : "com.vendor.tool" désigne com.vendor.tool.exe.
+  let p=parse(d.path(),br#"{"UUID":"com.vendor.tool","CodePath":"com.vendor.tool"}"#).unwrap();
+  assert_eq!(p.runtime,Runtime::Exe(d.path().join("com.vendor.tool.exe")));}
  #[test] fn applications_to_monitor_windows_only(){let d=tempfile::tempdir().unwrap();std::fs::write(d.path().join("p.js"),b"").unwrap();
   let p=parse(d.path(),br#"{"UUID":"a.b","CodePath":"p.js","ApplicationsToMonitor":{"mac":["com.obs"],"windows":["obs64.exe",""]}}"#).unwrap();
   assert_eq!(p.applications,vec!["obs64.exe".to_string()]);
