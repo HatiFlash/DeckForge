@@ -159,10 +159,6 @@ fn run(mut plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
             if !matches!(name.as_str(),"registerPlugin"|"logMessage"|"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"getSettings"|"setGlobalSettings"|"getGlobalSettings"|"sendToPlugin"|"sendToPropertyInspector"|"switchToProfile"|"propertyInspectorDidAppear"|"propertyInspectorDidDisappear"|"openUrl") {
                 let _=reply.send(Reply::Error(plugin.clone(),format!("Evenement plugin non pris en charge : {name}")));continue;
             }
-            if matches!(name.as_str(),"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"getSettings")
-                && !current.get(value["context"].as_str().unwrap_or("")).is_some_and(|v:&Visible|v.plugin==*plugin) {
-                let _=reply.send(Reply::Error(plugin.clone(),"Contexte étranger ou absent".into()));continue;
-            }
             if let Some(id)=value["__pi"].as_str().map(str::to_owned){
                 let Some(v)=inspectors.get(&id).filter(|v|v.plugin==*plugin).cloned() else {continue};
                 if name=="propertyInspectorDidDisappear" {inspectors.remove(&id);}
@@ -179,6 +175,12 @@ fn run(mut plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
                 }
             } else if name=="sendToPropertyInspector" {
                 if let Some(ctx)=value["context"].as_str(){for (id,v) in &inspectors {if v.context==ctx && v.plugin==*plugin {let mut message=value.clone();message["__pi"]=json!(id);let _=host.send(message);}}}continue;
+            }
+            // PI messages carry a session ID, not necessarily a canonical action context.
+            // Validate that session and rewrite its context above BEFORE checking ownership.
+            if matches!(name.as_str(),"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"getSettings")
+                && !current.get(value["context"].as_str().unwrap_or("")).is_some_and(|v:&Visible|v.plugin==*plugin) {
+                let _=reply.send(Reply::Error(plugin.clone(),"Contexte étranger ou absent".into()));continue;
             }
             if name=="switchToProfile" {let _=reply.send(Reply::Error(plugin.clone(),"switchToProfile non pris en charge : profil non vérifié".into()));continue;}
             let _=reply.send(Reply::Message(plugin.clone(),value));

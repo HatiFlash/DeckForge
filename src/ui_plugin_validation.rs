@@ -428,3 +428,65 @@ fn validation_bench_never_runs_default_macros_or_media_keys() {
         assert!(keys.iter().all(|k| k.steps.is_empty() && k.long_steps.is_empty()));
     }
 }
+
+/// Opt-in, interactive VM only. The locally bundled Elgato SDK example uses a local PI script.
+/// Never press the action: its keyDown would open a website. A separate bench task selects a
+/// product in the visible WebView2 window, then the real App must save the setting to disk.
+#[cfg(windows)]
+#[cfg(test)]
+#[test]
+#[ignore = "requires audited local Elgato data-sources sample, VM interactive desktop and UI click"]
+fn real_property_inspector_setting_persists_in_virtual_app() {
+    let folder=std::path::PathBuf::from(std::env::var("DECKFORGE_TEST_PI_FOLDER").expect("local SDK sample path"));
+    let plugin=crate::plugins::parse(&folder,&std::fs::read(folder.join("manifest.json")).unwrap()).unwrap();
+    let action=plugin.actions.iter().find(|a|a.inspector.is_some()).unwrap();
+    let dir=tempfile::tempdir().unwrap();let path=dir.path().join("config.json");
+    let mut app=App::init_with(&egui::Context::default(),Some(path.clone()),false);
+    without_local_actions(&mut app.config);
+    let (tx,rx)=mpsc::channel();app.events=rx;
+    app.config.keys_mut()[0].plugin=Some(PluginBinding{plugin:plugin.uuid.clone(),action:action.uuid.clone(),settings:json!({}),state:0});
+    app.applied=app.config.clone();crate::store::save(&path,&app.config).unwrap();
+    app.gate.enabled=true;app.gate.connected=true;let revision=app.gate.request_apply();assert!(app.gate.applied(revision));
+    app.plugin_external_effects=Some(Vec::new());
+    app.plugins=Some(Manager::new(vec![plugin.clone()]));app.plugins.as_mut().unwrap().sync(&app.applied);
+    std::thread::sleep(Duration::from_millis(700));
+    app.plugins.as_ref().unwrap().open_inspector(0);
+    let until=Instant::now()+Duration::from_secs(25);let mut saved=false;
+    while Instant::now()<until {
+        app.plugin_events();
+        let live=app.config.keys()[0].plugin.as_ref().unwrap().settings["product"].as_str().unwrap_or("");
+        if live.starts_with("https://www.elgato.com/uk/en/p/stream-deck") {
+            let restored=crate::store::load(&path).unwrap();
+            assert_eq!(restored.keys()[0].plugin.as_ref().unwrap().settings,app.config.keys()[0].plugin.as_ref().unwrap().settings);
+            saved=true;break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(saved,"WebView2 PI did not persist its selected product through App (errors {:?})",app.plugin_errors);
+    assert!(app.plugin_external_effects.as_ref().unwrap().is_empty(),"No external URL should open without pressing the action");
+    let product=app.config.keys()[0].plugin.as_ref().unwrap().settings["product"].as_str().unwrap().to_owned();
+    // Simulated FIFINE D6 press: same Event::Key path as the HID reader. openUrl is recorded,
+    // never launched, so no website is contacted.
+    let expect_url=|app:&mut App,tx:&Sender<Event>,phase:&str|{
+        let now=Instant::now();tx.send(Event::Key(0,now)).unwrap();tx.send(Event::KeyRelease(0,now)).unwrap();app.events();
+        let until=Instant::now()+Duration::from_secs(10);
+        while Instant::now()<until {
+            app.plugin_events();
+            if app.plugin_external_effects.as_ref().unwrap().iter().any(|e|e==&format!("openUrl: {product}")) {return;}
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        panic!("{phase}: simulated key press did not reach the PI-chosen product (effects {:?}, errors {:?})",app.plugin_external_effects,app.plugin_errors);
+    };
+    expect_url(&mut app,&tx,"same session");
+    drop(app);
+    // Relaunch from disk: the PI setting must survive and drive the action again.
+    let mut app=App::init_with(&egui::Context::default(),Some(path.clone()),false);
+    without_local_actions(&mut app.config);
+    let (tx,rx)=mpsc::channel();app.events=rx;
+    app.gate.enabled=true;app.gate.connected=true;let revision=app.gate.request_apply();assert!(app.gate.applied(revision));
+    assert_eq!(app.config.keys()[0].plugin.as_ref().unwrap().settings["product"],json!(product));
+    app.plugin_external_effects=Some(Vec::new());
+    app.plugins=Some(Manager::new(vec![plugin.clone()]));app.plugins.as_mut().unwrap().sync(&app.applied);
+    std::thread::sleep(Duration::from_millis(700));
+    expect_url(&mut app,&tx,"after relaunch");
+}

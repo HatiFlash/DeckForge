@@ -16,10 +16,22 @@ DeckForge peut importer des archives de plugins Stream Deck/OpenAction et héber
 
 **Banc Windows virtuel (19 octobre 2026) :** cinq plugins tiers s'enregistrent et réagissent à un appui simulé : trois exemples officiels Elgato en Node.js (SDK `@elgato/streamdeck` v2 : counter, hello-world, lights-out) et deux plugins natifs OpenAction (Counter, System). Le compteur Elgato et OpenAction Counter retrouvent leur valeur après un redémarrage du plugin et une relecture de la configuration. Un plugin importé depuis le magasin est maintenant utilisable **sans relancer DeckForge**. Avec les plugins réellement installés chez l'utilisateur, **Windows Gizmos fonctionne** désormais (cause trouvée : dossier de travail des plugins natifs), Bitwarden, Govee, VolumeController et Switch Audio réagissent, Discord et Streamlabs s'enregistrent ; des archives open source anciennes (séparateurs Windows) s'importent. Détails et limites : [matrice de compatibilité](docs/PLUGINS-COMPATIBILITE.md).
 
-**Limites :** ces essais sont simulés, sans D6 ; seul OpenAction Counter a été confirmé sur la touche physique. Cela ne garantit pas la compatibilité de tous les plugins ; Gizmos est corrigé sur le banc mais reste à confirmer sur le D6 ; les molettes (`Encoder`) ne sont pas simulées. Les Property Inspectors HTML tiers ne sont pas qualifiés comme sûrs ; l'exécution HTML non fiable reste refusée. Ne pas ouvrir d'interface HTML inconnue avant validation de son confinement. Voir [les preuves, modes d'essai et limites](docs/PLUGINS-COMPATIBILITE.md) et [l'architecture](docs/PLUGINS-ARCHITECTURE.md).
+**Confinement strict des Property Inspectors HTML et isolation WebView2 :**
+- Les fenêtres de réglages HTML (Property Inspectors) s'exécutent désormais dans un sous-processus WebView2 isolé sans privilèges (`--isolated-inspector`), protégé par un proxy loopback HTTP/CONNECT strict interdisant tout accès externe non autorisé.
+- Blocage vérifié par batterie de tests négatifs : popups (`window.open`), navigation (`location.assign`), `fetch`, balises `<img>` et styles CSS externes distants sont systématiquement rejetés (HTTP 403 Forbidden).
+- Bibliothèque officielle `sdpi-components` (v3 et v4, MIT) intégrée localement pour un fonctionnement 100% hors-ligne sans dépendance CDN externe. Accès ciblé jsDelivr autorisé pour BarRaider EasyPI.
+- Persistance validée de bout en bout : la sélection d'un réglage dans l'interface HTML est enregistrée sur disque et restituée au plugin.
 
-Dernier build Windows vérifié (banc MSVC, 19 octobre 2026) : **307 tests applicatifs réussis**, 6 ignorés (essais de plugins tiers opt-in, lancés séparément et réussis), **9 tests MCP réussis**, transports MCP stdio et HTTP réussis. Cette publication du code source n'est pas une distribution binaire ni une certification de compatibilité générale.
+| Property Inspector Elgato (sdpi-components) | Réglages VolumeController (BarRaider) |
+| :---: | :---: |
+| ![PI Elgato Product](docs/pi-product.png) | ![PI VolumeController](docs/pi-volume.png) |
+| **SignalRGB (EasyPI + variables de thème)** | **Elgato Counter** |
+| ![PI SignalRGB](docs/pi-signalrgb.png) | ![PI Counter](docs/pi-counter.png) |
 
+**Support des plugins backend HTML purs (`Runtime::Html`) :**
+- Les plugins dont le moteur backend est une page HTML (Tutorial Elgato, Shiro YTMD, TikTok LiveStudio, etc.) s'exécutent en arrière-plan dans une instance WebView2 masquée isolée, avec jeton d'authentification unique éphémère (`registerPlugin`).
+
+**Validation et banc Windows :** **317 tests applicatifs réussis**, 11 ignorés (tests interactifs/matériels réservés au banc), **9 tests MCP réussis**, transports MCP stdio et HTTP validés. Suite de tests unitaires plugins (67 tests) et banc de régression 100% au vert.
 ## Périphériques pris en charge
 
 - Vérifié sur matériel : FIFINE AmpliGame D6 (15 touches).

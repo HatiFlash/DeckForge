@@ -32,6 +32,8 @@ mod plugins;
 #[allow(dead_code)]
 mod plugin_host;
 mod plugin_http;
+mod plugin_inspector;
+mod plugin_inspector_proxy;
 mod plugin_runtime;
 mod plugin_validation;
 #[cfg(test)]
@@ -83,6 +85,12 @@ pub enum Event {
 }
 
 fn main() -> eframe::Result<()> {
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--isolated-inspector")) {
+        if let Err(e) = plugin_inspector::run() {
+            eprintln!("isolated inspector failed: {e:#}");
+        }
+        return Ok(());
+    }
     if std::env::args().any(|a| a == "--audio-roundtrip") {
         if let Some(p) = std::env::args()
             .skip_while(|a| a != "--audio-roundtrip")

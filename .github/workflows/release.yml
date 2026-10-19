@@ -1,0 +1,44 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build native executables
+        run: cargo build --release --locked
+      - name: Rust and headless MCP tests
+        timeout-minutes: 20
+        env:
+          DECKFORGE_MCP_EXE: ${{ github.workspace }}\target\release\deckforge-mcp.exe
+        run: cargo test --locked
+      - name: Package
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $name = "DeckForge-$version"
+          New-Item -ItemType Directory -Force dist/$name/docs | Out-Null
+          Copy-Item target/release/deckforge.exe, target/release/deckforge-mcp.exe, LICENSE, THIRD-PARTY-NOTICES.txt, README.md dist/$name/
+          Copy-Item docs/MCP.md, docs/PLUGINS-COMPATIBILITE.md dist/$name/docs/
+          Compress-Archive -Path dist/$name/* -DestinationPath dist/$name-Windows.zip
+          git archive --format=zip --prefix="$name/" -o dist/$name-source.zip HEAD
+          $hashes = [ordered]@{}
+          foreach ($f in Get-ChildItem dist -Filter *.zip) { $hashes[$f.Name] = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower() }
+          $hashes | ConvertTo-Json | Set-Content -Encoding utf8 dist/$name-sha256.json
+          "VERSION=$version" >> $env:GITHUB_ENV
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = "docs/RELEASE-$env:VERSION.md"
+          if (-not (Test-Path $notes)) { $notes = "README.md" }
+          gh release create "${{ github.ref_name }}" (Get-ChildItem dist -File).FullName --title "DeckForge $env:VERSION" --notes-file $notes --verify-tag
