@@ -2311,6 +2311,17 @@ impl App {
             }
         }
     }
+    fn open_crop_editor(&mut self, profile: usize, page: String, index: usize, path: std::path::PathBuf, size: u32) {
+        let assets = self.path.parent().unwrap().join("assets/mes-icones");
+        match crate::ui_media_crop::CropSession::open(path, profile, page, index, size, assets) {
+            Ok(session) => {
+                self.crop_session = Some(session);
+            }
+            Err(e) => {
+                self.fail(format!("Impossible d'ouvrir le média pour recadrage : {e}"));
+            }
+        }
+    }
     fn import_binds(&mut self) {
         self.gate.enabled = false;
         self.engine.stop();
@@ -3030,6 +3041,13 @@ impl App {
                             std::thread::spawn(move || {
                                 let path=rfd::FileDialog::new().add_filter("Image ou vidéo", &["png","jpg","jpeg","svg","gif","mp4","webm","mov","mkv","avi"]).pick_file();
                                 if let Some(path) = path {
+                                    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
+                                    if ext != "svg" {
+                                        let _ = tx.send(Some(Box::new(move |app: &mut App| {
+                                            app.open_crop_editor(profile, page, index, path, size);
+                                        }) as DialogEffect));
+                                        return;
+                                    }
                                     let video = crate::assets::is_video(&path);
                                     let src = path.clone(); let assets_dir = assets.clone();
                                     if video { let _ = tx.send(Some(Box::new(|app: &mut App| app.log("Conversion de la vidéo…".into())) as DialogEffect)); }
@@ -3651,6 +3669,34 @@ impl App {
                 self.import_reports.clear();
             }
         }
+        if let Some(mut session) = self.crop_session.take() {
+            let mut open = true;
+            let result = session.ui(ctx, &mut open);
+            if let Some(res) = result {
+                match res {
+                    Ok(saved_path) => {
+                        let profile = session.profile;
+                        let page = session.page.clone();
+                        let index = session.index;
+                        let is_vid = session.is_video;
+                        if let Some(key) = self.config.profiles.get_mut(profile).and_then(|p| p.keys_at_mut(&page)).and_then(|keys| keys.get_mut(index)) {
+                            key.image = saved_path.to_string_lossy().into_owned();
+                            self.edited();
+                            if is_vid {
+                                self.log("Vidéo recadrée et convertie en GIF animé pour la touche D6.".into());
+                            } else {
+                                self.log("Image recadrée et appliquée à la touche D6.".into());
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        self.fail(format!("Erreur de recadrage : {e}"));
+                    }
+                }
+            } else if open {
+                self.crop_session = Some(session);
+            }
+        }
         if self.save_bind {
             let mut open = true;
             let mut save = false;
@@ -4059,6 +4105,7 @@ impl App {
             || self.delete_page.is_some()
             || self.recording.is_some()
             || !self.import_reports.is_empty()
+            || self.crop_session.is_some()
             || self.settings
             || self.show_hardware_test
             || self.show_device_report

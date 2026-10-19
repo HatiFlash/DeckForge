@@ -23,6 +23,7 @@ fn safe(name: &str) -> bool {
         && !name.contains('\\')
         && !name.split('/').any(|p| p == "..")
 }
+#[allow(dead_code)]
 pub fn load(path: &Path) -> Result<Report> {
     let reports = load_all(path)?;
     reports

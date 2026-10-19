@@ -43,6 +43,7 @@ pub fn list_backups(path: &Path) -> Vec<PathBuf> {
     backups
 }
 
+#[allow(dead_code)]
 pub fn restore_backup(target_path: &Path, backup_path: &Path) -> Result<Config> {
     let config = load_one(backup_path)?;
     save(target_path, &config)?;
