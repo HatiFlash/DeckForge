@@ -61,9 +61,8 @@ pub fn compatibility(plugin:&Plugin)->crate::plugin_catalog::Compatibility {
  match plugin.runtime {
   Runtime::Protected=>Compatibility::Protected,
   Runtime::Unsupported=>Compatibility::Unsupported,
-  Runtime::Html(_)=>Compatibility::Partial,
-  // Static analysis only: the host can start both; real behaviour is never implied.
-  Runtime::Node(_)|Runtime::Exe(_)=>Compatibility::Compatible,
+  // Static analysis only: the host can start all three in isolated processes; real behaviour is never implied.
+  Runtime::Node(_)|Runtime::Exe(_)|Runtime::Html(_)=>Compatibility::Compatible,
  }
 }
 pub fn category(plugin:&Plugin)->Category {
@@ -141,6 +140,7 @@ pub fn action_name(plugin:&Plugin,action:&crate::plugins::Action)->String{for la
  for (root,code,expected) in [(&fifine,"",Category::BuiltIn),(&external,"",Category::NonExecutable),(&external,"SignalRGB-Deck",Category::Available),(&external,"page.html",Category::Available),(&external,"main.js",Category::Available)] {
  let folder=root.join(format!("plugin-{code}"));fs::create_dir_all(&folder).unwrap();if !code.is_empty(){fs::write(folder.join(if code=="SignalRGB-Deck"{"SignalRGB-Deck.exe"}else{code}),b"x").unwrap();}
  let p=plugins::parse(&folder,format!(r#"{{"UUID":"x","CodePath":"{code}"}}"#).as_bytes()).unwrap();assert_eq!(category(&p),expected,"{code}");
+ if code=="page.html" {assert!(matches!(compatibility(&p),crate::plugin_catalog::Compatibility::Compatible));}
  }
  }
 }

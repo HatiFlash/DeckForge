@@ -71,7 +71,7 @@ DeckForge peut importer des archives de plugins Stream Deck/OpenAction et héber
 - **Conversion** des anciens binds `FocusAudio.exe` en blocs natifs (Réglages → À propos), avec sauvegarde.
 
 ### Plugins Stream Deck / FIFINE
-- Magasin et hôte de plugins introduits dans la 0.5.0 (exe, Node.js, HTML expérimental), page de réglages du plugin, image et titre en direct sur la touche. Les fonctions déjà natives sont proposées en priorité. **État 0.7.0 :** l’exécution HTML non fiable est refusée et les Property Inspectors tiers restent à sécuriser ; voir la section ci-dessus.
+- Magasin et hôte de plugins introduits dans la 0.5.0 (exe, Node.js, HTML), page de réglages du plugin, image et titre en direct sur la touche. Les fonctions déjà natives sont proposées en priorité. **État 0.7.0 :** Property Inspectors HTML et moteurs `Runtime::Html` confinés dans un sous-processus WebView2 isolé (`--isolated-inspector`) avec répertoires `WebContext` séparés et proxy loopback local ; voir la section ci-dessus.
 
 ![Magasin de plugins](docs/plugins-store.png)
 

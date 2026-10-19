@@ -69,7 +69,7 @@ fn opened_within_root(root:&Path,file:&fs::File)->bool{
     root.canonicalize().is_ok_and(|r|path.starts_with(r))
 }
 fn mime(path:&Path)->&'static str {match path.extension().and_then(|s|s.to_str()).unwrap_or("").to_ascii_lowercase().as_str(){
-    "html"|"htm"=>"text/html; charset=utf-8", "js"|"mjs"=>"text/javascript; charset=utf-8", "css"=>"text/css; charset=utf-8", "svg"=>"image/svg+xml", "png"=>"image/png", "jpg"|"jpeg"=>"image/jpeg", "json"=>"application/json", "woff"=>"font/woff", "woff2"=>"font/woff2", _=>"application/octet-stream"}}
+    "html"|"htm"=>"text/html; charset=utf-8", "js"|"mjs"=>"text/javascript; charset=utf-8", "css"=>"text/css; charset=utf-8", "svg"=>"image/svg+xml", "png"=>"image/png", "jpg"|"jpeg"=>"image/jpeg", "gif"=>"image/gif", "webp"=>"image/webp", "ico"=>"image/x-icon", "webm"=>"video/webm", "mp4"=>"video/mp4", "mp3"=>"audio/mpeg", "wav"=>"audio/wav", "ogg"=>"audio/ogg", "json"=>"application/json", "woff"=>"font/woff", "woff2"=>"font/woff2", "ttf"=>"font/ttf", "otf"=>"font/otf", _=>"application/octet-stream"}}
 fn response(root:&Path,uuid:&str,port:u16,info:&str,inspectors:&Inspectors,request:&str)->(&'static str,&'static str,Vec<u8>){
     let Some(path)=safe_file(root,request,uuid) else {return ("404 Not Found","text/plain",b"Not found".to_vec())};
     let content_type=mime(&path);
@@ -99,8 +99,8 @@ fn response(root:&Path,uuid:&str,port:u16,info:&str,inspectors:&Inspectors,reque
             info=serde_json::to_string(info).unwrap_or_default())
     } else {
         let pi_id=serde_json::to_string(&pi_id).unwrap_or_default();
-        format!(r#"<script>window.addEventListener('load',function(){{var f=window.connectElgatoStreamDeckSocket||window.connectElgatoSdkSocket||window.connectSocket;if(typeof f==='function')f({port},{pi_id},'registerPropertyInspector',{info},{data});}});</script>{PI_THEME}"#,
-            info=serde_json::to_string(info).unwrap_or_default())
+        format!(r#"<script>window.addEventListener('load',function(){{var f=window.connectElgatoStreamDeckSocket||window.connectElgatoSdkSocket||window.connectSocket;if(typeof f==='function')f({port},{pi_id},'registerPropertyInspector',{info},{data});if(!f||(f.length===0&&String(f).replace(/\s+/g,'').slice(-2)==='{{}}')){{var ws=new WebSocket('ws://127.0.0.1:{port}');ws.onopen=function(){{ws.send(JSON.stringify({{event:'registerPropertyInspector',uuid:{pi_id}}}));}};}}}});</script>{PI_THEME}"#,
+            info=serde_json::to_string(&info).unwrap_or_default())
     };
     if let Some(i)=html.to_ascii_lowercase().rfind("</body>"){html.insert_str(i,&script);}else{html.push_str(&script);}
     if diag_enabled() {
@@ -161,7 +161,7 @@ fn serve(mut stream:TcpStream,root:&Path,uuid:&str,port:u16,info:&str,inspectors
     let runtime=target.split_once("?pi=").map(|(_,id)|id).filter(|id|id.len()==32)
         .is_some_and(|id|inspectors.lock().ok().is_some_and(|r|r.get(id).is_some_and(|v|v==RUNTIME_SESSION)));
     let csp=if runtime {"default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: http: https: ws: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'".to_owned()}
-        else {format!("default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; frame-src 'none'; connect-src 'self' ws://127.0.0.1:{port} ws://localhost:{port}; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/gh/barraider/ https://cdn.jsdelivr.net/gh/BarRaider/; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/gh/barraider/ https://cdn.jsdelivr.net/gh/BarRaider/; img-src 'self' data: https://cdn.jsdelivr.net/gh/barraider/ https://cdn.jsdelivr.net/gh/BarRaider/; font-src 'self' data:; worker-src 'none'; manifest-src 'none'")};
+        else {format!("default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'; frame-src 'none'; connect-src 'self' ws://127.0.0.1:{port} ws://localhost:{port}; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/gh/barraider/ https://cdn.jsdelivr.net/gh/BarRaider/; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net/gh/barraider/ https://cdn.jsdelivr.net/gh/BarRaider/; img-src 'self' data: https://cdn.jsdelivr.net/gh/barraider/ https://cdn.jsdelivr.net/gh/BarRaider/; media-src 'self' data: blob:; font-src 'self' data:; worker-src 'none'; manifest-src 'none'")};
     let header=format!("HTTP/1.1 {status}\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nContent-Security-Policy: {csp}\r\nX-Content-Type-Options: nosniff\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",body.len());
     let _=stream.write_all(header.as_bytes());let _=stream.write_all(&body);
 }
@@ -194,12 +194,13 @@ impl Drop for HtmlServer {fn drop(&mut self){self.stop.store(true,Ordering::Rela
  }
 }
 #[test] fn listener_sets_deny_csp_and_no_cors(){
- let tmp=tempfile::tempdir().unwrap();fs::write(tmp.path().join("pi.html"),"<body>x</body>").unwrap();
+ let tmp=tempfile::tempdir().unwrap();fs::write(tmp.path().join("pi.html"),"<body>x</body>").unwrap();fs::write(tmp.path().join("v.webm"),b"w").unwrap();
  let server=HtmlServer::start(tmp.path().to_owned(),"p".into(),"{}".into(),123).unwrap();
+ assert_eq!(response(tmp.path(),"p",123,"{}",&server.inspectors,"/p/v.webm").1,"video/webm");
  let mut s=TcpStream::connect(("127.0.0.1",server.port)).unwrap();
  s.write_all(b"GET /p/pi.html HTTP/1.1\r\nHost: localhost\r\n\r\n").unwrap();
  let mut out=String::new();s.read_to_string(&mut out).unwrap();
- assert!(out.contains("Content-Security-Policy: default-src 'none'"));assert!(out.contains("connect-src 'self' ws://127.0.0.1:123 ws://localhost:123"));assert!(!out.replace("https://cdn.jsdelivr.net/gh/barraider/","").replace("https://cdn.jsdelivr.net/gh/BarRaider/","").contains("https:"));
+ assert!(out.contains("Content-Security-Policy: default-src 'none'"));assert!(out.contains("media-src 'self' data: blob:"));assert!(out.contains("connect-src 'self' ws://127.0.0.1:123 ws://localhost:123"));assert!(!out.replace("https://cdn.jsdelivr.net/gh/barraider/","").replace("https://cdn.jsdelivr.net/gh/BarRaider/","").contains("https:"));
  assert!(!out.contains("Access-Control-Allow-Origin"));
 }
  #[test] fn known_cdn_component_library_is_served_locally_and_colors_are_supplied(){

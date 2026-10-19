@@ -104,9 +104,14 @@ pub fn run() -> anyhow::Result<()> {
         .with_inner_size(tao::dpi::LogicalSize::new(900.0, 650.0)).build(&event_loop)?;
     let expected = url.clone();
     let proxy=if runtime {None} else {Some(crate::plugin_inspector_proxy::LocalProxy::start(&url,ws_port)?)};
+    // Each isolated WebView2 process gets its own user-data directory so multiple instances
+    // (e.g. a hidden HTML plugin runtime + an open PI with its own proxy) never collide on
+    // CoreWebView2EnvironmentOptions.
+    let data_dir=tempfile::Builder::new().prefix("deckforge-wv2-").tempdir()?;
+    let mut web_context=wry::WebContext::new(Some(data_dir.path().to_path_buf()));
     // Build a blank view: no untrusted script runs before the native WebResourceRequested
     // filter is in place. A navigation handler alone can fire AFTER a network connection.
-    let builder = WebViewBuilder::new()
+    let builder = WebViewBuilder::new_with_web_context(&mut web_context)
         .with_incognito(true)
         .with_navigation_handler(move |target| target == expected)
         .with_new_window_req_handler(|_, _| NewWindowResponse::Deny)
@@ -149,6 +154,7 @@ pub fn run() -> anyhow::Result<()> {
     // Never print the URL or session key, including on error.
     println!("INSPECTOR_WEBVIEW_READY pid={}", std::process::id());
     event_loop.run(move |event, _, flow| {
+        let _ = (&data_dir, &proxy);
         *flow = ControlFlow::Wait;
         if let Event::WindowEvent { event: WindowEvent::CloseRequested, .. } = event {
             *flow = ControlFlow::Exit;

@@ -492,6 +492,9 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
   plugin.send(tungstenite::Message::Text(json!({"event":"sendToPropertyInspector","context":"ctx","payload":{"ok":true}}).to_string().into())).unwrap();
   let mut from_plugin=rx.recv_timeout(Duration::from_secs(3)).unwrap();assert_eq!(from_plugin["event"],"sendToPropertyInspector");from_plugin["__pi"]=json!(id);tx.send(from_plugin).unwrap();
   assert_eq!(serde_json::from_str::<Value>(&pi.read().unwrap().to_string()).unwrap()["payload"]["ok"],true);
+  pi.send(tungstenite::Message::Text(json!({"event":"setGlobalSettings","context":id,"payload":{"theme":"dark"}}).to_string().into())).unwrap();
+  let gmsg=rx.recv_timeout(Duration::from_secs(3)).unwrap();
+  assert_eq!(gmsg["event"],"setGlobalSettings");assert_eq!(gmsg["__pi"],id);
   stop.store(true,Ordering::Relaxed);worker.join().unwrap();
  }
  #[cfg(windows)] #[test] #[ignore="requires explicit offline SDK sample and interactive Windows session"]

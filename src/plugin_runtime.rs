@@ -139,7 +139,11 @@ fn run(mut plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
                 }
             }}}
             Ok(Request::Key(context,down))=>{if let Some(v)=current.get(&context){if let Some(host)=hosts.get(&v.plugin){let _=host.send(event(if down{"keyDown"}else{"keyUp"},v,&device));}}}
-            Ok(Request::Send(plugin,value))=>{if let Some(host)=hosts.get(&plugin){let _=host.send(value);}}
+            Ok(Request::Send(plugin,value))=>{if let Some(host)=hosts.get(&plugin){
+                if value["__pi"].as_str()==Some("*") {
+                    for (id,v) in &inspectors {if v.plugin==plugin {let mut m=value.clone();m["__pi"]=json!(id);let _=host.send(m);}}
+                } else { let _=host.send(value); }
+            }}
             Ok(Request::Catalog(next))=>{
                 plugins=next;
                 // Une touche liée avant l'import démarre maintenant, avec son willAppear.
