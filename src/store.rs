@@ -1,6 +1,13 @@
 use crate::model::Config;
 use anyhow::{Context, Result};
-use std::{fs, io::Write, path::Path};
+use std::{
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+const MAX_BACKUPS: usize = 5;
 
 fn load_one(path: &Path) -> Result<Config> {
     let data = fs::read(path).context("Lecture de la configuration impossible")?;
@@ -12,21 +19,95 @@ fn load_one(path: &Path) -> Result<Config> {
     }
     Ok(c)
 }
+
+pub fn list_backups(path: &Path) -> Vec<PathBuf> {
+    let Some(parent) = path.parent() else {
+        return Vec::new();
+    };
+    let backup_dir = parent.join("backups");
+    let Ok(entries) = fs::read_dir(backup_dir) else {
+        return Vec::new();
+    };
+    let mut backups = Vec::new();
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.is_file() {
+            if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+                if name.starts_with("config-") && name.ends_with(".bak") {
+                    backups.push(p);
+                }
+            }
+        }
+    }
+    backups.sort();
+    backups
+}
+
+pub fn restore_backup(target_path: &Path, backup_path: &Path) -> Result<Config> {
+    let config = load_one(backup_path)?;
+    save(target_path, &config)?;
+    Ok(config)
+}
+
 pub fn load(path: &Path) -> Result<Config> {
     match load_one(path) {
         Ok(config) => Ok(config),
         Err(error) if path.extension().is_some_and(|e| e == "json") => {
             let backup = path.with_extension("json.bak");
-            let config = load_one(&backup).with_context(|| format!("{error}; sauvegarde {} inutilisable", backup.display()))?;
-            let message = format!("DeckForge : configuration illisible ({error}); sauvegarde {} restaurée en mémoire (fichier original conservé)\n", backup.display());
-            eprintln!("{message}");
-            let _ = fs::OpenOptions::new().create(true).append(true).open(path.with_file_name("deckforge-error.log"))
-                .and_then(|mut file| file.write_all(message.as_bytes()));
-            Ok(config)
+            let backup_res = load_one(&backup);
+            if let Ok(config) = backup_res {
+                let message = format!(
+                    "DeckForge : configuration illisible ({error}); sauvegarde {} restaurée en mémoire (fichier original conservé)\n",
+                    backup.display()
+                );
+                eprintln!("{message}");
+                let _ = fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path.with_file_name("deckforge-error.log"))
+                    .and_then(|mut file| file.write_all(message.as_bytes()));
+                return Ok(config);
+            }
+            for b in list_backups(path).into_iter().rev() {
+                if let Ok(config) = load_one(&b) {
+                    let message = format!(
+                        "DeckForge : configuration illisible ({error}); point de restauration {} utilisé en mémoire\n",
+                        b.display()
+                    );
+                    eprintln!("{message}");
+                    return Ok(config);
+                }
+            }
+            Err(error).with_context(|| {
+                format!(
+                    "Configuration invalide et aucune sauvegarde fonctionnelle trouvée pour {}",
+                    path.display()
+                )
+            })
         }
         Err(error) => Err(error),
     }
 }
+
+fn rotate_backups(backup_dir: &Path, path: &Path, content: &[u8]) -> Result<()> {
+    fs::create_dir_all(backup_dir)?;
+    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    let new_backup = backup_dir.join(format!("config-{now}.bak"));
+    let mut tmp = tempfile::NamedTempFile::new_in(backup_dir)?;
+    tmp.write_all(content)?;
+    tmp.as_file().sync_all()?;
+    tmp.persist(&new_backup).map_err(|e| e.error)?;
+
+    let mut existing = list_backups(path);
+    if existing.len() > MAX_BACKUPS {
+        let to_remove = existing.len() - MAX_BACKUPS;
+        for p in existing.drain(..to_remove) {
+            let _ = fs::remove_file(p);
+        }
+    }
+    Ok(())
+}
+
 pub fn save(path: &Path, c: &Config) -> Result<()> {
     c.validate_structure()?;
     let parent = path.parent().context("Dossier de configuration invalide")?;
@@ -39,18 +120,24 @@ pub fn save(path: &Path, c: &Config) -> Result<()> {
     if path.exists() {
         // Ne jamais remplacer une sauvegarde saine par un fichier source corrompu.
         if load_one(path).is_ok() {
+            let existing_data = fs::read(path)?;
             let mut backup = tempfile::NamedTempFile::new_in(parent)?;
-            backup.write_all(&fs::read(path)?)?;
+            backup.write_all(&existing_data)?;
             backup.as_file().sync_all()?;
-            backup.persist(path.with_extension("json.bak")).map_err(|e| e.error)?;
+            backup
+                .persist(path.with_extension("json.bak"))
+                .map_err(|e| e.error)?;
+            let _ = rotate_backups(&parent.join("backups"), path, &existing_data);
         }
     }
     tmp.persist(path).map_err(|e| e.error)?;
     Ok(())
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn old_keys_keep_their_background_and_no_fill_preserves_the_saved_color() {
         let dir = tempfile::tempdir().unwrap();
@@ -70,6 +157,7 @@ mod tests {
         assert_eq!(saved.keys()[1].color, original);
         assert!(saved.keys()[0].background);
     }
+
     #[test]
     fn old_configuration_migrates_without_losing_keys_or_images() {
         let mut old = serde_json::to_value(Config::default()).unwrap();
@@ -90,6 +178,7 @@ mod tests {
         save(&path, &c).unwrap();
         assert_eq!(fs::read(path.with_extension("json.bak")).unwrap(), original);
     }
+
     #[test]
     fn save_replaces_and_preserves_backup() {
         let dir = tempfile::tempdir().unwrap();
@@ -104,6 +193,7 @@ mod tests {
             70
         );
     }
+
     #[test]
     fn corrupted_main_recovers_backup_and_never_overwrites_it() {
         let dir = tempfile::tempdir().unwrap();
@@ -120,6 +210,7 @@ mod tests {
         assert_eq!(fs::read(&backup).unwrap(), original_backup);
         assert_eq!(load(&path).unwrap().brightness, 42);
     }
+
     #[test]
     fn invalid_save_leaves_good_config_untouched() {
         let dir = tempfile::tempdir().unwrap();
@@ -129,5 +220,22 @@ mod tests {
         c.active = 999;
         assert!(save(&path, &c).is_err());
         assert_eq!(load(&path).unwrap().active, 0);
+    }
+
+    #[test]
+    fn rotates_and_restores_timestamped_backups() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let mut c = Config::default();
+        save(&path, &c).unwrap();
+        for b in 1..=7 {
+            c.brightness = b * 10;
+            save(&path, &c).unwrap();
+        }
+        let backups = list_backups(&path);
+        assert!(backups.len() <= MAX_BACKUPS);
+        assert!(!backups.is_empty());
+        let restored = restore_backup(&path, &backups[0]).unwrap();
+        assert_eq!(load(&path).unwrap().brightness, restored.brightness);
     }
 }

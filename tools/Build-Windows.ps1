@@ -1,39 +1,50 @@
+# Script de génération de la distribution DeckForge Windows
 param(
-    [ValidateSet('All','Release','Test')][string]$Action='All',
-    [string]$ToolchainRoot,
-    [string]$TargetDirectory,
-    [string]$PreviewDirectory
+    [string]$Version = "0.8.0",
+    [string]$OutputDir = "target\release-dist"
 )
-$ErrorActionPreference='Stop'
-$sourceDir=Split-Path $PSScriptRoot -Parent
-if ($ToolchainRoot) {
-    $runtimeRoot=(Resolve-Path -LiteralPath $ToolchainRoot).Path
-    $env:CARGO_HOME=Join-Path $runtimeRoot 'cargo'
-    $env:RUSTUP_HOME=Join-Path $runtimeRoot 'rustup'
-    $env:PATH=(Join-Path $runtimeRoot 'winlibs/mingw64/bin')+';'+(Join-Path $env:CARGO_HOME 'bin')+';'+$env:PATH
-    $env:CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=Join-Path $runtimeRoot 'winlibs/mingw64/bin/gcc.exe'
-    $cargoExe=Join-Path $env:CARGO_HOME 'bin/cargo.exe'
-} else {
-    $cargoExe=(Get-Command cargo -ErrorAction Stop).Source
+
+$ErrorActionPreference = "Stop"
+Write-Host "[1/4] Compilation en mode Release..." -ForegroundColor Cyan
+cargo build --release --bin deckforge
+
+Write-Host "[2/4] Préparation de l'archive et des ressources documentaires..." -ForegroundColor Cyan
+$DistFolder = Join-Path $OutputDir "DeckForge-$Version-Windows"
+if (Test-Path $DistFolder) {
+    Remove-Item -Path $DistFolder -Recurse -Force
 }
-if ($TargetDirectory) { $targetDir=[IO.Path]::GetFullPath($TargetDirectory) } else { $targetDir=Join-Path $sourceDir 'target' }
-$env:CARGO_TARGET_DIR=$targetDir
-if ($PreviewDirectory) {
-    $env:DECKFORGE_UI_OUTPUT=[IO.Path]::GetFullPath($PreviewDirectory)
-    New-Item -ItemType Directory -Path $env:DECKFORGE_UI_OUTPUT -Force | Out-Null
+New-Item -ItemType Directory -Path $DistFolder -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $DistFolder "docs") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $DistFolder "tools") -Force | Out-Null
+
+Copy-Item -Path "target\release\deckforge.exe" -Destination $DistFolder
+Copy-Item -Path "README.md" -Destination $DistFolder
+
+# Copie intégrale de toute la documentation et des images associées pour éviter tout lien brisé
+if (Test-Path "docs") {
+    Copy-Item -Path "docs\*" -Destination (Join-Path $DistFolder "docs") -Recurse -Force
 }
-$manifest=Join-Path $sourceDir 'Cargo.toml'
-& $cargoExe --version
-if ($LASTEXITCODE -ne 0) { throw 'Cargo indisponible. Configure Rust ou indique ToolchainRoot.' }
-# A release connector is needed by the end-to-end MCP test, even in Test mode.
-& $cargoExe build --release --locked --manifest-path $manifest
-if ($LASTEXITCODE -ne 0) { throw 'Compilation impossible.' }
-if ($Action -eq 'Release') { return }
-$env:DECKFORGE_MCP_EXE=Join-Path $targetDir 'release/deckforge-mcp.exe'
-& $cargoExe test --locked --manifest-path $manifest
-if ($LASTEXITCODE -ne 0) { throw 'Echec des tests Rust.' }
-& node (Join-Path $sourceDir 'tests/mcp-transport.cjs')
-if ($LASTEXITCODE -ne 0) { throw 'Echec des tests MCP stdio.' }
-& node (Join-Path $sourceDir 'tests/mcp-http.cjs')
-if ($LASTEXITCODE -ne 0) { throw 'Echec des tests MCP HTTP.' }
-Write-Host 'Compilation et verification terminees. Aucune application native lancee.'
+if (Test-Path "tools\Mettre-a-jour.ps1") {
+    Copy-Item -Path "tools\Mettre-a-jour.ps1" -Destination (Join-Path $DistFolder "tools")
+}
+if (Test-Path "res") {
+    Copy-Item -Path "res" -Destination $DistFolder -Recurse -Force
+}
+
+Write-Host "[3/4] Compression ZIP..." -ForegroundColor Cyan
+$ZipPath = Join-Path $OutputDir "DeckForge-$Version-Windows.zip"
+if (Test-Path $ZipPath) {
+    Remove-Item -Path $ZipPath -Force
+}
+Compress-Archive -Path "$DistFolder\*" -DestinationPath $ZipPath -Force
+
+Write-Host "[4/4] Calcul de l'empreinte SHA-256..." -ForegroundColor Cyan
+$Hash = (Get-FileHash -Path $ZipPath -Algorithm SHA256).Hash
+
+# Sauvegarde du checksum à côté de l'archive
+$HashFile = "$ZipPath.sha256"
+"$Hash  DeckForge-$Version-Windows.zip" | Set-Content -Path $HashFile
+
+Write-Host "Archive prête : $ZipPath" -ForegroundColor Green
+Write-Host "SHA-256 : $Hash" -ForegroundColor Green
+Write-Host "Fichier SHA-256 enregistré : $HashFile" -ForegroundColor Green

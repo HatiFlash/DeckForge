@@ -10,7 +10,7 @@ use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITH
 const VIDEO: u32 = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
 const ALL: u32 = MF_SOURCE_READER_ALL_STREAMS.0 as u32;
 
-/// Square `size`×`size` frames sampled at `fps`, cropped like the FFmpeg path (cover + centre crop).
+/// Square `size`x`size` frames sampled at `fps`, cropped like the FFmpeg path (cover + centre crop).
 pub fn decode(path: &Path, fps: u32, max_secs: u32, size: u32) -> Result<Vec<RgbaImage>> {
     ensure!(fps > 0 && size > 0, "Paramètres vidéo invalides");
     unsafe {
@@ -18,7 +18,24 @@ pub fn decode(path: &Path, fps: u32, max_secs: u32, size: u32) -> Result<Vec<Rgb
         let started = MFStartup(MF_VERSION, MFSTARTUP_FULL);
         let result = match started {
             Ok(()) => { let r = read(path, fps, max_secs, size); let _ = MFShutdown(); r }
-            Err(e) => Err(anyhow!("Media Foundation indisponible ({e}) : édition N de Windows sans Media Feature Pack ?")),
+            Err(e) => Err(anyhow!("Media Foundation indisponible ({e}) : Édition N de Windows sans Media Feature Pack ?")),
+        };
+        if com {
+            CoUninitialize();
+        }
+        result
+    }
+}
+
+/// Decode raw uncropped RGBA frames from video using Windows Media Foundation.
+pub fn decode_raw(path: &Path, fps: u32, max_secs: u32) -> Result<Vec<RgbaImage>> {
+    ensure!(fps > 0, "Paramètres vidéo invalides");
+    unsafe {
+        let com = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
+        let started = MFStartup(MF_VERSION, MFSTARTUP_FULL);
+        let result = match started {
+            Ok(()) => { let r = read_raw(path, fps, max_secs); let _ = MFShutdown(); r }
+            Err(e) => Err(anyhow!("Media Foundation indisponible ({e}) : Édition N de Windows sans Media Feature Pack ?")),
         };
         if com {
             CoUninitialize();
@@ -28,6 +45,11 @@ pub fn decode(path: &Path, fps: u32, max_secs: u32, size: u32) -> Result<Vec<Rgb
 }
 
 unsafe fn read(path: &Path, fps: u32, max_secs: u32, size: u32) -> Result<Vec<RgbaImage>> {
+    let raw = read_raw(path, fps, max_secs)?;
+    Ok(raw.into_iter().map(|f| cover(&f, size)).collect())
+}
+
+unsafe fn read_raw(path: &Path, fps: u32, max_secs: u32) -> Result<Vec<RgbaImage>> {
     let mut attributes = None;
     MFCreateAttributes(&mut attributes, 1)?;
     let attributes = attributes.ok_or_else(|| anyhow!("Attributs Media Foundation absents"))?;
@@ -54,7 +76,7 @@ unsafe fn read(path: &Path, fps: u32, max_secs: u32, size: u32) -> Result<Vec<Rg
     let (width, height) = ((packed >> 32) as u32, packed as u32);
     ensure!(
         width > 0 && height > 0 && width <= 8192 && height <= 8192,
-        "Taille de vidéo invalide ({width}×{height})"
+        "Taille de vidéo invalide ({width}x{height})"
     );
     let stride = current
         .GetUINT32(&MF_MT_DEFAULT_STRIDE)
@@ -82,7 +104,7 @@ unsafe fn read(path: &Path, fps: u32, max_secs: u32, size: u32) -> Result<Vec<Rg
         }
         if let Some(sample) = sample {
             if stamp >= next {
-                frames.push(to_square(&sample, width, height, stride, size)?);
+                frames.push(to_rgba(&sample, width, height, stride)?);
                 while next <= stamp {
                     next += step;
                 }
@@ -96,12 +118,11 @@ unsafe fn read(path: &Path, fps: u32, max_secs: u32, size: u32) -> Result<Vec<Rg
     Ok(frames)
 }
 
-unsafe fn to_square(
+unsafe fn to_rgba(
     sample: &IMFSample,
     width: u32,
     height: u32,
     stride: i32,
-    size: u32,
 ) -> Result<RgbaImage> {
     let buffer = sample.ConvertToContiguousBuffer()?;
     let mut data = std::ptr::null_mut();
@@ -110,7 +131,7 @@ unsafe fn to_square(
     let bytes = std::slice::from_raw_parts(data, length as usize);
     let image = bgra_to_rgba(bytes, width, height, stride);
     let _ = buffer.Unlock();
-    Ok(cover(&image?, size))
+    image
 }
 
 /// Converts Media Foundation RGB32 (BGRX, top-down if stride > 0) to opaque RGBA.
@@ -174,7 +195,6 @@ mod tests {
     use super::*;
     #[test]
     fn bottom_up_bgra_and_centre_crop() {
-        // 2×2 BGRX, bottom-up: first row in memory is the bottom row.
         let bytes = [0, 0, 255, 0, 0, 255, 0, 0, 255, 0, 0, 0, 255, 255, 255, 0];
         let image = bgra_to_rgba(&bytes, 2, 2, -8).unwrap();
         assert_eq!(image.get_pixel(0, 0).0, [0, 0, 255, 255]);

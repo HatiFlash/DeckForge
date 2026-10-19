@@ -52,6 +52,8 @@ mod ui;
 mod workshop_ops;
 mod workshop_journal;
 mod video_mf;
+mod media_crop;
+mod ui_media_crop;
 mod state_display;
 
 #[derive(Debug)]
