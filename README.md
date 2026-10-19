@@ -6,8 +6,8 @@
 
   [![Licence MIT](https://img.shields.io/badge/Licence-MIT-blue.svg)](LICENSE)
   [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
-  [![Tests](https://img.shields.io/badge/Tests-317%20pass%C3%A9s-brightgreen.svg)]()
-  [![Version](https://img.shields.io/badge/Release-v0.7.0-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.7.0)
+  [![Tests](https://img.shields.io/badge/Tests-334%20pass%C3%A9s-brightgreen.svg)]()
+  [![Version](https://img.shields.io/badge/Release-v0.8.0-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.0)
 </div>
 
 ---
@@ -56,6 +56,16 @@ Importez directement vos archives de plugins préférées (`.streamDeckPlugin` /
 
 </div>
 
+### 🎨 Éditeur de recadrage interactif intégré & Galerie multimédia
+- **Recadrage non destructif des images et vidéos** : Ajustez visuellement vos photos et vidéos directement dans DeckForge avant envoi aux touches (modes Remplir ou Ajuster/Letterbox, zoom progressif 0.5x–3.0x, recentrage et prévisualisation instantanée du rendu fidèle sur touche D6 112x112 px).
+- **Décodage vidéo Media Foundation Windows & GIF infinis** : Import direct sans FFmpeg requis pour vos clips courts et animations en boucle.
+- **Galerie multimédia riche** : Prise en charge complète des images PNG, JPEG, WebP, SVG transparents et animations.
+
+### 🛡️ Fiabilité, Sauvegardes rotatives & Import Elgato 1-Clic
+- **Sauvegardes automatiques rotatives & restauration guidée** : Rétention des 5 derniers points de restauration sains (`backups/config-*.bak`) avec protection stricte contre l'écrasement par un fichier corrompu.
+- **Import 1-clic des sauvegardes Elgato (`.StreamDeckProfilesBackup`)** : Détection et conversion automatique de tous les profils d'une archive complète sans décompression manuelle.
+- **Simulation sécurisée & isolée** : Mode test de macros sans aucun effet système de bord non sollicité.
+
 ### 🤖 Intégration IA Plug-and-Play (Protocole MCP)
 DeckForge embarque un serveur MCP (**Model Context Protocol**) natif pour collaborer avec vos assistants d'IA sans aucune ligne de code ni modification de fichier JSON :
 - Connectez d'un clic **Claude Desktop**, **Claude Code**, **Codex CLI** ou **Cursor** via le bouton **IA** dans la barre d'outils.
@@ -72,7 +82,7 @@ DeckForge embarque un serveur MCP (**Model Context Protocol**) natif pour collab
 
 ## 🚀 Prise en main rapide
 
-1. Téléchargez la dernière version Windows (`DeckForge-v0.7.0-Windows.zip`) depuis la [page des Releases](https://github.com/HatiFlash/DeckForge/releases).
+1. Téléchargez la dernière version Windows (`DeckForge-0.8.0-Windows.zip`) depuis la [page des Releases](https://github.com/HatiFlash/DeckForge/releases).
 2. Extrayez l'archive dans le dossier de votre choix et lancez `deckforge.exe`.
 3. *Note importante pour les possesseurs du FIFINE D6 :* veillez à fermer le logiciel officiel FIFINE afin de libérer l'accès USB exclusif pour DeckForge.
 4. Glissez simplement une action depuis la bibliothèque vers la touche souhaitée, ou ouvrez l'**Atelier de blocs** pour composer votre première macro !
@@ -91,7 +101,7 @@ cd DeckForge
 # Compiler en mode Release
 cargo build --release --locked
 
-# Lancer la suite complète de tests (317+ tests unitaires et d'intégration)
+# Lancer la suite complète de tests (334 tests unitaires et d'intégration)
 cargo test --locked
 ```
 
