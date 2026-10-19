@@ -17,7 +17,9 @@ Matrice vérifiée dans `plugin_runtime.rs:run`, `ui.rs` et `plugin_host.rs` : �
 | getSettings / setSettings / didReceiveSettings | partiel | traitement par instance et inspecteur ; reprise complète à tester |
 | getGlobalSettings / setGlobalSettings | partiel | chemin de message existant, persistance à confirmer |
 | deviceDidConnect / deviceDidDisconnect (D2) | partiel | lancement/redémarrage et changement de grille ; pas de preuve matérielle ni identifiant série |
-| titleParametersDidChange / systemDidWakeUp / applicationDidLaunch / applicationDidTerminate (D2) | absent | émission non implémentée, voir limites D2 |
+| applicationDidLaunch / applicationDidTerminate | émis | `ApplicationsToMonitor.windows` du manifeste, processus relus toutes les 2 s, noms insensibles à la casse ; tests de logique, pas encore d’essai avec un plugin tiers qui en dépend |
+| setFeedback / setFeedbackLayout / setTriggerDescription | ignorés sans erreur | commandes de molettes/écrans tactiles sans objet pour une touche ; molettes non simulées |
+| systemDidWakeUp | absent | émission non implémentée |
 
 Les plugins exécutables tournent avec les droits de l'utilisateur : processus séparé ≠ sandbox. Le catalogue n'accorde aucun droit ; la compatibilité est « non vérifiée » jusqu'à un essai explicite. Ni archive chiffrée ni API non reconnue ne sont déchiffrées ou adaptées automatiquement. L'installation est une copie atomique sans liaison de touche ; affecter une action ultérieurement peut démarrer le plugin. SHA256 en métadonnée locale pour les archives seulement, non preuve d'éditeur.
 
@@ -46,7 +48,7 @@ Le Job Object Windows KILL_ON_JOB_CLOSE regroupe le plugin et les inspecteurs la
 
 Trace opt-in : `DECKFORGE_PLUGIN_TRACE_UUID=<uuid>` avant lancement ; JSONL dans `%TEMP%/deckforge-plugin-traces/<uuid>-<pid>.jsonl`, métadonnées seulement (sens, commande, non-pris-en-charge), jamais de payload ni de réglages ; taille par processus limitée, événements inconnus listés dans la fiche. Ce n’est pas une preuve du comportement du plugin. La réponse `-info` utilise la version réelle de DeckForge, mais le modèle de périphérique est encore fixe (D6), les couleurs sont vides et `platformVersion` reste à lire dans Windows.
 
-Restent à implémenter et vérifier : titleParametersDidChange, systemDidWakeUp et applications surveillées (didReceiveGlobalSettings est déjà envoyé depuis l’App), `switchToProfile` limité, version Nodejs.Version et contraintes OS/MinimumVersion, profil navigateur éphémère avec blocage et observation CDP de window.open/navigation/réseau, banc de conformité sur copies des plugins en clair (sans appui), et analyse causale Gizmos par trace. Aucun effet ni capture Gizmos lancés dans D1.
+Restent à implémenter et vérifier : systemDidWakeUp (didReceiveGlobalSettings est déjà envoyé depuis l’App), `switchToProfile` limité, version Nodejs.Version et contraintes OS/MinimumVersion, profil navigateur éphémère avec blocage et observation CDP de window.open/navigation/réseau, banc de conformité sur copies des plugins en clair (sans appui), et analyse causale Gizmos par trace. Aucun effet ni capture Gizmos lancés dans D1.
 
 ## D2 — tranche partielle, événements et appareil
 

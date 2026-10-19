@@ -66,6 +66,15 @@ fn settings_notifications(old:&HashMap<String,Visible>,new:&HashMap<String,Visib
     }
     result
 }
+/// ApplicationsToMonitor : compare les exécutables surveillés aux processus en cours (noms
+/// insensibles à la casse) et produit applicationDidLaunch/Terminate, comme Stream Deck.
+pub(crate) fn application_events(watch:&[String],running:&[String],before:&std::collections::BTreeSet<String>)->(std::collections::BTreeSet<String>,Vec<Value>){
+    let now=watch.iter().filter(|w|running.iter().any(|r|r.eq_ignore_ascii_case(w))).cloned().collect::<std::collections::BTreeSet<_>>();
+    let mut events=Vec::new();
+    for app in now.difference(before){events.push(json!({"event":"applicationDidLaunch","payload":{"application":app}}));}
+    for app in before.difference(&now){events.push(json!({"event":"applicationDidTerminate","payload":{"application":app}}));}
+    (now,events)
+}
 enum Request { Sync(HashMap<String,Visible>,Option<(String,bool)>), Device(Device), Key(String,bool), Title(String,String), Send(String,Value), Open(String), Catalog(Vec<Plugin>), Stop }
 pub enum Reply { Message(String,Value), Error(String,String) }
 pub struct Manager { tx:Sender<Request>,pub rx:Receiver<Reply>,visible:HashMap<String,Visible>,titles:HashMap<String,String>,pub catalog:Vec<Plugin> }
@@ -102,6 +111,7 @@ fn run(mut plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
     let mut inspectors:HashMap<String,Visible>=HashMap::new();
     let mut idle:HashMap<String,Instant>=HashMap::new();
     let mut restarts:HashMap<String,Vec<Instant>>=HashMap::new();
+    let mut monitored:HashMap<String,std::collections::BTreeSet<String>>=HashMap::new();let mut last_poll:Option<Instant>=None;
     loop {
         match requests.recv_timeout(Duration::from_millis(50)) {
             Ok(Request::Stop)|Err(mpsc::RecvTimeoutError::Disconnected)=>break,
@@ -144,6 +154,8 @@ fn run(mut plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
         for (plugin,host) in &hosts {while let Ok(mut value)=host.incoming.try_recv(){
             let name=value["event"].as_str().unwrap_or("").to_owned();
             if name=="__hostError" {let _=reply.send(Reply::Error(plugin.clone(),value["reason"].as_str().unwrap_or("Message invalide").into()));continue;}
+            // Commandes des molettes/écrans tactiles : sans objet pour une touche, ignorées sans erreur.
+            if matches!(name.as_str(),"setFeedback"|"setFeedbackLayout"|"setTriggerDescription") {continue;}
             if !matches!(name.as_str(),"registerPlugin"|"logMessage"|"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"getSettings"|"setGlobalSettings"|"getGlobalSettings"|"sendToPlugin"|"sendToPropertyInspector"|"switchToProfile"|"propertyInspectorDidAppear"|"propertyInspectorDidDisappear"|"openUrl") {
                 let _=reply.send(Reply::Error(plugin.clone(),format!("Evenement plugin non pris en charge : {name}")));continue;
             }
@@ -195,12 +207,32 @@ fn run(mut plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
                 }
             }
         }
+        monitored.retain(|id,_|hosts.contains_key(id));
+        if last_poll.is_none_or(|t|t.elapsed()>=Duration::from_secs(2)) && hosts.keys().any(|id|plugins.iter().any(|p|&p.uuid==id&&!p.applications.is_empty())) {
+            last_poll=Some(Instant::now());
+            #[cfg(windows)] let running=crate::conditions::running_processes().map(|list|list.into_iter().map(|(_,name)|name).collect::<Vec<_>>()).unwrap_or_default();
+            #[cfg(not(windows))] let running:Vec<String>=Vec::new();
+            for (id,host) in &hosts {if let Some(p)=plugins.iter().find(|p|&p.uuid==id&&!p.applications.is_empty()){
+                let before=monitored.remove(id).unwrap_or_default();
+                let (now,events)=application_events(&p.applications,&running,&before);
+                for message in events {let _=host.send(message);}
+                monitored.insert(id.clone(),now);
+            }}
+        }
         hosts.retain(|id,_|!idle.get(id).is_some_and(|t|t.elapsed()>=Duration::from_secs(30)));
         idle.retain(|id,_|hosts.contains_key(id));
     }
     // Host::drop termine tout l'arbre de chaque processus.
 }
 #[cfg(test)]mod tests {use super::*;use crate::model::{Config,PluginBinding};
+    #[test]fn applications_launch_and_terminate_once(){
+        let watch=vec!["OBS64.exe".to_string(),"Spotify.exe".to_string()];
+        let (now,events)=application_events(&watch,&["obs64.exe".into(),"explorer.exe".into()],&Default::default());
+        assert_eq!(events,vec![json!({"event":"applicationDidLaunch","payload":{"application":"OBS64.exe"}})]);
+        let (same,none)=application_events(&watch,&["obs64.exe".into()],&now);assert!(none.is_empty());
+        let (_,gone)=application_events(&watch,&[],&same);
+        assert_eq!(gone,vec![json!({"event":"applicationDidTerminate","payload":{"application":"OBS64.exe"}})]);
+    }
     #[test]fn plugin_imported_at_runtime_starts_without_restart(){
         let folder=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sdplugin");
         let plugin=crate::plugins::parse(&folder,&std::fs::read(folder.join("manifest.json")).unwrap()).unwrap();
