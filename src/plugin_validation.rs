@@ -385,6 +385,35 @@ mod tests {
         let report = crate::ui::validate_oracle(&plugin, &oracle.action, &oracle).unwrap();
         assert!(report.contains("Observation confirmée après appui"));
     }
+    /// Reprise après redémarrage d'un plugin tiers extrait (compteur persistant dans ses réglages).
+    #[test]
+    #[ignore = "set DECKFORGE_TEST_PLUGIN_DIR, DECKFORGE_TEST_PLUGIN_ACTION and DECKFORGE_TEST_PLUGIN_SETTING; starts third-party code"]
+    fn external_plugin_folder_resumes_after_restart() {
+        let var = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("set {name}"));
+        let folder = std::path::PathBuf::from(var("DECKFORGE_TEST_PLUGIN_DIR"));
+        let plugin = crate::plugins::parse(&folder, &std::fs::read(folder.join("manifest.json")).unwrap()).unwrap();
+        crate::ui::validate_restart_persistence(&plugin, &var("DECKFORGE_TEST_PLUGIN_ACTION"), &var("DECKFORGE_TEST_PLUGIN_SETTING")).unwrap();
+    }
+    /// Banc générique pour un plugin tiers déjà extrait (dossier `.sdPlugin`) :
+    /// appui virtuel via App, puis titre attendu. Jamais lancé par défaut.
+    #[test]
+    #[ignore = "set DECKFORGE_TEST_PLUGIN_DIR, DECKFORGE_TEST_PLUGIN_ACTION and DECKFORGE_TEST_PLUGIN_TITLE; starts third-party code"]
+    fn external_plugin_folder_changes_title_in_virtual_app() {
+        let var = |name: &str| std::env::var(name).unwrap_or_else(|_| panic!("set {name}"));
+        let folder = std::path::PathBuf::from(var("DECKFORGE_TEST_PLUGIN_DIR"));
+        let plugin = crate::plugins::parse(&folder, &std::fs::read(folder.join("manifest.json")).unwrap()).unwrap();
+        let oracle = ActionOracle {
+            action: var("DECKFORGE_TEST_PLUGIN_ACTION"),
+            mode: Mode::Simulated,
+            real_effects: false,
+            expected_effect: "title after one virtual press".into(),
+            timeout_ms: 10000,
+            requirements: Requirements::default(),
+            observation: Observation::Title { equals: var("DECKFORGE_TEST_PLUGIN_TITLE") },
+        };
+        let report = crate::ui::validate_oracle(&plugin, &oracle.action, &oracle).unwrap();
+        assert!(report.contains("Observation confirmée après appui"), "{report}");
+    }
     #[test]
     fn html_oracle_never_starts_unisolated_browser() {
         let mut p = fixture();

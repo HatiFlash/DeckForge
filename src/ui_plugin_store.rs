@@ -143,15 +143,17 @@ impl App {
    }))
   });
  }
+ /// Après un import, le gestionnaire connaît le nouveau plugin sans redémarrage de l'application.
+ fn refresh_plugin_catalog(&mut self){if let (Some(manager),Ok(root))=(self.plugins.as_mut(),plugin_import::installed_root()){manager.set_catalog(plugin_import::inventory(&root));}}
  fn plugin_import_request(&mut self,source:Option<std::path::PathBuf>){
   self.start_dialog(move||{let result=plugin_import::installed_root().and_then(|root|match source{Some(folder)=>plugin_import::import_folder(&folder,&root).map(|copied|format!("Plugin : {}",if copied{"copié"}else{"déjà présent"})),None=>{let report=plugin_import::import_sources(&root);Ok(format!("Import : {} copiés, {} déjà présents, {} protégés, {} intégrés FIFINE, {} ignorés",report.copied,report.existing,report.protected,report.built_in,report.skipped))}});
-   Some(Box::new(move |app:&mut App|match result{Ok(text)=>{app.notice=text.clone();app.log(text);},Err(e)=>app.fail(format!("Import plugin impossible : {e}"))}))
+   Some(Box::new(move |app:&mut App|match result{Ok(text)=>{app.notice=text.clone();app.log(text);app.refresh_plugin_catalog();},Err(e)=>app.fail(format!("Import plugin impossible : {e}"))}))
   });
  }
  fn plugin_import_dialog(&mut self,archive:bool){self.start_dialog(move||{
   let path=if archive{egui_file_dialog_archive()}else{rfd::FileDialog::new().pick_folder()}?;
   let result=plugin_import::installed_root().and_then(|root|if archive{plugin_import::import_archive(&path,&root)}else{plugin_import::import_folder(&path,&root)});
-  Some(Box::new(move |app:&mut App|match result{Ok(copied)=>{app.notice=if copied{"Plugin importé"}else{"Plugin déjà présent"}.into();},Err(e)=>app.fail(format!("Import plugin impossible : {e}"))}))
+  Some(Box::new(move |app:&mut App|match result{Ok(copied)=>{app.refresh_plugin_catalog();app.notice=if copied{"Plugin importé"}else{"Plugin déjà présent"}.into();},Err(e)=>app.fail(format!("Import plugin impossible : {e}"))}))
  });}
 }
 fn native_audio_switch(audio:&crate::audio::Snapshot,input:bool)->Option<Key>{

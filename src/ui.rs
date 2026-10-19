@@ -34,7 +34,7 @@ mod plugin_store_ui;
 mod plugin_validation_harness;
 pub(crate) use plugin_validation_harness::validate_oracle;
 #[cfg(test)]
-pub(crate) use plugin_validation_harness::validate_witness;
+pub(crate) use plugin_validation_harness::{validate_restart_persistence, validate_witness};
 
 #[path = "ui_workshop_chat.rs"]
 mod workshop_chat_ui;

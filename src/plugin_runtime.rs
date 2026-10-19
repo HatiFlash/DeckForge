@@ -66,7 +66,7 @@ fn settings_notifications(old:&HashMap<String,Visible>,new:&HashMap<String,Visib
     }
     result
 }
-enum Request { Sync(HashMap<String,Visible>,Option<(String,bool)>), Device(Device), Key(String,bool), Title(String,String), Send(String,Value), Open(String), Stop }
+enum Request { Sync(HashMap<String,Visible>,Option<(String,bool)>), Device(Device), Key(String,bool), Title(String,String), Send(String,Value), Open(String), Catalog(Vec<Plugin>), Stop }
 pub enum Reply { Message(String,Value), Error(String,String) }
 pub struct Manager { tx:Sender<Request>,pub rx:Receiver<Reply>,visible:HashMap<String,Visible>,titles:HashMap<String,String>,pub catalog:Vec<Plugin> }
 impl Manager {
@@ -76,6 +76,8 @@ impl Manager {
         Self{tx,rx,visible:HashMap::new(),titles:HashMap::new(),catalog}
     }
     pub fn device(&self,device:Device){let _=self.tx.send(Request::Device(device));}
+    /// Plugins importés pendant l'exécution : visibles sans redémarrer DeckForge.
+    pub fn set_catalog(&mut self,plugins:Vec<Plugin>){self.catalog=plugins.clone();let _=self.tx.send(Request::Catalog(plugins));}
     pub fn sync(&mut self, config:&Config) {self.sync_with_origin(config,None);}
     pub fn sync_settings(&mut self,config:&Config,context:&str,from_pi:bool){self.sync_with_origin(config,Some((context.to_owned(),from_pi)));}
     fn sync_with_origin(&mut self, config:&Config, origin:Option<(String,bool)>) {
@@ -94,7 +96,7 @@ impl Manager {
     pub fn visible(&self)->&HashMap<String,Visible>{&self.visible}
 }
 impl Drop for Manager {fn drop(&mut self){let _=self.tx.send(Request::Stop);}}
-fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
+fn run(mut plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
     let mut hosts:HashMap<String,Host>=HashMap::new();let mut current:HashMap<String,Visible>=HashMap::new();
     let mut device=Device::virtual_device();
     let mut inspectors:HashMap<String,Visible>=HashMap::new();
@@ -128,6 +130,15 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
             }}}
             Ok(Request::Key(context,down))=>{if let Some(v)=current.get(&context){if let Some(host)=hosts.get(&v.plugin){let _=host.send(event(if down{"keyDown"}else{"keyUp"},v,&device));}}}
             Ok(Request::Send(plugin,value))=>{if let Some(host)=hosts.get(&plugin){let _=host.send(value);}}
+            Ok(Request::Catalog(next))=>{
+                plugins=next;
+                // Une touche liée avant l'import démarre maintenant, avec son willAppear.
+                let waiting=current.values().filter(|v|!hosts.contains_key(&v.plugin)).map(|v|v.plugin.clone()).collect::<std::collections::BTreeSet<_>>();
+                for id in waiting {if let Some(p)=plugins.iter().find(|p|p.uuid==id){match Host::start(p,&device){
+                    Ok(h)=>{let _=h.send(device.event("deviceDidConnect"));for v in current.values().filter(|v|v.plugin==id){let _=h.send(event("willAppear",v,&device));}hosts.insert(id,h);},
+                    Err(e)=>{let _=reply.send(Reply::Error(id,e.to_string()));}
+                }}}
+            }
             Err(mpsc::RecvTimeoutError::Timeout)=>{}
         }
         for (plugin,host) in &hosts {while let Ok(mut value)=host.incoming.try_recv(){
@@ -190,6 +201,25 @@ fn run(plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
     // Host::drop termine tout l'arbre de chaque processus.
 }
 #[cfg(test)]mod tests {use super::*;use crate::model::{Config,PluginBinding};
+    #[test]fn plugin_imported_at_runtime_starts_without_restart(){
+        let folder=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sdplugin");
+        let plugin=crate::plugins::parse(&folder,&std::fs::read(folder.join("manifest.json")).unwrap()).unwrap();
+        let mut manager=Manager::new(Vec::new());
+        let mut config=Config::default();
+        config.keys_mut()[0].plugin=Some(PluginBinding{plugin:plugin.uuid.clone(),action:plugin.actions[0].uuid.clone(),settings:json!({}),state:0});
+        manager.sync(&config);
+        assert!(matches!(manager.rx.recv_timeout(Duration::from_secs(5)).unwrap(),Reply::Error(_,ref e) if e.contains("introuvable")));
+        manager.set_catalog(vec![plugin.clone()]);
+        assert_eq!(manager.catalog.len(),1);
+        let deadline=Instant::now()+Duration::from_secs(20);
+        loop {
+            match manager.rx.recv_timeout(deadline.saturating_duration_since(Instant::now())).expect("imported plugin did not register") {
+                Reply::Message(id,value) if value["event"]=="registerPlugin" => {assert_eq!(id,plugin.uuid);break;}
+                Reply::Error(id,e)=>panic!("{id}: {e}"),
+                _=>{}
+            }
+        }
+    }
     #[test]fn page_diff(){let mut c=Config::default();c.keys_mut()[0].plugin=Some(PluginBinding{plugin:"fixture".into(),action:"fixture.a".into(),settings:json!({}),state:0});let old=visible(&c);c.profiles[c.active].pages.push(crate::model::Page::new("other".into(),"Other".into(),false));c.page="other".into();let next=visible(&c);let (gone,added)=diff(&old,&next);assert_eq!(gone.len(),1);assert!(added.is_empty());}
     #[test]fn settings_update_preserves_action_visibility(){
         let mut config=Config::default();

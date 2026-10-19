@@ -289,10 +289,13 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
   let script=format!("$p=Start-Process powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 30' -PassThru -WindowStyle Hidden; $p.Id | Set-Content -Path '{}'",file.display());
   let mut parent=Command::new("powershell").args(["-NoProfile","-Command",&script]).creation_flags(0x08000000).spawn().unwrap();
   job.assign(&parent).unwrap();
+  // PowerShell peut encore tenir pid.txt ouvert : relire jusqu'à un PID complet.
   let limit=std::time::Instant::now()+Duration::from_secs(10);
-  while !file.is_file() && std::time::Instant::now()<limit {thread::sleep(Duration::from_millis(30));}
-  assert!(file.is_file(),"descendant was not started");
-  let pid:u32=std::fs::read_to_string(file).unwrap().trim().parse().unwrap();
+  let pid:u32=loop {
+   if let Some(pid)=std::fs::read_to_string(&file).ok().and_then(|text|text.trim().parse().ok()){break pid;}
+   assert!(std::time::Instant::now()<limit,"descendant was not started");
+   thread::sleep(Duration::from_millis(30));
+  };
   let handle=unsafe{OpenProcess(PROCESS_SYNCHRONIZE,0,pid)};assert!(!handle.is_null());
   drop(job);assert_eq!(unsafe{WaitForSingleObject(handle,5000)},WAIT_OBJECT_0);
   unsafe{CloseHandle(handle)};let _=parent.wait();
@@ -382,6 +385,30 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
    if message["event"]=="setTitle" {assert_eq!(message["payload"]["title"],"1");title=true;}
   }
   assert!(settings && title,"imported plugin must execute keyUp and return its observable counter state");
+ }
+ /// Matrice de compatibilité : un plugin tiers extrait doit s'enregistrer puis réagir à un appui
+ /// (titre, image, état, alerte/OK ou réglages) pour le contexte visé. Jamais lancé par défaut.
+ #[test] #[ignore="set DECKFORGE_TEST_PLUGIN_DIR and DECKFORGE_TEST_PLUGIN_ACTION; starts third-party code"]
+ fn external_plugin_folder_reacts_to_key_press(){
+  let var=|name:&str|std::env::var(name).unwrap_or_else(|_|panic!("set {name}"));
+  let folder=std::path::PathBuf::from(var("DECKFORGE_TEST_PLUGIN_DIR"));let action=var("DECKFORGE_TEST_PLUGIN_ACTION");
+  let plugin=crate::plugins::parse(&folder,&std::fs::read(folder.join("manifest.json")).unwrap()).unwrap();
+  let device=crate::plugin_runtime::Device::virtual_device();
+  let host=Host::start(&plugin,&device).expect("plugin start");
+  assert_eq!(host.incoming.recv_timeout(Duration::from_secs(20)).expect("no registerPlugin")["event"],"registerPlugin");
+  let visible=crate::plugin_runtime::Visible{context:"matrix-context".into(),plugin:plugin.uuid.clone(),action,index:0,settings:json!({}),state:0};
+  host.send(json!({"event":"deviceDidConnect","device":device.id,"deviceInfo":device.info()})).unwrap();
+  host.send(crate::plugin_runtime::event("willAppear",&visible,&device)).unwrap();
+  std::thread::sleep(Duration::from_millis(500));
+  for name in ["keyDown","keyUp"]{host.send(crate::plugin_runtime::event(name,&visible,&device)).unwrap();}
+  let deadline=Instant::now()+Duration::from_secs(8);let mut seen=Vec::new();
+  while let Ok(message)=host.incoming.recv_timeout(deadline.saturating_duration_since(Instant::now())){
+   let name=message["event"].as_str().unwrap_or("").to_owned();
+   assert_ne!(name,"__hostError","{message}");
+   if message["context"]=="matrix-context" || message.get("context").is_none(){seen.push(name);}
+  }
+  println!("MATRIX {} events: {}",plugin.uuid,seen.join(","));
+  assert!(seen.iter().any(|e|matches!(e.as_str(),"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"setFeedback")),"no visible reaction: {seen:?}");
  }
  #[test] fn node_fixture_exchanges_key_messages(){
   let fixture=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sdplugin");

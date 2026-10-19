@@ -188,6 +188,75 @@ pub(crate) fn validate_witness(plugin: &Plugin, error: Option<&str>) -> Result<(
     Ok(())
 }
 
+/// Reprise après redémarrage : un plugin tiers persiste un compteur via setSettings, l'App le
+/// sauvegarde, puis un nouveau processus du plugin doit le retrouver et continuer à compter.
+#[cfg(test)]
+pub(crate) fn validate_restart_persistence(plugin: &Plugin, action: &str, setting: &str) -> Result<(), String> {
+    let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let path = dir.path().join("config.json");
+    let ctx = egui::Context::default();
+    let mut app = App::init_with(&ctx, Some(path.clone()), false);
+    without_local_actions(&mut app.config);
+    let (tx, rx) = mpsc::channel();
+    app.events = rx;
+    app.gate.enabled = true;
+    app.gate.connected = true;
+    let revision = app.gate.request_apply();
+    if !app.gate.applied(revision) {
+        return Err("Configuration virtuelle non appliquée".into());
+    }
+    app.config.keys_mut()[0].plugin = Some(PluginBinding {
+        plugin: plugin.uuid.clone(),
+        action: action.into(),
+        settings: json!({}),
+        state: 0,
+    });
+    app.applied = app.config.clone();
+    store::save(&path, &app.config).map_err(|e| e.to_string())?;
+    let observe = |app: &mut App, value: i64, phase: &str| -> Result<(), String> {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            app.plugin_events();
+            if let Some(error) = app.plugin_errors.values().next() {
+                return Err(format!("{phase} : plugin en erreur : {error}"));
+            }
+            let context = app.plugins.as_ref().unwrap().visible().values().find(|v| v.index == 0).map(|v| v.context.clone());
+            let title = context.as_ref().and_then(|c| app.plugin_faces.get(c)).map(|f| f.title.clone());
+            let saved = store::load(&app.path).ok().and_then(|c| c.keys()[0].plugin.as_ref().map(|b| b.settings[setting].as_i64()));
+            if title.as_deref() == Some(value.to_string().as_str()) && saved == Some(Some(value)) {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err(format!("{phase} : titre {title:?} et réglage sauvegardé {saved:?}, attendu {value}"));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    };
+    let press = |app: &mut App| -> Result<(), String> {
+        let now = Instant::now();
+        tx.send(Event::Key(0, now)).map_err(|e| e.to_string())?;
+        tx.send(Event::KeyRelease(0, now)).map_err(|e| e.to_string())?;
+        app.events();
+        Ok(())
+    };
+    app.plugins = Some(Manager::new(vec![plugin.clone()]));
+    app.plugins.as_mut().unwrap().sync(&app.applied);
+    std::thread::sleep(Duration::from_millis(500));
+    press(&mut app)?;
+    observe(&mut app, 1, "premier appui")?;
+    // Redémarrage : processus du plugin arrêté, configuration relue depuis le disque.
+    app.plugins.take();
+    std::thread::sleep(Duration::from_millis(300));
+    app.config = store::load(&path).map_err(|e| e.to_string())?;
+    app.applied = app.config.clone();
+    app.plugin_faces.clear();
+    app.plugins = Some(Manager::new(vec![plugin.clone()]));
+    app.plugins.as_mut().unwrap().sync(&app.applied);
+    std::thread::sleep(Duration::from_millis(500));
+    press(&mut app)?;
+    observe(&mut app, 2, "appui après redémarrage")
+}
+
 /// App isolée : même routage Key/KeyRelease que le témoin, sans périphérique ni variables globales.
 pub(crate) fn validate_oracle(
     plugin: &Plugin,
