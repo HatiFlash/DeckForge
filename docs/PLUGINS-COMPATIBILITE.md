@@ -18,6 +18,33 @@ Non essayés volontairement : `cat-keys` (télécharge des images chez un tiers)
 
 **Ce que cela prouve :** l'hôte DeckForge lance des plugins Node.js écrits avec le SDK officiel Elgato v2 et des plugins natifs OpenAction ; ils s'enregistrent, reçoivent `willAppear`/`keyDown`/`keyUp`, et leurs réponses sont appliquées par l'App. **Ce que cela ne prouve pas :** le rendu sur un D6 réel de ces plugins (seul OpenAction Counter l'a été), les Property Inspectors HTML (toujours refusés tant que le confinement n'est pas validé), les molettes, ni la compatibilité de tous les plugins du marché.
 
+### Plugins réellement installés chez l'utilisateur et plugins open source (19 octobre 2026)
+
+Les dossiers de plugins Stream Deck (12), StreamDock/FIFINE (18) et les plugins intégrés de FIFINE Control Deck (29) du PC de l'utilisateur ont été copiés sur le banc (lecture seule, sans journaux ni profils). Appui simulé sur la première action « touche » de chaque plugin exécutable :
+
+| Plugin | Type | Résultat |
+|---|---|---|
+| Bitwarden (thejoeiaut) | natif .NET | **Fonctionne** : `setSettings`, `showAlert`/`showOk` (non connecté) — ne démarrait pas avant la correction `CodePath` sans `.exe` |
+| SignalRGB (billzbawb) | natif .NET | Démarre et s'enregistre (même correction) ; aucune réaction sans le logiciel SignalRGB : attendu |
+| Govee Controller (geekyeggo) | natif | **Fonctionne** : `setSettings`, `showAlert` (pas d'appareil Govee) |
+| VolumeController (HotSpot) | natif | **Fonctionne** : `setTitle`/`setImage` |
+| Switch Audio (Mirabox) | natif | **Fonctionne** : `setState`, `setSettings` |
+| Discord, Streamlabs (Mirabox) | natif | **Démarrent et s'enregistrent** depuis la correction du dossier de travail (avant : aucun enregistrement) ; aucune réaction sans Discord/Streamlabs : attendu |
+| **Windows Gizmos (krabs)** | natif + scripts | **Corrigé** : l'action « Capture plein écran » crée bien une capture dans `Images\Captures d'écran` (0 → 1). Sans la correction, même essai : 0 → 0. Gizmos n'envoie aucun message WebSocket en retour : son effet est uniquement local |
+| Wintools, Volume Controller Elgato, Home Assistant, Google Assistant, Govee Light Management, YTM Desktop | manifeste chiffré Elgato | Refusés et signalés « protégés » : pas de contournement |
+| Tutorial, Pi-hole, TikTok Live Studio, YTMD (shiro) | plugin HTML | Refusés tant que le confinement HTML n'est pas validé |
+| Key Creator, 29 actions intégrées FIFINE | sans exécutable | Fonctions de l'application hôte, implémentées nativement par DeckForge quand elles existent |
+
+Archives `.streamDeckPlugin` importées par le **même code que le bouton d'import**, puis appui simulé : exemples Elgato hello-world et lights-out, **Command Line** (mikepowell, MIT), **Binary Clock** et **Demo** (sbelectronics, MIT) : tous s'enregistrent et réagissent. Les trois derniers étaient refusés avant la correction des chemins `\` dans les archives.
+
+Corrections issues de ces essais :
+
+- **Dossier de travail des plugins natifs :** un exécutable démarre désormais dans son propre dossier (`bin/`, `plugin/`…), comme sous Stream Dock. C'était la cause de l'échec de Gizmos sur le D6 : ses scripts sont appelés par `../cmd/scripts/…`, introuvables depuis la racine du plugin. Les plugins Node.js restent lancés à la racine.
+- **`CodePath` sans extension contenant des points** (`com.vendor.tool` → `com.vendor.tool.exe`), comme Stream Deck sous Windows.
+- **Archives créées par l'ancien DistributionTool** (séparateurs `\`) : acceptées après normalisation ; les chemins `..`, absolus ou avec lecteur restent refusés.
+
+Non vérifié : effet réel de ces plugins sur le D6 (à refaire, Gizmos en premier), actions nécessitant un service tiers (Discord, Streamlabs, SignalRGB, Govee, Bitwarden connecté), autres actions de chaque plugin.
+
 ### Corrections issues du banc
 
 - **Import sans redémarrage :** le catalogue du gestionnaire de plugins était figé au lancement ; un plugin importé depuis le magasin restait « introuvable » jusqu'à la relance de DeckForge. `Manager::set_catalog` met désormais le catalogue à jour après l'import et démarre les touches déjà liées (test `plugin_imported_at_runtime_starts_without_restart`).
