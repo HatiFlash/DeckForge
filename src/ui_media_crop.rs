@@ -1,10 +1,10 @@
 //! Interactive non-destructive media cropper dialog for Stream Deck keys.
 use crate::media_crop::{apply_crop, CropMode, CropSettings};
 use anyhow::{anyhow, ensure, Result};
-use eframe::egui::{self, Color32, ColorImage, Context, Pos2, Rect, RichText, Sense, Stroke, TextureHandle, TextureOptions, Vec2};
+use eframe::egui::{self, Color32, ColorImage, Context, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, TextureHandle, TextureOptions, Vec2};
 use image::{AnimationDecoder, RgbaImage};
 use std::io::Cursor;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
@@ -182,6 +182,7 @@ impl CropSession {
         }
 
         let mut apply_action = false;
+        let mut close_action = false;
         let title = if self.is_video {
             "Recadrage vidéo pour touche FIFINE D6"
         } else {
@@ -260,7 +261,7 @@ impl CropSession {
                         // Visual overlay: square target viewfinder
                         let box_size = canvas_w.min(canvas_h) * 0.8;
                         let box_rect = Rect::from_center_size(rect.center(), Vec2::splat(box_size));
-                        ui.painter().rect_stroke(box_rect, 4.0, Stroke::new(2.0, Color32::from_rgb(59, 130, 246)));
+                        ui.painter().rect_stroke(box_rect, 4.0_f32, Stroke::new(2.0_f32, Color32::from_rgb(59, 130, 246)), StrokeKind::Outside);
 
                         // If video: playback controls
                         if self.original_frames.len() > 1 {
@@ -285,13 +286,13 @@ impl CropSession {
                         let (k_rect, _) = ui.allocate_exact_size(Vec2::splat(key_preview_size), Sense::hover());
 
                         // Draw simulated key bezel
-                        ui.painter().rect_filled(k_rect.expand(6.0), 16.0, Color32::from_rgb(15, 23, 42));
-                        ui.painter().rect_stroke(k_rect.expand(6.0), 16.0, Stroke::new(1.5, Color32::from_rgb(51, 65, 85)));
+                        ui.painter().rect_filled(k_rect.expand(6.0), 16.0_f32, Color32::from_rgb(15, 23, 42));
+                        ui.painter().rect_stroke(k_rect.expand(6.0), 16.0_f32, Stroke::new(1.5_f32, Color32::from_rgb(51, 65, 85)), StrokeKind::Outside);
 
                         if let Some(tex) = &self.preview_texture {
                             ui.painter().image(tex.id(), k_rect, Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0)), Color32::WHITE);
                         }
-                        ui.painter().rect_stroke(k_rect, 10.0, Stroke::new(1.0, Color32::from_rgb(71, 85, 105)));
+                        ui.painter().rect_stroke(k_rect, 10.0_f32, Stroke::new(1.0_f32, Color32::from_rgb(71, 85, 105)), StrokeKind::Outside);
                     });
                 });
 
@@ -301,7 +302,7 @@ impl CropSession {
                 // Action buttons
                 ui.horizontal(|ui| {
                     if ui.button("Annuler").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        *open = false;
+                        close_action = true;
                     }
                     if self.processing {
                         ui.spinner();
@@ -315,6 +316,10 @@ impl CropSession {
                     }
                 });
             });
+
+        if close_action {
+            *open = false;
+        }
 
         if apply_action && !self.processing {
             self.processing = true;
