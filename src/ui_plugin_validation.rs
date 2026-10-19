@@ -3,6 +3,18 @@ use super::*;
 use crate::{model::PluginBinding, plugin_runtime::Manager, plugins::Plugin};
 use serde_json::json;
 
+/// Banc virtuel : la configuration par défaut contient des macros (Ctrl+C) et des touches
+/// média. Elles ne doivent jamais être envoyées au système pendant une validation de plugin.
+pub(crate) fn without_local_actions(config: &mut crate::model::Config) {
+    for profile in &mut config.profiles {
+        for keys in std::iter::once(&mut profile.keys).chain(profile.pages.iter_mut().map(|p| &mut p.keys)) {
+            for key in keys.iter_mut() {
+                key.steps.clear();
+                key.long_steps.clear();
+            }
+        }
+    }
+}
 #[cfg(test)]
 const LIMIT: Duration = Duration::from_secs(5);
 
@@ -76,7 +88,7 @@ pub(crate) fn validate_witness(plugin: &Plugin, error: Option<&str>) -> Result<(
     let path = dir.path().join("config.json");
     let ctx = egui::Context::default();
     let mut app = App::init_with(&ctx, Some(path.clone()), false);
-    eprintln!("[witness] init");
+    without_local_actions(&mut app.config);
     let (tx, rx) = mpsc::channel();
     app.events = rx;
     app.gate.enabled = true;
@@ -100,12 +112,10 @@ pub(crate) fn validate_witness(plugin: &Plugin, error: Option<&str>) -> Result<(
     store::save(&path, &app.config).map_err(|e| e.to_string())?;
     app.plugins = Some(Manager::new(vec![plugin.clone()]));
     app.plugins.as_mut().unwrap().sync(&app.applied);
-    eprintln!("[witness] sync1");
     if error.is_some() {
         return press(&mut app, &tx, 0, "1", 1);
     }
     press(&mut app, &tx, 0, "1", 1)?;
-    eprintln!("[witness] press1");
     let deadline = Instant::now() + LIMIT;
     loop {
         app.plugin_events();
@@ -123,13 +133,11 @@ pub(crate) fn validate_witness(plugin: &Plugin, error: Option<&str>) -> Result<(
         }
         std::thread::sleep(Duration::from_millis(10));
     }
-    eprintln!("[witness] before globals");
     app.config.keys_mut()[0].plugin.as_mut().unwrap().settings["step"] = json!(3);
     app.applied = app.config.clone();
     store::save(&path, &app.config).map_err(|e| e.to_string())?;
     app.plugins.as_mut().unwrap().sync(&app.applied);
     press(&mut app, &tx, 0, "4", 4)?;
-    eprintln!("[witness] before press4+1b");
     press(&mut app, &tx, 1, "1", 1)?;
     app.config.profiles[app.config.active]
         .pages
@@ -155,18 +163,15 @@ pub(crate) fn validate_witness(plugin: &Plugin, error: Option<&str>) -> Result<(
         }
         std::thread::sleep(Duration::from_millis(10));
     }
-    eprintln!("[witness] before willDisappear");
     app.navigate(crate::model::Step::Page { id: String::new() });
     app.applied = app.config.clone();
     app.plugins.as_mut().unwrap().sync(&app.applied);
-    eprintln!("[witness] before restart");
     app.plugins.take(); // Nouveau processus Node sur la configuration sauvegardée.
     app.config = store::load(&path).map_err(|e| e.to_string())?;
     app.applied = app.config.clone();
     app.plugin_faces.clear();
     app.plugins = Some(Manager::new(vec![plugin.clone()]));
     app.plugins.as_mut().unwrap().sync(&app.applied);
-    eprintln!("[witness] before press7");
     press(&mut app, &tx, 0, "7", 7)?;
     let deadline = Instant::now() + LIMIT;
     while !app
@@ -199,6 +204,7 @@ pub(crate) fn validate_oracle(
     let path = dir.path().join("config.json");
     let ctx = egui::Context::default();
     let mut app = App::init_with(&ctx, Some(path.clone()), false);
+    without_local_actions(&mut app.config);
     let (tx, rx) = mpsc::channel();
     app.events = rx;
     app.gate.enabled = true;
@@ -339,4 +345,17 @@ fn isolated_open_url_is_recorded_without_browser_launch() {
         app.plugin_external_effects.as_deref(),
         Some(&[format!("openUrl: {url}")][..])
     );
+}
+
+#[cfg(test)]
+#[test]
+fn validation_bench_never_runs_default_macros_or_media_keys() {
+    let mut config = crate::model::Config::default();
+    config.profiles[0].pages.push(crate::model::Page::new("p".into(), "P".into(), false));
+    config.profiles[0].pages[0].keys = config.profiles[0].keys.clone();
+    assert!(config.profiles[0].keys.iter().any(|k| !k.steps.is_empty()));
+    without_local_actions(&mut config);
+    for keys in std::iter::once(&config.profiles[0].keys).chain(config.profiles[0].pages.iter().map(|p| &p.keys)) {
+        assert!(keys.iter().all(|k| k.steps.is_empty() && k.long_steps.is_empty()));
+    }
 }

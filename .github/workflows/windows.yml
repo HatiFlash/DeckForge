@@ -7,8 +7,7 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
-    env:
-      DECKFORGE_MCP_EXE: ${{ github.workspace }}\target\release\deckforge-mcp.exe
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,33 +17,22 @@ jobs:
         run: node -e "if (typeof WebSocket !== 'function') process.exit(1)"
       - name: Build native executables
         run: cargo build --release --locked
-      - name: Build tests
-        run: cargo test --locked --no-run
-      - name: Watch real_node
-        timeout-minutes: 4
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Continue'; $last='none'
-          $exe=(Get-ChildItem target\debug\deps\deckforge-*.exe | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
-          $p=Start-Process $exe -ArgumentList 'plugin_validation::tests::real_node_virtual_device_counter','--exact','--nocapture','--test-threads=1' -RedirectStandardOutput "$env:RUNNER_TEMP\out.txt" -RedirectStandardError "$env:RUNNER_TEMP\err.txt" -PassThru -NoNewWindow
-          for($i=0;$i -lt 60;$i++){ if($p.HasExited){break}; Start-Sleep 1; $p.Refresh(); $kids=(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($p.Id)" | ForEach-Object {"$($_.Name)#$($_.ProcessId)"}) -join ','; $os=Get-CimInstance Win32_OperatingSystem; "t=$i ws=$([int]($p.WorkingSet64/1MB))MB cpu=$([int]$p.TotalProcessorTime.TotalSeconds)s threads=$($p.Threads.Count) handles=$($p.HandleCount) kids=$kids freeMB=$([int]($os.FreePhysicalMemory/1024))"; $last="t=$i ws=$([int]($p.WorkingSet64/1MB))MB cpu=$([int]$p.TotalProcessorTime.TotalSeconds)s threads=$($p.Threads.Count) kids=$kids freeMB=$([int]($os.FreePhysicalMemory/1024))"; Get-Content "$env:RUNNER_TEMP\err.txt" -Tail 3 -ErrorAction SilentlyContinue }
-          if(-not $p.HasExited){ $last="WATCHDOG KILL "+$last; "WATCHDOG KILL"; Get-CimInstance Win32_Process | Sort-Object WorkingSetSize -Descending | Select-Object -First 8 Name,ProcessId,ParentProcessId,@{n='MB';e={[int]($_.WorkingSetSize/1MB)}} | Format-Table | Out-String; taskkill /T /F /PID $p.Id }
-          "--- stdout"; Get-Content "$env:RUNNER_TEMP\out.txt" -ErrorAction SilentlyContinue
-          "--- stderr"; Get-Content "$env:RUNNER_TEMP\err.txt" -ErrorAction SilentlyContinue
-          $summary=((@($last)+(Get-Content "$env:RUNNER_TEMP\err.txt" -Tail 6 -ErrorAction SilentlyContinue)+(Get-Content "$env:RUNNER_TEMP\out.txt" -Tail 4 -ErrorAction SilentlyContinue)) -join ' | ') -replace '[\r\n]',' '
-          Write-Output "::warning title=watch::$summary"
-      - name: Watch timeout_foreign
-        timeout-minutes: 4
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Continue'; $last='none'
-          $exe=(Get-ChildItem target\debug\deps\deckforge-*.exe | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
-          $p=Start-Process $exe -ArgumentList 'plugin_validation::tests::timeout_foreign_and_crash_are_not_successes','--exact','--nocapture','--test-threads=1' -RedirectStandardOutput "$env:RUNNER_TEMP\out.txt" -RedirectStandardError "$env:RUNNER_TEMP\err.txt" -PassThru -NoNewWindow
-          for($i=0;$i -lt 60;$i++){ if($p.HasExited){break}; Start-Sleep 1; $p.Refresh(); $kids=(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($p.Id)" | ForEach-Object {"$($_.Name)#$($_.ProcessId)"}) -join ','; $os=Get-CimInstance Win32_OperatingSystem; "t=$i ws=$([int]($p.WorkingSet64/1MB))MB cpu=$([int]$p.TotalProcessorTime.TotalSeconds)s threads=$($p.Threads.Count) handles=$($p.HandleCount) kids=$kids freeMB=$([int]($os.FreePhysicalMemory/1024))"; $last="t=$i ws=$([int]($p.WorkingSet64/1MB))MB cpu=$([int]$p.TotalProcessorTime.TotalSeconds)s threads=$($p.Threads.Count) kids=$kids freeMB=$([int]($os.FreePhysicalMemory/1024))"; Get-Content "$env:RUNNER_TEMP\err.txt" -Tail 3 -ErrorAction SilentlyContinue }
-          if(-not $p.HasExited){ $last="WATCHDOG KILL "+$last; "WATCHDOG KILL"; Get-CimInstance Win32_Process | Sort-Object WorkingSetSize -Descending | Select-Object -First 8 Name,ProcessId,ParentProcessId,@{n='MB';e={[int]($_.WorkingSetSize/1MB)}} | Format-Table | Out-String; taskkill /T /F /PID $p.Id }
-          "--- stdout"; Get-Content "$env:RUNNER_TEMP\out.txt" -ErrorAction SilentlyContinue
-          "--- stderr"; Get-Content "$env:RUNNER_TEMP\err.txt" -ErrorAction SilentlyContinue
-          $summary=((@($last)+(Get-Content "$env:RUNNER_TEMP\err.txt" -Tail 6 -ErrorAction SilentlyContinue)+(Get-Content "$env:RUNNER_TEMP\out.txt" -Tail 4 -ErrorAction SilentlyContinue)) -join ' | ') -replace '[\r\n]',' '
-          Write-Output "::warning title=watch::$summary"
+      - name: Rust and headless MCP tests
+        timeout-minutes: 15
+        env:
+          DECKFORGE_MCP_EXE: ${{ github.workspace }}\target\release\deckforge-mcp.exe
+        run: cargo test --locked
+      - name: MCP stdio transport
+        run: node tests/mcp-transport.cjs
+      - name: MCP HTTP transport
+        run: node tests/mcp-http.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DeckForge-Windows
+          path: |
+            target/release/deckforge.exe
+            target/release/deckforge-mcp.exe
+            LICENSE
+            THIRD-PARTY-NOTICES.txt
+            README.md
+            docs/MCP.md
