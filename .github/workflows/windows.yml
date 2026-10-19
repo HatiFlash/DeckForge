@@ -20,31 +20,39 @@ jobs:
         run: cargo build --release --locked
       - name: Build tests
         run: cargo test --locked --no-run
-      - name: Diag plugin_host
-        timeout-minutes: 6
+      - name: Diag pure plugin_validation
+        timeout-minutes: 5
         continue-on-error: true
-        run: "cargo test --locked plugin_host:: -- --test-threads=1"
-      - name: Diag plugin_validation
-        timeout-minutes: 6
-        continue-on-error: true
-        run: "cargo test --locked plugin_validation:: -- --test-threads=1"
+        run: "cargo test --locked plugin_validation::tests::format_strict_and_invalid_paths plugin_validation::tests::html_ plugin_validation::tests::unknown_oracle plugin_validation::tests::no_oracle -- --test-threads=1"
       - name: Diag plugin_validation_proxy
-        timeout-minutes: 6
+        timeout-minutes: 5
         continue-on-error: true
         run: "cargo test --locked plugin_validation_proxy:: -- --test-threads=1"
       - name: Diag other plugin modules
-        timeout-minutes: 6
+        timeout-minutes: 5
         continue-on-error: true
-        run: "cargo test --locked plugin_http:: plugin_import:: plugin_runtime:: plugins:: plugin_catalog:: -- --test-threads=1"
+        run: "cargo test --locked plugin_host:: plugin_http:: plugin_import:: plugin_runtime:: plugins:: plugin_catalog:: -- --test-threads=1"
       - name: Diag ui
         timeout-minutes: 8
         continue-on-error: true
         run: "cargo test --locked ui:: -- --test-threads=1"
       - name: Diag assistants
-        timeout-minutes: 6
+        timeout-minutes: 5
         continue-on-error: true
         run: "cargo test --locked assistant:: -- --test-threads=1"
       - name: Diag remaining
         timeout-minutes: 8
         continue-on-error: true
         run: "cargo test --locked -- --test-threads=1 --skip plugin_ --skip plugins:: --skip ui:: --skip assistant::"
+      - name: Diag title_and_file_observed_and_missing_file_fails
+        timeout-minutes: 4
+        continue-on-error: true
+        run: "cargo test --locked plugin_validation::tests::title_and_file_observed_and_missing_file_fails -- --exact --nocapture"
+      - name: Diag real_node_virtual_device_counter
+        timeout-minutes: 4
+        continue-on-error: true
+        run: "cargo test --locked plugin_validation::tests::real_node_virtual_device_counter -- --exact --nocapture"
+      - name: Diag timeout_foreign_and_crash_are_not_successes
+        timeout-minutes: 4
+        continue-on-error: true
+        run: "cargo test --locked plugin_validation::tests::timeout_foreign_and_crash_are_not_successes -- --exact --nocapture"
