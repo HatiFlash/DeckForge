@@ -208,7 +208,7 @@ pub struct App {
     drop_targets: Vec<(egui::Rect, usize)>,
     recording: Option<(usize, String, usize, Vec<usize>, bool)>,
     recording_error: String,
-    import_report: Option<crate::elgato::Report>,
+    import_reports: Vec<crate::elgato::Report>,
     dialog_tx: Sender<Option<DialogEffect>>,
     dialog_rx: Receiver<Option<DialogEffect>>,
     dialog_pending: bool,
@@ -408,7 +408,7 @@ impl App {
             drop_targets: vec![],
             recording: None,
             recording_error: String::new(),
-            import_report: None,
+            import_reports: Vec::new(),
             dialog_tx,
             dialog_rx,
             dialog_pending: false,
@@ -1021,7 +1021,41 @@ impl App {
         self.engine.stop();
         self.start_dialog(|| {
             let path = rfd::FileDialog::new()
-                .add_filter("Configuration DeckForge", &["json", "bak"]).pick_file()?;
+                .add_filter(
+                    "Configuration DeckForge ou sauvegarde Stream Deck",
+                    &[
+                        "json",
+                        "bak",
+                        "StreamDeckProfilesBackup",
+                        "streamdeckprofilesbackup",
+                        "streamDeckProfile",
+                        "streamdeckprofile",
+                    ],
+                )
+                .add_filter("Configuration DeckForge (*.json, *.bak)", &["json", "bak"])
+                .add_filter(
+                    "Sauvegarde Stream Deck (*.StreamDeckProfilesBackup)",
+                    &["StreamDeckProfilesBackup", "streamdeckprofilesbackup"],
+                )
+                .add_filter(
+                    "Profil Stream Deck (*.streamDeckProfile)",
+                    &["streamDeckProfile", "streamdeckprofile"],
+                )
+                .pick_file()?;
+            let is_streamdeck = path
+                .extension()
+                .map(|ext| {
+                    let s = ext.to_string_lossy().to_ascii_lowercase();
+                    s.contains("streamdeck")
+                })
+                .unwrap_or(false);
+            if is_streamdeck {
+                let result = crate::elgato::load_all(&path);
+                return Some(Box::new(move |app| match result {
+                    Ok(reports) => app.import_reports = reports,
+                    Err(e) => app.fail(format!("Import Stream Deck impossible : {e}")),
+                }));
+            }
             let loaded = store::load(&path);
             Some(Box::new(move |app| match loaded {
                 Ok(c) => {
@@ -1033,7 +1067,13 @@ impl App {
                     app.edited();
                     app.log("Profils importés. Les touches restent en pause jusqu'à leur réactivation.".into());
                 }
-                Err(e) => app.fail(format!("Import impossible : {e}")),
+                Err(e) => {
+                    if let Ok(reports) = crate::elgato::load_all(&path) {
+                        app.import_reports = reports;
+                    } else {
+                        app.fail(format!("Import impossible : {e}"));
+                    }
+                }
             }))
         });
     }
@@ -2176,53 +2216,77 @@ impl App {
         self.engine.stop();
         self.start_dialog(|| {
             let path = rfd::FileDialog::new()
-                .add_filter("Profil ou action Stream Deck",
-                    &["streamDeckProfile", "streamDeckAction", "json"]).pick_file()?;
-            let result = crate::elgato::load(&path);
+                .add_filter(
+                    "Profil ou sauvegarde Stream Deck",
+                    &[
+                        "StreamDeckProfilesBackup",
+                        "streamdeckprofilesbackup",
+                        "streamDeckProfile",
+                        "streamdeckprofile",
+                        "streamDeckAction",
+                        "streamdeckaction",
+                        "json",
+                    ],
+                )
+                .pick_file()?;
+            let result = crate::elgato::load_all(&path);
             Some(Box::new(move |app| match result {
-                Ok(report) => app.import_report = Some(report),
+                Ok(reports) => app.import_reports = reports,
                 Err(e) => app.fail(format!("Import Stream Deck impossible : {e}")),
             }))
         });
     }
     fn apply_elgato(&mut self) {
-        let Some(mut report) = self.import_report.take() else {
-            return;
-        };
-        if self.config.profiles.len() >= 64 {
-            self.fail("64 profils maximum.".into());
-            self.import_report = Some(report);
+        if self.import_reports.is_empty() {
             return;
         }
-        let original = report.profile.name.clone();
-        let mut suffix = 2;
-        while self
-            .config
-            .profiles
-            .iter()
-            .any(|p| p.name.eq_ignore_ascii_case(&report.profile.name))
-        {
-            report.profile.name = format!("{original} ({suffix})");
-            suffix += 1;
+        let reports = std::mem::take(&mut self.import_reports);
+        if self.config.profiles.len() + reports.len() > 64 {
+            self.fail(format!(
+                "64 profils maximum (actuels: {}, importés: {}).",
+                self.config.profiles.len(),
+                reports.len()
+            ));
+            self.import_reports = reports;
+            return;
         }
+        let mut total_converted = 0;
+        let mut total_warnings = 0;
         let result = (|| -> anyhow::Result<()> {
-            if !report.icons.is_empty() {
-                let dir = self.path.parent().unwrap().join("assets").join(format!(
-                    "import-{}",
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)?
-                        .as_nanos()
-                ));
-                std::fs::create_dir_all(&dir)?;
-                for (i, (page, key, bytes)) in report.icons.iter().enumerate() {
-                    let path = dir.join(format!("icon-{i}.png"));
-                    std::fs::write(&path, bytes)?;
-                    report.profile.keys_at_mut(page).unwrap()[*key].image =
-                        path.to_string_lossy().into_owned();
-                }
-            }
             let mut next = self.config.clone();
-            next.profiles.push(report.profile.clone());
+            let base_time = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_nanos();
+            for (r_idx, mut report) in reports.into_iter().enumerate() {
+                total_converted += report.converted;
+                total_warnings += report.warnings.len();
+                let original = report.profile.name.clone();
+                let mut suffix = 2;
+                while next
+                    .profiles
+                    .iter()
+                    .any(|p| p.name.eq_ignore_ascii_case(&report.profile.name))
+                {
+                    report.profile.name = format!("{original} ({suffix})");
+                    suffix += 1;
+                }
+                if !report.icons.is_empty() {
+                    let dir = self.path.parent().unwrap().join("assets").join(format!(
+                        "import-{base_time}-{r_idx}"
+                    ));
+                    std::fs::create_dir_all(&dir)?;
+                    for (i, (page, key, bytes)) in report.icons.iter().enumerate() {
+                        let path = dir.join(format!("icon-{i}.png"));
+                        std::fs::write(&path, bytes)?;
+                        if let Some(keys) = report.profile.keys_at_mut(page) {
+                            if let Some(target_key) = keys.get_mut(*key) {
+                                target_key.image = path.to_string_lossy().into_owned();
+                            }
+                        }
+                    }
+                }
+                next.profiles.push(report.profile);
+            }
             next.active = next.profiles.len() - 1;
             next.reset_navigation();
             next.validate()?;
@@ -2238,13 +2302,10 @@ impl App {
         })();
         match result {
             Ok(()) => self.log(format!(
-                "Profil importé : {} actions converties, {} avertissements. Touches en pause.",
-                report.converted,
-                report.warnings.len()
+                "Import Stream Deck terminé : {total_converted} actions converties, {total_warnings} avertissements. Touches en pause."
             )),
             Err(e) => {
                 self.fail(format!("Import non enregistré : {e}"));
-                self.import_report = Some(report);
             }
         }
     }
@@ -3518,25 +3579,74 @@ impl App {
                 self.delete_page = None;
             }
         }
-        if self.import_report.is_some() {
+        if !self.import_reports.is_empty() {
             let mut open = true;
             let mut install = false;
-            if let Some(report) = &self.import_report {
-                egui::Window::new("Import Stream Deck — aperçu").open(&mut open).collapsible(false).default_width(560.0).show(ctx,|ui| {
+            egui::Window::new(if self.import_reports.len() > 1 {
+                "Import Sauvegarde Stream Deck — aperçu"
+            } else {
+                "Import Stream Deck — aperçu"
+            })
+            .open(&mut open)
+            .collapsible(false)
+            .default_width(580.0)
+            .show(ctx, |ui| {
+                if self.import_reports.len() == 1 {
+                    let report = &self.import_reports[0];
                     ui.label(RichText::new(&report.profile.name).size(22.0).strong());
-                    ui.label(format!("{} actions converties · {} pages/dossiers · {} icônes",report.converted,report.profile.pages.len()+1,report.icons.len()));
-                    ui.label(RichText::new("Un nouveau profil sera ajouté. Les actions non reconnues restent vides ; aucun plugin Elgato n’est installé. Les touches restent en pause après l’import.").small().color(p.muted));
-                    egui::ScrollArea::vertical().max_height(340.0).show(ui,|ui| {
-                        for warning in &report.warnings{ui.colored_label(Color32::from_rgb(222,165,77),warning);}
-                        ui.separator();for key in report.profile.keys.iter().filter(|k|!k.label.is_empty()){ui.label(format!("{} · {} action(s)",key.label,key.steps.len()));}
-                    });
-                    if ui.add(theme::primary(RichText::new("Importer ce profil").color(Color32::WHITE))).clicked(){install=true;}
+                    ui.label(format!(
+                        "{} actions converties · {} pages/dossiers · {} icônes",
+                        report.converted,
+                        report.profile.pages.len() + 1,
+                        report.icons.len()
+                    ));
+                } else {
+                    let total_actions: usize = self.import_reports.iter().map(|r| r.converted).sum();
+                    let total_icons: usize = self.import_reports.iter().map(|r| r.icons.len()).sum();
+                    ui.label(
+                        RichText::new(format!(
+                            "Sauvegarde complète : {} profils détectés",
+                            self.import_reports.len()
+                        ))
+                        .size(20.0)
+                        .strong(),
+                    );
+                    ui.label(format!("{total_actions} actions converties au total · {total_icons} icônes"));
+                }
+                ui.label(
+                    RichText::new(
+                        "Les nouveaux profils seront ajoutés à DeckForge. Les actions non reconnues restent vides. Les touches restent en pause après l’import.",
+                    )
+                    .small()
+                    .color(p.muted),
+                );
+                egui::ScrollArea::vertical().max_height(340.0).show(ui, |ui| {
+                    for report in &self.import_reports {
+                        if self.import_reports.len() > 1 {
+                            ui.add_space(4.0);
+                            ui.heading(&report.profile.name);
+                        }
+                        for warning in &report.warnings {
+                            ui.colored_label(Color32::from_rgb(222, 165, 77), warning);
+                        }
+                        for key in report.profile.keys.iter().filter(|k| !k.label.is_empty()) {
+                            ui.label(format!("{} · {} action(s)", key.label, key.steps.len()));
+                        }
+                    }
                 });
-            }
+                let btn_text = if self.import_reports.len() > 1 {
+                    format!("Importer tous les profils ({})", self.import_reports.len())
+                } else {
+                    "Importer ce profil".to_string()
+                };
+                if ui.add(theme::primary(RichText::new(btn_text).color(Color32::WHITE))).clicked() {
+                    install = true;
+                }
+            });
             if install {
                 self.apply_elgato();
             } else if !open {
-                self.import_report = None;
+                self.import_reports.clear();
             }
         }
         if self.save_bind {
@@ -3946,7 +4056,7 @@ impl App {
             || self.page_manager
             || self.delete_page.is_some()
             || self.recording.is_some()
-            || self.import_report.is_some()
+            || !self.import_reports.is_empty()
             || self.settings
             || self.show_hardware_test
             || self.show_device_report

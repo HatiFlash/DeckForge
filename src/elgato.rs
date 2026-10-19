@@ -24,19 +24,30 @@ fn safe(name: &str) -> bool {
         && !name.split('/').any(|p| p == "..")
 }
 pub fn load(path: &Path) -> Result<Report> {
+    let reports = load_all(path)?;
+    reports
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow!("Aucun profil Elgato valide trouvé"))
+}
+pub fn load_all(path: &Path) -> Result<Vec<Report>> {
     let data = std::fs::read(path)?;
-    ensure!(data.len() <= 64 * 1024 * 1024, "Archive de plus de 64 Mo");
+    ensure!(data.len() <= 256 * 1024 * 1024, "Archive de plus de 256 Mo");
     if path
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("json"))
     {
         ensure!(data.len() <= 2 * 1024 * 1024, "Manifest trop volumineux");
-        return convert(HashMap::from([("manifest.json".into(), data)]));
+        return Ok(vec![convert(HashMap::from([("manifest.json".into(), data)]))?]);
     }
+    load_all_zip_bytes(&data)
+}
+fn load_all_zip_bytes(data: &[u8]) -> Result<Vec<Report>> {
     let mut archive =
-        zip::ZipArchive::new(Cursor::new(data)).context("Profil Elgato ZIP invalide")?;
-    ensure!(archive.len() <= 2048, "Archive contenant trop de fichiers");
+        zip::ZipArchive::new(Cursor::new(data)).context("Profil ou sauvegarde Elgato ZIP invalide")?;
+    ensure!(archive.len() <= 16384, "Archive contenant trop de fichiers");
     let mut total = 0u64;
+    let mut nested_profiles = Vec::new();
     let mut files = HashMap::new();
     for i in 0..archive.len() {
         let file = archive.by_index(i)?;
@@ -46,13 +57,22 @@ pub fn load(path: &Path) -> Result<Report> {
             .checked_add(file.size())
             .ok_or_else(|| anyhow!("Archive trop volumineuse"))?;
         ensure!(
-            total <= 128 * 1024 * 1024,
-            "Archive décompressée de plus de 128 Mo"
+            total <= 512 * 1024 * 1024,
+            "Archive décompressée de plus de 512 Mo"
         );
         if file.is_dir() {
             continue;
         }
         let lower = name.to_lowercase();
+        if lower.ends_with(".streamdeckprofile") || lower.ends_with(".streamdeckaction") {
+            let limit = 64 * 1024 * 1024;
+            ensure!(file.size() <= limit, "Profil imbriqué trop volumineux");
+            let mut bytes = Vec::new();
+            file.take(limit + 1).read_to_end(&mut bytes)?;
+            ensure!(bytes.len() <= limit as usize, "Profil imbriqué décompressé trop volumineux");
+            nested_profiles.push((name, bytes));
+            continue;
+        }
         let json = lower.ends_with("manifest.json");
         let image = lower.ends_with(".png") || lower.ends_with(".jpg") || lower.ends_with(".jpeg");
         if !json && !image {
@@ -69,13 +89,58 @@ pub fn load(path: &Path) -> Result<Report> {
         );
         let mut bytes = Vec::new();
         file.take(limit + 1).read_to_end(&mut bytes)?;
-        ensure!(
-            bytes.len() <= limit as usize,
-            "Fichier décompressé trop volumineux"
-        );
+        ensure!(bytes.len() <= limit as usize, "Fichier décompressé trop volumineux");
         ensure!(files.insert(name, bytes).is_none(), "Entrées ZIP en double");
     }
-    convert(files)
+    if !nested_profiles.is_empty() {
+        let mut reports = Vec::new();
+        let mut errors = Vec::new();
+        for (name, bytes) in nested_profiles {
+            match load_all_zip_bytes(&bytes) {
+                Ok(inner_reports) => reports.extend(inner_reports),
+                Err(e) => errors.push(format!("{name}: {e}")),
+            }
+        }
+        if reports.is_empty() {
+            bail!("Aucun profil valide parmi les archives imbriquées : {}", errors.join("; "));
+        }
+        return Ok(reports);
+    }
+    let mut profile_groups: HashMap<String, HashMap<String, Vec<u8>>> = HashMap::new();
+    for (name, bytes) in &files {
+        if let Some((prefix, relative)) = extract_sdprofile_root(name) {
+            profile_groups
+                .entry(prefix.to_string())
+                .or_default()
+                .insert(relative.to_string(), bytes.clone());
+        }
+    }
+    if !profile_groups.is_empty() {
+        let mut keys: Vec<_> = profile_groups.keys().cloned().collect();
+        keys.sort();
+        let mut reports = Vec::new();
+        let mut errors = Vec::new();
+        for k in keys {
+            let p_files = profile_groups.remove(&k).unwrap();
+            match convert(p_files) {
+                Ok(report) => reports.push(report),
+                Err(e) => errors.push(format!("{k}: {e}")),
+            }
+        }
+        if reports.is_empty() {
+            bail!("Aucun profil valide dans la sauvegarde : {}", errors.join("; "));
+        }
+        return Ok(reports);
+    }
+    Ok(vec![convert(files)?])
+}
+fn extract_sdprofile_root(path: &str) -> Option<(&str, &str)> {
+    let lower = path.to_lowercase();
+    let idx = lower.find(".sdprofile/")?;
+    let prefix = &path[..idx + ".sdprofile".len()];
+    let folder_name_start = prefix.rfind('/').map(|i| i + 1).unwrap_or(0);
+    let relative = &path[folder_name_start..];
+    Some((prefix, relative))
 }
 fn actions(value: &Value) -> Option<&serde_json::Map<String, Value>> {
     value["Actions"].as_object().or_else(|| {
@@ -551,5 +616,66 @@ mod tests {
         writer.finish().unwrap();
         assert!(load(&path).unwrap_err().to_string().contains("Chemin"));
         assert!(!d.path().parent().unwrap().join("manifest.json").exists());
+    }
+    #[test]
+    fn imports_streamdeckprofilesbackup_with_multiple_profiles() {
+        let d = tempfile::tempdir().unwrap();
+        let path = d.path().join("test.StreamDeckProfilesBackup");
+        let mut writer = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let root1 = json!({"Name":"Streaming","Pages":{"Pages":["P1"]},"Version":"2.0"});
+        let page1 = json!({"Controllers":[{"Type":"Keypad","Actions":{"0,0":hotkey()}}]});
+        let root2 = json!({"Name":"Gaming","Pages":{"Pages":["P2"]},"Version":"2.0"});
+        let page2 = json!({"Controllers":[{"Type":"Keypad","Actions":{"0,0":hotkey(),"1,0":hotkey()}}]});
+        let opts = zip::write::SimpleFileOptions::default();
+        writer.start_file("ProfilesV2/11111111-1111-1111-1111-111111111111.sdProfile/manifest.json", opts).unwrap();
+        writer.write_all(&serde_json::to_vec(&root1).unwrap()).unwrap();
+        writer.start_file("ProfilesV2/11111111-1111-1111-1111-111111111111.sdProfile/Profiles/P1/manifest.json", opts).unwrap();
+        writer.write_all(&serde_json::to_vec(&page1).unwrap()).unwrap();
+        writer.start_file("ProfilesV2/22222222-2222-2222-2222-222222222222.sdProfile/manifest.json", opts).unwrap();
+        writer.write_all(&serde_json::to_vec(&root2).unwrap()).unwrap();
+        writer.start_file("ProfilesV2/22222222-2222-2222-2222-222222222222.sdProfile/Profiles/P2/manifest.json", opts).unwrap();
+        writer.write_all(&serde_json::to_vec(&page2).unwrap()).unwrap();
+        writer.finish().unwrap();
+
+        let reports = load_all(&path).unwrap();
+        assert_eq!(reports.len(), 2);
+        assert_eq!(reports[0].profile.name, "Streaming");
+        assert_eq!(reports[0].converted, 1);
+        assert_eq!(reports[1].profile.name, "Gaming");
+        assert_eq!(reports[1].converted, 2);
+
+        let first = load(&path).unwrap();
+        assert_eq!(first.profile.name, "Streaming");
+    }
+    #[test]
+    fn imports_streamdeckprofilesbackup_with_nested_archives() {
+        let d = tempfile::tempdir().unwrap();
+        let p1_path = d.path().join("p1.streamDeckProfile");
+        let mut w1 = zip::ZipWriter::new(std::fs::File::create(&p1_path).unwrap());
+        let root1 = json!({"Name":"Music","Actions":{"0,0":hotkey()}});
+        w1.start_file("manifest.json", zip::write::SimpleFileOptions::default()).unwrap();
+        w1.write_all(&serde_json::to_vec(&root1).unwrap()).unwrap();
+        w1.finish().unwrap();
+
+        let p2_path = d.path().join("p2.streamDeckProfile");
+        let mut w2 = zip::ZipWriter::new(std::fs::File::create(&p2_path).unwrap());
+        let root2 = json!({"Name":"Dev","Actions":{"0,0":hotkey(),"1,0":hotkey()}});
+        w2.start_file("manifest.json", zip::write::SimpleFileOptions::default()).unwrap();
+        w2.write_all(&serde_json::to_vec(&root2).unwrap()).unwrap();
+        w2.finish().unwrap();
+
+        let backup_path = d.path().join("all.StreamDeckProfilesBackup");
+        let mut wb = zip::ZipWriter::new(std::fs::File::create(&backup_path).unwrap());
+        let opts = zip::write::SimpleFileOptions::default();
+        wb.start_file("music.streamDeckProfile", opts).unwrap();
+        wb.write_all(&std::fs::read(&p1_path).unwrap()).unwrap();
+        wb.start_file("dev.streamDeckProfile", opts).unwrap();
+        wb.write_all(&std::fs::read(&p2_path).unwrap()).unwrap();
+        wb.finish().unwrap();
+
+        let reports = load_all(&backup_path).unwrap();
+        assert_eq!(reports.len(), 2);
+        assert!(reports.iter().any(|r| r.profile.name == "Music" && r.converted == 1));
+        assert!(reports.iter().any(|r| r.profile.name == "Dev" && r.converted == 2));
     }
 }
