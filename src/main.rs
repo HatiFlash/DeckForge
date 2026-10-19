@@ -171,7 +171,7 @@ fn main() -> eframe::Result<()> {
             .with_inner_size(size)
             .with_min_inner_size([1000.0, 700.0]),
         // wgpu (DirectX 12/Vulkan) : presentation en mode flip, sans images vides au survol.
-        renderer: eframe::Renderer::Wgpu,
+        renderer: if std::env::args().any(|a| a == "--glow") { eframe::Renderer::Glow } else { eframe::Renderer::Wgpu },
         ..Default::default()
     };
     eframe::run_native(
