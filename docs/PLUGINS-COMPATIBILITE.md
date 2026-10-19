@@ -2,6 +2,27 @@
 
 Verdict des plugins recensés dans le tableau ci-dessous : « Non vérifié » au moment de cet inventaire ; ne pas étendre ce verdict au test ultérieur OpenAction Counter documenté séparément. Pour les plugins du tableau lors de cet inventaire initial, aucun essai réel à effets externes, compte, USB ou application DeckForge n’avait été lancé. Le plugin Tutorial a été copié dans `%TEMP%\deckforge-plugin-trials\com.elgato.tutorial.sdPlugin` ; SHA256 de la copie identique au manifeste source. Les autres plugins ont été inventoriés en lecture seule, sans démarrage ni copie : ne pas confondre cet inventaire avec un essai fonctionnel. Le code Tutorial `app.js` utilise `window.open('actions/<nom>.html', 'Tutorial')` sur chaque keyUp, pas `openUrl` / `setTitle` / `setImage` / `switchToProfile`. L’hôte HTML Edge n’intercepte pas `window.open` : aucune action Tutorial n’a été exécutée, même sur la copie. Les images/titres statiques du manifeste ne prouvent pas le fonctionnement de l’action. `validate_oracle` refuse désormais les HTML avant tout démarrage. Mode ci-dessous : « statique, simulé non lancé ».
 
+## Matrice de plugins tiers — banc Windows virtuel, 19 octobre 2026
+
+Banc : VM Windows 10 22H2 dédiée (labo Proxmox), toolchain MSVC comme la CI, **aucun FIFINE D6 ni Stream Deck physique**. Les appuis sont simulés : soit directement sur l'hôte WebSocket (`external_plugin_folder_reacts_to_key_press`), soit par le même chemin `Event::Key` que les boutons réels dans une App isolée (`external_plugin_folder_changes_title_in_virtual_app`, `external_plugin_folder_resumes_after_restart`). Ces tests sont `#[ignore]` : ils exécutent du code tiers et ne tournent que sur demande, avec `DECKFORGE_TEST_PLUGIN_DIR`, `DECKFORGE_TEST_PLUGIN_ACTION` et, selon le test, `DECKFORGE_TEST_PLUGIN_TITLE` ou `DECKFORGE_TEST_PLUGIN_SETTING`. Aucun plugin tiers n'est inclus dans le dépôt.
+
+| Plugin (source) | Type | Enregistrement + réaction à l'appui | Effet via App virtuelle | Reprise après redémarrage |
+|---|---|---|---|---|
+| Elgato `counter` (samples officiels, SDK `@elgato/streamdeck` v2, commit `8cc82ba`, construit localement) | Node.js | Oui : `setTitle`, `setSettings` | Oui : titre `1` | Oui : `count` 1 → 2 après relance du plugin et relecture de la configuration |
+| Elgato `hello-world` (mêmes samples) | Node.js | Oui : `setSettings`, `setTitle` | Non mesuré (titre aléatoire localisé) | Non applicable |
+| Elgato `lights-out` (mêmes samples) | Node.js | Oui : `setState` | Non mesuré (jeu multi-touches) | Non mesuré |
+| OpenAction Counter v1.0.1 (archive SHA-256 `f04e0724…54e47`) | Exécutable natif | Oui : `setSettings`, `setTitle` | Oui (essai précédent) | Oui : `value` 1 → 2 |
+| OpenAction System v1.0.0 (archive SHA-256 `e8b66b45…24ba3`) | Exécutable natif | Oui : `setTitle` périodique (CPU) | Non mesuré (valeur variable) | Non applicable |
+
+Non essayés volontairement : `cat-keys` (télécharge des images chez un tiers), `data-sources` (ouvre une page web), `layouts` (actions `Encoder`, molettes non simulées). Gizmos n'est pas disponible sur ce banc.
+
+**Ce que cela prouve :** l'hôte DeckForge lance des plugins Node.js écrits avec le SDK officiel Elgato v2 et des plugins natifs OpenAction ; ils s'enregistrent, reçoivent `willAppear`/`keyDown`/`keyUp`, et leurs réponses sont appliquées par l'App. **Ce que cela ne prouve pas :** le rendu sur un D6 réel de ces plugins (seul OpenAction Counter l'a été), les Property Inspectors HTML (toujours refusés tant que le confinement n'est pas validé), les molettes, ni la compatibilité de tous les plugins du marché.
+
+### Corrections issues du banc
+
+- **Import sans redémarrage :** le catalogue du gestionnaire de plugins était figé au lancement ; un plugin importé depuis le magasin restait « introuvable » jusqu'à la relance de DeckForge. `Manager::set_catalog` met désormais le catalogue à jour après l'import et démarre les touches déjà liées (test `plugin_imported_at_runtime_starts_without_restart`).
+- **Validation sans effets locaux :** l'App isolée de validation partait de la configuration par défaut, dont la touche 1 envoie Ctrl+C et la touche 2 Lecture/Pause. Valider un plugin envoyait donc ces entrées au système (et faisait tomber la machine de CI GitHub). Les macros et touches média sont désormais vidées avant tout appui virtuel (test `validation_bench_never_runs_default_macros_or_media_keys`).
+
 ## Essai positif distinct : OpenAction Counter v1.0.1 — 18 octobre 2026
 
 - Archive de release `me.amankhanna.oacounter.zip`, SHA-256 `f04e0724188468e450633a49d15ee98ab0400faa2197332cfcf80278d0c54e47`. Manifeste et code source examinés ; le binaire de release tiers est épinglé par hash, sans preuve de compilation reproductible. Aucun code OpenDeck GPL copié.
