@@ -76,6 +76,7 @@ pub(crate) fn validate_witness(plugin: &Plugin, error: Option<&str>) -> Result<(
     let path = dir.path().join("config.json");
     let ctx = egui::Context::default();
     let mut app = App::init_with(&ctx, Some(path.clone()), false);
+    eprintln!("[witness] init");
     let (tx, rx) = mpsc::channel();
     app.events = rx;
     app.gate.enabled = true;
@@ -99,10 +100,12 @@ pub(crate) fn validate_witness(plugin: &Plugin, error: Option<&str>) -> Result<(
     store::save(&path, &app.config).map_err(|e| e.to_string())?;
     app.plugins = Some(Manager::new(vec![plugin.clone()]));
     app.plugins.as_mut().unwrap().sync(&app.applied);
+    eprintln!("[witness] sync1");
     if error.is_some() {
         return press(&mut app, &tx, 0, "1", 1);
     }
     press(&mut app, &tx, 0, "1", 1)?;
+    eprintln!("[witness] press1");
     let deadline = Instant::now() + LIMIT;
     loop {
         app.plugin_events();
@@ -120,11 +123,13 @@ pub(crate) fn validate_witness(plugin: &Plugin, error: Option<&str>) -> Result<(
         }
         std::thread::sleep(Duration::from_millis(10));
     }
+    eprintln!("[witness] before globals");
     app.config.keys_mut()[0].plugin.as_mut().unwrap().settings["step"] = json!(3);
     app.applied = app.config.clone();
     store::save(&path, &app.config).map_err(|e| e.to_string())?;
     app.plugins.as_mut().unwrap().sync(&app.applied);
     press(&mut app, &tx, 0, "4", 4)?;
+    eprintln!("[witness] before press4+1b");
     press(&mut app, &tx, 1, "1", 1)?;
     app.config.profiles[app.config.active]
         .pages
@@ -150,15 +155,18 @@ pub(crate) fn validate_witness(plugin: &Plugin, error: Option<&str>) -> Result<(
         }
         std::thread::sleep(Duration::from_millis(10));
     }
+    eprintln!("[witness] before willDisappear");
     app.navigate(crate::model::Step::Page { id: String::new() });
     app.applied = app.config.clone();
     app.plugins.as_mut().unwrap().sync(&app.applied);
+    eprintln!("[witness] before restart");
     app.plugins.take(); // Nouveau processus Node sur la configuration sauvegardée.
     app.config = store::load(&path).map_err(|e| e.to_string())?;
     app.applied = app.config.clone();
     app.plugin_faces.clear();
     app.plugins = Some(Manager::new(vec![plugin.clone()]));
     app.plugins.as_mut().unwrap().sync(&app.applied);
+    eprintln!("[witness] before press7");
     press(&mut app, &tx, 0, "7", 7)?;
     let deadline = Instant::now() + LIMIT;
     while !app

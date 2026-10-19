@@ -20,39 +20,27 @@ jobs:
         run: cargo build --release --locked
       - name: Build tests
         run: cargo test --locked --no-run
-      - name: Diag pure plugin_validation
-        timeout-minutes: 5
-        continue-on-error: true
-        run: "cargo test --locked plugin_validation::tests::format_strict_and_invalid_paths plugin_validation::tests::html_ plugin_validation::tests::unknown_oracle plugin_validation::tests::no_oracle -- --test-threads=1"
-      - name: Diag plugin_validation_proxy
-        timeout-minutes: 5
-        continue-on-error: true
-        run: "cargo test --locked plugin_validation_proxy:: -- --test-threads=1"
-      - name: Diag other plugin modules
-        timeout-minutes: 5
-        continue-on-error: true
-        run: "cargo test --locked plugin_host:: plugin_http:: plugin_import:: plugin_runtime:: plugins:: plugin_catalog:: -- --test-threads=1"
-      - name: Diag ui
-        timeout-minutes: 8
-        continue-on-error: true
-        run: "cargo test --locked ui:: -- --test-threads=1"
-      - name: Diag assistants
-        timeout-minutes: 5
-        continue-on-error: true
-        run: "cargo test --locked assistant:: -- --test-threads=1"
-      - name: Diag remaining
-        timeout-minutes: 8
-        continue-on-error: true
-        run: "cargo test --locked -- --test-threads=1 --skip plugin_ --skip plugins:: --skip ui:: --skip assistant::"
-      - name: Diag title_and_file_observed_and_missing_file_fails
+      - name: Watch real_node
         timeout-minutes: 4
         continue-on-error: true
-        run: "cargo test --locked plugin_validation::tests::title_and_file_observed_and_missing_file_fails -- --exact --nocapture"
-      - name: Diag real_node_virtual_device_counter
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Continue'
+          $exe=(Get-ChildItem target\debug\deps\deckforge-*.exe | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
+          $p=Start-Process $exe -ArgumentList 'plugin_validation::tests::real_node_virtual_device_counter','--exact','--nocapture','--test-threads=1' -RedirectStandardOutput "$env:RUNNER_TEMP\out.txt" -RedirectStandardError "$env:RUNNER_TEMP\err.txt" -PassThru -NoNewWindow
+          for($i=0;$i -lt 60;$i++){ if($p.HasExited){break}; Start-Sleep 1; $p.Refresh(); $kids=(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($p.Id)" | ForEach-Object {"$($_.Name)#$($_.ProcessId)"}) -join ','; $os=Get-CimInstance Win32_OperatingSystem; "t=$i ws=$([int]($p.WorkingSet64/1MB))MB cpu=$([int]$p.TotalProcessorTime.TotalSeconds)s threads=$($p.Threads.Count) handles=$($p.HandleCount) kids=$kids freeMB=$([int]($os.FreePhysicalMemory/1024))"; Get-Content "$env:RUNNER_TEMP\err.txt" -Tail 3 -ErrorAction SilentlyContinue }
+          if(-not $p.HasExited){ "WATCHDOG KILL"; Get-CimInstance Win32_Process | Sort-Object WorkingSetSize -Descending | Select-Object -First 8 Name,ProcessId,ParentProcessId,@{n='MB';e={[int]($_.WorkingSetSize/1MB)}} | Format-Table | Out-String; taskkill /T /F /PID $p.Id }
+          "--- stdout"; Get-Content "$env:RUNNER_TEMP\out.txt" -ErrorAction SilentlyContinue
+          "--- stderr"; Get-Content "$env:RUNNER_TEMP\err.txt" -ErrorAction SilentlyContinue
+      - name: Watch timeout_foreign
         timeout-minutes: 4
         continue-on-error: true
-        run: "cargo test --locked plugin_validation::tests::real_node_virtual_device_counter -- --exact --nocapture"
-      - name: Diag timeout_foreign_and_crash_are_not_successes
-        timeout-minutes: 4
-        continue-on-error: true
-        run: "cargo test --locked plugin_validation::tests::timeout_foreign_and_crash_are_not_successes -- --exact --nocapture"
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Continue'
+          $exe=(Get-ChildItem target\debug\deps\deckforge-*.exe | Sort-Object LastWriteTime | Select-Object -Last 1).FullName
+          $p=Start-Process $exe -ArgumentList 'plugin_validation::tests::timeout_foreign_and_crash_are_not_successes','--exact','--nocapture','--test-threads=1' -RedirectStandardOutput "$env:RUNNER_TEMP\out.txt" -RedirectStandardError "$env:RUNNER_TEMP\err.txt" -PassThru -NoNewWindow
+          for($i=0;$i -lt 60;$i++){ if($p.HasExited){break}; Start-Sleep 1; $p.Refresh(); $kids=(Get-CimInstance Win32_Process -Filter "ParentProcessId=$($p.Id)" | ForEach-Object {"$($_.Name)#$($_.ProcessId)"}) -join ','; $os=Get-CimInstance Win32_OperatingSystem; "t=$i ws=$([int]($p.WorkingSet64/1MB))MB cpu=$([int]$p.TotalProcessorTime.TotalSeconds)s threads=$($p.Threads.Count) handles=$($p.HandleCount) kids=$kids freeMB=$([int]($os.FreePhysicalMemory/1024))"; Get-Content "$env:RUNNER_TEMP\err.txt" -Tail 3 -ErrorAction SilentlyContinue }
+          if(-not $p.HasExited){ "WATCHDOG KILL"; Get-CimInstance Win32_Process | Sort-Object WorkingSetSize -Descending | Select-Object -First 8 Name,ProcessId,ParentProcessId,@{n='MB';e={[int]($_.WorkingSetSize/1MB)}} | Format-Table | Out-String; taskkill /T /F /PID $p.Id }
+          "--- stdout"; Get-Content "$env:RUNNER_TEMP\out.txt" -ErrorAction SilentlyContinue
+          "--- stderr"; Get-Content "$env:RUNNER_TEMP\err.txt" -ErrorAction SilentlyContinue
