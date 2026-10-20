@@ -1297,12 +1297,30 @@ fn find_window_by_exe(program: &str) -> Option<HWND> {
     search.found
 }
 fn activate_window(hwnd: HWND) -> Result<()> {
+    use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
     unsafe {
         if IsIconic(hwnd) != 0 { ShowWindow(hwnd, SW_RESTORE); }
-        // Windows foreground lock policy may reject activation; never claim success in that case.
-        anyhow::ensure!(SetForegroundWindow(hwnd) != 0 && GetForegroundWindow() == hwnd,
-            "Windows a refusé d’activer l’application déjà ouverte (restriction du premier plan)");
+        if GetForegroundWindow() == hwnd { return Ok(()); }
+        let active = || GetForegroundWindow() == hwnd;
+        let mut ok = SetForegroundWindow(hwnd) != 0 && active();
+        if !ok {
+            // Touche D6 : DeckForge n'est pas au premier plan et Windows peut refuser
+            // l'activation. Partager l'entrée avec la fenêtre active est le moyen documenté.
+            let foreground = GetForegroundWindow();
+            let theirs = if foreground.is_null() { 0 } else { GetWindowThreadProcessId(foreground, std::ptr::null_mut()) };
+            let ours = GetCurrentThreadId();
+            if theirs != 0 && theirs != ours && AttachThreadInput(ours, theirs, 1) != 0 {
+                BringWindowToTop(hwnd);
+                SetForegroundWindow(hwnd);
+                AttachThreadInput(ours, theirs, 0);
+            }
+            ok = active();
+        }
+        // Windows foreground lock policy may still reject activation; never claim success in that case.
+        anyhow::ensure!(ok, "Windows a refusé d’activer l’application déjà ouverte (restriction du premier plan)");
     }
+    // Laisse la fenêtre prendre le focus clavier avant un raccourci (Ctrl+T, etc.).
+    std::thread::sleep(Duration::from_millis(120));
     Ok(())
 }
 pub(crate) fn find_window(query: &str) -> Option<HWND> {

@@ -6,8 +6,8 @@
 
   [![Licence MIT](https://img.shields.io/badge/Licence-MIT-blue.svg)](LICENSE)
   [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
-  [![Tests](https://img.shields.io/badge/Tests-374%20pass%C3%A9s-brightgreen.svg)]()
-  [![Version](https://img.shields.io/badge/Release-v0.8.6-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.6)
+  [![Tests](https://img.shields.io/badge/Tests-378%20pass%C3%A9s-brightgreen.svg)]()
+  [![Version](https://img.shields.io/badge/Release-v0.8.7-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.7)
 </div>
 
 ---
@@ -18,7 +18,21 @@
 
 ---
 
-## 🆕 Nouveautés 0.8.6
+## 🆕 Nouveautés 0.8.7
+
+- **Inspecteur des touches plugin** : « Réglages du plugin » et « Retirer le plugin » restent visibles ; l'identifiant long du plugin est raccourci à gauche (nom complet au survol).
+- **Atelier de blocs, mode Simple** : cliquer sur un bloc, y compris dans ALORS / SINON, ouvre toujours ses propriétés modifiables, même en fenêtre compacte quand la bibliothèque ou l'assistant était ouvert.
+- **Assistant (règles + IA locale)** : « ouvre Brave s'il n'est pas ouvert, et s'il est déjà ouvert ouvre un nouvel onglet » donne une vraie condition (onglet si Brave tourne, lancement sinon). Nouveaux raccourcis reconnus : rouvrir l'onglet fermé, onglet suivant/précédent, plein écran.
+- **Activation d'une application déjà ouverte** plus fiable depuis une touche du D6 (contournement documenté du verrou de premier plan de Windows, court délai avant le raccourci). Windows peut encore refuser : l'erreur reste affichée, jamais un faux succès.
+- **Mémoire GPU** : backport du correctif officiel egui #7928 (file WGPU soumise quand une image est abandonnée). Il corrige un défaut réel reproduit en banc ; la pointe de 35 Go observée sur un PC n'est pas démontrée comme venant de ce défaut. Voir [les notes de la 0.8.7](docs/RELEASE-0.8.7.md).
+
+| Touche plugin (1060 px) | Atelier Simple : propriétés d'un bloc imbriqué |
+|---|---|
+| ![Ligne plugin raccourcie, bouton Retirer visible](docs/plugin-header-1060.png) | ![Propriétés du bloc Lancer brave.exe en mode Simple](docs/atelier-simple-proprietes.png) |
+
+*Captures du banc d'interface sans D6 ; le plugin Govee affiché est une donnée de test, pas un plugin installé.*
+
+## Nouveautés 0.8.6
 
 - **Châssis 3D sans touches pré-dessinées** : le SVG ne dessine que le boîtier. Les 15 touches interactives egui remplissent mieux l'intérieur (faces 228 × 214 au lieu de 202 × 190 en coordonnées SVG), avec des marges et écarts réduits, un relief léger et un seul contour. La grille et le boîtier partagent le même repère et s'adaptent sans déformation à la fenêtre et au DPI.
 - Les exemples d'origine « Exemple macro » et « Lecture » utilisent désormais le fond neutre des autres touches, sans aplats violet/vert. Les profils déjà personnalisés, leurs images, GIF, vidéos et actions ne sont pas remplacés ; les nouvelles couleurs concernent les profils créés avec les valeurs d'origine.
@@ -147,8 +161,8 @@ DeckForge embarque un serveur MCP (**Model Context Protocol**) natif pour collab
 
 ## 🚀 Prise en main rapide
 
-1. Téléchargez **`DeckForge-0.8.6-Setup.exe`** depuis la [page des Releases](https://github.com/HatiFlash/DeckForge/releases) et lancez-le (aucun droit administrateur requis). DeckForge s'installe dans `%LOCALAPPDATA%\Programs\DeckForge` avec un raccourci dans le menu Démarrer.
-   - Version portable : `DeckForge-0.8.6-Windows.zip`, à extraire dans le dossier de votre choix.
+1. Téléchargez **`DeckForge-0.8.7-Setup.exe`** depuis la [page des Releases](https://github.com/HatiFlash/DeckForge/releases) et lancez-le (aucun droit administrateur requis). DeckForge s'installe dans `%LOCALAPPDATA%\Programs\DeckForge` avec un raccourci dans le menu Démarrer.
+   - Version portable : `DeckForge-0.8.7-Windows.zip`, à extraire dans le dossier de votre choix.
    - Vous utilisiez déjà la version portable ? Copiez `config.json`, `preferences.json`, `variables.json` et les dossiers `assets` et `plugins` de l'ancien dossier vers le dossier d'installation, DeckForge fermé.
 2. Lancez DeckForge depuis le menu Démarrer.
 3. *Note importante pour les possesseurs du FIFINE D6 :* veillez à fermer le logiciel officiel FIFINE afin de libérer l'accès USB exclusif pour DeckForge.
@@ -172,7 +186,7 @@ cargo build --release --locked
 cargo test --locked
 
 # Construire l'installateur (Inno Setup 6 ou 7 requis)
-powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.6 -Build
+powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.7 -Build
 ```
 
 ---

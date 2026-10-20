@@ -7,6 +7,8 @@ use crate::model::Step;
 /// La demande commence par une condition ou contient une alternative.
 pub(super) fn is_conditional(n: &str) -> bool {
     n.starts_with("si ") || n.starts_with("if ") || n.starts_with("quand ") || has(n, &["sinon", "otherwise", "else", "seulement si", "only if"])
+        || ([" s il est", " s il n est", " si il est", " si il n est", " s il l est", " et si "].iter().any(|m| n.contains(m))
+            && has(n, &["ouvert", "ouverte", "lance", "tourne", "open", "running"]))
 }
 
 /// La demande parle de répétition.
@@ -63,6 +65,18 @@ fn branch(text: &str, app: &KnownApp, rules: &dyn Fn(&str) -> Option<Vec<Step>>)
         return Some(vec![]);
     }
     let shortcut = |keys: &str| Some(vec![focus(app), Step::Hotkey { keys: keys.into() }]);
+    if has(&n, &["rouvre l onglet", "rouvrir l onglet", "onglet ferme", "reopen", "restore the tab"]) {
+        return shortcut("CTRL+SHIFT+T");
+    }
+    if has(&n, &["onglet precedent", "previous tab"]) {
+        return shortcut("CTRL+SHIFT+TAB");
+    }
+    if has(&n, &["onglet suivant", "next tab"]) {
+        return shortcut("CTRL+TAB");
+    }
+    if has(&n, &["plein ecran", "full screen", "fullscreen"]) {
+        return shortcut("F11");
+    }
     if has(&n, &["nouvel onglet", "nouveau onglet", "un onglet", "new tab", "a tab"]) {
         return shortcut("CTRL+T");
     }
@@ -95,7 +109,9 @@ fn branch(text: &str, app: &KnownApp, rules: &dyn Fn(&str) -> Option<Vec<Step>>)
 /// « si X (n')est (pas) ouvert, A, sinon B » → Si l'application X tourne : …, sinon : …
 pub(super) fn condition(text: &str, knowledge: &Knowledge, rules: &dyn Fn(&str) -> Option<Vec<Step>>) -> Option<(Step, String)> {
     let n = parser::normalize(text);
-    let body = ["si ", "if ", "quand "].iter().find_map(|p| n.strip_prefix(p))?;
+    let Some(body) = ["si ", "if ", "quand "].iter().find_map(|p| n.strip_prefix(p)) else {
+        return postfix(&n, knowledge, rules);
+    };
     let (head, otherwise) = match [" sinon ", " otherwise ", " else ", " autrement "].iter().filter_map(|w| body.find(w).map(|i| (i, w.len()))).min() {
         Some((i, len)) => (&body[..i], &body[i + len..]),
         None => (body, ""),
@@ -118,6 +134,38 @@ pub(super) fn condition(text: &str, knowledge: &Knowledge, rules: &dyn Fn(&str) 
         Step::IfCondition { condition: crate::conditions::Condition::AppRunning { exe: app.exe.clone() }, then_steps, else_steps },
         format!("Condition : « {name} » ({}) est lancé ? « Sinon » s'applique quand il ne l'est pas.", app.exe),
     ))
+}
+
+/// Condition écrite après l'action : « ouvre Brave s'il n'est pas ouvert, et s'il l'est ouvre un
+/// nouvel onglet ». Réécrite sous la forme « si Brave … , A sinon B », sans application inventée.
+fn postfix(n: &str, knowledge: &Knowledge, rules: &dyn Fn(&str) -> Option<Vec<Step>>) -> Option<(Step, String)> {
+    let (at, len) = [" s il ", " si il ", " si elle ", " s ils ", " si "].iter()
+        .filter_map(|m| n.find(m).map(|i| (i, m.len())))
+        .filter(|(i, len)| !n[i + len..].starts_with("te plait") && !n[i + len..].starts_with("vous plait"))
+        .min()?;
+    let action = n[..at].trim().trim_end_matches(',').trim();
+    let tail = &n[at + len..];
+    let (cond, other) = match [" et si ", " et s il ", " mais si ", " mais s il ", " sinon ", " s il ", " si il ", " si "].iter()
+        .filter_map(|m| tail.find(m).map(|i| (i, m.len()))).min() {
+        Some((i, l)) => (tail[..i].trim().trim_end_matches(','), tail[i + l..].trim()),
+        None => (tail.trim(), ""),
+    };
+    let app = knowledge.find_app(action).or_else(|| knowledge.find_app(cond))?;
+    let negative = cond.split_whitespace().any(|w| w == "pas" || w == "not") || has(cond, &["ferme", "closed", "isn t"]);
+    if !NEGATIVE.iter().chain(POSITIVE).any(|p| format!(" {cond}").contains(&format!(" {p}")) || cond.ends_with(p.rsplit(' ').next().unwrap_or(p))) {
+        return None;
+    }
+    // Retire la deuxième condition (« il est déjà ouvert ») pour garder l'action.
+    const COND_WORDS: &[&str] = &["il", "elle", "l", "est", "deja", "ouvert", "ouverte", "lance", "lancee", "demarre", "tourne", "actif", "en", "cours", "c", "le", "cas", "it", "is", "already", "open", "running", "alors", "then"];
+    let words: Vec<&str> = other.split_whitespace().collect();
+    let skip = words.iter().take_while(|w| COND_WORDS.contains(w)).count();
+    if words[..skip].iter().any(|w| *w == "pas" || *w == "not") {
+        return None;
+    }
+    let other_action = words[skip..].join(" ");
+    let name = parser::normalize(app.noms.first().map(String::as_str).unwrap_or(&app.exe));
+    let state = if negative { "n est pas ouvert" } else { "est ouvert" };
+    condition(&format!("si {name} {state} {action} sinon {other_action}"), knowledge, rules)
 }
 
 fn number(word: &str) -> Option<u32> {
@@ -175,6 +223,41 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn condition_written_after_the_action_is_understood() {
+        let k = Knowledge::builtin();
+        for text in [
+            "ouvre le navigateur brave s'il est pas ouvert et si il deja ouvert ouvre un nouvel onglet",
+            "lance brave s'il n'est pas ouvert sinon ouvre un nouvel onglet",
+            "ouvre brave si brave n'est pas ouvert, s'il est déjà ouvert ouvre un nouvel onglet",
+        ] {
+            let (step, _) = condition(text, &k, &rules).unwrap_or_else(|| panic!("non compris : {text}"));
+            match step {
+                Step::IfCondition { condition: crate::conditions::Condition::AppRunning { exe }, then_steps, else_steps } => {
+                    assert_eq!(exe, "brave.exe");
+                    assert!(matches!(&then_steps[..], [Step::WindowOp { op, .. }, Step::Hotkey { keys }] if op == "activate" && keys == "CTRL+T"), "{text}: {then_steps:?}");
+                    assert!(matches!(&else_steps[..], [Step::Launch { program, .. }] if program == "brave.exe"), "{text}: {else_steps:?}");
+                }
+                other => panic!("{other:?}"),
+            }
+        }
+        assert!(super::super::propose("ouvre le navigateur brave s'il est pas ouvert et si il deja ouvert ouvre un nouvel onglet", &Config::default()).steps.len() == 1);
+        assert!(condition("ouvre brave s'il te plait", &k, &rules).is_none());
+    }
+
+    #[test]
+    fn browser_tab_shortcuts_in_conditions() {
+        let k = Knowledge::builtin();
+        let keys = |t: &str| match condition(t, &k, &rules) {
+            Some((Step::IfCondition { then_steps, .. }, _)) => then_steps.iter().find_map(|s| if let Step::Hotkey { keys } = s { Some(keys.clone()) } else { None }),
+            _ => None,
+        };
+        assert_eq!(keys("si brave est ouvert rouvre l'onglet ferme").as_deref(), Some("CTRL+SHIFT+T"));
+        assert_eq!(keys("si brave est ouvert passe a l'onglet suivant").as_deref(), Some("CTRL+TAB"));
+        assert_eq!(keys("si brave est ouvert passe a l'onglet precedent").as_deref(), Some("CTRL+SHIFT+TAB"));
+        assert_eq!(keys("si brave est ouvert mets le en plein ecran").as_deref(), Some("F11"));
     }
 
     #[test]

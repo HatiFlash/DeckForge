@@ -2948,12 +2948,20 @@ impl App {
             let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let image_size=self.config.image_size;let key=&mut self.config.keys_mut()[selected];
             let mut removed_step=false; let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut recrop=false; let mut state_icon=None; let mut pick_audio=None; let mut open_workflow=false; let mut open_model=false; let mut advanced: Option<u8>=None;
             if let Some(binding)=key.plugin.clone(){
-                ui.horizontal(|ui|{
-                    ui.label(format!("Plugin : {} · {}",binding.plugin,binding.action));
-                    ui.label(self.plugin_errors.get(&binding.plugin).map(String::as_str).unwrap_or("Actif"));
+                // Boutons d'abord, à droite : l'identifiant long du plugin est tronqué à gauche.
+                let status=self.plugin_errors.get(&binding.plugin).cloned();
+                let short=|id:&str|id.rsplit('.').next().unwrap_or(id).to_owned();
+                let row=ui.spacing().interact_size.y;
+                ui.allocate_ui_with_layout(egui::vec2(ui.available_width(),row),egui::Layout::right_to_left(egui::Align::Center),|ui|{
+                    if ui.button("Retirer le plugin").clicked(){key.plugin=None;changed=true;}
                     if self.plugins.as_ref().is_some_and(|m|m.inspector_path(selected).is_some())
                         && ui.button("Réglages du plugin").clicked(){if let Some(m)=&self.plugins {m.open_inspector(selected);}}
-                    if ui.button("Retirer le plugin").clicked(){key.plugin=None;changed=true;}
+                    let text=format!("Plugin {} · {} — {}",short(&binding.plugin),short(&binding.action),status.as_deref().unwrap_or("Actif"));
+                    let color=if status.is_some(){theme::WARNING}else{ui.visuals().text_color()};
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center),|ui|{
+                        ui.add(egui::Label::new(RichText::new(text).color(color)).truncate())
+                            .on_hover_text(format!("{} · {}\n{}",binding.plugin,binding.action,status.as_deref().unwrap_or("Actif")));
+                    });
                 });
             }
             if self.flicker.as_ref().is_some_and(|session| session.active()) {self.diagnostic_inspector=Some(ui.max_rect());}

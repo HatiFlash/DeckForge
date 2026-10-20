@@ -1025,6 +1025,67 @@ fn workshop_selection_shortcuts_duplicate_delete_and_undo() {
     assert_eq!(h.app.config.keys()[0].steps.len(), 2);
 }
 
+fn fully_visible(shapes: &[egui::epaint::ClippedShape], text: &str) -> bool {
+    fn find(s: &egui::Shape, text: &str) -> Option<Rect> {
+        match s {
+            egui::Shape::Text(t) if t.galley.job.text == text => Some(Rect::from_min_size(t.pos, t.galley.size())),
+            egui::Shape::Vec(v) => v.iter().find_map(|s| find(s, text)),
+            _ => None,
+        }
+    }
+    shapes.iter().any(|s| find(&s.shape, text).is_some_and(|r| s.clip_rect.expand(0.5).contains_rect(r)))
+}
+
+#[test]
+fn plugin_header_keeps_remove_button_visible_with_long_plugin_ids() {
+    for size in [vec2(1060.0, 720.0), vec2(1366.0, 768.0)] {
+        let mut h = Harness::new();
+        h.app.selected = 6;
+        h.app.config.keys_mut()[6].plugin = Some(crate::model::PluginBinding {
+            plugin: "com.geekyeggo.goveecontroller".into(),
+            action: "com.geekyeggo.goveecontroller.turnonoff".into(),
+            settings: serde_json::json!({}),
+            state: 0,
+        });
+        h.app.plugin_errors.insert("com.geekyeggo.goveecontroller".into(), "Commande plugin expirée sans enregistrement WebSocket".into());
+        let output = h.warm(size);
+        assert!(fully_visible(&output.shapes, "Retirer le plugin"), "bouton hors champ à {size:?}");
+        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+            let snapshot = h.warm(size);
+            h.png(size, snapshot, &PathBuf::from(dir).join(format!("plugin-header-{}.png", size.x as u32)));
+        }
+    }
+}
+
+#[test]
+fn workshop_simple_mode_click_on_nested_block_opens_its_properties() {
+    let size = vec2(1366.0, 768.0);
+    let mut h = Harness::new();
+    h.app.show_workflow = true;
+    h.app.preferences.workshop_advanced = false;
+    h.app.config.keys_mut()[0].steps = vec![Step::IfCondition {
+        condition: crate::conditions::Condition::AppRunning { exe: "brave.exe".into() },
+        then_steps: vec![Step::Hotkey { keys: "CTRL+T".into() }],
+        else_steps: vec![Step::Launch { program: "brave.exe".into(), args: vec![], focus_if_running: false }],
+    }];
+    // Fenêtre compacte : bibliothèque de blocs ouverte, puis assistant ouvert.
+    for chat in [false, true] {
+        h.ctx.data_mut(|d| { d.insert_temp(egui::Id::new("workshop_palette_open"), true); d.remove::<Vec<usize>>(egui::Id::new("workshop_path")); });
+        h.app.workshop_chat.open = chat;
+        let output = h.warm(size);
+        let card = text_position(&output.shapes, "Lancer une application · Lancer brave.exe").expect("carte imbriquée visible");
+        h.click(size, card);
+        let output = h.warm(size);
+        assert_eq!(h.ctx.data(|d| d.get_temp::<Vec<usize>>(egui::Id::new("workshop_path"))), Some(vec![0, 1, 0]));
+        assert!(text_position(&output.shapes, "Propriétés du bloc").is_some(), "propriétés du bloc imbriqué (assistant {chat})");
+        assert!(text_position(&output.shapes, "Programme").is_some() || text_position(&output.shapes, "brave.exe").is_some(), "champ modifiable");
+        if let (false, Some(dir)) = (chat, std::env::var_os("DECKFORGE_UI_OUTPUT")) {
+            let snapshot = h.warm(size);
+            h.png(size, snapshot, &PathBuf::from(dir).join("atelier-simple-proprietes.png"));
+        }
+    }
+}
+
 #[test]
 fn workshop_simple_layout_keeps_canvas_visible_at_both_sizes() {
     for size in [vec2(1366.0, 768.0), vec2(1920.0, 1080.0)] {

@@ -754,6 +754,7 @@ impl App {
         if selection.as_ref().is_some_and(|path| step_mut(&mut self.config.keys_mut()[self.selected].steps, path).is_none()) {
             selection = None;
         }
+        let selection_before = selection.clone();
         let mut action: Option<WorkshopAction> = None;
         let mut insert_at = ctx.data(|d| d.get_temp::<Vec<usize>>(egui::Id::new("workshop_insert_at")));
         if !ctx.wants_keyboard_input() {
@@ -973,6 +974,12 @@ impl App {
                 ui.colored_label(Color32::LIGHT_RED, format!("Brouillon : {e}"));
             }
         });
+        // Un clic sur un bloc doit afficher ses propriétés : en fenêtre compacte, la
+        // bibliothèque et l'assistant occupent la même colonne et sont donc refermés.
+        if selection.is_some() && selection != selection_before && !self.preferences.workshop_advanced {
+            if compact { ctx.data_mut(|d| d.insert_temp(palette_id, false)); }
+            self.workshop_chat.open = false;
+        }
         if let Some(kind) = add {
             let mut at = insert_at.take().unwrap_or_else(|| {
                 let steps = &self.config.keys()[selected].steps;

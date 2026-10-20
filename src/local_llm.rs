@@ -1183,6 +1183,7 @@ mod tests {
     /// Demandes complexes jamais vues (conditions, répétitions, enchaînements).
     const COMPLEX_REQUESTS: &[(&str, &[&str])] = &[
         ("si Brave n'est pas ouvert , ouvrir Brave sinon s'il est deja ouvert ouvre juste un nouvel onglet", &["if_app:brave.exe[window_op:activate,hotkey:CTRL+T][launch:brave.exe]"]),
+        ("ouvre le navigateur brave s'il est pas ouvert et si il deja ouvert ouvre un nouvel onglet", &["if_app:brave.exe[window_op:activate,hotkey:CTRL+T][launch:brave.exe]"]),
         ("si spotify tourne mets pause sinon lance spotify", &["if_app:spotify.exe[media:play_pause][launch:spotify.exe]"]),
         ("if discord is open bring it to the front otherwise start it", &["if_app:discord.exe[window_op:activate][launch:discord.exe]"]),
         ("si vlc est lancé mets la musique en pause", &["if_app:vlc.exe[media:play_pause][]"]),

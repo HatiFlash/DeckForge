@@ -26,9 +26,9 @@
     { "noms": ["zoom"], "exe": "Zoom.exe", "fenetre": "Zoom" }
   ],
   "consignes": [
-    "Une condition « si X est ouvert / lancé / tourne » devient un bloc if_app : steps_if_true quand X tourne, steps_otherwise quand X ne tourne pas. « si X n'est PAS ouvert, A, sinon B » donne steps_if_true = B et steps_otherwise = A.",
+    "Une condition « si X est ouvert / lancé / tourne » devient un bloc if_app : steps_if_true quand X tourne, steps_otherwise quand X ne tourne pas. « si X n'est PAS ouvert, A, sinon B » donne steps_if_true = B et steps_otherwise = A. La condition peut être écrite après l'action : « ouvre X s'il n'est pas ouvert, et s'il est déjà ouvert B » est la même condition.",
     "Pour agir dans une application déjà ouverte (nouvel onglet, raccourci propre à l'application), mets-la d'abord au premier plan avec focus_app, puis envoie le raccourci.",
-    "Nouvel onglet CTRL+T ; fermer l'onglet CTRL+W ; rouvrir l'onglet fermé CTRL+SHIFT+T ; nouvelle fenêtre CTRL+N ; navigation privée CTRL+SHIFT+N ; recharger F5 ; flèche du bas DOWN ; flèche du haut UP.",
+    "Nouvel onglet CTRL+T ; fermer l'onglet CTRL+W ; rouvrir l'onglet fermé CTRL+SHIFT+T ; nouvelle fenêtre CTRL+N ; navigation privée CTRL+SHIFT+N ; recharger F5 ; onglet suivant CTRL+TAB ; onglet précédent CTRL+SHIFT+TAB ; plein écran F11 ; flèche du bas DOWN ; flèche du haut UP.",
     "« N fois » ou « répète » donne un bloc repeat avec les blocs à répéter dans steps.",
     "Utilise le programme .exe de la liste des applications connues ; n'invente pas de chemin."
   ],
