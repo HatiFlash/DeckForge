@@ -6,8 +6,8 @@
 
   [![Licence MIT](https://img.shields.io/badge/Licence-MIT-blue.svg)](LICENSE)
   [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
-  [![Tests](https://img.shields.io/badge/Tests-350%20pass%C3%A9s-brightgreen.svg)]()
-  [![Version](https://img.shields.io/badge/Release-v0.8.3-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.3)
+  [![Tests](https://img.shields.io/badge/Tests-360%20pass%C3%A9s-brightgreen.svg)]()
+  [![Version](https://img.shields.io/badge/Release-v0.8.4-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.4)
 </div>
 
 ---
@@ -18,7 +18,17 @@
 
 ---
 
-## 🆕 Nouveautés 0.8.3
+## 🆕 Nouveautés 0.8.4
+
+- **Icônes multi-couleurs IconPark** dans toute l'interface, une couleur par famille d'actions (clavier, applications, web, logique, médias, audio, système, OBS, plugins, IA, images), lisibles en thème sombre comme en clair. Seuls les 66 pictogrammes utilisés sont embarqués ; le rendu des touches du périphérique ne change pas.
+- **Animations** : intro au démarrage, indicateur de chargement DeckForge pendant les attentes, point « En attente » animé pendant la connexion, fondus au changement de page, de profil et d'onglet. Réglage « Réduire les animations » dans Réglages → Général.
+- Correction : les boutons de l'inspecteur ne recouvrent plus « Appui court » sur petit écran. Détails : [docs/RELEASE-0.8.4.md](docs/RELEASE-0.8.4.md).
+
+| Démarrage | Icônes de l'interface |
+|---|---|
+| ![Intro au démarrage](docs/intro.png) | ![Icônes IconPark multi-couleurs](docs/iconset.png) |
+
+## Nouveautés 0.8.3
 
 - **Interface allégée** : un seul bouton « Assistant IA » (IA locale et IA connectée dans la même fenêtre, à onglets), « Arrêter les macros » visible seulement pendant une exécution, plus de badge rouge « Aucun périphérique » en double.
 - **Réglages en onglets** (Général, Périphérique, Diagnostic) : tiennent sur un écran de portable, valeurs avec unités.
@@ -112,8 +122,8 @@ DeckForge embarque un serveur MCP (**Model Context Protocol**) natif pour collab
 
 ## 🚀 Prise en main rapide
 
-1. Téléchargez **`DeckForge-0.8.3-Setup.exe`** depuis la [page des Releases](https://github.com/HatiFlash/DeckForge/releases) et lancez-le (aucun droit administrateur requis). DeckForge s'installe dans `%LOCALAPPDATA%\Programs\DeckForge` avec un raccourci dans le menu Démarrer.
-   - Version portable : `DeckForge-0.8.3-Windows.zip`, à extraire dans le dossier de votre choix.
+1. Téléchargez **`DeckForge-0.8.4-Setup.exe`** depuis la [page des Releases](https://github.com/HatiFlash/DeckForge/releases) et lancez-le (aucun droit administrateur requis). DeckForge s'installe dans `%LOCALAPPDATA%\Programs\DeckForge` avec un raccourci dans le menu Démarrer.
+   - Version portable : `DeckForge-0.8.4-Windows.zip`, à extraire dans le dossier de votre choix.
    - Vous utilisiez déjà la version portable ? Copiez `config.json`, `preferences.json`, `variables.json` et les dossiers `assets` et `plugins` de l'ancien dossier vers le dossier d'installation, DeckForge fermé.
 2. Lancez DeckForge depuis le menu Démarrer.
 3. *Note importante pour les possesseurs du FIFINE D6 :* veillez à fermer le logiciel officiel FIFINE afin de libérer l'accès USB exclusif pour DeckForge.
@@ -133,11 +143,11 @@ cd DeckForge
 # Compiler en mode Release
 cargo build --release --locked
 
-# Lancer la suite complète de tests (350 tests unitaires et d'intégration)
+# Lancer la suite complète de tests (360 tests unitaires et d'intégration)
 cargo test --locked
 
 # Construire l'installateur (Inno Setup 6 ou 7 requis)
-powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.3 -Build
+powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.4 -Build
 ```
 
 ---

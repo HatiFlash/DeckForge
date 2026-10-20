@@ -9,6 +9,7 @@ use crate::{
     Event,
 };
 use crate::iconset::{self, Family, Ico};
+use crate::motion;
 use eframe::egui::{self, Color32, RichText, Vec2};
 use std::{
     collections::{HashMap, VecDeque},
@@ -618,6 +619,10 @@ impl App {
         self.device_model.as_ref().map_or_else(|| "périphérique".into(), |d| d.name.clone())
     }
     fn is_d6(&self) -> bool { self.device_model.as_ref().is_none_or(|d| d.name.contains("D6")) }
+    /// Animations d'interface actives (réglage « Réduire les animations »).
+    fn animations(&self) -> bool {
+        !self.preferences.reduce_motion
+    }
     /// État résumé des deux IA (locale et connectée) pour un seul bouton.
     fn ai_status_label(&self) -> &'static str {
         let connected = self.assistant.as_ref().is_some_and(|s| s.enabled());
@@ -1352,6 +1357,7 @@ impl App {
                 }
             });
             ui.separator();
+            motion::fade(ui, "assistant_tab", self.assistant_tab, 0.15, self.animations());
             if self.assistant_tab == 0 {
                 ui.label(RichText::new("IA locale de l'assistant (facultative)").size(18.0).strong());
                 self.local_ai_settings(ui, &p);
@@ -1686,11 +1692,7 @@ impl App {
                 }
                 ui.painter().rect_filled(card_r, 10.0, p.card);
                 if compact {
-                    ui.painter().circle_filled(
-                        card_r.center() - Vec2::new(0.0, 7.0),
-                        4.0,
-                        status_color,
-                    );
+                    motion::status_dot(ui.painter(), card_r.center() - Vec2::new(0.0, 7.0), status_color, self.wanted && !self.gate.connected, self.animations());
                     ui.painter().text(
                         card_r.center() + Vec2::new(0.0, 8.0),
                         egui::Align2::CENTER_CENTER,
@@ -1708,7 +1710,7 @@ impl App {
                         p.ink,
                     );
                     let dot_center = card_r.min + Vec2::new(16.0, 36.0);
-                    ui.painter().circle_filled(dot_center, 4.0, status_color);
+                    motion::status_dot(ui.painter(), dot_center, status_color, self.wanted && !self.gate.connected, self.animations());
                     ui.painter().text(
                         egui::pos2(dot_center.x + 8.0, dot_center.y),
                         egui::Align2::LEFT_CENTER,
@@ -2446,6 +2448,7 @@ impl App {
                     }
                 });
                 ui.add_space(6.0);
+                motion::fade(ui, "library_tab", self.catalog_tab, 0.15, self.animations());
                 let search = self.catalog_search.to_lowercase();
                 if self.catalog_tab == 3 {
                     self.plugin_store(ui, &search);
@@ -2926,6 +2929,7 @@ impl App {
             ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("inspector_button_rects"), buttons));
             ui.ctx().data_mut(|d| d.insert_persisted(tab_id, tab));
             ui.separator();
+            motion::fade(ui, "inspector", (tab, self.selected, self.long_editor, self.config.page.clone()), 0.25, self.animations());
             if let Some(shortcut) = extras::discord_shortcut(&self.config.keys()[self.selected]) {
                 ui.group(|ui| {
                     ui.label("Discord : configure ce raccourci dans Discord → Paramètres → Raccourcis clavier");
@@ -3271,6 +3275,8 @@ impl App {
                         });
                     }
                 });
+                // Changement de page, de dossier ou de profil : les touches apparaissent en fondu.
+                motion::fade(ui, "deck_page", (self.config.active, self.config.page.clone()), 0.2, self.animations());
                 if !self.config.trail.is_empty() {
                     let profile = &self.config.profiles[self.config.active];
                     let path = self
@@ -3834,7 +3840,9 @@ impl App {
                             context.request_repaint();
                         });
                     }
-                    if let Some(message) = &self.update_result { ui.label(message); }
+                    if let Some(message) = &self.update_result {
+                        if self.update_rx.is_some() { motion::loading(ui, message); } else { ui.label(message); }
+                    }
                 });
             self.show_about = open;
         }
@@ -3848,7 +3856,7 @@ impl App {
                     ui.label("Windows n’a pas réussi à convertir cette vidéo (format ou codec non pris en charge). DeckForge peut télécharger son module vidéo FFmpeg, gratuit, une seule fois.");
                     ui.add_space(6.0);
                     if installing {
-                        ui.horizontal(|ui| { ui.spinner(); ui.label("Téléchargement du module vidéo (≈ 110 Mo) puis conversion…"); });
+                        motion::loading(ui, "Téléchargement du module vidéo (≈ 110 Mo) puis conversion…");
                     } else {
                         if ui.add(iconset::button(ui.ctx(), Ico::Video, "Télécharger le module vidéo et importer")).clicked() { install = true; }
                         ui.label(RichText::new("Source officielle gyan.dev, empreinte vérifiée, rangé dans %LOCALAPPDATA%\\DeckForge\\tools. Sans droits administrateur. Autre solution : copier ffmpeg.exe à côté de DeckForge.exe.").small());
@@ -4003,6 +4011,7 @@ impl App {
                         }
                     });
                     ui.separator();
+                    motion::fade(ui, "settings_tab", self.settings_tab, 0.15, self.animations());
                     let help = |text: &str| RichText::new(text).size(12.0).color(p.muted);
                     match self.settings_tab {
                         0 => {
@@ -4039,6 +4048,12 @@ impl App {
                                 });
                                 ui.end_row();
                             });
+                            if ui.checkbox(&mut self.preferences.reduce_motion, "Réduire les animations")
+                                .on_hover_text("Coupe l'intro du démarrage et les fondus de page ; l'indicateur de chargement reste.")
+                                .changed()
+                            {
+                                self.save_preferences();
+                            }
                             if theme_changed {
                                 theme::set_theme(&self.preferences.scheme, &self.preferences.accent);
                                 theme::apply(ctx, self.preferences.dark);
@@ -4231,6 +4246,8 @@ impl App {
         } else {
             self.workflow(ctx);
         }
+        let logo = theme::intro_logo_texture(ctx);
+        motion::intro(ctx, &logo, self.animations());
         if self.drag.moving() {
             if let (Some((item, _)), Some(pos)) = (&self.drag.active, self.drag.position) {
                 let label = match item {

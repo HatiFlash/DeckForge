@@ -21,6 +21,17 @@ pub fn app_icon() -> egui::IconData { decode_icon(include_bytes!("../res/brandin
 /// Larger logo for the window and taskbar.
 pub fn window_icon() -> egui::IconData { decode_icon(include_bytes!("../res/branding/deckforge-64.png")) }
 /// Header logo, uploaded once and kept by egui.
+/// Logo net en grand (intro du démarrage), décodé une seule fois.
+pub fn intro_logo_texture(ctx: &egui::Context) -> egui::TextureHandle {
+    let id = egui::Id::new("deckforge_intro_logo_texture");
+    if let Some(texture) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) { return texture; }
+    let icon = decode_icon(include_bytes!("../res/branding/deckforge-256.png"));
+    let image = egui::ColorImage::from_rgba_unmultiplied([icon.width as usize, icon.height as usize], &icon.rgba);
+    let texture = ctx.load_texture("deckforge-intro-logo", image, egui::TextureOptions::LINEAR);
+    ctx.data_mut(|d| d.insert_temp(id, texture.clone()));
+    texture
+}
+
 pub fn logo_texture(ctx: &egui::Context) -> egui::TextureHandle {
     let id = egui::Id::new("deckforge_logo_texture");
     if let Some(texture) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) { return texture; }

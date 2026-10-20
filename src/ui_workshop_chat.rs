@@ -337,7 +337,7 @@ impl App {
                     }
                     if let Some((job, _, _, _)) = &self.workshop_chat.thinking {
                         ui.horizontal_wrapped(|ui| {
-                            ui.spinner();
+                            crate::motion::loader(ui, 16.0);
                             ui.label(format!("L'IA locale réfléchit… {} s", job.started.elapsed().as_secs()));
                             if ui.button("Annuler").clicked() {
                                 consent_action = Some(false);
@@ -719,7 +719,7 @@ impl App {
                 self.local_ai_check = Some(self.local_ai.check(&self.preferences.local_ai));
             }
             if busy {
-                ui.spinner();
+                crate::motion::loader(ui, 16.0);
             }
             if let Some(result) = self.local_ai_check.as_ref().and_then(|j| j.poll()) {
                 self.local_ai_check = None;
@@ -756,7 +756,7 @@ impl App {
                     let (stage, received, total) = install.progress();
                     let mut cancel = false;
                     ui.horizontal_wrapped(|ui| {
-                        ui.spinner();
+                        crate::motion::loader(ui, 16.0);
                         let fraction = if total > 0 { (received as f32 / total as f32).min(1.0) } else { 0.0 };
                         ui.add(egui::ProgressBar::new(fraction).desired_width(180.0).text(format!("{stage} : {} / {} Mo", received / 1_000_000, total / 1_000_000)));
                         cancel = ui.button("Annuler").on_hover_text("Le téléchargement reprendra là où il s'est arrêté.").clicked();

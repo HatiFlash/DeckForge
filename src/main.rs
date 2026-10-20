@@ -18,6 +18,7 @@ mod flicker_diagnostic;
 mod gesture;
 mod icons;
 mod iconset;
+mod motion;
 mod key_render;
 #[allow(dead_code)]
 mod mcp_protocol;

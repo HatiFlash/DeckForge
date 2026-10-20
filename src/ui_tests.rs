@@ -239,7 +239,9 @@ impl Harness {
     fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
         let ctx = egui::Context::default();
-        let app = App::init(&ctx, Some(dir.path().join("config.json")));
+        let mut app = App::init(&ctx, Some(dir.path().join("config.json")));
+        // Captures et clics stables : les animations ont leur propre test.
+        app.preferences.reduce_motion = true;
         Self {
             ctx,
             app,
@@ -1655,6 +1657,38 @@ fn library_scroll_reuses_cached_interface_icons() {
     let per_frame = started.elapsed() / 100;
     assert_eq!(crate::iconset::rasterized(&h.ctx), after_first_pass, "aucune icône n'est rastérisée de nouveau en défilant");
     eprintln!("ICONSET {after_first_pass} textures, {per_frame:?} par image (debug)");
+}
+
+#[test]
+fn startup_intro_page_fade_and_waiting_dot_animate_without_blocking() {
+    let size = vec2(1380.0, 900.0);
+    let mut h = Harness::new();
+    h.app.preferences.reduce_motion = false;
+    let first = h.frame(size, vec![]);
+    // Le nom de l'intro est le seul « DeckForge » en 26 pt (l'en-tête est en 18 pt).
+    let intro = |o: &egui::FullOutput| o.shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t)
+        if t.galley.job.text == "DeckForge" && t.galley.job.sections.first().is_some_and(|f| f.format.font_id.size == 26.0)));
+    assert!(intro(&first), "intro visible au démarrage");
+    if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        std::fs::create_dir_all(&dir).unwrap();
+        for _ in 0..8 { h.frame(size, vec![]); }
+        let out = h.frame(size, vec![]);
+        h.png(size, out, &PathBuf::from(&dir).join("intro-1.png"));
+        for _ in 0..4 { h.frame(size, vec![]); }
+        let out = h.frame(size, vec![]);
+        h.png(size, out, &PathBuf::from(&dir).join("intro-2.png"));
+    }
+    // L'intro ne capte pas la souris : un clic sur une touche passe à travers.
+    let key = h.app.drop_targets[3].0.center();
+    h.click(size, key);
+    assert_eq!(h.app.selected, 3, "l'intro ne bloque pas les clics");
+    for _ in 0..30 { h.frame(size, vec![]); }
+    let later = h.frame(size, vec![]);
+    assert!(!intro(&later), "l'intro disparaît d'elle-même");
+    // Réduire les animations : plus d'intro.
+    let mut calm = Harness::new();
+    let out = calm.frame(size, vec![]);
+    assert!(!intro(&out));
 }
 
 #[test]

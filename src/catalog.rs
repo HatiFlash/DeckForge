@@ -436,6 +436,9 @@ pub struct Preferences {
     /// IA locale facultative de l'assistant de l'atelier (désactivée par défaut).
     #[serde(default)]
     pub local_ai: LocalAi,
+    /// Coupe l'intro et les fondus (l'indicateur de chargement reste).
+    #[serde(default)]
+    pub reduce_motion: bool,
 }
 fn default_chat_mode() -> String { "auto".into() }
 
@@ -472,6 +475,7 @@ impl Default for Preferences {
             scheme: String::new(),
             accent: String::new(),
             local_ai: LocalAi::default(),
+            reduce_motion: false,
         }
     }
 }

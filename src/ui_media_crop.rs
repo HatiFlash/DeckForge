@@ -306,7 +306,7 @@ impl CropSession {
                         close_action = true;
                     }
                     if self.processing {
-                        ui.spinner();
+                        crate::motion::loader(ui, 16.0);
                         ui.label("Conversion et optimisation en cours...");
                     } else {
                         let btn = egui::Button::new(RichText::new("Appliquer à la touche").color(Color32::WHITE))
