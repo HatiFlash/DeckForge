@@ -228,7 +228,9 @@ pub struct App {
     workshop_chat: workshop_chat_ui::WorkshopChat,
     local_ai: crate::local_llm::Runtime,
     local_ai_check: Option<crate::local_llm::Job>,
+    local_ai_install: Option<crate::local_llm::Install>,
     local_ai_status: String,
+    show_local_ai: bool,
     show_assets: bool,
     show_desktop_settings: bool,
     available_icons: Vec<crate::assets::Icon>,
@@ -434,7 +436,9 @@ impl App {
             workshop_chat: Default::default(),
             local_ai: Default::default(),
             local_ai_check: None,
+            local_ai_install: None,
             local_ai_status: String::new(),
+            show_local_ai: false,
             show_assets: false,
             show_desktop_settings: false,
             available_icons: vec![],
@@ -4013,8 +4017,14 @@ impl App {
                         theme::apply(ctx, self.preferences.dark);
                         self.save_preferences();
                     }
-                    ui.separator();
-                    self.local_ai_settings(ui, &p);
+                    // IA locale : une ligne ici, réglages dans une fenêtre dédiée (les Réglages ne grandissent pas).
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(RichText::new("IA locale de l'assistant").strong());
+                        ui.label(RichText::new(if self.preferences.local_ai.enabled { "activée" } else { "désactivée" }).small().color(p.muted));
+                        if ui.button("Configurer…").clicked() {
+                            self.show_local_ai = true;
+                        }
+                    });
                     ui.separator();
                     ui.label(RichText::new("Affichage").size(18.0).strong());
                     ui.add_space(8.0);
@@ -4036,7 +4046,7 @@ impl App {
                     if ui.checkbox(&mut self.config.d6_animations, "Animations GIF et vidéo sur les touches").changed() { self.edited(); }
                     if ui.add(egui::Slider::new(&mut self.config.animation_fps, 1..=15).text("Images/s max")).changed() { self.edited(); }
                     ui.label(RichText::new("Les GIF et les vidéos converties sont joués sur le périphérique, une image à la fois.").small().color(p.muted));
-                    ui.add_space(16.0);
+                    ui.add_space(6.0);
                     ui.separator();
                     ui.label(RichText::new("Diagnostic du clignotement").strong());
                     let running=self.flicker.as_ref().is_some_and(|session|session.active());
@@ -4070,7 +4080,7 @@ impl App {
                             .small()
                             .color(p.muted),
                     );
-                    ui.add_space(12.0);
+                    ui.add_space(4.0);
                     if d6 { egui::CollapsingHeader::new("Compatibilité avancée").show(ui, |ui| {
                         if ui
                             .checkbox(
@@ -4103,6 +4113,17 @@ impl App {
                     }); }
                 });
             self.settings = open;
+        }
+        if self.show_local_ai {
+            let mut open = true;
+            let p = theme::palette(ctx);
+            egui::Window::new("IA locale de l'assistant (facultative)").id(egui::Id::new("local_ai_window"))
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .default_width(460.0)
+                .show(ctx, |ui| self.local_ai_settings(ui, &p));
+            self.show_local_ai = open;
         }
         if self.rename {
             let mut open = true;
@@ -4166,6 +4187,7 @@ impl App {
             || !self.import_reports.is_empty()
             || self.crop_session.is_some()
             || self.settings
+            || self.show_local_ai
             || self.show_hardware_test
             || self.show_device_report
             || self.show_saved_variables

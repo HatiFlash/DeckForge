@@ -249,7 +249,7 @@ fn wait_download(mut command: std::process::Command, seconds: u64) -> Result<()>
     }
 }
 
-fn download(url: &str, to: &Path, seconds: u64) -> Result<()> {
+pub(crate) fn download(url: &str, to: &Path, seconds: u64) -> Result<()> {
     let mut curl = hidden("curl.exe");
     curl.args(["-L", "--fail", "--silent", "--show-error", "--retry", "2", "-o"]).arg(to).arg(url);
     if wait_download(curl, seconds).is_ok() && to.is_file() { return Ok(()); }
@@ -259,7 +259,7 @@ fn download(url: &str, to: &Path, seconds: u64) -> Result<()> {
     wait_download(ps, seconds)
 }
 
-fn sha256_file(path: &Path) -> Result<String> {
+pub(crate) fn sha256_file(path: &Path) -> Result<String> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
     let mut file = std::fs::File::open(path)?;

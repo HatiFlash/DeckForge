@@ -638,7 +638,6 @@ impl App {
 
     /// Réglages → IA locale : moteur, modèle et test de connexion. Aucun téléchargement implicite.
     pub(super) fn local_ai_settings(&mut self, ui: &mut egui::Ui, p: &theme::Palette) {
-        ui.label(RichText::new("IA locale de l'assistant (facultative)").size(18.0).strong());
         ui.label(
             RichText::new("Comprend les demandes libres en français et en anglais quand les règles intégrées ne suffisent pas. Tout reste sur ce PC ; chaque proposition est montrée avant ajout. Environ 1,2 Go de mémoire vidéo (ou de RAM).")
                 .small()
@@ -667,11 +666,11 @@ impl App {
             let server = crate::local_llm::builtin_server().exists();
             let model = crate::local_llm::builtin_model().exists();
             ui.label(RichText::new(match (server, model) {
-                (false, _) => "Moteur intégré absent de cette installation.",
-                (true, false) => "Moteur présent ; modèle Qwen2.5 1,5B (≈1 Go) à télécharger.",
+                (false, _) => "Moteur intégré pas encore installé.",
+                (true, false) => "Moteur présent ; modèle Qwen2.5 1,5B à télécharger.",
                 (true, true) => "Moteur et modèle prêts.",
             }).small().color(p.muted));
-            self.local_ai_download_ui(ui, p, server && !model);
+            self.local_ai_download_ui(ui, p, !(server && model));
         }
         ui.horizontal_wrapped(|ui| {
             let busy = self.local_ai_check.is_some();
@@ -701,7 +700,38 @@ impl App {
         }
     }
 
-    fn local_ai_download_ui(&mut self, _ui: &mut egui::Ui, _p: &theme::Palette, _needed: bool) {}
+    /// Installation du moteur intégré : uniquement sur clic, fichiers épinglés et vérifiés (SHA-256).
+    fn local_ai_download_ui(&mut self, ui: &mut egui::Ui, p: &theme::Palette, needed: bool) {
+        if let Some(install) = &self.local_ai_install {
+            match install.poll() {
+                Some(result) => {
+                    self.local_ai_install = None;
+                    self.local_ai_status = match result {
+                        Ok(()) => "Moteur et modèle installés. Clique sur Tester.".into(),
+                        Err(e) => format!("Installation impossible : {e}"),
+                    };
+                }
+                None => {
+                    let (stage, received, total) = install.progress();
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spinner();
+                        let fraction = if total > 0 { (received as f32 / total as f32).min(1.0) } else { 0.0 };
+                        ui.add(egui::ProgressBar::new(fraction).desired_width(180.0).text(format!("{stage} : {} / {} Mo", received / 1_000_000, total / 1_000_000)));
+                    });
+                    ui.ctx().request_repaint_after(Duration::from_millis(500));
+                    return;
+                }
+            }
+        }
+        if needed {
+            ui.label(RichText::new("Téléchargement unique depuis GitHub (llama.cpp, 37 Mo) et Hugging Face (Qwen2.5 1,5B, 1,1 Go), vérifié par empreinte SHA-256, installé dans %LOCALAPPDATA%\\DeckForge\\ai.").small().color(p.muted));
+            if ui.button("Installer le moteur et le modèle (≈1,2 Go)").clicked() {
+                self.local_ai.stop();
+                self.local_ai_status.clear();
+                self.local_ai_install = Some(crate::local_llm::install_builtin());
+            }
+        }
+    }
 }
 
 #[cfg(test)]

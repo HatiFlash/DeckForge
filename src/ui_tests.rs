@@ -1565,6 +1565,38 @@ fn plugin_store_is_rendered_without_a_window() {
 }
 
 #[test]
+fn local_ai_settings_open_in_their_own_window_below_existing_settings() {
+    let size = vec2(1380.0, 900.0);
+    let mut h = Harness::new();
+    h.app.settings = true;
+    let settings = h.warm(size);
+    let button = text_position(&settings.shapes, "Configurer…").expect("entrée IA visible");
+    let diagnostic = text_position(&settings.shapes, "Démarrer le diagnostic (90 s max)").expect("diagnostic toujours visible");
+    assert!(button.y < diagnostic.y, "l'entrée IA est visible en haut des Réglages");
+    assert!(text_position(&settings.shapes, "désactivée").is_some() && !h.app.preferences.local_ai.enabled, "IA locale désactivée par défaut");
+    h.click(size, button);
+    assert!(h.app.show_local_ai, "le bouton ouvre la fenêtre IA");
+    h.app.settings = false;
+    h.app.preferences.local_ai.enabled = true;
+    h.app.preferences.local_ai.backend = "ollama".into();
+    let open = h.warm(size);
+    for text in ["Utiliser une IA locale", "Ollama", "Intégré à DeckForge", "Tester"] {
+        assert!(text_position(&open.shapes, text).is_some(), "{text}");
+    }
+    if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        std::fs::create_dir_all(&dir).unwrap();
+        h.png(size, open, &PathBuf::from(&dir).join("reglages-ia-locale-ollama.png"));
+        h.app.preferences.local_ai.backend = "integre".into();
+        let out = h.warm(size);
+        h.png(size, out, &PathBuf::from(&dir).join("reglages-ia-locale-integre.png"));
+        h.app.settings = true;
+        h.app.show_local_ai = false;
+        let out = h.warm(size);
+        h.png(size, out, &PathBuf::from(&dir).join("reglages.png"));
+    }
+}
+
+#[test]
 fn flicker_ui_start_mouse_transition_stop_writes_real_trace() {
     let mut h = Harness::new();
     let size = vec2(1380.0, 900.0);
