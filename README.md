@@ -6,8 +6,8 @@
 
   [![Licence MIT](https://img.shields.io/badge/Licence-MIT-blue.svg)](LICENSE)
   [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
-  [![Tests](https://img.shields.io/badge/Tests-360%20pass%C3%A9s-brightgreen.svg)]()
-  [![Version](https://img.shields.io/badge/Release-v0.8.4-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.4)
+  [![Tests](https://img.shields.io/badge/Tests-372%20pass%C3%A9s-brightgreen.svg)]()
+  [![Version](https://img.shields.io/badge/Release-v0.8.5-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.5)
 </div>
 
 ---
@@ -18,7 +18,14 @@
 
 ---
 
-## 🆕 Nouveautés 0.8.4
+## 🆕 Nouveautés 0.8.5
+
+- **Bibliothèque → Plugins** : le panneau défile sur toute sa hauteur, les cartes sont lisibles sur petite fenêtre, le bouton « Importer ce plugin » reste sous chaque plugin ; les détails longs sont repliés et l'audio natif reste accessible dans une section dédiée.
+- **Inspecteur de touche** : l'aperçu et « Changer l'icône » restent fixes à gauche ; seul le formulaire de propriétés défile à droite.
+- **Pavé FIFINE D6** : châssis SVG redimensionnable à 15 touches (5 × 3), icônes par défaut IconPark et onglets arrondis. Les médias personnalisés des touches ne sont pas remplacés.
+- **Assistant local facultatif** : connaissances configurables dans `res/ia/ia-locale.json`, demandes conditionnelles et répétitives avec aperçu préalable ; aucune action n'est exécutée automatiquement. Voir [notes de la 0.8.5](docs/RELEASE-0.8.5.md).
+
+## Nouveautés 0.8.4
 
 - **Icônes multi-couleurs IconPark** dans toute l'interface, une couleur par famille d'actions (clavier, applications, web, logique, médias, audio, système, OBS, plugins, IA, images), lisibles en thème sombre comme en clair. Seuls les 66 pictogrammes utilisés sont embarqués ; le rendu des touches du périphérique ne change pas.
 - **Animations** : intro au démarrage, indicateur de chargement DeckForge pendant les attentes, point « En attente » animé pendant la connexion, fondus au changement de page, de profil et d'onglet. Réglage « Réduire les animations » dans Réglages → Général.
@@ -77,7 +84,7 @@ Composez des automatisations puissantes en glissant-déposant des blocs directem
 - **Variables & Déclencheurs automatiques** : Déclenchez des actions lors de l'ouverture/fermeture d'un jeu ou logiciel, à heure fixe ou sur événement audio. Insérez des variables dynamiques `{heure}`, `{date}`, `{presse_papiers}` dans vos messages et requêtes.
 
 ### 🧩 Écosystème de Plugins Stream Deck & OpenAction
-Importez directement vos archives de plugins préférées (`.streamDeckPlugin` / `.sdPlugin`) depuis le magasin intégré :
+Importez directement vos archives de plugins préférées (`.streamDeckPlugin` / `.sdPlugin`) depuis le magasin intégré. Dans **Bibliothèque → Plugins**, faites défiler la liste et cliquez sur **Importer ce plugin** dans la carte voulue ; « Importer tout » et l’import depuis un fichier ou un dossier restent disponibles :
 
 ![Magasin de plugins](docs/plugins-store.png)
 
@@ -122,8 +129,8 @@ DeckForge embarque un serveur MCP (**Model Context Protocol**) natif pour collab
 
 ## 🚀 Prise en main rapide
 
-1. Téléchargez **`DeckForge-0.8.4-Setup.exe`** depuis la [page des Releases](https://github.com/HatiFlash/DeckForge/releases) et lancez-le (aucun droit administrateur requis). DeckForge s'installe dans `%LOCALAPPDATA%\Programs\DeckForge` avec un raccourci dans le menu Démarrer.
-   - Version portable : `DeckForge-0.8.4-Windows.zip`, à extraire dans le dossier de votre choix.
+1. Téléchargez **`DeckForge-0.8.5-Setup.exe`** depuis la [page des Releases](https://github.com/HatiFlash/DeckForge/releases) et lancez-le (aucun droit administrateur requis). DeckForge s'installe dans `%LOCALAPPDATA%\Programs\DeckForge` avec un raccourci dans le menu Démarrer.
+   - Version portable : `DeckForge-0.8.5-Windows.zip`, à extraire dans le dossier de votre choix.
    - Vous utilisiez déjà la version portable ? Copiez `config.json`, `preferences.json`, `variables.json` et les dossiers `assets` et `plugins` de l'ancien dossier vers le dossier d'installation, DeckForge fermé.
 2. Lancez DeckForge depuis le menu Démarrer.
 3. *Note importante pour les possesseurs du FIFINE D6 :* veillez à fermer le logiciel officiel FIFINE afin de libérer l'accès USB exclusif pour DeckForge.
@@ -143,11 +150,11 @@ cd DeckForge
 # Compiler en mode Release
 cargo build --release --locked
 
-# Lancer la suite complète de tests (360 tests unitaires et d'intégration)
+# Lancer la suite complète de tests unitaires et d'intégration
 cargo test --locked
 
 # Construire l'installateur (Inno Setup 6 ou 7 requis)
-powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.4 -Build
+powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.5 -Build
 ```
 
 ---

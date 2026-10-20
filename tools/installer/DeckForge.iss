@@ -1,5 +1,5 @@
 ﻿; Installateur Windows de DeckForge (Inno Setup 6.x ou 7.x).
-; Compilation : tools\Build-Installer.ps1 -Version 0.8.4   (ou ISCC /DAppVersion=0.8.4 /DSourceDir=...)
+; Compilation : tools\Build-Installer.ps1 -Version 0.8.5   (ou ISCC /DAppVersion=0.8.5 /DSourceDir=...)
 ; Installation par utilisateur, sans droits administrateur, dans %LOCALAPPDATA%\Programs\DeckForge.
 ; Les données de l'utilisateur (config.json, preferences.json, variables.json, assets\, plugins\)
 ; vivent à côté de l'exécutable : elles ne sont ni écrasées à la mise à jour ni supprimées à la

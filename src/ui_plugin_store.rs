@@ -6,8 +6,14 @@ use crate::iconset::{self,Ico};
 use crate::plugin_validation;
 impl App {
  pub(super) fn plugin_store(&mut self,ui:&mut egui::Ui,search:&str){
-  iconset::heading(ui,Ico::Plugin,RichText::new("Découvrir / Installés / Importer").strong());
-  ui.label(RichText::new("Catalogue local, sans réseau. Compatibilité non vérifiée ; installer ne lance rien. Lier une action à une touche peut ensuite lancer son plugin.").small());
+  // Keep the entire tab inside one bounded viewport, including import controls and results.
+  let height=ui.available_height().max(80.0);
+  let content_width=ui.available_width();
+  egui::ScrollArea::vertical().id_salt("plugin_store").auto_shrink([false,false]).max_height(height).show(ui,|ui|{
+   // A ScrollArea may expose an unbounded child width; constrain paragraphs and cards to its viewport.
+   ui.set_max_width(content_width);
+  iconset::heading(ui,Ico::Plugin,RichText::new("Plugins · importer").strong());
+  ui.add(egui::Label::new(RichText::new("Catalogue local, hors ligne. Importer ne lance rien.").small()).wrap());
   let catalog=crate::plugin_catalog::Catalog::offline();
   ui.label(format!("Découvrir · {} entrée(s) locales publiables",catalog.entries.len()));
   ui.separator();iconset::heading(ui,Ico::Install,RichText::new("Importer").strong());
@@ -19,7 +25,6 @@ impl App {
   });
   ui.label(RichText::new(&self.notice).small());
   let inventory=self.plugin_inventory();
-  egui::ScrollArea::vertical().id_salt("plugin_store").show(ui,|ui|{
    ui.separator();iconset::heading(ui,Ico::Plug,RichText::new("Installés dans DeckForge").strong());
    {for plugin in inventory.installed.iter(){
     if !format!("{} {}",plugin.display_name(),plugin.uuid).to_lowercase().contains(search) && !plugin.actions.iter().any(|a|a.name.to_lowercase().contains(search)){continue;}
@@ -58,11 +63,12 @@ impl App {
     });
    }}
    ui.separator();
-   iconset::heading(ui,Ico::Store,RichText::new("Découvrir · sources locales FIFINE / StreamDock / Elgato").strong());
+   iconset::heading(ui,Ico::Store,RichText::new("Plugins disponibles sur ce PC").strong());
   if search.is_empty() || "volumecontroller audio volume muet peripherique".contains(&search.to_lowercase()) {
-   ui.group(|ui| {
-    iconset::heading(ui,Ico::Headset,RichText::new("Audio natif DeckForge — sans plugin ni fenêtre externe").strong());
-    ui.label("Volume + / - et muet contrôlent le volume Windows par touches multimédias. Le basculement utilise les périphériques Core Audio détectés ci-dessous.");
+   ui.collapsing("Audio natif · sans plugin",|ui| ui.group(|ui| {
+    ui.set_max_width((content_width-24.0).max(120.0));
+    iconset::heading(ui,Ico::Headset,RichText::new("Audio natif DeckForge").strong());
+    ui.add(egui::Label::new("Volume + / - et muet contrôlent le volume Windows par touches multimédias. Le basculement utilise les périphériques Core Audio détectés ci-dessous.").wrap());
     ui.horizontal_wrapped(|ui| {
      for (label,command) in [("+ Volume +","volume_up"),("+ Volume -","volume_down"),("+ Muet / rétablir","mute")] {
       let key=Key{label:label.trim_start_matches("+ ").into(),steps:vec![Step::Media{command:command.into()}],..Key::default()};
@@ -82,8 +88,8 @@ impl App {
       if response.clicked(){self.assign(DragItem::Bind(key),self.selected);}
      }
     }
-    ui.label(RichText::new("La liste est actualisée automatiquement par Core Audio. Choisis ensuite les deux périphériques dans l’inspecteur ; aucune configuration de plugin existante n’est convertie.").small());
-   });
+    ui.add(egui::Label::new(RichText::new("La liste est actualisée automatiquement par Core Audio. Choisis ensuite les deux périphériques dans l’inspecteur ; aucune configuration de plugin existante n’est convertie.").small()).wrap());
+   }));
   }
    let matches=|p:&&Plugin|format!("{} {}",p.display_name(),p.uuid).to_lowercase().contains(search);
    let available:Vec<&Plugin>=inventory.available.iter().filter(matches).collect();
@@ -94,19 +100,25 @@ impl App {
     ui.heading(format!("Disponibles ({})",available.len()));
     if ui.button(format!("Importer tout ({})",available.len())).clicked(){self.plugin_import_request(None);}
    });}
-   for plugin in &available {ui.group(|ui|{
+   for plugin in &available {ui.push_id(&plugin.uuid,|ui|ui.group(|ui|{
+    ui.set_min_width((content_width-18.0).max(140.0));
+    // A horizontal row must have a bounded text column; otherwise long names expand past the side panel.
     ui.horizontal(|ui|{
      plugin_icon(ui,plugin);
+     let name_width=(content_width-if plugin.icon.is_some(){80.0}else{32.0}).max(110.0);
      ui.vertical(|ui|{
-      ui.label(RichText::new(plugin.display_name()).strong());
-      ui.label(format!("{} · v{}",if plugin.author.trim().is_empty(){"Auteur inconnu"}else{&plugin.author},plugin.version));
-      ui.label(format!("{} action(s) · Runtime : {} · Windows",plugin.actions.len(),plugin_type(&plugin.runtime)));
-      ui.label(format!("Origine : locale · Analyse statique : {:?} · Compatibilité : non vérifiée · Redistribution : non évaluée",plugin_import::compatibility(plugin)));
-      for action in &plugin.actions {ui.label(format!("Action : {}",plugin_import::action_name(plugin,action)));}
+      ui.set_max_width(name_width);
+      ui.add(egui::Label::new(RichText::new(plugin.display_name()).strong()).wrap());
+      ui.add(egui::Label::new(format!("{} · v{}",if plugin.author.trim().is_empty(){"Auteur inconnu"}else{&plugin.author},plugin.version)).wrap());
      });
-     if ui.button("Importer").clicked(){self.plugin_import_request(Some(plugin.folder.clone()));}
     });
-   });}
+    ui.label(format!("{} action(s) · {} · Windows",plugin.actions.len(),plugin_type(&plugin.runtime)));
+    if ui.add(iconset::button(ui.ctx(),Ico::Install,"Importer ce plugin")).clicked(){self.plugin_import_request(Some(plugin.folder.clone()));}
+    ui.collapsing(format!("Détails et actions ({})",plugin.actions.len()),|ui|{
+     ui.add(egui::Label::new(format!("Origine locale · Analyse : {:?} · Compatibilité non vérifiée · Redistribution non évaluée",plugin_import::compatibility(plugin))).wrap());
+     for action in &plugin.actions {ui.add(egui::Label::new(format!("Action : {}",plugin_import::action_name(plugin,action))).wrap());}
+    });
+   }));}
    ui.collapsing(format!("Intégrés à FIFINE, à recréer nativement ({})",built_in.len()),|ui|{
     for plugin in &built_in{ui.label(plugin.display_name());}
    });

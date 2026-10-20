@@ -1,5 +1,5 @@
 ﻿# Construit l'installateur Windows de DeckForge (Inno Setup) à partir de target\release.
-# Usage : powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.4 [-Build]
+# Usage : powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.5 [-Build]
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     [switch]$Build,

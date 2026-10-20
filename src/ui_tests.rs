@@ -1550,13 +1550,75 @@ fn mcp_connect_window_previews_all_clients_without_touching_real_settings() {
     }
 }
 #[test]
+fn plugin_cards_keep_an_import_button_visible_inside_the_library_on_small_windows() {
+    for physical in [vec2(1060.0, 720.0), vec2(1366.0, 768.0)] {
+        let mut h = Harness::new();
+        h.app.catalog_tab = 3;
+        let plugin = crate::plugins::Plugin {
+            uuid: "test.demo".into(), name: "Un plugin au titre plutôt long pour le panneau".into(),
+            version: "1.0.0".into(), author: "Auteur long aussi".into(), icon: None,
+            folder: PathBuf::from("not-a-real-plugin"), runtime: crate::plugins::Runtime::Exe(PathBuf::from("demo.exe")),
+            actions: vec![], inspector: None, node_version: None, prerequisite: None, applications: vec![],
+        };
+        h.app.plugin_inventory = Some(std::sync::Arc::new(super::plugin_store_ui::Inventory {
+            available: vec![plugin], ..Default::default()
+        }));
+        let panel = egui::containers::panel::PanelState::load(&h.ctx, egui::Id::new("action_catalog"));
+        let mut out = h.warm(physical);
+        let panel = panel.or_else(|| egui::containers::panel::PanelState::load(&h.ctx, egui::Id::new("action_catalog"))).unwrap().rect;
+        let pos = panel.center();
+        for _ in 0..16 {
+            if text_position(&out.shapes, "Importer ce plugin").is_some() { break; }
+            out = h.frame(physical, vec![Input::PointerMoved(pos), Input::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, -70.0), modifiers: Modifiers::NONE }]);
+        }
+        let button = text_position(&out.shapes, "Importer ce plugin").expect("bouton d'importation atteignable après défilement du catalogue");
+        assert!(panel.contains(button), "bouton importer doit rester dans le panneau : {button:?} / {panel:?}");
+        let title = text_position(&out.shapes, "Un plugin au titre plutôt long pour le panneau")
+            .expect("plugin lisible quand sa carte est visible");
+        assert!(panel.contains(title), "nom hors du panneau : {title:?} / {panel:?}");
+        if let Some(dir)=std::env::var_os("DECKFORGE_UI_OUTPUT") {
+            let dir=PathBuf::from(dir); std::fs::create_dir_all(&dir).unwrap();
+            h.png(physical,out,&dir.join(format!("plugins-import-{}.png",physical.x as u32)));
+        }
+    }
+}
+
+#[test]
+fn only_the_inspector_properties_scroll_and_its_preview_stays_fixed() {
+    let size = vec2(1380.0, 900.0);
+    let mut h = Harness::new();
+    h.ctx.data_mut(|d| d.insert_persisted(egui::Id::new("inspector_tab"), 1u8));
+    for _ in 0..12 { h.frame(size, vec![]); }
+    let mut out = h.frame(size, vec![]);
+    let before = text_position(&out.shapes, "Changer l'icône").unwrap();
+    let header_before = text_position(&out.shapes, "Apparence").unwrap();
+    for _ in 0..5 {
+        out = h.frame(size, vec![Input::PointerMoved(pos2(before.x, before.y - 40.0)), Input::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, -90.0), modifiers: Modifiers::NONE }]);
+    }
+    let after_left = text_position(&out.shapes, "Changer l'icône").expect("aperçu fixe après défilement à gauche");
+    let header_after = text_position(&out.shapes, "Apparence").unwrap();
+    assert!(((after_left.y - header_after.y) - (before.y - header_before.y)).abs() < 1.0, "la colonne de gauche ne doit pas défiler {before:?} {after_left:?}");
+    for _ in 0..7 {
+        out = h.frame(size, vec![Input::PointerMoved(pos2(before.x + 270.0, before.y - 40.0)), Input::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, -90.0), modifiers: Modifiers::NONE }]);
+    }
+    assert!(text_position(&out.shapes, "Taille de l’icône").is_some(), "la colonne de droite doit défiler");
+    let after_right = text_position(&out.shapes, "Changer l'icône").expect("aperçu fixe après défilement à droite");
+    let header_final = text_position(&out.shapes, "Apparence").unwrap();
+    assert!(((after_right.y - header_final.y) - (before.y - header_before.y)).abs() < 1.0, "aperçu ne suit pas le défilement des propriétés");
+    if let Some(dir)=std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        let dir=PathBuf::from(dir); std::fs::create_dir_all(&dir).unwrap();
+        h.png(size,out,&dir.join("inspector-right-scroll.png"));
+    }
+}
+
+#[test]
 fn plugin_store_is_rendered_without_a_window() {
     let mut h=Harness::new();
     h.app.catalog_tab=3;
     let size=vec2(1180.0,800.0);
     let output=h.warm(size);
     assert!(text_position(&output.shapes,"Installés dans DeckForge").is_some());
-    assert!(text_position(&output.shapes,"Découvrir · sources locales FIFINE / StreamDock / Elgato").is_some());
+    assert!(text_position(&output.shapes,"Plugins disponibles sur ce PC").is_some());
     if let Some(dir)=std::env::var_os("DECKFORGE_UI_OUTPUT") {
         h.png(size,output,&PathBuf::from(dir).join("plugins-store.png"));
     }

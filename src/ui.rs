@@ -2958,8 +2958,10 @@ impl App {
             }
             if self.flicker.as_ref().is_some_and(|session| session.active()) {self.diagnostic_inspector=Some(ui.max_rect());}
             let width=ui.available_width(); let body_height=ui.available_height().max(40.0);
-            // The body scrolls instead of pushing the panel taller than its allotted height (small windows, high DPI).
-            egui::ScrollArea::vertical().id_salt("inspector_body").auto_shrink([false, false]).max_height(body_height).show(ui, |ui| ui.horizontal_top(|ui| {
+            // Une seule réservation : l'UI enfant dessine dedans sans allouer une deuxième hauteur.
+            let (body, _) = ui.allocate_exact_size(Vec2::new(width, body_height), egui::Sense::hover());
+            let mut body_ui = ui.new_child(egui::UiBuilder::new().max_rect(body).layout(egui::Layout::left_to_right(egui::Align::Min)));
+            body_ui.horizontal_top(|ui| {
                 let roomy = body_height >= 150.0;
                 let preview_width = (if width < 650.0 { 76.0 } else { 140.0_f32 }).min(if roomy { body_height - 62.0 } else { body_height - 6.0 }).max(40.0);
                 ui.allocate_ui_with_layout(Vec2::new(preview_width + 18.0, body_height), egui::Layout::top_down(egui::Align::Center), |ui| {
@@ -3146,7 +3148,7 @@ impl App {
                     });
                     if let Some(i)=remove{steps.remove(i);changed=true;removed_step=true;}if let Some((a,b))=movement{steps.swap(a,b);changed=true;}
                 });
-            }));
+            });
             match advanced { Some(0)=>self.copy_key(), Some(1)=>self.paste_key(self.selected), Some(2)=>self.duplicate_key(self.selected), _=>{} }
             if open_workflow {self.show_workflow=true;}if open_model {self.show_workflow=true;}
             if let Some(step)=record_step {self.recording=Some((active,self.config.page.clone(),self.selected,vec![step],self.gate.enabled));self.recording_error.clear();self.gate.enabled=false;self.engine.stop();self.refresh_hotkeys();}
