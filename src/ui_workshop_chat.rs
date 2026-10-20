@@ -240,7 +240,7 @@ impl App {
             // débordaient du panneau (messages, destination, boutons coupés).
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
             ui.horizontal_wrapped(|ui| {
-                ui.label(RichText::new("Assistant · Atelier").strong());
+                iconset::heading(ui, Ico::Robot, RichText::new("Assistant · Atelier").strong());
                 if ui.button("Retour à la séquence").clicked() {
                     open = false;
                 }
@@ -429,7 +429,7 @@ impl App {
                                                 .corner_radius(8)
                                                 .inner_margin(7)
                                                 .show(ui, |ui| {
-                                                    ui.label(RichText::new(step.name()).strong());
+                                                    iconset::heading(ui, iconset::for_step(step), RichText::new(step.name()).strong());
                                                     ui.label(super::extras::block_summary(step));
                                                 });
                                             for missing in pending

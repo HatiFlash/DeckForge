@@ -1629,6 +1629,35 @@ fn rules_preview_offers_the_local_ai_when_it_is_enabled() {
 }
 
 #[test]
+fn library_scroll_reuses_cached_interface_icons() {
+    let size = vec2(1380.0, 900.0);
+    let mut h = Harness::new();
+    let first = h.warm(size);
+    let shown = crate::iconset::rasterized(&h.ctx);
+    assert!(shown >= 8, "icônes IconPark affichées : {shown}");
+    assert!(text_position(&first.shapes, "Réglages").is_some() && text_position(&first.shapes, "Magasin").is_some());
+    let list = egui::pos2(1230.0, 520.0);
+    let wheel = |dy: f32| vec![Input::PointerMoved(list), Input::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, dy), modifiers: Modifiers::NONE }];
+    for tab in [0usize, 1] {
+        h.app.catalog_tab = tab;
+        for dy in [-120.0f32; 25].into_iter().chain([120.0f32; 25]) {
+            h.frame(size, wheel(dy));
+        }
+    }
+    let after_first_pass = crate::iconset::rasterized(&h.ctx);
+    let started = std::time::Instant::now();
+    for tab in [0usize, 1] {
+        h.app.catalog_tab = tab;
+        for dy in [-120.0f32; 25].into_iter().chain([120.0f32; 25]) {
+            h.frame(size, wheel(dy));
+        }
+    }
+    let per_frame = started.elapsed() / 100;
+    assert_eq!(crate::iconset::rasterized(&h.ctx), after_first_pass, "aucune icône n'est rastérisée de nouveau en défilant");
+    eprintln!("ICONSET {after_first_pass} textures, {per_frame:?} par image (debug)");
+}
+
+#[test]
 fn flicker_ui_start_mouse_transition_stop_writes_real_trace() {
     let mut h = Harness::new();
     let size = vec2(1380.0, 900.0);
@@ -1674,8 +1703,9 @@ fn about_dialog_shows_cargo_version_without_network() {
 
 #[test]
 fn inspector_dpi_keeps_keys_and_primary_actions_visible_without_button_overlap() {
-    for physical in [vec2(1920.0, 1080.0), vec2(1366.0, 768.0)] {
-        for scale in [1.25_f32, 1.5] {
+    for physical in [vec2(1920.0, 1080.0), vec2(1366.0, 768.0), vec2(1060.0, 720.0)] {
+        for scale in [1.0_f32, 1.25, 1.5] {
+            if (physical.x < 1300.0) != (scale == 1.0) { continue; }
             let size = physical / scale;
             let mut h = Harness::new();
             h.ctx.set_pixels_per_point(scale);
@@ -1692,6 +1722,11 @@ fn inspector_dpi_keeps_keys_and_primary_actions_visible_without_button_overlap()
             }
             let buttons: Vec<Rect> = h.ctx.data(|d| d.get_temp(egui::Id::new("inspector_button_rects"))).unwrap();
             assert_eq!(buttons.len(), 3);
+            if let Some(toggle) = h.ctx.data(|d| d.get_temp::<Rect>(egui::Id::new("inspector_press_toggle"))) {
+                for b in &buttons {
+                    assert!(!toggle.intersects(*b), "« Appui court » recouvert à {physical:?} @ {scale}: {toggle:?} {b:?}");
+                }
+            }
             for (i, a) in buttons.iter().enumerate() {
                 assert!(a.min.x >= 0.0 && a.max.x <= size.x && a.min.y >= 0.0 && a.max.y <= size.y, "button clipped: {a:?}");
                 for b in buttons.iter().skip(i + 1) {

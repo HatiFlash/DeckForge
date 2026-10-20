@@ -2,14 +2,15 @@
 use super::{App,DragItem};
 use crate::{model::{Key,Step,PluginBinding},plugins::{Plugin,Runtime},plugin_import::{self,Category}};
 use eframe::egui::{self,RichText};
+use crate::iconset::{self,Ico};
 use crate::plugin_validation;
 impl App {
  pub(super) fn plugin_store(&mut self,ui:&mut egui::Ui,search:&str){
-  ui.label(RichText::new("Découvrir / Installés / Importer").strong());
+  iconset::heading(ui,Ico::Plugin,RichText::new("Découvrir / Installés / Importer").strong());
   ui.label(RichText::new("Catalogue local, sans réseau. Compatibilité non vérifiée ; installer ne lance rien. Lier une action à une touche peut ensuite lancer son plugin.").small());
   let catalog=crate::plugin_catalog::Catalog::offline();
   ui.label(format!("Découvrir · {} entrée(s) locales publiables",catalog.entries.len()));
-  ui.separator();ui.label(RichText::new("Importer").strong());
+  ui.separator();iconset::heading(ui,Ico::Install,RichText::new("Importer").strong());
   ui.horizontal_wrapped(|ui|{
    if ui.button("Importer depuis FIFINE / StreamDock / Elgato").clicked(){self.plugin_import_request(None);}
    if ui.button("Importer un fichier .streamDeckPlugin").clicked(){self.plugin_import_dialog(true);}
@@ -19,7 +20,7 @@ impl App {
   ui.label(RichText::new(&self.notice).small());
   let inventory=self.plugin_inventory();
   egui::ScrollArea::vertical().id_salt("plugin_store").show(ui,|ui|{
-   ui.separator();ui.label(RichText::new("Installés dans DeckForge").strong());
+   ui.separator();iconset::heading(ui,Ico::Plug,RichText::new("Installés dans DeckForge").strong());
    {for plugin in inventory.installed.iter(){
     if !format!("{} {}",plugin.display_name(),plugin.uuid).to_lowercase().contains(search) && !plugin.actions.iter().any(|a|a.name.to_lowercase().contains(search)){continue;}
     let ty=match plugin.runtime{Runtime::Exe(_)|Runtime::Node(_)=>"programme",Runtime::Html(_)=>"web",Runtime::Protected=>"protégé",Runtime::Unsupported=>"indisponible"};
@@ -40,7 +41,7 @@ impl App {
        ui.label(format!("{} : {verdict} · {} · {} · {} UTC",result.action,result.reason,result.mode,report_date(result.tested_at_unix)));
       }
      } else { ui.label("Validation : non vérifiée (aucun rapport pour cette version)."); }
-     if ui.button("Tester le plugin (simulation uniquement)").clicked(){self.plugin_test_request(plugin.clone(),false);}
+     if ui.add(iconset::button(ui.ctx(),Ico::Play,"Tester le plugin (simulation uniquement)")).clicked(){self.plugin_test_request(plugin.clone(),false);}
      let oracle=self.plugin_oracle_cache.entry(format!("{}-{}",plugin.uuid,plugin.version)).or_insert_with(||plugin_validation::load_oracle(&plugin).ok().flatten());
      if oracle.as_ref().is_some_and(|o|o.actions.iter().any(|a|a.real_effects)) && ui.button("Essai réel…").clicked(){self.plugin_real_confirmation=Some(plugin.clone());}
      ui.label("Actions disponibles (placer sur une touche peut lancer le plugin) :");
@@ -57,10 +58,10 @@ impl App {
     });
    }}
    ui.separator();
-   ui.label(RichText::new("Découvrir · sources locales FIFINE / StreamDock / Elgato").strong());
+   iconset::heading(ui,Ico::Store,RichText::new("Découvrir · sources locales FIFINE / StreamDock / Elgato").strong());
   if search.is_empty() || "volumecontroller audio volume muet peripherique".contains(&search.to_lowercase()) {
    ui.group(|ui| {
-    ui.label(RichText::new("Audio natif DeckForge — sans plugin ni fenêtre externe").strong());
+    iconset::heading(ui,Ico::Headset,RichText::new("Audio natif DeckForge — sans plugin ni fenêtre externe").strong());
     ui.label("Volume + / - et muet contrôlent le volume Windows par touches multimédias. Le basculement utilise les périphériques Core Audio détectés ci-dessous.");
     ui.horizontal_wrapped(|ui| {
      for (label,command) in [("+ Volume +","volume_up"),("+ Volume -","volume_down"),("+ Muet / rétablir","mute")] {

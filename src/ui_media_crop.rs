@@ -267,7 +267,8 @@ impl CropSession {
                         if self.original_frames.len() > 1 {
                             ui.add_space(8.0);
                             ui.horizontal(|ui| {
-                                if ui.button(if self.playing { "❚❚ Pause" } else { "▶ Lecture" }).clicked() {
+                                let (ico, label) = if self.playing { (crate::iconset::Ico::Pause, "Pause") } else { (crate::iconset::Ico::Play, "Lecture") };
+                                if ui.add(crate::iconset::button(ui.ctx(), ico, label)).clicked() {
                                     self.playing = !self.playing;
                                 }
                                 ui.add(egui::Slider::new(&mut self.current_frame, 0..=self.original_frames.len() - 1).show_value(false));

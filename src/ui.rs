@@ -8,6 +8,7 @@ use crate::{
     theme::{self, *},
     Event,
 };
+use crate::iconset::{self, Family, Ico};
 use eframe::egui::{self, Color32, RichText, Vec2};
 use std::{
     collections::{HashMap, VecDeque},
@@ -1346,8 +1347,8 @@ impl App {
             let mut open = true;
             egui::Window::new("Assistant IA").open(&mut open).collapsible(false).resizable(true).default_width(510.0).vscroll(true).max_height((ctx.screen_rect().height()-100.0).max(400.0)).show(ctx,|ui|{
             ui.horizontal(|ui| {
-                for (i, label) in ["IA locale (sur ce PC)", "IA connectée (Claude, ChatGPT…)"].into_iter().enumerate() {
-                    if ui.selectable_label(self.assistant_tab == i as u8, RichText::new(label).size(15.0)).clicked() { self.assistant_tab = i as u8; }
+                for (i, (ico, label)) in [(Ico::Brain, "IA locale (sur ce PC)"), (Ico::Connection, "IA connectée (Claude, ChatGPT…)")].into_iter().enumerate() {
+                    if iconset::tab(ui, self.assistant_tab == i as u8, ico, RichText::new(label).size(15.0)).clicked() { self.assistant_tab = i as u8; }
                 }
             });
             ui.separator();
@@ -1538,7 +1539,8 @@ impl App {
                             } else {
                                 r.left_center() + Vec2::new(16.0, 0.0)
                             };
-                            theme::symbol(ui.painter(), icon_pos, 15.0, 15, icon_color);
+                            let _ = icon_color;
+                            iconset::paint(ui.painter(), icon_pos, 18.0, Ico::Profile, Family::Accent, if selected { 1.0 } else { 0.6 }, 15);
                             if !compact {
                                 let mut job = egui::text::LayoutJob::simple_singleline(
                                     profile.name.clone(),
@@ -1738,14 +1740,14 @@ impl App {
                     });
                     ui.add_space(12.0);
                     if ui
-                        .add_enabled(!self.history.is_empty(), theme::secondary_button(if ctx.screen_rect().width() < 1320.0 { "↺" } else { "Annuler" }))
+                        .add_enabled(!self.history.is_empty(), iconset::secondary_button(ctx, Ico::Undo, if ctx.screen_rect().width() < 1320.0 { "" } else { "Annuler" }))
                         .on_hover_text("Annuler — Ctrl+Z")
                         .clicked()
                     {
                         self.undo_edit();
                     }
                     if ui
-                        .add_enabled(!self.future.is_empty(), theme::secondary_button(if ctx.screen_rect().width() < 1320.0 { "↻" } else { "Rétablir" }))
+                        .add_enabled(!self.future.is_empty(), iconset::secondary_button(ctx, Ico::Redo, if ctx.screen_rect().width() < 1320.0 { "" } else { "Rétablir" }))
                         .on_hover_text("Rétablir — Ctrl+Y")
                         .clicked()
                     {
@@ -1753,16 +1755,16 @@ impl App {
                     }
                     });
                     ui.horizontal_wrapped(|ui| {
-                        ui.menu_button("Réglages", |ui| {
+                        iconset::menu(ui, Ico::Settings, "Réglages", |ui| {
                         if ui
-                            .add(theme::secondary_button(self.ai_status_label()))
+                            .add(iconset::secondary_button(ctx, Ico::Robot, self.ai_status_label()))
                             .on_hover_text("Assistant IA : IA locale sur ce PC et IA connectée (Claude, ChatGPT…)")
                             .clicked()
                         {
                             self.assistant_settings = true;
                         }
                         if ui
-                            .add(theme::secondary_button(if self.preferences.dark {
+                            .add(iconset::secondary_button(ctx, if self.preferences.dark { Ico::Sun } else { Ico::Moon }, if self.preferences.dark {
                                 "Thème clair"
                             } else {
                                 "Thème sombre"
@@ -1776,11 +1778,11 @@ impl App {
                         }
 
  ui.separator();
-                            if ui.button("Windows et raccourcis…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Keyboard, "Windows et raccourcis…")).clicked() {
                                 self.show_desktop_settings = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Icônes et extensions…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Picture, "Icônes et extensions…")).clicked() {
                                 self.reload_icons();
                                 self.show_assets = true;
                                 ui.close_menu();
@@ -1790,40 +1792,40 @@ impl App {
                                 self.quitting = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Importer depuis Stream Deck…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Install, "Importer depuis Stream Deck…")).clicked() {
                                 self.import_elgato();
                                 ui.close_menu();
                             }
-                            if ui.button("Variables enregistrées…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Variable, "Variables enregistrées…")).clicked() {
                                 self.show_saved_variables = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Tester mon périphérique…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Diagnostic, "Tester mon périphérique…")).clicked() {
                                 self.show_hardware_test = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Rapport périphérique…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Log, "Rapport périphérique…")).clicked() {
                                 self.show_device_report = true;
                                 ui.close_menu();
                             }
-                            if ui.button(format!("Réglages — {}", self.device_name())).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Device, format!("Réglages — {}", self.device_name()))).clicked() {
                                 self.settings = true;
                                 ui.close_menu();
                             }
-                            if ui.button("À propos de DeckForge").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Info, "À propos de DeckForge")).clicked() {
                                 self.show_about = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Assistant IA…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Robot, "Assistant IA…")).clicked() {
                                 self.assistant_settings = true;
                                 ui.close_menu();
                             }
                             ui.separator();
-                            if ui.button("Importer des profils…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Profile, "Importer des profils…")).clicked() {
                                 self.import();
                                 ui.close_menu();
                             }
-                            if ui.button("Exporter les profils…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Save, "Exporter les profils…")).clicked() {
                                 self.export();
                                 ui.close_menu();
                             }
@@ -1916,26 +1918,26 @@ impl App {
                     });
                     ui.add_space(12.0);
                     if ui
-                        .add_enabled(!self.history.is_empty(), theme::secondary_button(if ctx.screen_rect().width() < 1320.0 { "↺" } else { "Annuler" }))
+                        .add_enabled(!self.history.is_empty(), iconset::secondary_button(ctx, Ico::Undo, if ctx.screen_rect().width() < 1320.0 { "" } else { "Annuler" }))
                         .on_hover_text("Annuler — Ctrl+Z")
                         .clicked()
                     {
                         self.undo_edit();
                     }
                     if ui
-                        .add_enabled(!self.future.is_empty(), theme::secondary_button(if ctx.screen_rect().width() < 1320.0 { "↻" } else { "Rétablir" }))
+                        .add_enabled(!self.future.is_empty(), iconset::secondary_button(ctx, Ico::Redo, if ctx.screen_rect().width() < 1320.0 { "" } else { "Rétablir" }))
                         .on_hover_text("Rétablir — Ctrl+Y")
                         .clicked()
                     {
                         self.redo_edit();
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.menu_button("Réglages", |ui| {
-                            if ui.button("Windows et raccourcis…").clicked() {
+                        iconset::menu(ui, Ico::Settings, "Réglages", |ui| {
+                            if ui.add(iconset::button(ctx, Ico::Keyboard, "Windows et raccourcis…")).clicked() {
                                 self.show_desktop_settings = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Icônes et extensions…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Picture, "Icônes et extensions…")).clicked() {
                                 self.reload_icons();
                                 self.show_assets = true;
                                 ui.close_menu();
@@ -1945,40 +1947,40 @@ impl App {
                                 self.quitting = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Importer depuis Stream Deck…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Install, "Importer depuis Stream Deck…")).clicked() {
                                 self.import_elgato();
                                 ui.close_menu();
                             }
-                            if ui.button("Variables enregistrées…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Variable, "Variables enregistrées…")).clicked() {
                                 self.show_saved_variables = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Tester mon périphérique…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Diagnostic, "Tester mon périphérique…")).clicked() {
                                 self.show_hardware_test = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Rapport périphérique…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Log, "Rapport périphérique…")).clicked() {
                                 self.show_device_report = true;
                                 ui.close_menu();
                             }
-                            if ui.button(format!("Réglages — {}", self.device_name())).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Device, format!("Réglages — {}", self.device_name()))).clicked() {
                                 self.settings = true;
                                 ui.close_menu();
                             }
-                            if ui.button("À propos de DeckForge").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Info, "À propos de DeckForge")).clicked() {
                                 self.show_about = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Assistant IA…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Robot, "Assistant IA…")).clicked() {
                                 self.assistant_settings = true;
                                 ui.close_menu();
                             }
                             ui.separator();
-                            if ui.button("Importer des profils…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Profile, "Importer des profils…")).clicked() {
                                 self.import();
                                 ui.close_menu();
                             }
-                            if ui.button("Exporter les profils…").clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Save, "Exporter les profils…")).clicked() {
                                 self.export();
                                 ui.close_menu();
                             }
@@ -2003,14 +2005,14 @@ impl App {
                             }
                         });
                         if ui
-                            .add(theme::secondary_button(self.ai_status_label()))
+                            .add(iconset::secondary_button(ctx, Ico::Robot, self.ai_status_label()))
                             .on_hover_text("Assistant IA : IA locale sur ce PC et IA connectée (Claude, ChatGPT…)")
                             .clicked()
                         {
                             self.assistant_settings = true;
                         }
                         if ui
-                            .add(theme::secondary_button(if self.preferences.dark {
+                            .add(iconset::secondary_button(ctx, if self.preferences.dark { Ico::Sun } else { Ico::Moon }, if self.preferences.dark {
                                 "Thème clair"
                             } else {
                                 "Thème sombre"
@@ -2417,12 +2419,14 @@ impl App {
                                 p.surface
                             },
                         );
-                        theme::symbol(
+                        iconset::paint(
                             ui.painter(),
                             r.center_top() + Vec2::new(0.0, 15.0),
-                            17.0,
+                            20.0,
+                            [Ico::Actions, Ico::Shop, Ico::Bookmark, Ico::Plugin][i],
+                            [Family::Accent, Family::Plugin, Family::Accent, Family::Plugin][i],
+                            if selected { 1.0 } else { 0.55 },
                             [21, 20, 15, 15][i],
-                            if selected { accent() } else { p.muted },
                         );
                         ui.painter().text(
                             r.center_bottom() - Vec2::new(0.0, 6.0),
@@ -2479,24 +2483,17 @@ impl App {
                                         12.0,
                                         if response.hovered() { p.hover } else { p.card },
                                     );
-                                    let accent = match i % 5 {
-                                        0 => accent(),
-                                        1 => theme::PURPLE,
-                                        2 => GREEN,
-                                        3 => theme::CYAN,
-                                        _ => theme::WARNING,
-                                    };
                                     let badge = egui::Rect::from_center_size(
                                         r.left_center() + Vec2::new(23.0, 0.0),
                                         Vec2::splat(32.0),
                                     );
-                                    ui.painter()
-                                        .rect_filled(badge, 8.0, accent.gamma_multiply(0.18));
-                                    let kind = match &item {
-                                        DragItem::Action(key) => crate::icons::kind(key),
-                                        _ => 15,
+                                    let (ico, kind) = match &item {
+                                        DragItem::Action(key) => (iconset::for_steps(&key.steps), crate::icons::kind(key)),
+                                        _ => (Ico::Folder, 15),
                                     };
-                                    theme::symbol(ui.painter(), badge.center(), 18.0, kind, accent);
+                                    ui.painter()
+                                        .rect_filled(badge, 8.0, iconset::family_color(ui.ctx(), ico).gamma_multiply(0.18));
+                                    iconset::paint(ui.painter(), badge.center(), 22.0, ico, ico.family(), 1.0, kind);
                                     ui.painter().text(
                                         r.min + Vec2::new(47.0, 9.0),
                                         egui::Align2::LEFT_TOP,
@@ -2570,7 +2567,7 @@ impl App {
                                 self.save_bind = true;
                             }
                             ui.menu_button("•••", |ui| {
-                                if ui.button("Importer un pack…").clicked() {
+                                if ui.add(iconset::button(ui.ctx(), Ico::Album, "Importer un pack…")).clicked() {
                                     self.import_binds();
                                     ui.close_menu();
                                 }
@@ -2660,17 +2657,21 @@ impl App {
                                             r.left_center() + Vec2::new(24.0, 0.0),
                                             Vec2::splat(34.0),
                                         );
+                                        let ico = iconset::for_steps(&key.steps);
+                                        let _ = color;
                                         ui.painter().rect_filled(
                                             badge,
                                             9.0,
-                                            color.gamma_multiply(0.20),
+                                            iconset::family_color(ui.ctx(), ico).gamma_multiply(0.16),
                                         );
-                                        theme::symbol(
+                                        iconset::paint(
                                             ui.painter(),
                                             badge.center(),
-                                            18.0,
+                                            22.0,
+                                            ico,
+                                            ico.family(),
+                                            1.0,
                                             crate::icons::kind(key),
-                                            color,
                                         );
                                         let mut title =
                                             egui::text::LayoutJob::simple_singleline(
@@ -2802,6 +2803,11 @@ impl App {
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
+                    // Icône seulement quand il faut agir : l'état normal reste discret.
+                    let state = if self.error { Some(Ico::Error) } else if validation.is_some() { Some(Ico::Warning) } else { None };
+                    if let Some(image) = state.and_then(|ico| iconset::image(ctx, ico, 14.0)) {
+                        ui.add(image);
+                    }
                     ui.add_sized([ (ui.available_width() - 230.0).max(80.0), 20.0 ], egui::Label::new(RichText::new(&message).size(11.0).color(
                         if self.error || validation.is_some() {
                             Color32::from_rgb(233, 119, 109)
@@ -2812,11 +2818,11 @@ impl App {
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
-                            .small_button(if self.show_logs {
+                            .add(iconset::button(ctx, Ico::Log, if self.show_logs {
                                 "Masquer le journal"
                             } else {
                                 "Journal"
-                            })
+                            }).small())
                             .clicked()
                         {
                             self.show_logs = !self.show_logs;
@@ -2861,11 +2867,13 @@ impl App {
             let configured = { let k = &self.config.keys()[self.selected]; !k.steps.is_empty() || !k.long_steps.is_empty() || k.plugin.is_some() };
             let narrow = ui.available_width() < 1180.0;
             let two_rows = ui.available_width() < 900.0;
+            // Icônes des onglets et de l'Atelier seulement s'il reste la place (sinon les boutons se chevauchent).
+            let roomy = ui.available_width() >= 820.0;
             let actions = |app: &mut Self, ui: &mut egui::Ui, narrow: bool, buttons: &mut Vec<egui::Rect>| {
                 if narrow {
                     let response = ui.add_enabled(!running, theme::primary("Simuler")).on_hover_text("Déroule les actions dans le journal, sans aucun effet sur le PC"); buttons.push(response.rect); if response.clicked() { app.preview(true); }
                     let response = ui.add_enabled(!running, egui::Button::new("Tester pour de vrai")).on_hover_text("Exécute réellement les actions dans 3 s, sur la fenêtre active"); buttons.push(response.rect); if response.clicked() { app.preview(false); }
-                    let response = ui.button("Atelier de blocs"); buttons.push(response.rect); if response.clicked() { app.show_workflow = true; }
+                    let response = if roomy { ui.add(iconset::button(ui.ctx(), Ico::Workshop, "Atelier de blocs")) } else { ui.button("Atelier de blocs") }; buttons.push(response.rect); if response.clicked() { app.show_workflow = true; }
                     ui.menu_button("•••", |ui| {
                         if ui.button("Enregistrer dans Mes binds").clicked() { app.bind_name=app.config.keys()[app.selected].label.clone();app.save_bind=true;ui.close_menu(); }
                         if ui.add_enabled(!app.config.keys()[app.selected].steps.is_empty(), theme::danger_button("Vider")).clicked() { app.assign(DragItem::Bind(Key::default()),app.selected);ui.close_menu(); }
@@ -2878,27 +2886,44 @@ impl App {
                     if ui.add_enabled(!running,theme::primary("Simuler")).on_hover_text("Déroule les actions dans le journal, sans aucun effet sur le PC").clicked(){app.preview(true);}
                 }
             };
+            let mut buttons = Vec::new();
+            let mut below = false;
             ui.horizontal(|ui| {
                 if !two_rows { ui.label(RichText::new(format!("Touche {:02}",self.selected+1)).size(17.0).strong()); }
                 if !narrow { theme::status_badge(ui, if configured { "Action configurée" } else { "Touche vide" }, if configured { GREEN } else { p.muted }); ui.add_space(10.0); }
                 egui::Frame::new().fill(p.bg).corner_radius(10).inner_margin(egui::Margin::same(3)).show(ui, |ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
-                    for (i, label, short) in [(0u8, "⚡ Action", "Action"), (1u8, "🎨 Apparence", "Apparence"), (2u8, "⚙ Avancé", "Avancé")] {
-                        if ui.selectable_label(tab == i, if narrow { short } else { label }).on_hover_text(&label[4..]).clicked() { tab = i; }
+                    for (i, ico, label) in [(0u8, Ico::Actions, "Action"), (1u8, Ico::Palette, "Apparence"), (2u8, Ico::Advanced, "Avancé")] {
+                        let response = if roomy { iconset::tab(ui, tab == i, ico, label) } else { ui.selectable_label(tab == i, label) };
+                        if response.on_hover_text(label).clicked() { tab = i; }
                     }
                 });
                 if tab == 0 && two_rows {
                     let text = if self.long_editor { "Appui long" } else { "Appui court" };
-                    if ui.button(text).on_hover_text("Basculer entre appui court et appui long").clicked() { self.long_editor = !self.long_editor; }
+                    let toggle = ui.button(text).on_hover_text("Basculer entre appui court et appui long");
+                    ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("inspector_press_toggle"), toggle.rect));
+                    if toggle.clicked() { self.long_editor = !self.long_editor; }
                 } else if tab == 0 {
                     ui.add_space(6.0);
                     ui.selectable_value(&mut self.long_editor, false, if narrow { "Court" } else { "Appui court" });
                     ui.selectable_value(&mut self.long_editor, true, if narrow { "Long" } else { "Appui long" });
                 }
-                let mut buttons = Vec::new();
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| actions(self, ui, narrow, &mut buttons));
-                ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("inspector_button_rects"), buttons));
+                // Pas assez de place à droite des onglets : les boutons passent sur une seconde ligne
+                // plutôt que de recouvrir « Appui court ».
+                let need: f32 = ["Simuler", "Tester pour de vrai", "Atelier de blocs", "•••"].iter().map(|t| {
+                    let font = egui::TextStyle::Button.resolve(ui.style());
+                    ui.fonts(|f| f.layout_no_wrap((*t).to_owned(), font, Color32::WHITE).size().x)
+                        + 2.0 * ui.spacing().button_padding.x + ui.spacing().item_spacing.x
+                }).sum::<f32>() + if roomy { 22.0 } else { 0.0 };
+                below = narrow && ui.available_width() < need;
+                if !below {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| actions(self, ui, narrow, &mut buttons));
+                }
             });
+            if below {
+                ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), 30.0), egui::Layout::right_to_left(egui::Align::Center), |ui| actions(self, ui, narrow, &mut buttons));
+            }
+            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("inspector_button_rects"), buttons));
             ui.ctx().data_mut(|d| d.insert_persisted(tab_id, tab));
             ui.separator();
             if let Some(shortcut) = extras::discord_shortcut(&self.config.keys()[self.selected]) {
@@ -3091,12 +3116,12 @@ impl App {
                     if long_editor { ui.label(RichText::new("L’atelier de blocs modifie uniquement l’appui court. Pour un fichier, renseigne son chemin dans l’action.").small().color(p.muted)); }
                     ui.horizontal(|ui|{
                         ui.label(RichText::new(format!("Actions · {} étape(s)",steps.len())).strong());
-                        ui.menu_button("+ Ajouter",|ui|{for (i,label) in crate::automation::NAMES.iter().enumerate(){if ui.add_enabled(steps.len()<256,egui::Button::new(*label)).clicked(){add_kind=Some(i);ui.close_menu();}}});
+                        iconset::menu(ui, Ico::Add, "Ajouter",|ui|{for (i,label) in crate::automation::NAMES.iter().enumerate(){if ui.add_enabled(steps.len()<256,iconset::button(ui.ctx(), iconset::for_step(&crate::automation::step(i)), *label)).clicked(){add_kind=Some(i);ui.close_menu();}}});
                     });
                     let mut remove=None;let mut movement=None;
                     egui::ScrollArea::vertical().id_salt("step_list").auto_shrink([false, false]).max_height((body_height-40.0).max(100.0)).show(ui,|ui| {
                         if steps.is_empty(){ui.add_space(12.0);ui.label(RichText::new("Glisse une action ou un bind sur cette touche.").strong());ui.label(RichText::new("La bibliothèque à droite propose des raccourcis prêts à l’emploi. Tu peux ensuite combiner et modifier leurs actions ici.").color(p.muted));}
-                        if steps.is_empty(){ui.horizontal(|ui| {if ui.button("Ouvrir l’Atelier de blocs").clicked(){open_workflow=true;}if ui.button("Partir d’un modèle").clicked(){open_model=true;}});}
+                        if steps.is_empty(){ui.horizontal(|ui| {if ui.add(iconset::button(ui.ctx(), Ico::Workshop, "Ouvrir l’Atelier de blocs")).clicked(){open_workflow=true;}if ui.add(iconset::button(ui.ctx(), Ico::Template, "Partir d’un modèle")).clicked(){open_model=true;}});}
                         let count=steps.len();
                         for(i,step) in steps.iter_mut().enumerate(){ui.push_id(i,|ui|{
                             egui::Frame::new().fill(p.bg).corner_radius(6).inner_margin(10).show(ui,|ui| {
@@ -3547,12 +3572,14 @@ impl App {
                                             Vec2::splat(20.0),
                                             egui::Sense::hover(),
                                         );
-                                        theme::symbol(
+                                        iconset::paint(
                                             ui.painter(),
                                             r.center(),
-                                            17.0,
+                                            18.0,
+                                            if page.folder { Ico::Folder } else { Ico::Page },
+                                            Family::Accent,
+                                            1.0,
                                             if page.folder { 15 } else { 17 },
-                                            accent(),
                                         );
                                         changed |=
                                             ui.text_edit_singleline(&mut page.name).changed();
@@ -3592,7 +3619,7 @@ impl App {
             let mut remove = false;
             egui::Window::new("Supprimer cette page ?").open(&mut open).collapsible(false).resizable(false).default_width(380.0).show(ctx,|ui|{
                 ui.label("Son contenu et les touches qui ouvrent cette page seront retirés du profil. Les autres pages seront conservées.");
-                if ui.button(RichText::new("Supprimer la page").color(Color32::LIGHT_RED)).clicked(){remove=true;}
+                if ui.add(iconset::button(ui.ctx(), Ico::Delete, RichText::new("Supprimer la page").color(Color32::LIGHT_RED))).clicked(){remove=true;}
             });
             if remove {
                 self.remove_page(&id);
@@ -3789,6 +3816,14 @@ impl App {
                     if ui.button("Ouvrir la page GitHub").clicked() {
                         ui.ctx().open_url(egui::OpenUrl::new_tab("https://github.com/HatiFlash/DeckForge"));
                     }
+                    ui.separator();
+                    ui.label("Icônes d'interface : IconPark (ByteDance), licence Apache 2.0.");
+                    egui::CollapsingHeader::new("Licence IconPark (Apache 2.0)").show(ui, |ui| {
+                        egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
+                            ui.label(RichText::new(iconset::LICENSE).monospace().size(10.0));
+                        });
+                    });
+                    ui.separator();
                     if ui.add_enabled(self.update_rx.is_none(), egui::Button::new("Vérifier les mises à jour")).clicked() {
                         self.update_result = Some("Vérification en cours…".into());
                         let (tx, rx) = mpsc::channel();
@@ -3815,7 +3850,7 @@ impl App {
                     if installing {
                         ui.horizontal(|ui| { ui.spinner(); ui.label("Téléchargement du module vidéo (≈ 110 Mo) puis conversion…"); });
                     } else {
-                        if ui.button("Télécharger le module vidéo et importer").clicked() { install = true; }
+                        if ui.add(iconset::button(ui.ctx(), Ico::Video, "Télécharger le module vidéo et importer")).clicked() { install = true; }
                         ui.label(RichText::new("Source officielle gyan.dev, empreinte vérifiée, rangé dans %LOCALAPPDATA%\\DeckForge\\tools. Sans droits administrateur. Autre solution : copier ffmpeg.exe à côté de DeckForge.exe.").small());
                     }
                 });
@@ -3961,8 +3996,8 @@ impl App {
                 .show(ctx, |ui| {
                     // Onglets : la fenêtre reste courte et tient sur un écran de portable.
                     ui.horizontal(|ui| {
-                        for (i, label) in ["Général", "Périphérique", "Diagnostic"].into_iter().enumerate() {
-                            if ui.selectable_label(self.settings_tab == i as u8, RichText::new(label).size(15.0)).clicked() {
+                        for (i, (ico, label)) in [(Ico::Palette, "Général"), (Ico::Device, "Périphérique"), (Ico::Diagnostic, "Diagnostic")].into_iter().enumerate() {
+                            if iconset::tab(ui, self.settings_tab == i as u8, ico, RichText::new(label).size(15.0)).clicked() {
                                 self.settings_tab = i as u8;
                             }
                         }
@@ -3971,7 +4006,7 @@ impl App {
                     let help = |text: &str| RichText::new(text).size(12.0).color(p.muted);
                     match self.settings_tab {
                         0 => {
-                            ui.label(RichText::new("Thème de l'interface").size(17.0).strong());
+                            iconset::heading(ui, Ico::Palette, RichText::new("Thème de l'interface").size(17.0).strong());
                             ui.add_space(4.0);
                             let mut theme_changed = false;
                             egui::Grid::new("settings_theme").num_columns(2).spacing([14.0, 10.0]).show(ui, |ui| {
@@ -4011,7 +4046,7 @@ impl App {
                             }
                             ui.add_space(10.0);
                             ui.separator();
-                            ui.label(RichText::new("Assistant IA").size(17.0).strong());
+                            iconset::heading(ui, Ico::Robot, RichText::new("Assistant IA").size(17.0).strong());
                             ui.label(help("IA locale sur ce PC et IA connectée (Claude, ChatGPT…) se règlent au même endroit."));
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(RichText::new(self.ai_status_label()).strong());
@@ -4022,7 +4057,7 @@ impl App {
                             });
                         }
                         1 => {
-                            ui.label(RichText::new("Affichage").size(17.0).strong());
+                            iconset::heading(ui, Ico::Brightness, RichText::new("Affichage").size(17.0).strong());
                             ui.add_space(4.0);
                             let mut edited = false;
                             let mut auto_profile = false;
@@ -4069,7 +4104,7 @@ impl App {
                             }
                         }
                         _ => {
-                            ui.label(RichText::new("Diagnostic du clignotement").size(17.0).strong());
+                            iconset::heading(ui, Ico::Diagnostic, RichText::new("Diagnostic du clignotement").size(17.0).strong());
                             let running=self.flicker.as_ref().is_some_and(|session|session.active());
                             if ui.button(if running {"Arrêter le diagnostic"} else {"Démarrer le diagnostic (90 s max)"}).clicked() {
                                 if running { if let Some(session)=&self.flicker {session.stop();} }
@@ -4087,7 +4122,7 @@ impl App {
                             if let Some(session)=&self.flicker { ui.label(format!("{} · pertes : {}",if session.active(){"En cours"}else{"Arrêté"},session.dropped())); }
                             ui.add_space(10.0);
                             ui.separator();
-                            ui.label(RichText::new("Diagnostic des touches").size(17.0).strong());
+                            iconset::heading(ui, Ico::Keyboard, RichText::new("Diagnostic des touches").size(17.0).strong());
                             if ui.checkbox(&mut self.gate.inspect, "Sélectionner les touches sans exécuter d’action").changed() {
                                 self.engine.stop();
                             }

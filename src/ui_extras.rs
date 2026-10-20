@@ -122,9 +122,12 @@ fn palette(ui: &mut egui::Ui, search: &str, depth: usize, advanced: bool, keyboa
             .show(ui, |ui| {
                 for kind in matches {
                     ui.horizontal(|ui| {
-                        let color = if category.contains("Logique") { Color32::from_rgb(164, 123, 239) }
-                            else if category.contains("Streaming") { Color32::from_rgb(239, 169, 83) } else { accent() };
-                        family_bar(ui, color);
+                        let ico = iconset::for_step(&crate::automation::step(kind));
+                        family_bar(ui, iconset::family_color(ui.ctx(), ico));
+                        if let Some(image) = iconset::image(ui.ctx(), ico, 16.0) {
+                            ui.add(image);
+                        }
+                        let _ = category;
                         let label = if keyboard == Some(index) { format!("> {}", crate::automation::NAMES[kind]) }
                             else { crate::automation::NAMES[kind].to_owned() };
                         if ui.add(egui::Button::new(label).frame(false))
@@ -211,7 +214,7 @@ fn template(index: usize) -> Vec<Step> {
     }
 }
 fn template_menu(ui: &mut egui::Ui, choice: &mut Option<usize>) {
-    ui.menu_button("Modèles", |ui| {
+    iconset::menu(ui, Ico::Template, "Modèles", |ui| {
         for (i, name) in TEMPLATE_NAMES.iter().enumerate() {
             if ui.button(*name).clicked() { *choice = Some(i); ui.close_menu(); }
         }
@@ -522,8 +525,12 @@ fn family_bar(ui: &mut egui::Ui, color: Color32) {
     let (r, _) = ui.allocate_exact_size(egui::vec2(3.0, 14.0), egui::Sense::hover());
     ui.painter().rect_filled(r, 1.0, color);
 }
-// Small vector icons: no dependency on glyph coverage in the UI font.
+// Icône IconPark du bloc ; repli sur les petits tracés vectoriels si elle ne peut pas être rendue.
 fn block_glyph(ui: &mut egui::Ui, step: &Step, color: Color32) {
+    if let Some(image) = iconset::image(ui.ctx(), iconset::for_step(step), 18.0) {
+        ui.add(image);
+        return;
+    }
     let (r, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
     let p = ui.painter();
     let c = r.center();
@@ -856,13 +863,13 @@ impl App {
         egui::TopBottomPanel::bottom("workshop_journal_bar").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 let arrow = if self.workshop_journal.open { "Masquer" } else { "Journal" };
-                if ui.button(arrow).clicked() { self.workshop_journal.open = !self.workshop_journal.open; }
+                if ui.add(iconset::button(ui.ctx(), Ico::Log, arrow)).clicked() { self.workshop_journal.open = !self.workshop_journal.open; }
                 ui.add(egui::Label::new(self.workshop_journal.summary()).truncate());
-                if ui.add_enabled(can_run, egui::Button::new("Simuler")).clicked() { self.start_workshop_run(true); }
-                if ui.add_enabled(can_run, egui::Button::new("Tester pour de vrai")).clicked() {
+                if ui.add_enabled(can_run, iconset::button(ui.ctx(), Ico::Play, "Simuler")).on_hover_text("Déroule les actions dans le journal, sans aucun effet sur le PC").clicked() { self.start_workshop_run(true); }
+                if ui.add_enabled(can_run, iconset::button(ui.ctx(), Ico::Actions, "Tester pour de vrai")).on_hover_text("Exécute réellement les actions, après confirmation").clicked() {
                     self.workshop_journal.confirm_real = true;
                 }
-                if ui.button(if self.workshop_chat.open { "Fermer l’assistant" } else { "Assistant" }).clicked() { self.workshop_chat.open = !self.workshop_chat.open; }
+                if ui.add(iconset::button(ui.ctx(), Ico::Robot, if self.workshop_chat.open { "Fermer l’assistant" } else { "Assistant" })).clicked() { self.workshop_chat.open = !self.workshop_chat.open; }
             });
             if self.workshop_journal.open {
                 ui.separator();

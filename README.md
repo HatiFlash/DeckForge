@@ -145,4 +145,6 @@ powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.
 ## 📄 Licence & Mentions
 
 Ce projet est distribué sous [licence MIT](LICENSE). Aucun binaire tiers propriétaire, archive protégée ou pack de ressources fermé n'est inclus dans le dépôt de code source.
+
+Les icônes d'interface proviennent d'[IconPark](https://github.com/bytedance/IconPark) (ByteDance), sous licence Apache 2.0 : seuls les pictogrammes utilisés sont embarqués, recolorés selon la palette de DeckForge (voir [res/iconpark/NOTICE.md](res/iconpark/NOTICE.md) et [res/iconpark/LICENSE](res/iconpark/LICENSE)). La licence est aussi consultable dans « À propos de DeckForge ».
 Pour les notices relatives aux dépendances open-source et bibliothèques embarquées, consultez [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).

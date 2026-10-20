@@ -262,7 +262,7 @@ impl App {
         let mut marketplace = false;
         let mut switch_target = None;
         egui::Window::new("Icônes et extensions").open(&mut open).default_width(780.0).default_height(610.0).show(ctx,|ui|{
-            ui.horizontal(|ui|{ui.selectable_value(&mut self.asset_tab,0,"Icônes");ui.selectable_value(&mut self.asset_tab,1,"Plugins installés");ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{if ui.button("Terminé").clicked(){done=true;}if ui.button("Marketplace Elgato ↗").clicked(){marketplace=true;}});});
+            ui.horizontal(|ui|{if iconset::tab(ui,self.asset_tab==0,Ico::Picture,"Icônes").clicked(){self.asset_tab=0;}if iconset::tab(ui,self.asset_tab==1,Ico::Plugin,"Plugins installés").clicked(){self.asset_tab=1;}ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{if ui.button("Terminé").clicked(){done=true;}if ui.button("Marketplace Elgato ↗").clicked(){marketplace=true;}});});
             if self.asset_tab==0{
                 ui.label(RichText::new(format!("Choisir une icône · {title}")).strong());
                 if let Destination::Audio{path,state}=&target.destination{
