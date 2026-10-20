@@ -38,3 +38,6 @@ opt-level = 2
 strip = true
 
 
+# Official egui #7928 backport for the pinned 0.31.1 renderer (no egui API upgrade).
+[patch.crates-io]
+egui-wgpu = { path = "vendor/egui-wgpu" }
