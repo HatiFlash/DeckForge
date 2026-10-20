@@ -2,7 +2,6 @@ use eframe::egui::{self, Color32, Stroke, Vec2};
 
 pub const BLUE: Color32 = Color32::from_rgb(52, 120, 246);
 pub const GREEN: Color32 = Color32::from_rgb(34, 197, 139);
-pub const ACCENT_HOVER: Color32 = Color32::from_rgb(78, 141, 255);
 pub const PURPLE: Color32 = Color32::from_rgb(139, 92, 246);
 pub const CYAN: Color32 = Color32::from_rgb(34, 195, 238);
 pub const WARNING: Color32 = Color32::from_rgb(245, 173, 66);
@@ -205,56 +204,84 @@ pub struct Palette {
     pub text_secondary: Color32,
 }
 
-pub fn palette(ctx: &egui::Context) -> Palette {
-    if ctx.style().visuals.dark_mode {
-        let card = Color32::from_rgb(28, 42, 64);
-        let border = Color32::from_rgb(49, 65, 90);
-        Palette {
-            bg: Color32::from_rgb(11, 18, 32),
-            surface: Color32::from_rgb(20, 31, 50),
-            ink: Color32::from_rgb(241, 245, 251),
-            muted: Color32::from_rgb(117, 134, 159),
-            line: border,
-            wash: Color32::from_rgb(23, 59, 121),
-            tile: card,
-            sidebar: Color32::from_rgb(16, 26, 43),
-            card,
-            hover: Color32::from_rgb(41, 61, 91),
-            accent: BLUE,
-            accent_hover: ACCENT_HOVER,
-            purple: PURPLE,
-            cyan: CYAN,
-            success: GREEN,
-            warning: WARNING,
-            danger: DANGER,
-            border,
-            text_secondary: Color32::from_rgb(167, 181, 204),
-        }
-    } else {
-        let card = Color32::WHITE;
-        let border = Color32::from_rgb(205, 215, 230);
-        Palette {
-            bg: Color32::from_rgb(241, 245, 251),
-            surface: Color32::from_rgb(248, 250, 253),
-            ink: Color32::from_rgb(15, 23, 42),
-            muted: Color32::from_rgb(100, 116, 139),
-            line: border,
-            wash: Color32::from_rgb(214, 230, 255),
-            tile: card,
-            sidebar: Color32::from_rgb(232, 238, 247),
-            card,
-            hover: Color32::from_rgb(226, 235, 248),
-            accent: BLUE,
-            accent_hover: Color32::from_rgb(37, 99, 235),
-            purple: Color32::from_rgb(124, 58, 237),
-            cyan: Color32::from_rgb(8, 145, 178),
-            success: Color32::from_rgb(16, 185, 129),
-            warning: Color32::from_rgb(217, 119, 6),
-            danger: Color32::from_rgb(225, 29, 72),
-            border,
-            text_secondary: Color32::from_rgb(51, 65, 85),
-        }
+/// Styles proposés dans Réglages → Thème. `dark` indique le mode egui associé.
+pub const SCHEMES: [(&str, &str, bool); 4] = [
+    ("navy", "Bleu nuit", true),
+    ("graphite", "Graphite", true),
+    ("clair", "Clair", false),
+    ("sable", "Sable", false),
+];
+/// Couleurs d'accent (boutons principaux, sélection, onglets actifs).
+pub const ACCENTS: [(&str, &str, Color32); 5] = [
+    ("bleu", "Bleu", BLUE),
+    ("violet", "Violet", PURPLE),
+    ("emeraude", "Émeraude", Color32::from_rgb(16, 163, 127)),
+    ("orange", "Orange", Color32::from_rgb(232, 110, 34)),
+    ("rose", "Rose", Color32::from_rgb(219, 39, 119)),
+];
+static DARK_SCHEME: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static LIGHT_SCHEME: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(2);
+static ACCENT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static DARK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Mémorise le style et l'accent choisis (identifiants inconnus = valeurs par défaut,
+/// pour rester compatible avec les anciens preferences.json).
+pub fn set_theme(scheme: &str, accent: &str) {
+    use std::sync::atomic::Ordering::Relaxed;
+    if let Some(i) = SCHEMES.iter().position(|s| s.0 == scheme) {
+        if SCHEMES[i].2 { DARK_SCHEME.store(i, Relaxed) } else { LIGHT_SCHEME.store(i, Relaxed) }
     }
+    ACCENT.store(ACCENTS.iter().position(|a| a.0 == accent).unwrap_or(0), Relaxed);
+}
+/// Couleur d'accent courante.
+pub fn accent() -> Color32 {
+    ACCENTS[ACCENT.load(std::sync::atomic::Ordering::Relaxed).min(ACCENTS.len() - 1)].2
+}
+fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
+    let f = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+    Color32::from_rgb(f(a.r(), b.r()), f(a.g(), b.g()), f(a.b(), b.b()))
+}
+/// Palette pure d'un style et d'un accent (testable sans contexte egui).
+pub fn palette_for(scheme: &str, accent: Color32) -> Palette {
+    let rgb = Color32::from_rgb;
+    let (bg, surface, card, sidebar, hover, border, ink, muted, secondary, dark) = match scheme {
+        "graphite" => (rgb(17, 18, 21), rgb(26, 27, 31), rgb(34, 36, 41), rgb(21, 22, 26), rgb(46, 48, 55), rgb(56, 59, 67), rgb(238, 239, 242), rgb(140, 145, 156), rgb(186, 190, 199), true),
+        "clair" => (rgb(243, 245, 249), rgb(255, 255, 255), rgb(255, 255, 255), rgb(234, 238, 245), rgb(228, 234, 244), rgb(208, 215, 227), rgb(17, 24, 39), rgb(84, 96, 115), rgb(51, 65, 85), false),
+        "sable" => (rgb(246, 242, 235), rgb(253, 251, 247), rgb(255, 255, 255), rgb(238, 232, 221), rgb(236, 228, 214), rgb(219, 209, 192), rgb(41, 33, 25), rgb(110, 97, 82), rgb(74, 63, 51), false),
+        _ => (rgb(11, 18, 32), rgb(20, 31, 50), rgb(28, 42, 64), rgb(16, 26, 43), rgb(41, 61, 91), rgb(49, 65, 90), rgb(241, 245, 251), rgb(117, 134, 159), rgb(167, 181, 204), true),
+    };
+    Palette {
+        bg,
+        surface,
+        ink,
+        muted,
+        line: border,
+        wash: if dark { mix(card, accent, 0.45) } else { mix(Color32::WHITE, accent, 0.16) },
+        tile: card,
+        sidebar,
+        card,
+        hover,
+        accent,
+        accent_hover: if dark { mix(accent, Color32::WHITE, 0.18) } else { mix(accent, Color32::BLACK, 0.15) },
+        purple: if dark { PURPLE } else { rgb(124, 58, 237) },
+        cyan: if dark { CYAN } else { rgb(8, 145, 178) },
+        success: if dark { GREEN } else { rgb(5, 150, 105) },
+        warning: if dark { WARNING } else { rgb(194, 105, 6) },
+        danger: if dark { DANGER } else { rgb(205, 30, 70) },
+        border,
+        text_secondary: secondary,
+    }
+}
+pub fn current_scheme(dark: bool) -> &'static str {
+    use std::sync::atomic::Ordering::Relaxed;
+    SCHEMES[if dark { DARK_SCHEME.load(Relaxed) } else { LIGHT_SCHEME.load(Relaxed) }.min(SCHEMES.len() - 1)].0
+}
+fn current_palette() -> Palette {
+    palette_for(current_scheme(DARK.load(std::sync::atomic::Ordering::Relaxed)), accent())
+}
+
+pub fn palette(ctx: &egui::Context) -> Palette {
+    palette_for(current_scheme(ctx.style().visuals.dark_mode), accent())
 }
 
 pub fn install(ctx: &egui::Context) {
@@ -275,6 +302,7 @@ pub fn install(ctx: &egui::Context) {
 }
 
 pub fn apply(ctx: &egui::Context, dark: bool) {
+    DARK.store(dark, std::sync::atomic::Ordering::Relaxed);
     ctx.set_visuals(if dark {
         egui::Visuals::dark()
     } else {
@@ -349,24 +377,26 @@ pub fn apply(ctx: &egui::Context, dark: bool) {
 }
 
 pub fn primary(text: impl Into<egui::WidgetText>) -> egui::Button<'static> {
-    egui::Button::new(text)
-        .fill(BLUE)
+    egui::Button::new(text.into().color(Color32::WHITE))
+        .fill(accent())
         .stroke(Stroke::NONE)
         .corner_radius(8)
 }
 
 #[allow(dead_code)] // used by the upcoming layout refresh
 pub fn secondary_button(text: impl Into<egui::WidgetText>) -> egui::Button<'static> {
+    // Couleurs du thème courant : en clair, ces boutons restaient bleu nuit avec un texte sombre.
+    let p = current_palette();
     egui::Button::new(text)
-        .fill(Color32::from_rgb(28, 42, 64))
-        .stroke(Stroke::new(1.0_f32, Color32::from_rgb(49, 65, 90)))
+        .fill(p.card)
+        .stroke(Stroke::new(1.0_f32, p.border))
         .corner_radius(8)
 }
 
 #[allow(dead_code)] // used by the upcoming layout refresh
 pub fn danger_button(text: impl Into<egui::WidgetText>) -> egui::Button<'static> {
     egui::Button::new(text)
-        .fill(DANGER)
+        .fill(current_palette().danger)
         .stroke(Stroke::NONE)
         .corner_radius(8)
 }
@@ -777,6 +807,30 @@ pub fn symbol(p: &egui::Painter, c: egui::Pos2, size: f32, kind: usize, color: C
                 [c + Vec2::new(0.0, -s * 0.55), c + Vec2::new(0.0, s * 0.55)],
                 stroke,
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod theme_tests {
+    #[test]
+    fn every_scheme_and_accent_keeps_readable_text_and_buttons() {
+        fn lum(c: super::Color32) -> f32 {
+            let f = |v: u8| { let v = v as f32 / 255.0; if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) } };
+            0.2126 * f(c.r()) + 0.7152 * f(c.g()) + 0.0722 * f(c.b())
+        }
+        fn contrast(a: super::Color32, b: super::Color32) -> f32 {
+            let (x, y) = (lum(a), lum(b));
+            (x.max(y) + 0.05) / (x.min(y) + 0.05)
+        }
+        for (scheme, _, _) in super::SCHEMES {
+            for (_, _, accent) in super::ACCENTS {
+                let p = super::palette_for(scheme, accent);
+                assert!(contrast(p.ink, p.bg) >= 7.0, "{scheme}: texte/fond");
+                assert!(contrast(p.ink, p.card) >= 7.0, "{scheme}: texte/carte");
+                assert!(contrast(p.muted, p.card) >= 3.0, "{scheme}: texte secondaire");
+                assert!(contrast(super::Color32::WHITE, accent) >= 3.0, "{scheme}: bouton principal {accent:?}");
+            }
         }
     }
 }

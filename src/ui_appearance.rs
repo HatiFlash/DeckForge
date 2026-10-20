@@ -7,7 +7,7 @@ fn icon_button(ui: &mut egui::Ui, selected: bool, label: &str, import: bool) -> 
         rect,
         6.0,
         if selected {
-            BLUE.gamma_multiply(0.25)
+            accent().gamma_multiply(0.25)
         } else {
             visuals.bg_fill
         },
@@ -18,7 +18,7 @@ fn icon_button(ui: &mut egui::Ui, selected: bool, label: &str, import: bool) -> 
         egui::Stroke::new(
             1.0_f32,
             if selected {
-                BLUE
+                accent()
             } else {
                 visuals.bg_stroke.color
             },
@@ -26,7 +26,7 @@ fn icon_button(ui: &mut egui::Ui, selected: bool, label: &str, import: bool) -> 
         egui::StrokeKind::Inside,
     );
     let ink = if selected {
-        BLUE
+        accent()
     } else {
         theme::palette(ui.ctx()).ink
     };

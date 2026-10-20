@@ -163,15 +163,15 @@ pub(super) fn texture(ctx: &egui::Context, path: &str) -> Option<egui::TextureHa
 pub(super) fn selection_border(ui: &egui::Ui, rect: egui::Rect, selected: bool, hovered: bool) {
     if selected {
         ui.painter()
-            .rect_filled(rect.expand(2.0), 9.0, BLUE.gamma_multiply(0.13));
+            .rect_filled(rect.expand(2.0), 9.0, accent().gamma_multiply(0.13));
         ui.painter().rect_stroke(
             rect.expand(2.0),
             9.0,
-            egui::Stroke::new(2.0_f32, BLUE),
+            egui::Stroke::new(2.0_f32, accent()),
             egui::StrokeKind::Inside,
         );
         let c = rect.right_top() + Vec2::new(-9.0, 9.0);
-        ui.painter().circle_filled(c, 8.0, BLUE);
+        ui.painter().circle_filled(c, 8.0, accent());
         let stroke = egui::Stroke::new(1.8_f32, Color32::WHITE);
         ui.painter()
             .line_segment([c + Vec2::new(-4.0, 0.0), c + Vec2::new(-1.0, 3.0)], stroke);
@@ -270,7 +270,7 @@ impl App {
                         ui.horizontal(|ui|{for(i,label)in [first_label,second_label].into_iter().enumerate(){if ui.selectable_label(*state==i,format!("État {} · {label}",i+1)).clicked(){let mut next=target.clone();next.destination=Destination::Audio{path:path.clone(),state:i};switch_target=Some(next);}}});
                     }}
                     ui.horizontal(|ui|{for(id,label,kind)in crate::audio::BUILTIN_ICONS{
-                        let(r,response)=ui.allocate_exact_size(Vec2::new(96.0,65.0),egui::Sense::click());theme::symbol(ui.painter(),r.center_top()+Vec2::new(0.0,24.0),27.0,*kind,BLUE);ui.painter().text(r.center_bottom()-Vec2::new(0.0,3.0),egui::Align2::CENTER_BOTTOM,*label,egui::FontId::proportional(11.0),theme::palette(ctx).ink);
+                        let(r,response)=ui.allocate_exact_size(Vec2::new(96.0,65.0),egui::Sense::click());theme::symbol(ui.painter(),r.center_top()+Vec2::new(0.0,24.0),27.0,*kind,accent());ui.painter().text(r.center_bottom()-Vec2::new(0.0,3.0),egui::Align2::CENTER_BOTTOM,*label,egui::FontId::proportional(11.0),theme::palette(ctx).ink);
                         selection_border(ui,r,selected.as_deref()==Some(std::path::Path::new(id)),response.hovered());if response.clicked(){choose=Some((id.to_string(),label.to_string()));}
                     }});
                 }
@@ -286,7 +286,7 @@ impl App {
                     ui.painter().text(r.center_bottom(),egui::Align2::CENTER_BOTTOM,icon.name.chars().take(13).collect::<String>(),egui::FontId::proportional(10.0),theme::palette(ctx).ink);
                     if icon.path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("gif")) {
                         let badge=egui::Rect::from_min_size(r.left_top()+Vec2::new(4.0,4.0),Vec2::new(27.0,15.0));
-                        ui.painter().rect_filled(badge,3.0,BLUE);
+                        ui.painter().rect_filled(badge,3.0,accent());
                         ui.painter().text(badge.center(),egui::Align2::CENTER_CENTER,"GIF",egui::FontId::proportional(10.0),Color32::WHITE);
                     }
                     selection_border(ui,r,selected.as_deref()==Some(icon.path.as_path()),response.hovered());
@@ -549,7 +549,7 @@ pub(super) fn audio_options(
                                         Color32::WHITE,
                                     );
                                 } else {
-                                    theme::symbol(ui.painter(), r.center(), 25.0, kind, BLUE);
+                                    theme::symbol(ui.painter(), r.center(), 25.0, kind, accent());
                                 }
                                 if response.clicked() {
                                     *pick = Some(state);

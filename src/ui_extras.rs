@@ -123,7 +123,7 @@ fn palette(ui: &mut egui::Ui, search: &str, depth: usize, advanced: bool, keyboa
                 for kind in matches {
                     ui.horizontal(|ui| {
                         let color = if category.contains("Logique") { Color32::from_rgb(164, 123, 239) }
-                            else if category.contains("Streaming") { Color32::from_rgb(239, 169, 83) } else { BLUE };
+                            else if category.contains("Streaming") { Color32::from_rgb(239, 169, 83) } else { accent() };
                         family_bar(ui, color);
                         let label = if keyboard == Some(index) { format!("> {}", crate::automation::NAMES[kind]) }
                             else { crate::automation::NAMES[kind].to_owned() };
@@ -313,7 +313,7 @@ pub(super) fn block_editor(
             } else if matches!(step.active(), Step::Repeat { .. }) {
                 Color32::from_rgb(239, 169, 83)
             } else {
-                BLUE
+                accent()
             };
             let error = crate::model::validate_key(&Key { steps: vec![step.active().clone()], ..Key::default() }, config).err();
             egui::Frame::new()
@@ -570,12 +570,12 @@ fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection
                 crate::model::validate_key(&Key { steps: vec![step.clone()], ..Key::default() }, config).err()
             };
             let frame = egui::Frame::new().fill(p.surface)
-                .stroke(egui::Stroke::new(if chosen { 1.5_f32 } else { 1.0_f32 }, if chosen { BLUE } else { p.line }))
+                .stroke(egui::Stroke::new(if chosen { 1.5_f32 } else { 1.0_f32 }, if chosen { accent() } else { p.line }))
                 .corner_radius(10).inner_margin(9).show(ui, |ui| {
                     ui.set_width((ui.available_width() - 20.0).clamp(120.0, 520.0));
                     let color = if matches!(step.active(), Step::IfCondition { .. } | Step::IfWindow { .. } | Step::IfVariable { .. }) {
                         Color32::from_rgb(164, 123, 239)
-                    } else if matches!(step.active(), Step::Repeat { .. }) { Color32::from_rgb(239, 169, 83) } else { BLUE };
+                    } else if matches!(step.active(), Step::Repeat { .. }) { Color32::from_rgb(239, 169, 83) } else { accent() };
                     ui.horizontal(|ui| {
                         block_glyph(ui, step, color);
                         ui.colored_label(color, path.iter().step_by(2).map(|n| (n + 1).to_string()).collect::<Vec<_>>().join("."));
@@ -633,7 +633,7 @@ fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection
                 && frame.response.hovered() && ui.ctx().input(|input| input.pointer.primary_down()) {
                 let r = frame.response.rect;
                 let y = if ui.ctx().input(|input| input.pointer.hover_pos()).is_some_and(|pos| pos.y > r.center().y) { r.bottom() } else { r.top() };
-                ui.painter().line_segment([egui::pos2(r.left(), y), egui::pos2(r.right(), y)], egui::Stroke::new(2.0_f32, BLUE));
+                ui.painter().line_segment([egui::pos2(r.left(), y), egui::pos2(r.right(), y)], egui::Stroke::new(2.0_f32, accent()));
             }
         });
     }
@@ -803,7 +803,7 @@ impl App {
                 if compact && ui.button(if palette_open { "Masquer les blocs" } else { "Blocs" }).clicked() { palette_open = !palette_open; }
                 template_menu(ui, &mut template_choice);
                 if self.preferences.workshop_advanced && ui.button("Exporter AHK").clicked() { export = true; }
-                if ui.add(egui::Button::new("Enregistrer").fill(BLUE)).clicked() { self.save(); }
+                if ui.add(egui::Button::new("Enregistrer").fill(accent())).clicked() { self.save(); }
             });
             if let Some(index) = template_choice {
                 let existing = self.config.keys()[self.selected].steps.len();
@@ -1131,7 +1131,7 @@ impl App {
                 });
             }
             if let Some(i) = remove { self.preferences.triggers.remove(i); changed = true; }
-            if self.trigger_recording{ui.colored_label(BLUE,"Appuie sur la combinaison souhaitée…");if ui.button("Annuler").clicked(){self.trigger_recording=false;self.refresh_hotkeys();}}
+            if self.trigger_recording{ui.colored_label(accent(),"Appuie sur la combinaison souhaitée…");if ui.button("Annuler").clicked(){self.trigger_recording=false;self.refresh_hotkeys();}}
         });
         self.show_desktop_settings = open;
         if !open && self.trigger_recording {

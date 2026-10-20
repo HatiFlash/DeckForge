@@ -427,6 +427,12 @@ pub struct Preferences {
     pub workshop_chat_mode: String,
     #[serde(default)]
     pub allow_connected_ai: bool,
+    /// Style choisi (navy, graphite, clair, sable) ; vide = déduit de `dark` (anciens fichiers).
+    #[serde(default)]
+    pub scheme: String,
+    /// Couleur d'accent (bleu, violet, emeraude, orange, rose).
+    #[serde(default)]
+    pub accent: String,
 }
 fn default_chat_mode() -> String { "auto".into() }
 impl Default for Preferences {
@@ -440,6 +446,8 @@ impl Default for Preferences {
             workshop_advanced: false,
             workshop_chat_mode: default_chat_mode(),
             allow_connected_ai: false,
+            scheme: String::new(),
+            accent: String::new(),
         }
     }
 }

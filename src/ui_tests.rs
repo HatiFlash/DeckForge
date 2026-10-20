@@ -1110,7 +1110,7 @@ fn gallery_click_retargets_to_current_selected_key() {
     assert!(output
         .shapes
         .iter()
-        .any(|s| matches!(&s.shape,egui::Shape::Circle(c) if c.radius==8.0 && c.fill==BLUE)));
+        .any(|s| matches!(&s.shape,egui::Shape::Circle(c) if c.radius==8.0 && c.fill==accent())));
     assert!(h.app.icon_notice.contains("appliquée"));
     assert!(h.app.icon_notice.contains("08"));
     if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {

@@ -306,6 +306,7 @@ impl App {
         if std::env::args().any(|a| a == "--light") {
             preferences.dark = false;
         }
+        theme::set_theme(&preferences.scheme, &preferences.accent);
         theme::apply(ctx, preferences.dark);
         let (tx, events) = mpsc::channel();
         let device = if isolated {
@@ -1351,7 +1352,7 @@ impl App {
         let mut decision = None;
         if let Some(p) = self.proposals.pending.front() {
             egui::Window::new("Proposition de ton assistant").id(egui::Id::new("ai_review")).collapsible(false).resizable(true).default_width(570.0).show(ctx,|ui|{
-                theme::pill(ui,"VALIDATION NÉCESSAIRE",BLUE);ui.add_space(8.0);ui.label(RichText::new(&p.title).size(18.0).strong());
+                theme::pill(ui,"VALIDATION NÉCESSAIRE",accent());ui.add_space(8.0);ui.label(RichText::new(&p.title).size(18.0).strong());
                 ui.label(RichText::new("Aucun changement ni lancement n’a encore eu lieu. Vérifie les actions avant de continuer.").color(theme::palette(ctx).muted));
                 egui::ScrollArea::vertical().max_height(360.0).show(ui,|ui|{ui.label(&p.details);});ui.add_space(12.0);
                 ui.horizontal(|ui|{if ui.button("Refuser").clicked(){decision=Some(false);}if ui.add(theme::primary(RichText::new("Valider cette proposition").color(Color32::WHITE))).clicked(){decision=Some(true);}});
@@ -1500,7 +1501,7 @@ impl App {
                                     if selected { p.wash } else { p.hover },
                                 );
                             }
-                            let icon_color = if selected { BLUE } else { p.muted };
+                            let icon_color = if selected { accent() } else { p.muted };
                             let text_color = if selected { p.ink } else { p.muted };
                             let icon_pos = if compact {
                                 r.center()
@@ -1587,7 +1588,7 @@ impl App {
                                     if selected { p.wash } else { p.hover },
                                 );
                             }
-                            let dot_color = if selected { BLUE } else { p.muted };
+                            let dot_color = if selected { accent() } else { p.muted };
                             let text_color = if selected { p.ink } else { p.muted };
                             if compact {
                                 ui.painter().text(
@@ -1758,7 +1759,7 @@ impl App {
                             .on_hover_text("Changer le thème de toute l’interface")
                             .clicked()
                         {
-                            self.preferences.dark = !self.preferences.dark;
+                            self.preferences.dark = !self.preferences.dark; self.preferences.scheme = theme::current_scheme(self.preferences.dark).into();
                             theme::apply(ctx, self.preferences.dark);
                             self.save_preferences();
                         }
@@ -1860,7 +1861,7 @@ impl App {
                         }
                         let (label, color) = match self.gate.decision() {
                             Decision::Execute => ("Touches actives", GREEN),
-                            Decision::Inspect => ("Diagnostic", BLUE),
+                            Decision::Inspect => ("Diagnostic", accent()),
                             Decision::Blocked(_) => (
                                 if !self.gate.enabled {
                                     "En pause"
@@ -2031,7 +2032,7 @@ impl App {
                             .on_hover_text("Changer le thème de toute l’interface")
                             .clicked()
                         {
-                            self.preferences.dark = !self.preferences.dark;
+                            self.preferences.dark = !self.preferences.dark; self.preferences.scheme = theme::current_scheme(self.preferences.dark).into();
                             theme::apply(ctx, self.preferences.dark);
                             self.save_preferences();
                         }
@@ -2060,7 +2061,7 @@ impl App {
                         }
                         let (label, color) = match self.gate.decision() {
                             Decision::Execute => ("Touches actives", GREEN),
-                            Decision::Inspect => ("Diagnostic", BLUE),
+                            Decision::Inspect => ("Diagnostic", accent()),
                             Decision::Blocked(_) => (
                                 if !self.gate.enabled {
                                     "En pause"
@@ -2381,7 +2382,7 @@ impl App {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Bibliothèque d'actions").size(17.0).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        theme::pill(ui, "40 binds", BLUE);
+                        theme::pill(ui, "40 binds", accent());
                     });
                 });
                 ui.add_space(6.0);
@@ -2433,7 +2434,7 @@ impl App {
                             r.center_top() + Vec2::new(0.0, 15.0),
                             17.0,
                             [21, 20, 15, 15][i],
-                            if selected { BLUE } else { p.muted },
+                            if selected { accent() } else { p.muted },
                         );
                         ui.painter().text(
                             r.center_bottom() - Vec2::new(0.0, 6.0),
@@ -2491,7 +2492,7 @@ impl App {
                                         if response.hovered() { p.hover } else { p.card },
                                     );
                                     let accent = match i % 5 {
-                                        0 => BLUE,
+                                        0 => accent(),
                                         1 => theme::PURPLE,
                                         2 => GREEN,
                                         3 => theme::CYAN,
@@ -2658,7 +2659,7 @@ impl App {
                                             ui.painter().rect_stroke(
                                                 r,
                                                 12.0,
-                                                egui::Stroke::new(1.5_f32, BLUE),
+                                                egui::Stroke::new(1.5_f32, accent()),
                                                 egui::StrokeKind::Inside,
                                             );
                                         }
@@ -2712,7 +2713,7 @@ impl App {
                                             egui::Align2::RIGHT_CENTER,
                                             "›",
                                             egui::FontId::proportional(16.0),
-                                            if selected == Some(i) { BLUE } else { p.muted },
+                                            if selected == Some(i) { accent() } else { p.muted },
                                         );
                                         response
                                     })
@@ -3113,7 +3114,7 @@ impl App {
                             egui::Frame::new().fill(p.bg).corner_radius(6).inner_margin(10).show(ui,|ui| {
                                 ui.set_max_width(ui.available_width());
                                 ui.horizontal(|ui|{
-                                    ui.label(RichText::new(format!("{:02}",i+1)).color(BLUE).size(11.0));
+                                    ui.label(RichText::new(format!("{:02}",i+1)).color(accent()).size(11.0));
                                     ui.label(RichText::new(step.name()).strong().size(12.0));
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{
                                         if ui.small_button("×").on_hover_text("Supprimer cette étape").clicked(){remove=Some(i);}
@@ -3563,7 +3564,7 @@ impl App {
                                             r.center(),
                                             17.0,
                                             if page.folder { 15 } else { 17 },
-                                            BLUE,
+                                            accent(),
                                         );
                                         changed |=
                                             ui.text_edit_singleline(&mut page.name).changed();
@@ -3970,6 +3971,43 @@ impl App {
                 .resizable(false)
                 .default_width(430.0)
                 .show(ctx, |ui| {
+                    ui.label(RichText::new("Thème de l'interface").size(18.0).strong());
+                    ui.add_space(4.0);
+                    let mut theme_changed = false;
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Style");
+                        let current = theme::SCHEMES.iter().find(|s| s.0 == self.preferences.scheme)
+                            .or_else(|| theme::SCHEMES.iter().find(|s| s.2 == self.preferences.dark))
+                            .map_or("Bleu nuit", |s| s.1);
+                        egui::ComboBox::from_id_salt("theme_scheme").selected_text(current).show_ui(ui, |ui| {
+                            for (id, label, dark) in theme::SCHEMES {
+                                if ui.selectable_label(self.preferences.scheme == id, format!("{label}{}", if dark { " (sombre)" } else { " (clair)" })).clicked() {
+                                    self.preferences.scheme = id.into();
+                                    self.preferences.dark = dark;
+                                    theme_changed = true;
+                                }
+                            }
+                        });
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label("Accent");
+                        for (id, label, color) in theme::ACCENTS {
+                            let chosen = self.preferences.accent == id || (self.preferences.accent.is_empty() && id == "bleu");
+                            let (r, response) = ui.allocate_exact_size(Vec2::splat(26.0), egui::Sense::click());
+                            ui.painter().circle_filled(r.center(), 10.0, color);
+                            if chosen { ui.painter().circle_stroke(r.center(), 12.5, egui::Stroke::new(2.0_f32, p.ink)); }
+                            if response.on_hover_text(label).clicked() {
+                                self.preferences.accent = id.into();
+                                theme_changed = true;
+                            }
+                        }
+                    });
+                    if theme_changed {
+                        theme::set_theme(&self.preferences.scheme, &self.preferences.accent);
+                        theme::apply(ctx, self.preferences.dark);
+                        self.save_preferences();
+                    }
+                    ui.separator();
                     ui.label(RichText::new("Affichage").size(18.0).strong());
                     ui.add_space(8.0);
                     if ui

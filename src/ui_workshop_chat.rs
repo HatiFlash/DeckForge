@@ -349,7 +349,7 @@ impl App {
                                     |ui| {
                                         egui::Frame::new()
                                             .fill(if user {
-                                                theme::BLUE.gamma_multiply(0.35)
+                                                theme::accent().gamma_multiply(0.35)
                                             } else {
                                                 theme::palette(ctx).surface
                                             })
