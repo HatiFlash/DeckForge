@@ -34,7 +34,7 @@ pub(super) fn clauses(text: &str) -> Vec<String> {
         }
         let comma = ch == ','
             && !matches!((i.checked_sub(1).and_then(|j| chars.get(j)), chars.get(i + 1)), (Some((_, a)), Some((_, b))) if a.is_ascii_digit() && b.is_ascii_digit());
-        let word = [" puis ", " ensuite ", " et ", " après ", " apres "]
+        let word = [" puis ", " ensuite ", " et ", " après ", " apres ", " then ", " and then ", " and "]
             .iter()
             .find(|w| text[at..].to_lowercase().starts_with(*w));
         if comma || word.is_some() {
@@ -96,9 +96,9 @@ pub(super) fn duration(text: &str) -> Option<u64> {
             continue;
         };
         let factor = match pair[1].trim_matches(['.', '!', '?']) {
-            "ms" | "milliseconde" | "millisecondes" => 1.0,
-            "s" | "seconde" | "secondes" => 1000.0,
-            "min" | "minute" | "minutes" => 60_000.0,
+            "ms" | "milliseconde" | "millisecondes" | "millisecond" | "milliseconds" => 1.0,
+            "s" | "sec" | "seconde" | "secondes" | "second" | "seconds" => 1000.0,
+            "min" | "minute" | "minutes" | "mn" => 60_000.0,
             _ => continue,
         };
         let millis = value * factor;

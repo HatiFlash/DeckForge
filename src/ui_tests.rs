@@ -163,7 +163,7 @@ fn workshop_chat_texts_and_buttons_stay_inside_the_panel() {
         h.app.selected = 2;
         h.app.workshop_chat.open = true;
         h.app.preferences.workshop_chat_mode = "auto".into();
-        h.app.workshop_chat_send("fermer toutes les fenetres sauf celle sur laquelle je suis, puis ouvrir https://exemple.fr/une/adresse/tres/longue/sans/espaces".into(), None);
+        h.app.workshop_chat_send("programme une alarme pour mon rendez-vous chez le dentiste avec le lien https://exemple.fr/une/adresse/tres/longue/sans/espaces".into(), None);
         assert!(h.app.workshop_chat.consent.is_some());
         h.warm(size);
         let output = h.warm(size);

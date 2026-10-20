@@ -1009,8 +1009,53 @@ unsafe extern "system" fn find_op_window(hwnd: HWND, data: LPARAM) -> BOOL {
     };
     if matched { search.found = Some(hwnd); 0 } else { 1 }
 }
+/// Fenêtre « réelle » concernée par Fermer/Réduire les autres : visible, sans propriétaire,
+/// titrée, pas une fenêtre d'outil, pas le bureau ni la barre des tâches, pas DeckForge.
+fn other_window_candidate(class: &str, title: &str, pid: u32, own_pid: u32, visible: bool, owned: bool, tool: bool) -> bool {
+    const SHELL: [&str; 6] = ["Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Windows.UI.Core.CoreWindow", "NotifyIconOverflowWindow"];
+    visible && !owned && !tool && !title.trim().is_empty() && pid != 0 && pid != own_pid && !SHELL.contains(&class)
+}
+struct Others { keep: HWND, keep_pid: u32, found: Vec<HWND> }
+unsafe extern "system" fn collect_other_window(hwnd: HWND, data: LPARAM) -> BOOL {
+    let others = &mut *(data as *mut Others);
+    if hwnd == others.keep { return 1; }
+    let mut pid = 0;
+    GetWindowThreadProcessId(hwnd, &mut pid);
+    let mut class = [0u16; 128];
+    let class_len = GetClassNameW(hwnd, class.as_mut_ptr(), class.len() as i32).max(0) as usize;
+    let mut title = [0u16; 256];
+    let title_len = GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32).max(0) as usize;
+    let tool = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOOLWINDOW != 0;
+    // Les autres fenêtres du même processus que la fenêtre gardée restent intactes (palettes, onglets).
+    if pid != others.keep_pid && other_window_candidate(&String::from_utf16_lossy(&class[..class_len]), &String::from_utf16_lossy(&title[..title_len]), pid, std::process::id(), IsWindowVisible(hwnd) != 0, !GetWindow(hwnd, GW_OWNER).is_null(), tool) {
+        others.found.push(hwnd);
+    }
+    1
+}
+/// Ferme (WM_CLOSE : l'application peut demander d'enregistrer) ou réduit toutes les fenêtres
+/// sauf la fenêtre active. Aucun processus n'est tué.
+fn other_windows(op: &str, cancel: &AtomicBool) -> Result<String> {
+    check(cancel)?;
+    let keep = unsafe { GetForegroundWindow() };
+    anyhow::ensure!(!keep.is_null(), "Aucune fenêtre active à conserver");
+    let mut keep_pid = 0;
+    unsafe { GetWindowThreadProcessId(keep, &mut keep_pid); }
+    let mut others = Others { keep, keep_pid, found: Vec::new() };
+    unsafe { EnumWindows(Some(collect_other_window), &mut others as *mut _ as isize); }
+    let mut done = 0;
+    for hwnd in others.found.into_iter().take(200) {
+        check(cancel)?;
+        let ok = unsafe { if op == "close_others" { PostMessageW(hwnd, WM_CLOSE, 0, 0) != 0 } else { ShowWindow(hwnd, SW_SHOWMINNOACTIVE); true } };
+        if ok { done += 1; }
+    }
+    Ok(format!("{} {done} fenêtre(s), fenêtre active conservée", if op == "close_others" { "Fermeture demandée pour" } else { "Réduction de" }))
+}
 fn window_operation(target: &str, value: &str, op: &str, x: i32, y: i32, w: i32, h: i32, monitor: u32, cancel: &AtomicBool) -> Result<String> {
     check(cancel)?;
+    if matches!(op, "close_others" | "minimize_others") {
+        anyhow::ensure!(target == "foreground", "Seule la fenêtre active peut être conservée");
+        return other_windows(op, cancel);
+    }
     let hwnd = if target == "foreground" { unsafe { GetForegroundWindow() } } else {
         let mut search = WindowSearch { query: value.to_lowercase(), by_title: target == "title", explicit_self: target == "title" && value.to_lowercase().contains("deckforge"), found: None };
         unsafe { EnumWindows(Some(find_op_window), &mut search as *mut _ as isize); }
@@ -1060,6 +1105,55 @@ fn window_operation(target: &str, value: &str, op: &str, x: i32, y: i32, w: i32,
 #[cfg(test)]
 mod window_op_tests {
     use super::*;
+    struct ByPid { pid: u32, found: Option<HWND> }
+    unsafe extern "system" fn by_pid(hwnd: HWND, data: LPARAM) -> BOOL {
+        let s = &mut *(data as *mut ByPid);
+        let mut pid = 0;
+        GetWindowThreadProcessId(hwnd, &mut pid);
+        if pid == s.pid && IsWindowVisible(hwnd) != 0 && GetWindow(hwnd, GW_OWNER).is_null() { s.found = Some(hwnd); return 0; }
+        1
+    }
+    /// Banc Windows interactif uniquement : ouvre trois Bloc-notes et réduit les autres fenêtres.
+    #[test]
+    #[ignore = "banc Windows interactif (DECKFORGE_LAB_WINDOWS=1) : ouvre trois Bloc-notes"]
+    fn lab_minimize_others_keeps_only_the_active_window() {
+        if std::env::var("DECKFORGE_LAB_WINDOWS").as_deref() != Ok("1") { return; }
+        let mut children: Vec<_> = (0..3).map(|_| std::process::Command::new("notepad.exe").spawn().unwrap()).collect();
+        std::thread::sleep(Duration::from_secs(3));
+        let windows: Vec<HWND> = children.iter().map(|c| {
+            let mut s = ByPid { pid: c.id(), found: None };
+            unsafe { EnumWindows(Some(by_pid), &mut s as *mut _ as isize); }
+            s.found.expect("fenêtre Bloc-notes")
+        }).collect();
+        let _ = activate_window(windows[2]);
+        std::thread::sleep(Duration::from_millis(500));
+        let keep = unsafe { GetForegroundWindow() };
+        let report = other_windows("minimize_others", &AtomicBool::new(false)).unwrap();
+        std::thread::sleep(Duration::from_millis(800));
+        let states: Vec<bool> = windows.iter().map(|&h| unsafe { IsIconic(h) != 0 }).collect();
+        eprintln!("LAB report={report} foreground_is_notepad3={} iconic={states:?}", keep == windows[2]);
+        for c in &mut children { let _ = c.kill(); }
+        assert!(unsafe { IsIconic(keep) } == 0, "la fenêtre active ne doit pas être réduite");
+        for (i, &h) in windows.iter().enumerate() {
+            if h != keep { assert!(states[i], "Bloc-notes {i} aurait dû être réduit"); }
+        }
+    }
+    #[test]
+    fn close_others_spares_shell_tools_owned_untitled_and_deckforge() {
+        let me = 42;
+        assert!(other_window_candidate("Notepad", "Sans titre - Bloc-notes", 7, me, true, false, false));
+        for (class, title, pid, visible, owned, tool) in [
+            ("Shell_TrayWnd", "", 9, true, false, false),
+            ("Progman", "Program Manager", 9, true, false, false),
+            ("Notepad", "Bloc-notes", me, true, false, false),
+            ("Notepad", "Bloc-notes", 7, false, false, false),
+            ("#32770", "Enregistrer sous", 7, true, true, false),
+            ("Tool", "Palette", 7, true, false, true),
+            ("Chrome_WidgetWin_1", "  ", 7, true, false, false),
+        ] {
+            assert!(!other_window_candidate(class, title, pid, me, visible, owned, tool), "{class} {title}");
+        }
+    }
     fn r(left: i32, top: i32, right: i32, bottom: i32) -> RECT { RECT { left, top, right, bottom } }
     #[test]
     fn position_on_another_monitor_preserves_offset_and_clamps() {

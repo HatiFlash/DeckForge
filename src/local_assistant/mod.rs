@@ -38,7 +38,7 @@ const INTENTS: &[(&str, &[&str])] = &[
         "volume",
         &["volume", "son general", "mets en muet", "coupe le son"],
     ),
-    ("wait", &["attends", "attendre", "patiente", "pause de"]),
+    ("wait", &["attends", "attendre", "patiente", "pause de", "wait", "sleep", "delay"]),
     (
         "launch",
         &[
@@ -58,6 +58,10 @@ const INTENTS: &[(&str, &[&str])] = &[
             "ouvrir https",
             "ouvre le site",
             "ouvre l url",
+            "open http",
+            "open https",
+            "go to http",
+            "go to https",
         ],
     ),
     (
@@ -72,7 +76,7 @@ const INTENTS: &[(&str, &[&str])] = &[
             "morceau precedent",
         ],
     ),
-    ("text", &["tape ", "saisis ", "ecris ", "insere le texte"]),
+    ("text", &["tape ", "saisis ", "ecris ", "insere le texte", "type ", "write "]),
     ("notify", &["notification", "notifie", "affiche un message"]),
     ("repeat", &["repete ", "rejoue "]),
     ("page_next", &["page suivante", "prochaine page"]),
@@ -99,6 +103,59 @@ fn contains_phrase(haystack: &str, phrase: &str) -> bool {
     })
 }
 
+fn has(n: &str, words: &[&str]) -> bool {
+    words.iter().any(|w| contains_phrase(n, w))
+}
+fn window_op(op: &str) -> Step {
+    Step::WindowOp { target: "foreground".into(), value: String::new(), op: op.into(), x: 0, y: 0, w: 800, h: 600, monitor: 2 }
+}
+/// Formulations naturelles (français et anglais) des actions Windows courantes, avant les
+/// intentions par mots-clés. Retourne None si rien ne correspond.
+fn natural(n: &str) -> Option<Step> {
+    let windows = has(n, &["fenetre", "fenetres", "window", "windows", "applis", "applications", "programmes"]);
+    let all = has(n, &["toutes", "toute", "tous", "tout", "all", "every", "autres", "other", "others"]);
+    let except_active = has(n, &["sauf", "excepte", "hormis", "a part", "except", "but", "other", "others", "autres"])
+        || has(n, &["celle sur laquelle", "celle ou je suis", "active", "actuelle", "courante", "en cours", "current", "focused"]);
+    let close = has(n, &["ferme", "fermer", "fermez", "quitte", "quitter", "close", "kill"]);
+    let minimize = has(n, &["reduis", "reduire", "reduit", "minimise", "minimiser", "minimize", "cache", "cacher", "hide"]);
+    if windows && all && except_active && close { return Some(window_op("close_others")); }
+    if windows && all && except_active && minimize { return Some(window_op("minimize_others")); }
+    if (windows && all && minimize) || has(n, &["affiche le bureau", "afficher le bureau", "montre le bureau", "show desktop", "show the desktop"]) {
+        return Some(Step::Hotkey { keys: "WIN+D".into() });
+    }
+    let this_window = windows && !all;
+    if this_window && close { return Some(Step::CloseWindow); }
+    if this_window && minimize { return Some(window_op("minimize")); }
+    if this_window && has(n, &["agrandis", "agrandir", "maximise", "maximiser", "plein ecran", "maximize"]) { return Some(window_op("maximize")); }
+    if this_window && has(n, &["restaure", "restaurer", "restore"]) { return Some(window_op("restore")); }
+    if this_window && has(n, &["toujours devant", "toujours au premier plan", "always on top", "epingle", "pin"]) { return Some(window_op("toggle_always_on_top")); }
+    if this_window && has(n, &["ecran", "moniteur", "screen", "monitor"]) && has(n, &["deplace", "deplacer", "envoie", "bouge", "move", "send"]) {
+        let monitor = n.split_whitespace().find_map(|w| w.parse::<u32>().ok()).filter(|m| (1..=16).contains(m)).unwrap_or(2);
+        return Some(Step::WindowOp { target: "foreground".into(), value: String::new(), op: "move_to_monitor".into(), x: 0, y: 0, w: 800, h: 600, monitor });
+    }
+    let shortcut = |keys: &str| Some(Step::Hotkey { keys: keys.into() });
+    if has(n, &["capture d ecran", "capture ecran", "screenshot", "copie d ecran", "outil capture"]) { return shortcut("WIN+SHIFT+S"); }
+    if has(n, &["verrouille", "verrouiller", "lock the pc", "lock pc", "lock my pc", "lock screen"]) { return shortcut("WIN+L"); }
+    if has(n, &["gestionnaire des taches", "gestionnaire de taches", "task manager"]) { return shortcut("CTRL+SHIFT+ESC"); }
+    if has(n, &["explorateur", "explorer", "mes fichiers", "file explorer"]) { return shortcut("WIN+E"); }
+    if has(n, &["parametres windows", "reglages windows", "windows settings"]) { return shortcut("WIN+I"); }
+    if has(n, &["bureau virtuel suivant", "next desktop", "next virtual desktop"]) { return shortcut("CTRL+WIN+RIGHT"); }
+    if has(n, &["bureau virtuel precedent", "previous desktop", "previous virtual desktop"]) { return shortcut("CTRL+WIN+LEFT"); }
+    if has(n, &["copier", "copie", "copy"]) && !has(n, &["texte", "text", "presse papiers", "clipboard"]) { return shortcut("CTRL+C"); }
+    if has(n, &["coller", "colle", "paste"]) { return shortcut("CTRL+V"); }
+    if has(n, &["annuler", "annule", "undo"]) { return shortcut("CTRL+Z"); }
+    if has(n, &["tout selectionner", "selectionne tout", "select all"]) { return shortcut("CTRL+A"); }
+    if has(n, &["enregistre le fichier", "sauvegarde le fichier", "save the file", "save file"]) { return shortcut("CTRL+S"); }
+    if has(n, &["change de fenetre", "fenetre suivante", "switch window", "alt tab"]) { return shortcut("ALT+TAB"); }
+    // Anglais pour les intentions existantes.
+    if has(n, &["play pause", "pause the music", "play the music", "resume music"]) { return Some(Step::Media { command: "play_pause".into() }); }
+    if has(n, &["next track", "next song", "skip song"]) { return Some(Step::Media { command: "next".into() }); }
+    if has(n, &["previous track", "previous song"]) { return Some(Step::Media { command: "previous".into() }); }
+    if has(n, &["next page"]) { return Some(Step::PageNext); }
+    if has(n, &["previous page"]) { return Some(Step::PagePrevious); }
+    None
+}
+
 fn clarification(question: &str, choices: &[&str]) -> Status {
     Status::Ambigue {
         question: question.into(),
@@ -111,6 +168,12 @@ fn parse_one(text: &str) -> (Option<Step>, Option<Status>, Vec<String>) {
     let n = normalized.as_str();
     if let Some(keys) = parser::hotkey(text) {
         return (Some(Step::Hotkey { keys }), None, vec![]);
+    }
+    if let Some(step) = natural(n) {
+        let notes = if matches!(&step, Step::WindowOp { op, .. } if op == "close_others") {
+            vec!["Les applications reçoivent une demande de fermeture et peuvent proposer d'enregistrer ; DeckForge et la fenêtre active restent ouverts.".into()]
+        } else { vec![] };
+        return (Some(step), None, notes);
     }
     let kind = INTENTS
         .iter()
@@ -259,7 +322,7 @@ fn parse_one(text: &str) -> (Option<Step>, Option<Status>, Vec<String>) {
         Some("text") => Step::Text {
             text: parser::quoted_or_after(
                 text,
-                &["tape ", "saisis ", "écris ", "ecris ", "texte "],
+                &["tape ", "saisis ", "écris ", "ecris ", "texte ", "type ", "write "],
             )
             .unwrap_or_default(),
         },
@@ -397,6 +460,31 @@ mod tests {
         let p = first(text);
         assert_eq!(p.status, Status::Reconnue, "{text}: {:?}", p.notes);
         p.steps[0].clone()
+    }
+    #[test]
+    fn natural_french_and_english_window_requests() {
+        for text in [
+            "fermer toute les fenetres sauf celle sur laquelle je suis",
+            "Ferme toutes les fenêtres sauf l'active",
+            "ferme les autres fenêtres",
+            "close all windows except the current one",
+            "close all other windows",
+        ] {
+            assert!(matches!(recognized(text), Step::WindowOp { op, target, .. } if op == "close_others" && target == "foreground"), "{text}");
+        }
+        assert!(matches!(recognized("réduis toutes les fenêtres sauf celle-ci active"), Step::WindowOp { op, .. } if op == "minimize_others"));
+        assert!(matches!(recognized("minimise toutes les fenêtres"), Step::Hotkey { keys } if keys == "WIN+D"));
+        assert!(matches!(recognized("affiche le bureau"), Step::Hotkey { keys } if keys == "WIN+D"));
+        assert!(matches!(recognized("agrandis la fenêtre"), Step::WindowOp { op, .. } if op == "maximize"));
+        assert!(matches!(recognized("déplace la fenêtre sur l'écran 3"), Step::WindowOp { op, monitor: 3, .. } if op == "move_to_monitor"));
+        assert!(matches!(recognized("ferme la fenêtre"), Step::CloseWindow));
+        assert!(matches!(recognized("fais une capture d'écran"), Step::Hotkey { keys } if keys == "WIN+SHIFT+S"));
+        assert!(matches!(recognized("ouvre le gestionnaire des tâches"), Step::Hotkey { keys } if keys == "CTRL+SHIFT+ESC"));
+        let p = first("wait 2 seconds then open https://example.com and press play pause");
+        assert_eq!(p.status, Status::Reconnue, "{:?}", p.notes);
+        assert!(matches!(&p.steps[..], [Step::Delay { ms: 2000 }, Step::Url { url }, Step::Media { command }] if url == "https://example.com" && command == "play_pause"), "{:?}", p.steps);
+        // Les validations existantes restent : le volume ambigu demande toujours une précision.
+        assert!(matches!(first("baisse le volume de 10 %").status, Status::Ambigue { .. }));
     }
     #[test]
     fn example_sequence() {

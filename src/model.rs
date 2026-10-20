@@ -206,7 +206,8 @@ fn valid_window_op(target: &str, value: &str, op: &str, x: i32, y: i32, w: i32, 
         && value.len() <= 260 && !value.chars().any(char::is_control)
         && (target == "foreground" || !value.trim().is_empty() && value.trim() == value)
         && (target != "exe" || value.to_ascii_lowercase().ends_with(".exe") && !value.contains(['/', '\\']))
-        && ["activate", "minimize", "maximize", "restore", "move", "resize", "move_to_monitor", "toggle_always_on_top", "always_on_top_on", "always_on_top_off"].contains(&op)
+        && ["activate", "minimize", "maximize", "restore", "move", "resize", "move_to_monitor", "toggle_always_on_top", "always_on_top_on", "always_on_top_off", "close_others", "minimize_others"].contains(&op)
+        && (!matches!(op, "close_others" | "minimize_others") || target == "foreground")
         && (-32768..=32767).contains(&x) && (-32768..=32767).contains(&y)
         && (1..=32767).contains(&w) && (1..=32767).contains(&h)
         && (1..=16).contains(&monitor)
@@ -293,6 +294,8 @@ impl Step {
             "toggle_always_on_top" => format!("Basculer toujours au premier plan pour {who}"),
             "always_on_top_on" => format!("Garder {who} toujours au premier plan"),
             "always_on_top_off" => format!("Désactiver toujours au premier plan pour {who}"),
+            "close_others" => format!("Fermer toutes les autres fenêtres (garder {who})"),
+            "minimize_others" => format!("Réduire toutes les autres fenêtres (garder {who})"),
             _ => format!("Opération de fenêtre inconnue : {who}"),
         })
     }
