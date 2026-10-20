@@ -6,7 +6,7 @@
 
   [![Licence MIT](https://img.shields.io/badge/Licence-MIT-blue.svg)](LICENSE)
   [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
-  [![Tests](https://img.shields.io/badge/Tests-338%20pass%C3%A9s-brightgreen.svg)]()
+  [![Tests](https://img.shields.io/badge/Tests-339%20pass%C3%A9s-brightgreen.svg)]()
   [![Version](https://img.shields.io/badge/Release-v0.8.1-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.1)
 </div>
 
@@ -116,7 +116,7 @@ cd DeckForge
 # Compiler en mode Release
 cargo build --release --locked
 
-# Lancer la suite complète de tests (338 tests unitaires et d'intégration)
+# Lancer la suite complète de tests (339 tests unitaires et d'intégration)
 cargo test --locked
 
 # Construire l'installateur (Inno Setup 6 ou 7 requis)
