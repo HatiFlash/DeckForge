@@ -1565,35 +1565,67 @@ fn plugin_store_is_rendered_without_a_window() {
 }
 
 #[test]
-fn local_ai_settings_open_in_their_own_window_below_existing_settings() {
-    let size = vec2(1380.0, 900.0);
+fn settings_tabs_fit_a_laptop_screen_and_ai_opens_the_single_assistant_window() {
+    let size = vec2(1366.0, 768.0);
     let mut h = Harness::new();
     h.app.settings = true;
-    let settings = h.warm(size);
-    let button = text_position(&settings.shapes, "Configurer…").expect("entrée IA visible");
-    let diagnostic = text_position(&settings.shapes, "Démarrer le diagnostic (90 s max)").expect("diagnostic toujours visible");
-    assert!(button.y < diagnostic.y, "l'entrée IA est visible en haut des Réglages");
-    assert!(text_position(&settings.shapes, "désactivée").is_some() && !h.app.preferences.local_ai.enabled, "IA locale désactivée par défaut");
+    for tab in 0..3u8 {
+        h.app.settings_tab = tab;
+        h.warm(size);
+        let rect = h.ctx.memory(|m| m.area_rect(egui::Id::new("device_settings"))).expect("Réglages affichés");
+        assert!(rect.max.y <= size.y && rect.min.y >= 0.0, "onglet {tab} : la fenêtre dépasse l'écran {rect:?}");
+    }
+    h.app.settings_tab = 0;
+    let general = h.warm(size);
+    assert!(text_position(&general.shapes, "IA : désactivée").is_some() && !h.app.preferences.local_ai.enabled, "IA locale désactivée par défaut");
+    let button = text_position(&general.shapes, "Configurer…").expect("entrée Assistant IA");
     h.click(size, button);
-    assert!(h.app.show_local_ai, "le bouton ouvre la fenêtre IA");
+    assert!(h.app.assistant_settings && h.app.assistant_tab == 0, "ouvre l'Assistant IA sur l'onglet IA locale");
     h.app.settings = false;
     h.app.preferences.local_ai.enabled = true;
     h.app.preferences.local_ai.backend = "ollama".into();
     let open = h.warm(size);
-    for text in ["Utiliser une IA locale", "Ollama", "Intégré à DeckForge", "Tester"] {
+    for text in ["IA locale (sur ce PC)", "IA connectée (Claude, ChatGPT…)", "Utiliser une IA locale", "Ollama", "Intégré à DeckForge", "Tester", "IA : locale"] {
         assert!(text_position(&open.shapes, text).is_some(), "{text}");
     }
+    assert!(text_position(&open.shapes, "Connecter une IA").is_none(), "plus de bouton IA en double dans l'en-tête");
+    assert!(text_position(&open.shapes, "Arrêter les macros en cours").is_none() && text_position(&open.shapes, "Arrêter les macros").is_none(), "Arrêter n'apparaît que pendant une exécution");
     if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
         std::fs::create_dir_all(&dir).unwrap();
-        h.png(size, open, &PathBuf::from(&dir).join("reglages-ia-locale-ollama.png"));
+        h.png(size, open, &PathBuf::from(&dir).join("assistant-ia-locale-ollama.png"));
         h.app.preferences.local_ai.backend = "integre".into();
         let out = h.warm(size);
-        h.png(size, out, &PathBuf::from(&dir).join("reglages-ia-locale-integre.png"));
-        h.app.settings = true;
-        h.app.show_local_ai = false;
+        h.png(size, out, &PathBuf::from(&dir).join("assistant-ia-locale-integre.png"));
+        h.app.assistant_tab = 1;
         let out = h.warm(size);
-        h.png(size, out, &PathBuf::from(&dir).join("reglages.png"));
+        h.png(size, out, &PathBuf::from(&dir).join("assistant-ia-connectee.png"));
+        h.app.assistant_settings = false;
+        h.app.settings = true;
+        for (tab, name) in [(0u8, "reglages-general"), (1, "reglages-peripherique"), (2, "reglages-diagnostic")] {
+            h.app.settings_tab = tab;
+            let out = h.warm(size);
+            h.png(size, out, &PathBuf::from(&dir).join(format!("{name}.png")));
+        }
     }
+}
+
+#[test]
+fn rules_preview_offers_the_local_ai_when_it_is_enabled() {
+    let size = vec2(1380.0, 900.0);
+    let mut h = Harness::new();
+    h.app.show_workflow = true;
+    h.app.workshop_chat.open = true;
+    h.app.workshop_chat_send("colle sans mise en forme".into(), None);
+    let out = h.warm(size);
+    assert!(text_position(&out.shapes, "Pas ça ? Demander plutôt à l'IA locale").is_none(), "IA locale désactivée : pas de bouton");
+    h.app.preferences.local_ai.enabled = true;
+    h.app.preferences.local_ai.endpoint = "http://127.0.0.1:9".into();
+    h.app.workshop_chat_send("colle sans mise en forme".into(), None);
+    assert!(h.app.workshop_chat.pending.as_ref().is_some_and(|p| !p.ai && p.proposal.steps.len() == 3), "proposition des règles d'abord");
+    let out = h.warm(size);
+    let button = text_position(&out.shapes, "Pas ça ? Demander plutôt à l'IA locale").expect("bouton IA locale");
+    h.click(size, button);
+    assert!(h.app.workshop_chat.thinking.is_some() && h.app.workshop_chat.pending.is_none(), "la demande part vers l'IA locale, sans insertion");
 }
 
 #[test]
@@ -1601,6 +1633,7 @@ fn flicker_ui_start_mouse_transition_stop_writes_real_trace() {
     let mut h = Harness::new();
     let size = vec2(1380.0, 900.0);
     h.app.settings = true;
+    h.app.settings_tab = 2;
     let open = h.warm(size);
     let button = text_position(&open.shapes, "Démarrer le diagnostic (90 s max)").expect("diagnostic button visible in settings");
     h.click(size, button);
@@ -1654,7 +1687,7 @@ fn inspector_dpi_keeps_keys_and_primary_actions_visible_without_button_overlap()
                     "Key {} clipped at {physical:?} @ {scale}: {r:?}", index + 1);
                 assert!(r.width() >= 40.0 && r.height() >= 40.0, "{physical:?} @ {scale}: key {index} {r:?}");
             }
-            for name in ["Simuler", "Tester", "Atelier de blocs"] {
+            for name in ["Simuler", "Tester pour de vrai", "Atelier de blocs"] {
                 assert!(text_position(&output.shapes, name).is_some(), "{name} hidden at {physical:?} @ {scale}");
             }
             let buttons: Vec<Rect> = h.ctx.data(|d| d.get_temp(egui::Id::new("inspector_button_rects"))).unwrap();

@@ -230,7 +230,10 @@ pub struct App {
     local_ai_check: Option<crate::local_llm::Job>,
     local_ai_install: Option<crate::local_llm::Install>,
     local_ai_status: String,
-    show_local_ai: bool,
+    /// Onglet de la fenêtre Assistant IA : 0 = IA locale, 1 = IA connectée (MCP).
+    assistant_tab: u8,
+    /// Onglet des Réglages : 0 = Général, 1 = Périphérique, 2 = Diagnostic.
+    settings_tab: u8,
     show_assets: bool,
     show_desktop_settings: bool,
     available_icons: Vec<crate::assets::Icon>,
@@ -438,7 +441,8 @@ impl App {
             local_ai_check: None,
             local_ai_install: None,
             local_ai_status: String::new(),
-            show_local_ai: false,
+            assistant_tab: 0,
+            settings_tab: 0,
             show_assets: false,
             show_desktop_settings: false,
             available_icons: vec![],
@@ -613,6 +617,17 @@ impl App {
         self.device_model.as_ref().map_or_else(|| "périphérique".into(), |d| d.name.clone())
     }
     fn is_d6(&self) -> bool { self.device_model.as_ref().is_none_or(|d| d.name.contains("D6")) }
+    /// État résumé des deux IA (locale et connectée) pour un seul bouton.
+    fn ai_status_label(&self) -> &'static str {
+        let connected = self.assistant.as_ref().is_some_and(|s| s.enabled());
+        match (self.preferences.local_ai.enabled, connected) {
+            (true, true) => "IA : locale + connectée",
+            (true, false) => "IA : locale",
+            (false, true) => "IA : connectée",
+            (false, false) if self.preferences.allow_connected_ai => "IA : en attente",
+            _ => "IA : désactivée",
+        }
+    }
     fn device_label(&self) -> String {
         self.device_model.as_ref().map_or_else(|| "Aucun périphérique".into(), |d| {
             format!("{} · {} touches{}", d.name, d.keys, if d.experimental { " · expérimental" } else { "" })
@@ -1284,12 +1299,6 @@ impl App {
             let _ = child.wait();
         }
     }
-    fn set_ai_enabled(&mut self, enabled: bool) {
-        if let Some(server)=&self.assistant { server.set_enabled(enabled); }
-        if !enabled { self.stop_http(); self.proposals.reject_all(); self.assistant_cache.clear(); self.workshop_chat.awaiting = None; }
-        self.preferences.allow_connected_ai=enabled;
-        self.save_preferences();
-    }
     fn connect_ai_window(&mut self, ctx: &egui::Context) {
         if !self.connect_window { return; }
         let mut open=true;
@@ -1336,9 +1345,20 @@ impl App {
         if self.assistant_settings {
             let mut open = true;
             egui::Window::new("Assistant IA").open(&mut open).collapsible(false).resizable(true).default_width(510.0).vscroll(true).max_height((ctx.screen_rect().height()-100.0).max(400.0)).show(ctx,|ui|{
-            ui.label(RichText::new("Prépare tes macros avec ton IA.").size(20.0).strong());ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                for (i, label) in ["IA locale (sur ce PC)", "IA connectée (Claude, ChatGPT…)"].into_iter().enumerate() {
+                    if ui.selectable_label(self.assistant_tab == i as u8, RichText::new(label).size(15.0)).clicked() { self.assistant_tab = i as u8; }
+                }
+            });
+            ui.separator();
+            if self.assistant_tab == 0 {
+                ui.label(RichText::new("IA locale de l'assistant (facultative)").size(18.0).strong());
+                self.local_ai_settings(ui, &p);
+                return;
+            }
+            ui.label(RichText::new("Prépare tes macros avec ton IA connectée.").size(18.0).strong());ui.add_space(6.0);
             let mut enabled=self.assistant.as_ref().is_some_and(|s|s.enabled());
-            ui.horizontal(|ui|{if theme::toggle(ui,&mut enabled).changed(){if let Some(server)=&self.assistant{server.set_enabled(enabled);}if !enabled{self.stop_http();self.proposals.reject_all();self.assistant_cache.clear();}self.preferences.allow_connected_ai=enabled;self.save_preferences();self.log(if enabled{"Connecteur MCP activé."}else{"Connecteur MCP désactivé."}.into());}ui.label(RichText::new(if enabled{"Assistant IA activé"}else{"Assistant IA désactivé"}).strong());});
+            ui.horizontal(|ui|{if theme::toggle(ui,&mut enabled).changed(){if let Some(server)=&self.assistant{server.set_enabled(enabled);}if !enabled{self.stop_http();self.proposals.reject_all();self.assistant_cache.clear();self.workshop_chat.awaiting=None;}self.preferences.allow_connected_ai=enabled;self.save_preferences();self.log(if enabled{"Connecteur MCP activé."}else{"Connecteur MCP désactivé."}.into());}ui.label(RichText::new(if enabled{"IA connectée activée"}else{"IA connectée désactivée"}).strong());});
             ui.add_space(10.0);ui.label("Ton assistant peut lire les profils et proposer des actions. Les changements et les exécutions réelles attendent toujours ta validation ici.");ui.add_space(8.0);
             ui.separator();ui.label(RichText::new("Décris l’automatisation souhaitée").strong());
             ui.add(egui::TextEdit::multiline(&mut self.assistant_request).desired_rows(3).desired_width(f32::INFINITY).hint_text("Ex. : basculer entre mon casque et mes enceintes, avec une icône pour chaque état."));
@@ -1648,12 +1668,20 @@ impl App {
                 } else if self.wanted {
                     ("En attente", theme::WARNING)
                 } else {
-                    ("Déconnecté", theme::DANGER)
+                    ("Déconnecté", p.muted)
                 };
                 let (card_r, card_resp) = ui.allocate_exact_size(
                     Vec2::new(ui.available_width(), footer_h - 4.0),
-                    egui::Sense::hover(),
+                    egui::Sense::click(),
                 );
+                let card_resp = if !self.gate.connected && !self.wanted {
+                    card_resp.on_hover_text("Cliquer pour connecter le périphérique")
+                } else {
+                    card_resp
+                };
+                if !self.gate.connected && !self.wanted && card_resp.clicked() {
+                    self.connect();
+                }
                 ui.painter().rect_filled(card_r, 10.0, p.card);
                 if compact {
                     ui.painter().circle_filled(
@@ -1708,19 +1736,7 @@ impl App {
                         ui.label(RichText::new("DeckForge").size(18.0).strong());
                         ui.label(RichText::new(self.device_label()).size(10.0).color(p.muted));
                     });
-                    ui.add_space(8.0);
-                    theme::status_badge(
-                        ui,
-                        if self.gate.connected { "Connecté" } else { "Aucun périphérique" },
-                        if self.gate.connected {
-                            GREEN
-                        } else if self.wanted {
-                            theme::WARNING
-                        } else {
-                            theme::DANGER
-                        },
-                    );
-                    ui.add_space(4.0);
+                    ui.add_space(12.0);
                     if ui
                         .add_enabled(!self.history.is_empty(), theme::secondary_button(if ctx.screen_rect().width() < 1320.0 { "↺" } else { "Annuler" }))
                         .on_hover_text("Annuler — Ctrl+Z")
@@ -1738,27 +1754,12 @@ impl App {
                     });
                     ui.horizontal_wrapped(|ui| {
                         ui.menu_button("Réglages", |ui| {
-                        let ai_on = self.assistant.as_ref().is_some_and(|s| s.enabled());
-                        let ai_label = if ai_on {
-                            "IA : connectée"
-                        } else if self.preferences.allow_connected_ai {
-                            "IA : en attente"
-                        } else {
-                            "IA : désactivée"
-                        };
-                        if ui.add(theme::secondary_button("Connecter une IA")).clicked() {
-                            self.connect_window = true;
-                        }
                         if ui
-                            .add(theme::secondary_button(ai_label))
-                            .on_hover_text("Connecter une IA ou désactiver le pont local")
+                            .add(theme::secondary_button(self.ai_status_label()))
+                            .on_hover_text("Assistant IA : IA locale sur ce PC et IA connectée (Claude, ChatGPT…)")
                             .clicked()
                         {
-                            if ai_on {
-                                self.set_ai_enabled(false);
-                            } else {
-                                self.assistant_settings = true;
-                            }
+                            self.assistant_settings = true;
                         }
                         if ui
                             .add(theme::secondary_button(if self.preferences.dark {
@@ -1813,7 +1814,7 @@ impl App {
                                 self.show_about = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Assistant IA / MCP").clicked() {
+                            if ui.button("Assistant IA…").clicked() {
                                 self.assistant_settings = true;
                                 ui.close_menu();
                             }
@@ -1846,7 +1847,9 @@ impl App {
                                 ui.close_menu();
                             }
                         });
-                        if ui
+                        // Visible seulement pendant une exécution (Ctrl + Alt + F12 reste toujours actif).
+                        if self.engine.running.load(Ordering::SeqCst)
+                            && ui
                             .add(
                                 theme::danger_button(
                                     RichText::new("Arrêter les macros")
@@ -1855,7 +1858,7 @@ impl App {
                                 .fill(Color32::TRANSPARENT)
                                 .stroke(egui::Stroke::new(1.0_f32, theme::DANGER)),
                             )
-                            .on_hover_text("Arrête les macros en cours et met les touches en pause. Les applications déjà ouvertes restent ouvertes.")
+                            .on_hover_text("Arrête les macros en cours et met les touches en pause (Ctrl + Alt + F12). Les applications déjà ouvertes restent ouvertes.")
                             .clicked()
                         {
                             self.engine.stop();
@@ -1911,19 +1914,7 @@ impl App {
                         ui.label(RichText::new("DeckForge").size(18.0).strong());
                         ui.label(RichText::new(self.device_label()).size(10.0).color(p.muted));
                     });
-                    ui.add_space(8.0);
-                    theme::status_badge(
-                        ui,
-                        if self.gate.connected { "Connecté" } else { "Aucun périphérique" },
-                        if self.gate.connected {
-                            GREEN
-                        } else if self.wanted {
-                            theme::WARNING
-                        } else {
-                            theme::DANGER
-                        },
-                    );
-                    ui.add_space(4.0);
+                    ui.add_space(12.0);
                     if ui
                         .add_enabled(!self.history.is_empty(), theme::secondary_button(if ctx.screen_rect().width() < 1320.0 { "↺" } else { "Annuler" }))
                         .on_hover_text("Annuler — Ctrl+Z")
@@ -1978,7 +1969,7 @@ impl App {
                                 self.show_about = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Assistant IA / MCP").clicked() {
+                            if ui.button("Assistant IA…").clicked() {
                                 self.assistant_settings = true;
                                 ui.close_menu();
                             }
@@ -2011,27 +2002,12 @@ impl App {
                                 ui.close_menu();
                             }
                         });
-                        let ai_on = self.assistant.as_ref().is_some_and(|s| s.enabled());
-                        let ai_label = if ai_on {
-                            "IA : connectée"
-                        } else if self.preferences.allow_connected_ai {
-                            "IA : en attente"
-                        } else {
-                            "IA : désactivée"
-                        };
-                        if ui.add(theme::secondary_button("Connecter une IA")).clicked() {
-                            self.connect_window = true;
-                        }
                         if ui
-                            .add(theme::secondary_button(ai_label))
-                            .on_hover_text("Connecter une IA ou désactiver le pont local")
+                            .add(theme::secondary_button(self.ai_status_label()))
+                            .on_hover_text("Assistant IA : IA locale sur ce PC et IA connectée (Claude, ChatGPT…)")
                             .clicked()
                         {
-                            if ai_on {
-                                self.set_ai_enabled(false);
-                            } else {
-                                self.assistant_settings = true;
-                            }
+                            self.assistant_settings = true;
                         }
                         if ui
                             .add(theme::secondary_button(if self.preferences.dark {
@@ -2046,7 +2022,9 @@ impl App {
                             theme::apply(ctx, self.preferences.dark);
                             self.save_preferences();
                         }
-                        if ui
+                        // Visible seulement pendant une exécution (Ctrl + Alt + F12 reste toujours actif).
+                        if self.engine.running.load(Ordering::SeqCst)
+                            && ui
                             .add(
                                 theme::danger_button(
                                     RichText::new("Arrêter les macros en cours")
@@ -2055,7 +2033,7 @@ impl App {
                                 .fill(Color32::TRANSPARENT)
                                 .stroke(egui::Stroke::new(1.0_f32, theme::DANGER)),
                             )
-                            .on_hover_text("Arrête les macros en cours et met les touches en pause. Les applications déjà ouvertes restent ouvertes.")
+                            .on_hover_text("Arrête les macros en cours et met les touches en pause (Ctrl + Alt + F12). Les applications déjà ouvertes restent ouvertes.")
                             .clicked()
                         {
                             self.engine.stop();
@@ -2885,8 +2863,8 @@ impl App {
             let two_rows = ui.available_width() < 900.0;
             let actions = |app: &mut Self, ui: &mut egui::Ui, narrow: bool, buttons: &mut Vec<egui::Rect>| {
                 if narrow {
-                    let response = ui.add_enabled(!running, theme::primary("Simuler")); buttons.push(response.rect); if response.clicked() { app.preview(true); }
-                    let response = ui.add_enabled(!running, egui::Button::new("Tester")).on_hover_text("Tester dans 3 s"); buttons.push(response.rect); if response.clicked() { app.preview(false); }
+                    let response = ui.add_enabled(!running, theme::primary("Simuler")).on_hover_text("Déroule les actions dans le journal, sans aucun effet sur le PC"); buttons.push(response.rect); if response.clicked() { app.preview(true); }
+                    let response = ui.add_enabled(!running, egui::Button::new("Tester pour de vrai")).on_hover_text("Exécute réellement les actions dans 3 s, sur la fenêtre active"); buttons.push(response.rect); if response.clicked() { app.preview(false); }
                     let response = ui.button("Atelier de blocs"); buttons.push(response.rect); if response.clicked() { app.show_workflow = true; }
                     ui.menu_button("•••", |ui| {
                         if ui.button("Enregistrer dans Mes binds").clicked() { app.bind_name=app.config.keys()[app.selected].label.clone();app.save_bind=true;ui.close_menu(); }
@@ -2896,8 +2874,8 @@ impl App {
                     if ui.add(theme::primary(RichText::new("Atelier de blocs").color(Color32::WHITE))).on_hover_text("Composer l'automatisation avec des blocs visuels").clicked(){app.show_workflow=true;}
                     if ui.button("Enregistrer dans Mes binds").clicked(){app.bind_name=app.config.keys()[app.selected].label.clone();app.save_bind=true;}
                     if ui.add_enabled(!app.config.keys()[app.selected].steps.is_empty(),theme::danger_button("Vider")).clicked(){app.assign(DragItem::Bind(Key::default()),app.selected);}
-                    if ui.add_enabled(!running,egui::Button::new("Tester dans 3 s")).clicked(){app.preview(false);}
-                    if ui.add_enabled(!running,theme::primary("Simuler")).clicked(){app.preview(true);}
+                    if ui.add_enabled(!running,egui::Button::new("Tester pour de vrai (3 s)")).on_hover_text("Exécute réellement les actions dans 3 s, sur la fenêtre active").clicked(){app.preview(false);}
+                    if ui.add_enabled(!running,theme::primary("Simuler")).on_hover_text("Déroule les actions dans le journal, sans aucun effet sur le PC").clicked(){app.preview(true);}
                 }
             };
             ui.horizontal(|ui| {
@@ -3979,151 +3957,145 @@ impl App {
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
-                .default_width(430.0)
+                .default_width(460.0)
                 .show(ctx, |ui| {
-                    ui.label(RichText::new("Thème de l'interface").size(18.0).strong());
-                    ui.add_space(4.0);
-                    let mut theme_changed = false;
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label("Style");
-                        let current = theme::SCHEMES.iter().find(|s| s.0 == self.preferences.scheme)
-                            .or_else(|| theme::SCHEMES.iter().find(|s| s.2 == self.preferences.dark))
-                            .map_or("Bleu nuit", |s| s.1);
-                        egui::ComboBox::from_id_salt("theme_scheme").selected_text(current).show_ui(ui, |ui| {
-                            for (id, label, dark) in theme::SCHEMES {
-                                if ui.selectable_label(self.preferences.scheme == id, format!("{label}{}", if dark { " (sombre)" } else { " (clair)" })).clicked() {
-                                    self.preferences.scheme = id.into();
-                                    self.preferences.dark = dark;
-                                    theme_changed = true;
+                    // Onglets : la fenêtre reste courte et tient sur un écran de portable.
+                    ui.horizontal(|ui| {
+                        for (i, label) in ["Général", "Périphérique", "Diagnostic"].into_iter().enumerate() {
+                            if ui.selectable_label(self.settings_tab == i as u8, RichText::new(label).size(15.0)).clicked() {
+                                self.settings_tab = i as u8;
+                            }
+                        }
+                    });
+                    ui.separator();
+                    let help = |text: &str| RichText::new(text).size(12.0).color(p.muted);
+                    match self.settings_tab {
+                        0 => {
+                            ui.label(RichText::new("Thème de l'interface").size(17.0).strong());
+                            ui.add_space(4.0);
+                            let mut theme_changed = false;
+                            egui::Grid::new("settings_theme").num_columns(2).spacing([14.0, 10.0]).show(ui, |ui| {
+                                ui.label("Style");
+                                let current = theme::SCHEMES.iter().find(|s| s.0 == self.preferences.scheme)
+                                    .or_else(|| theme::SCHEMES.iter().find(|s| s.2 == self.preferences.dark))
+                                    .map_or("Bleu nuit", |s| s.1);
+                                egui::ComboBox::from_id_salt("theme_scheme").selected_text(current).show_ui(ui, |ui| {
+                                    for (id, label, dark) in theme::SCHEMES {
+                                        if ui.selectable_label(self.preferences.scheme == id, format!("{label}{}", if dark { " (sombre)" } else { " (clair)" })).clicked() {
+                                            self.preferences.scheme = id.into();
+                                            self.preferences.dark = dark;
+                                            theme_changed = true;
+                                        }
+                                    }
+                                });
+                                ui.end_row();
+                                ui.label("Accent");
+                                ui.horizontal(|ui| {
+                                    for (id, label, color) in theme::ACCENTS {
+                                        let chosen = self.preferences.accent == id || (self.preferences.accent.is_empty() && id == "bleu");
+                                        let (r, response) = ui.allocate_exact_size(Vec2::splat(26.0), egui::Sense::click());
+                                        ui.painter().circle_filled(r.center(), 10.0, color);
+                                        if chosen { ui.painter().circle_stroke(r.center(), 12.5, egui::Stroke::new(2.0_f32, p.ink)); }
+                                        if response.on_hover_text(label).clicked() {
+                                            self.preferences.accent = id.into();
+                                            theme_changed = true;
+                                        }
+                                    }
+                                });
+                                ui.end_row();
+                            });
+                            if theme_changed {
+                                theme::set_theme(&self.preferences.scheme, &self.preferences.accent);
+                                theme::apply(ctx, self.preferences.dark);
+                                self.save_preferences();
+                            }
+                            ui.add_space(10.0);
+                            ui.separator();
+                            ui.label(RichText::new("Assistant IA").size(17.0).strong());
+                            ui.label(help("IA locale sur ce PC et IA connectée (Claude, ChatGPT…) se règlent au même endroit."));
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(RichText::new(self.ai_status_label()).strong());
+                                if ui.button("Configurer…").clicked() {
+                                    self.assistant_tab = 0;
+                                    self.assistant_settings = true;
                                 }
-                            }
-                        });
-                    });
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label("Accent");
-                        for (id, label, color) in theme::ACCENTS {
-                            let chosen = self.preferences.accent == id || (self.preferences.accent.is_empty() && id == "bleu");
-                            let (r, response) = ui.allocate_exact_size(Vec2::splat(26.0), egui::Sense::click());
-                            ui.painter().circle_filled(r.center(), 10.0, color);
-                            if chosen { ui.painter().circle_stroke(r.center(), 12.5, egui::Stroke::new(2.0_f32, p.ink)); }
-                            if response.on_hover_text(label).clicked() {
-                                self.preferences.accent = id.into();
-                                theme_changed = true;
+                            });
+                        }
+                        1 => {
+                            ui.label(RichText::new("Affichage").size(17.0).strong());
+                            ui.add_space(4.0);
+                            let mut edited = false;
+                            let mut auto_profile = false;
+                            egui::Grid::new("settings_device").num_columns(2).spacing([14.0, 12.0]).show(ui, |ui| {
+                                ui.label("Luminosité");
+                                edited |= ui.add(egui::Slider::new(&mut self.config.brightness, 0..=100).suffix(" %")).changed();
+                                ui.end_row();
+                                ui.label("Veille après");
+                                edited |= ui.add(egui::Slider::new(&mut self.config.sleep_after_min, 0..=240).suffix(" min")).on_hover_text("0 = jamais").changed();
+                                ui.end_row();
+                                ui.label("Luminosité en veille");
+                                edited |= ui.add(egui::Slider::new(&mut self.config.sleep_brightness, 0..=100).suffix(" %")).changed();
+                                ui.end_row();
+                                ui.label("Appui long");
+                                edited |= ui.add(egui::Slider::new(&mut self.config.long_press_ms, 250..=2000).suffix(" ms")).changed();
+                                ui.end_row();
+                                ui.label("Images/s max");
+                                edited |= ui.add(egui::Slider::new(&mut self.config.animation_fps, 1..=15)).changed();
+                                ui.end_row();
+                            });
+                            ui.label(help("Veille : 0 = jamais. Une touche avec appui long attend ce délai ; sans relâchement détecté, elle lance l’action longue."));
+                            ui.add_space(6.0);
+                            if ui.checkbox(&mut self.config.auto_profile, "Changer de profil selon l'application").changed() { edited = true; auto_profile = true; }
+                            edited |= ui.checkbox(&mut self.config.d6_animations, "Animations GIF et vidéo sur les touches").changed();
+                            ui.label(help("Les GIF et les vidéos converties sont joués sur le périphérique, une image à la fois."));
+                            if edited { self.edited(); }
+                            if auto_profile { self.update_auto_profile(); }
+                            if d6 {
+                                ui.add_space(6.0);
+                                egui::CollapsingHeader::new("Compatibilité avancée").show(ui, |ui| {
+                                    if ui.checkbox(&mut self.config.flip_input_rows, "Inverser les lignes des appuis").changed() {
+                                        self.edited();
+                                    }
+                                    ui.horizontal(|ui| {
+                                        ui.label("Images");
+                                        if ui.selectable_value(&mut self.config.image_size, 126, "126 px").changed()
+                                            || ui.selectable_value(&mut self.config.image_size, 112, "112 px").changed()
+                                        {
+                                            self.edited();
+                                        }
+                                    });
+                                    ui.label(help("Ton D6 a été validé en 126 px, sans inversion des appuis."));
+                                });
                             }
                         }
-                    });
-                    if theme_changed {
-                        theme::set_theme(&self.preferences.scheme, &self.preferences.accent);
-                        theme::apply(ctx, self.preferences.dark);
-                        self.save_preferences();
-                    }
-                    // IA locale : une ligne ici, réglages dans une fenêtre dédiée (les Réglages ne grandissent pas).
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(RichText::new("IA locale de l'assistant").strong());
-                        ui.label(RichText::new(if self.preferences.local_ai.enabled { "activée" } else { "désactivée" }).small().color(p.muted));
-                        if ui.button("Configurer…").clicked() {
-                            self.show_local_ai = true;
-                        }
-                    });
-                    ui.separator();
-                    ui.label(RichText::new("Affichage").size(18.0).strong());
-                    ui.add_space(8.0);
-                    if ui
-                        .add(
-                            egui::Slider::new(&mut self.config.brightness, 0..=100)
-                                .text("Luminosité"),
-                        )
-                        .changed()
-                    {
-                        self.edited();
-                    }
-                    if ui.add(egui::Slider::new(&mut self.config.sleep_after_min, 0..=240).text("Veille après (min, 0 = jamais)")).changed() { self.edited(); }
-                    if ui.add(egui::Slider::new(&mut self.config.sleep_brightness, 0..=100).text("Luminosité en veille")).changed() { self.edited(); }
-                    if ui.checkbox(&mut self.config.auto_profile, "Changer de profil selon l'application").changed() { self.edited(); self.update_auto_profile(); }
-                    ui.add_space(8.0);
-                    if ui.add(egui::Slider::new(&mut self.config.long_press_ms, 250..=2000).text("Appui long (ms)")).changed() { self.edited(); }
-                    ui.label(RichText::new("Une touche avec appui long attend ce délai ; sans relâchement détecté, elle lance l’action longue.").small().color(p.muted));
-                    if ui.checkbox(&mut self.config.d6_animations, "Animations GIF et vidéo sur les touches").changed() { self.edited(); }
-                    if ui.add(egui::Slider::new(&mut self.config.animation_fps, 1..=15).text("Images/s max")).changed() { self.edited(); }
-                    ui.label(RichText::new("Les GIF et les vidéos converties sont joués sur le périphérique, une image à la fois.").small().color(p.muted));
-                    ui.add_space(6.0);
-                    ui.separator();
-                    ui.label(RichText::new("Diagnostic du clignotement").strong());
-                    let running=self.flicker.as_ref().is_some_and(|session|session.active());
-                    if ui.button(if running {"Arrêter le diagnostic"} else {"Démarrer le diagnostic (90 s max)"}).clicked() {
-                        if running { if let Some(session)=&self.flicker {session.stop();} }
-                        else { match crate::flicker_diagnostic::Session::start(&self.path) {
-                            Ok(session)=> {self.flicker_path=Some(session.path.clone()); self.flicker=Some(session);}
-                            Err(e)=> self.fail(format!("Diagnostic indisponible : {e}")),
-                        }}
-                    }
-                    ui.label("Capture locale sans réseau, limitée à 90 s et 6 Mo. Survole l'aperçu puis les réglages avant d'arrêter.");
-                    if let Some(path)=&self.flicker_path {
-                        let display=path.to_string_lossy().into_owned();
-                        ui.label(format!("Fichier : {display}"));
-                        if ui.button("Copier le chemin du diagnostic").clicked() {ui.ctx().copy_text(display);}
-                    }
-                    if let Some(session)=&self.flicker { ui.label(format!("{} · pertes : {}",if session.active(){"En cours"}else{"Arrêté"},session.dropped())); }
-                    ui.add_space(12.0);
-                    ui.label(RichText::new("Diagnostic des touches").strong());
-                    if ui
-                        .checkbox(
-                            &mut self.gate.inspect,
-                            "Sélectionner les touches sans exécuter d’action",
-                        )
-                        .changed()
-                    {
-                        self.engine.stop();
-                    }
-                    ui.label(
-                        RichText::new("Le mode actif est indiqué dans la barre supérieure.")
-                            .small()
-                            .color(p.muted),
-                    );
-                    ui.add_space(4.0);
-                    if d6 { egui::CollapsingHeader::new("Compatibilité avancée").show(ui, |ui| {
-                        if ui
-                            .checkbox(
-                                &mut self.config.flip_input_rows,
-                                "Inverser les lignes des appuis",
-                            )
-                            .changed()
-                        {
-                            self.edited();
-                        }
-                        ui.horizontal(|ui| {
-                            ui.label("Images");
-                            if ui
-                                .selectable_value(&mut self.config.image_size, 126, "126 px")
-                                .changed()
-                                || ui
-                                    .selectable_value(&mut self.config.image_size, 112, "112 px")
-                                    .changed()
-                            {
-                                self.edited();
+                        _ => {
+                            ui.label(RichText::new("Diagnostic du clignotement").size(17.0).strong());
+                            let running=self.flicker.as_ref().is_some_and(|session|session.active());
+                            if ui.button(if running {"Arrêter le diagnostic"} else {"Démarrer le diagnostic (90 s max)"}).clicked() {
+                                if running { if let Some(session)=&self.flicker {session.stop();} }
+                                else { match crate::flicker_diagnostic::Session::start(&self.path) {
+                                    Ok(session)=> {self.flicker_path=Some(session.path.clone()); self.flicker=Some(session);}
+                                    Err(e)=> self.fail(format!("Diagnostic indisponible : {e}")),
+                                }}
                             }
-                        });
-                        ui.label(
-                            RichText::new(
-                                "Ton D6 a été validé en 126 px, sans inversion des appuis.",
-                            )
-                            .small()
-                            .color(p.muted),
-                        );
-                    }); }
+                            ui.label(help("Capture locale sans réseau, limitée à 90 s et 6 Mo. Survole l'aperçu puis les réglages avant d'arrêter."));
+                            if let Some(path)=&self.flicker_path {
+                                let display=path.to_string_lossy().into_owned();
+                                ui.label(format!("Fichier : {display}"));
+                                if ui.button("Copier le chemin du diagnostic").clicked() {ui.ctx().copy_text(display);}
+                            }
+                            if let Some(session)=&self.flicker { ui.label(format!("{} · pertes : {}",if session.active(){"En cours"}else{"Arrêté"},session.dropped())); }
+                            ui.add_space(10.0);
+                            ui.separator();
+                            ui.label(RichText::new("Diagnostic des touches").size(17.0).strong());
+                            if ui.checkbox(&mut self.gate.inspect, "Sélectionner les touches sans exécuter d’action").changed() {
+                                self.engine.stop();
+                            }
+                            ui.label(help("Le mode actif est indiqué dans la barre supérieure."));
+                        }
+                    }
                 });
             self.settings = open;
-        }
-        if self.show_local_ai {
-            let mut open = true;
-            let p = theme::palette(ctx);
-            egui::Window::new("IA locale de l'assistant (facultative)").id(egui::Id::new("local_ai_window"))
-                .open(&mut open)
-                .collapsible(false)
-                .resizable(false)
-                .default_width(460.0)
-                .show(ctx, |ui| self.local_ai_settings(ui, &p));
-            self.show_local_ai = open;
         }
         if self.rename {
             let mut open = true;
@@ -4187,7 +4159,6 @@ impl App {
             || !self.import_reports.is_empty()
             || self.crop_session.is_some()
             || self.settings
-            || self.show_local_ai
             || self.show_hardware_test
             || self.show_device_report
             || self.show_saved_variables

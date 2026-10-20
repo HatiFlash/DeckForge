@@ -18,6 +18,7 @@ use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -310,10 +311,11 @@ pub const MODEL_URL: &str = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-G
 pub const MODEL_SHA256: &str = "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e";
 pub const MODEL_SIZE: u64 = 1_117_320_736;
 
-/// Installation en cours ; l'interface lit l'étape et la taille déjà reçue.
+/// Installation en cours ; l'interface lit l'étape, la taille déjà reçue et peut l'annuler.
 pub struct Install {
     rx: Receiver<Result<(), String>>,
     pub stage: Arc<Mutex<(String, PathBuf, u64)>>,
+    cancel: Arc<AtomicBool>,
 }
 
 impl Install {
@@ -329,50 +331,136 @@ impl Install {
         let (label, part, total) = self.stage.lock().map(|s| s.clone()).unwrap_or_default();
         (label, std::fs::metadata(&part).map_or(0, |m| m.len()), total)
     }
+    /// Arrête le téléchargement ; le fichier partiel est gardé et la reprise repart de là.
+    pub fn cancel(&self) {
+        self.cancel.store(true, Ordering::SeqCst);
+    }
 }
+
+pub const CANCELLED: &str = "installation annulée ; elle reprendra là où elle s'est arrêtée";
 
 /// Télécharge le moteur llama.cpp puis le modèle, uniquement sur clic explicite de l'utilisateur.
 pub fn install_builtin() -> Install {
     let (tx, rx) = channel();
     let stage = Arc::new(Mutex::new((String::new(), PathBuf::new(), 0)));
-    let shared = stage.clone();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (shared, stop) = (stage.clone(), cancel.clone());
     std::thread::spawn(move || {
         let set = |label: &str, part: &Path, total: u64| {
             if let Ok(mut s) = shared.lock() {
                 *s = (label.into(), part.to_path_buf(), total);
             }
         };
-        let result = install_into(&builtin_dir(), &set);
+        let result = install_into(&builtin_dir(), &set, &stop);
         let _ = tx.send(result);
     });
-    Install { rx, stage }
+    Install { rx, stage, cancel }
 }
 
-fn install_into(dir: &Path, set: &dyn Fn(&str, &Path, u64)) -> Result<(), String> {
+/// Octets libres sur le volume de `dir` (None si inconnu).
+pub fn free_space(dir: &Path) -> Option<u64> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        let wide: Vec<u16> = dir.as_os_str().encode_wide().chain(Some(0)).collect();
+        let mut free = 0u64;
+        let ok = unsafe {
+            windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(wide.as_ptr(), &mut free, std::ptr::null_mut(), std::ptr::null_mut())
+        };
+        (ok != 0).then_some(free)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = dir;
+        None
+    }
+}
+
+/// Place encore nécessaire (fichiers manquants, déjà reçu déduit, marge de 200 Mo pour l'extraction).
+pub fn space_needed(dir: &Path) -> u64 {
+    let have = |p: PathBuf| std::fs::metadata(p).map_or(0, |m| m.len());
+    let mut need = 200_000_000;
+    if !dir.join("llama-server.exe").is_file() {
+        need += ENGINE_SIZE.saturating_sub(have(dir.join("engine.zip.part"))) + 120_000_000;
+    }
+    let model = dir.join("models").join(BUILTIN_MODEL_FILE);
+    if !model.is_file() {
+        need += MODEL_SIZE.saturating_sub(have(model.with_extension("gguf.part")));
+    }
+    need
+}
+
+fn install_into(dir: &Path, set: &dyn Fn(&str, &Path, u64), cancel: &AtomicBool) -> Result<(), String> {
     std::fs::create_dir_all(dir.join("models")).map_err(|e| e.to_string())?;
+    let need = space_needed(dir);
+    if let Some(free) = free_space(dir) {
+        if free < need {
+            return Err(format!("espace disque insuffisant : {} Mo nécessaires, {} Mo libres", need / 1_000_000, free / 1_000_000));
+        }
+    }
     if !dir.join("llama-server.exe").is_file() {
         let zip = dir.join("engine.zip.part");
         set("Moteur llama.cpp", &zip, ENGINE_SIZE);
-        let result = fetch_verified(ENGINE_URL, &zip, ENGINE_SHA256, 600).and_then(|_| extract_engine(&zip, dir));
+        fetch_verified(ENGINE_URL, &zip, ENGINE_SHA256, ENGINE_SIZE, 900, cancel)?;
+        let extracted = extract_engine(&zip, dir);
         let _ = std::fs::remove_file(&zip);
-        result?;
+        extracted?;
     }
     let model = dir.join("models").join(BUILTIN_MODEL_FILE);
     if !model.is_file() {
         let part = model.with_extension("gguf.part");
         set("Modèle Qwen2.5 1,5B", &part, MODEL_SIZE);
-        if let Err(e) = fetch_verified(MODEL_URL, &part, MODEL_SHA256, 3600) {
-            let _ = std::fs::remove_file(&part);
-            return Err(e);
-        }
+        fetch_verified(MODEL_URL, &part, MODEL_SHA256, MODEL_SIZE, 4 * 3600, cancel)?;
         std::fs::rename(&part, &model).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
-fn fetch_verified(url: &str, dest: &Path, sha256: &str, seconds: u64) -> Result<(), String> {
-    let _ = std::fs::remove_file(dest);
-    crate::assets::download(url, dest, seconds).map_err(|e| format!("téléchargement impossible ({e}) : vérifie la connexion Internet"))?;
+/// Télécharge avec reprise (`curl -C -`), annulable, `curl` rattaché à DeckForge (tué avec lui),
+/// puis vérifie l'empreinte. Un fichier partiel est conservé pour la reprise ; un fichier complet
+/// à l'empreinte différente est supprimé.
+fn fetch_verified(url: &str, dest: &Path, sha256: &str, size: u64, seconds: u64, cancel: &AtomicBool) -> Result<(), String> {
+    let have = std::fs::metadata(dest).map_or(0, |m| m.len());
+    if have > size {
+        let _ = std::fs::remove_file(dest);
+    }
+    if std::fs::metadata(dest).map_or(0, |m| m.len()) < size {
+        let mut curl = std::process::Command::new("curl.exe");
+        curl.args(["-L", "--fail", "--silent", "--show-error", "--retry", "3", "-C", "-", "-o"])
+            .arg(dest)
+            .arg(url)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            curl.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        let mut child = curl.spawn().map_err(|e| format!("téléchargement impossible (curl.exe : {e})"))?;
+        #[cfg(windows)]
+        let _job = kill_with_parent(&child);
+        let started = Instant::now();
+        loop {
+            if cancel.load(Ordering::SeqCst) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(CANCELLED.into());
+            }
+            if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+                if !status.success() {
+                    return Err(format!("téléchargement interrompu ({status}) : vérifie la connexion Internet puis relance, il reprendra"));
+                }
+                break;
+            }
+            if started.elapsed() > Duration::from_secs(seconds) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("téléchargement trop long : relance-le, il reprendra".into());
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    }
     let digest = crate::assets::sha256_file(dest).map_err(|e| e.to_string())?;
     if digest != sha256 {
         let _ = std::fs::remove_file(dest);
@@ -413,6 +501,8 @@ fn extract_engine(zip: &Path, dir: &Path) -> Result<(), String> {
 struct Engine {
     child: std::process::Child,
     port: u16,
+    id: u64,
+    last_used: Instant,
     #[cfg(windows)]
     _job: Option<JobHandle>,
 }
@@ -452,70 +542,185 @@ impl Drop for Engine {
     }
 }
 
-/// Moteur intégré partagé, démarré à la première demande et arrêté avec DeckForge.
-#[derive(Clone, Default)]
+/// Libération automatique de la mémoire après cette durée sans demande.
+pub const IDLE_UNLOAD: Duration = Duration::from_secs(600);
+/// Essais de démarrage : carte graphique d'abord, puis processeur seul si le moteur échoue
+/// (mémoire vidéo insuffisante, pilote Vulkan absent ou défaillant).
+const ATTEMPTS: &[(&str, &[&str])] = &[("carte graphique", &["-ngl", "99"]), ("processeur", &["-ngl", "0"])];
+
+/// Moteur intégré partagé : démarré à la première demande, libéré après [`IDLE_UNLOAD`] sans
+/// demande, arrêté avec DeckForge.
+#[derive(Clone)]
 pub struct Runtime {
     engine: Arc<Mutex<Option<Engine>>>,
+    stop_requested: Arc<AtomicBool>,
+    next_id: Arc<std::sync::atomic::AtomicU64>,
+    /// Demandes en cours : le moteur n'est jamais libéré pendant une réponse.
+    busy: Arc<std::sync::atomic::AtomicUsize>,
+    idle: Duration,
+    /// Mode réellement utilisé au dernier démarrage (« carte graphique » ou « processeur »).
+    pub mode: Arc<Mutex<String>>,
+}
+
+impl Default for Runtime {
+    fn default() -> Self {
+        Self::with_idle(IDLE_UNLOAD)
+    }
 }
 
 impl Runtime {
+    pub fn with_idle(idle: Duration) -> Self {
+        Self {
+            engine: Arc::default(),
+            stop_requested: Arc::default(),
+            next_id: Arc::default(),
+            busy: Arc::default(),
+            idle,
+            mode: Arc::default(),
+        }
+    }
+
+    /// Le moteur intégré est-il chargé en mémoire ?
+    pub fn loaded(&self) -> bool {
+        self.engine.try_lock().map(|g| g.is_some()).unwrap_or(true)
+    }
+
     fn builtin_endpoint(&self) -> Result<String, String> {
+        self.endpoint_with(ATTEMPTS)
+    }
+
+    fn endpoint_with(&self, attempts: &[(&str, &[&str])]) -> Result<String, String> {
         let mut guard = self.engine.lock().map_err(|_| "moteur indisponible")?;
+        self.stop_requested.store(false, Ordering::SeqCst);
         if let Some(engine) = guard.as_mut() {
             if engine.child.try_wait().ok().flatten().is_none() {
+                engine.last_used = Instant::now();
                 return Ok(format!("http://127.0.0.1:{}", engine.port));
             }
             *guard = None;
         }
         let (server, model) = (builtin_server(), builtin_model());
         if !server.exists() {
-            return Err("moteur IA intégré non installé : Réglages → IA locale → Installer".into());
+            return Err("moteur IA intégré non installé : Assistant IA → IA locale → Installer".into());
         }
         if !model.exists() {
-            return Err("modèle IA non installé : Réglages → IA locale → Installer".into());
+            return Err("modèle IA non installé : Assistant IA → IA locale → Installer".into());
         }
+        let mut errors = Vec::new();
+        for (index, (label, extra)) in attempts.iter().enumerate() {
+            if self.stop_requested.load(Ordering::SeqCst) {
+                return Err("moteur IA arrêté à la demande".into());
+            }
+            match self.launch(&server, &model, extra, index == 0) {
+                Ok(engine) => {
+                    if self.stop_requested.swap(false, Ordering::SeqCst) {
+                        return Err("moteur IA arrêté à la demande".into());
+                    }
+                    let endpoint = format!("http://127.0.0.1:{}", engine.port);
+                    if let Ok(mut mode) = self.mode.lock() {
+                        *mode = (*label).into();
+                    }
+                    self.watch_idle(engine.id);
+                    *guard = Some(engine);
+                    return Ok(endpoint);
+                }
+                Err(e) => errors.push(format!("{label} : {e}")),
+            }
+        }
+        Err(format!("le moteur IA n'a pas démarré ({}) ; détails dans {}", errors.join(" ; "), builtin_dir().join("llama-server.log").display()))
+    }
+
+    fn launch(&self, server: &Path, model: &Path, extra: &[&str], first: bool) -> Result<Engine, String> {
         let port = std::net::TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()).map_err(|e| e.to_string())?.port();
-        let mut command = std::process::Command::new(&server);
+        // Journal du moteur (écrasé au premier essai) pour comprendre un échec de démarrage.
+        let log = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(!first)
+            .truncate(first)
+            .open(builtin_dir().join("llama-server.log"))
+            .ok();
+        let mut command = std::process::Command::new(server);
         command
             .args(["--host", "127.0.0.1", "--port", &port.to_string(), "-m"])
-            .arg(&model)
-            .args(["-c", "4096", "-ngl", "99", "--alias", "deckforge-local", "--no-webui"])
+            .arg(model)
+            .args(["-c", "4096", "--alias", "deckforge-local", "--no-webui"])
+            .args(extra)
             .current_dir(builtin_dir())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
+            .stderr(log.map_or_else(std::process::Stdio::null, std::process::Stdio::from));
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
             command.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
-        let child = command.spawn().map_err(|e| format!("démarrage du moteur IA impossible : {e}"))?;
+        let child = command.spawn().map_err(|e| format!("lancement impossible : {e}"))?;
         #[cfg(windows)]
         let job = kill_with_parent(&child);
-        let mut engine = Engine { child, port, #[cfg(windows)] _job: job };
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let mut engine = Engine { child, port, id, last_used: Instant::now(), #[cfg(windows)] _job: job };
         let endpoint = format!("http://127.0.0.1:{port}");
         let deadline = Instant::now() + Duration::from_secs(90);
         loop {
             if let Ok(Some(status)) = engine.child.try_wait() {
-                return Err(format!("le moteur IA s'est arrêté ({status})"));
+                return Err(format!("arrêté dès le démarrage ({status})"));
             }
             if http(&endpoint, "GET", "/health", None, Duration::from_secs(2)).is_ok() {
-                break;
+                return Ok(engine);
             }
-            if Instant::now() > deadline {
-                return Err("le moteur IA n'a pas démarré en 90 s".into());
+            if Instant::now() > deadline || self.stop_requested.load(Ordering::SeqCst) {
+                return Err("pas prêt en 90 s".into());
             }
             std::thread::sleep(Duration::from_millis(300));
         }
-        *guard = Some(engine);
-        Ok(endpoint)
     }
 
-    /// Libère la mémoire vidéo (arrêt du moteur intégré).
+    /// Surveille l'inactivité du moteur `id` et le libère après `self.idle` sans demande.
+    fn watch_idle(&self, id: u64) {
+        let (engine, idle, busy) = (self.engine.clone(), self.idle, self.busy.clone());
+        let tick = (idle / 4).clamp(Duration::from_millis(200), Duration::from_secs(30));
+        std::thread::spawn(move || loop {
+            std::thread::sleep(tick);
+            let Ok(mut guard) = engine.lock() else { return };
+            match guard.as_ref() {
+                Some(e) if e.id == id => {
+                    if e.last_used.elapsed() >= idle && busy.load(Ordering::SeqCst) == 0 {
+                        *guard = None;
+                        return;
+                    }
+                }
+                _ => return,
+            }
+        });
+    }
+
+    /// Libère la mémoire (arrêt du moteur intégré) sans jamais bloquer l'interface : pendant un
+    /// démarrage en cours, l'arrêt est différé à la fin du démarrage.
     pub fn stop(&self) {
-        if let Ok(mut guard) = self.engine.lock() {
+        self.stop_requested.store(true, Ordering::SeqCst);
+        if let Ok(mut guard) = self.engine.try_lock() {
             *guard = None;
+            self.stop_requested.store(false, Ordering::SeqCst);
         }
+    }
+
+    /// Traduit une demande ; l'inactivité est comptée à partir de la fin de la réponse.
+    fn translate(&self, endpoint: &str, model: &str, request: &str) -> Result<Vec<Step>, String> {
+        struct Busy<'a>(&'a Runtime);
+        impl Drop for Busy<'_> {
+            fn drop(&mut self) {
+                if let Ok(mut guard) = self.0.engine.lock() {
+                    if let Some(engine) = guard.as_mut() {
+                        engine.last_used = Instant::now();
+                    }
+                }
+                self.0.busy.fetch_sub(1, Ordering::SeqCst);
+            }
+        }
+        self.busy.fetch_add(1, Ordering::SeqCst);
+        let _busy = Busy(self);
+        complete(endpoint, model, request)
     }
 
     fn resolve(&self, settings: &LocalAi) -> Result<(String, String), String> {
@@ -532,7 +737,7 @@ impl Runtime {
         let runtime = self.clone();
         let settings = settings.clone();
         std::thread::spawn(move || {
-            let result = runtime.resolve(&settings).and_then(|(endpoint, model)| complete(&endpoint, &model, &request));
+            let result = runtime.resolve(&settings).and_then(|(endpoint, model)| runtime.translate(&endpoint, &model, &request));
             let _ = tx.send(result);
         });
         Job { rx, started: Instant::now() }
@@ -549,7 +754,7 @@ impl Runtime {
                 if settings.backend != "integre" && !list.iter().any(|m| m == &model || m.trim_end_matches(":latest") == model) {
                     return Err(format!("modèle « {model} » absent. Dans un terminal : ollama pull {model}"));
                 }
-                complete(&endpoint, &model, "attends 1 seconde")
+                runtime.translate(&endpoint, &model, "attends 1 seconde")
             });
             let _ = tx.send(result);
         });
@@ -705,6 +910,11 @@ mod tests {
     }
 
     fn matches(steps: &[Step], expected: &[&str]) -> bool {
+        // « Coller sans mise en forme » : le préréglage du catalogue (3 blocs) est aussi juste.
+        let preset = crate::catalog::presets().into_iter().find(|p| p.key.label == "Coller sans mise en forme").map(|p| p.key.steps);
+        if expected == ["hotkey:CTRL+SHIFT+V"] && preset.as_deref() == Some(steps) {
+            return true;
+        }
         steps.len() == expected.len()
             && steps.iter().zip(expected).all(|(s, e)| {
                 let sig = signature(s);
@@ -750,6 +960,83 @@ mod tests {
         let endpoint = std::env::var("DECKFORGE_LOCAL_AI").expect("DECKFORGE_LOCAL_AI");
         let model = std::env::var("DECKFORGE_LOCAL_AI_MODEL").unwrap_or_else(|_| OLLAMA_MODEL.into());
         run_lab(&endpoint, &model);
+    }
+
+    /// Serveur HTTP local d'un seul fichier, avec prise en charge des plages (`Range: bytes=N-`).
+    fn range_server(body: &'static [u8]) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut stream = stream;
+                let mut request = [0u8; 2048];
+                let n = stream.read(&mut request).unwrap_or(0);
+                let head = String::from_utf8_lossy(&request[..n]).to_lowercase();
+                let start = head.lines().find_map(|l| l.strip_prefix("range: bytes=")).and_then(|r| r.trim_end_matches('-').trim().trim_end_matches('-').parse::<usize>().ok()).unwrap_or(0);
+                let part = &body[start.min(body.len())..];
+                let status = if start > 0 { format!("206 Partial Content\r\nContent-Range: bytes {start}-{}/{}", body.len() - 1, body.len()) } else { "200 OK".into() };
+                let _ = write!(stream, "HTTP/1.1 {status}\r\nContent-Length: {}\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n", part.len());
+                let _ = stream.write_all(part);
+            }
+        });
+        format!("http://127.0.0.1:{port}/fichier.bin")
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn download_resumes_verifies_checksum_and_can_be_cancelled() {
+        use sha2::{Digest, Sha256};
+        const BODY: &[u8] = b"DeckForge : contenu de test pour la reprise du telechargement.";
+        let sha: String = Sha256::digest(BODY).iter().map(|b| format!("{b:02x}")).collect();
+        let url = range_server(BODY);
+        let dir = std::env::temp_dir().join(format!("deckforge-dl-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("fichier.part");
+        let never = AtomicBool::new(false);
+        // Reprise : la première moitié est déjà là.
+        std::fs::write(&dest, &BODY[..20]).unwrap();
+        fetch_verified(&url, &dest, &sha, BODY.len() as u64, 30, &never).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), BODY);
+        // Fichier complet : aucune requête, simple vérification.
+        fetch_verified("http://127.0.0.1:1/injoignable", &dest, &sha, BODY.len() as u64, 30, &never).unwrap();
+        // Empreinte différente : le fichier est supprimé.
+        assert!(fetch_verified(&url, &dest, &"0".repeat(64), BODY.len() as u64, 30, &never).is_err());
+        assert!(!dest.exists());
+        // Annulation : arrêt immédiat, sans fichier corrompu vérifié.
+        let cancelled = AtomicBool::new(true);
+        assert_eq!(fetch_verified(&url, &dest, &sha, BODY.len() as u64, 30, &cancelled).unwrap_err(), CANCELLED);
+        // Espace nécessaire : tout manque au départ, la partie déjà reçue est déduite.
+        let empty = dir.join("vide");
+        assert_eq!(space_needed(&empty), 200_000_000 + ENGINE_SIZE + 120_000_000 + MODEL_SIZE);
+        std::fs::create_dir_all(empty.join("models")).unwrap();
+        std::fs::write(empty.join("models").join(BUILTIN_MODEL_FILE).with_extension("gguf.part"), vec![0u8; 1_000_000]).unwrap();
+        assert_eq!(space_needed(&empty), 200_000_000 + ENGINE_SIZE + 120_000_000 + MODEL_SIZE - 1_000_000);
+        assert!(free_space(&dir).is_some_and(|free| free > 0));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Banc réel : repli sur le processeur quand le premier démarrage échoue, puis libération
+    /// automatique de la mémoire après inactivité.
+    #[test]
+    #[ignore]
+    fn lab_builtin_engine_falls_back_to_cpu_and_unloads_when_idle() {
+        let runtime = Runtime::with_idle(Duration::from_secs(3));
+        let endpoint = runtime.endpoint_with(&[("carte graphique", &["--option-inexistante"]), ("processeur", &["-ngl", "0"])]).unwrap();
+        assert_eq!(runtime.mode.lock().unwrap().as_str(), "processeur");
+        let log = std::fs::read_to_string(builtin_dir().join("llama-server.log")).unwrap_or_default();
+        eprintln!("LAB journal du moteur : {} octets, mentionne l'option refusée : {}", log.len(), log.contains("option-inexistante"));
+        // Demande plus longue que le délai d'inactivité : le moteur ne doit pas être coupé en route.
+        let steps = runtime.translate(&endpoint, "deckforge-local", "ferme cette fenetre").unwrap();
+        eprintln!("LAB repli processeur -> {steps:?}");
+        assert!(runtime.loaded());
+        std::thread::sleep(Duration::from_secs(6));
+        assert!(!runtime.loaded(), "moteur libéré après inactivité");
+        assert!(http(&endpoint, "GET", "/health", None, Duration::from_secs(2)).is_err(), "processus arrêté");
+        // Une nouvelle demande le redémarre.
+        let again = runtime.endpoint_with(ATTEMPTS).unwrap();
+        assert!(http(&again, "GET", "/health", None, Duration::from_secs(2)).is_ok());
+        runtime.stop();
     }
 
     /// Banc réel : installation par le vrai code (téléchargement épinglé, SHA-256, extraction).

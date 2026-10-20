@@ -89,8 +89,24 @@ pub(super) fn percent(text: &str) -> Option<u8> {
 }
 
 pub(super) fn duration(text: &str) -> Option<u64> {
-    let lower = text.to_lowercase().replace(',', ".");
-    let words: Vec<_> = lower.split_whitespace().collect();
+    let mut lower = text.to_lowercase().replace(',', ".").replace('-', " ");
+    for phrase in ["une demi seconde", "demi seconde", "half a second", "half second"] {
+        lower = lower.replace(phrase, "500 ms");
+    }
+    let number = |w: &str| -> Option<&'static str> {
+        Some(match w {
+            "un" | "une" | "a" | "an" | "one" => "1",
+            "deux" | "two" => "2",
+            "trois" | "three" => "3",
+            "quatre" | "four" => "4",
+            "cinq" | "five" => "5",
+            "dix" | "ten" => "10",
+            "quinze" | "fifteen" => "15",
+            "trente" | "thirty" => "30",
+            _ => return None,
+        })
+    };
+    let words: Vec<_> = lower.split_whitespace().map(|w| number(w).unwrap_or(w)).collect();
     for pair in words.windows(2) {
         let Ok(value) = pair[0].parse::<f64>() else {
             continue;

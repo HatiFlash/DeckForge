@@ -6,8 +6,8 @@
 
   [![Licence MIT](https://img.shields.io/badge/Licence-MIT-blue.svg)](LICENSE)
   [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
-  [![Tests](https://img.shields.io/badge/Tests-347%20pass%C3%A9s-brightgreen.svg)]()
-  [![Version](https://img.shields.io/badge/Release-v0.8.2-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.2)
+  [![Tests](https://img.shields.io/badge/Tests-350%20pass%C3%A9s-brightgreen.svg)]()
+  [![Version](https://img.shields.io/badge/Release-v0.8.3-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.3)
 </div>
 
 ---
@@ -18,10 +18,19 @@
 
 ---
 
-## 🆕 Nouveautés 0.8.2
+## 🆕 Nouveautés 0.8.3
+
+- **Interface allégée** : un seul bouton « Assistant IA » (IA locale et IA connectée dans la même fenêtre, à onglets), « Arrêter les macros » visible seulement pendant une exécution, plus de badge rouge « Aucun périphérique » en double.
+- **Réglages en onglets** (Général, Périphérique, Diagnostic) : tiennent sur un écran de portable, valeurs avec unités.
+- **« Simuler » / « Tester pour de vrai »** : la différence est explicite partout.
+- **IA locale plus sûre** : mémoire libérée après 10 min sans demande, repli automatique sur le processeur, installation annulable et reprise, vérification de l'espace disque, bouton « Demander plutôt à l'IA locale ». Assistant complet : 28/30 (intégré) et 29/30 (Ollama) sur le banc de 30 demandes libres. Détails : [docs/RELEASE-0.8.3.md](docs/RELEASE-0.8.3.md).
+
+![Réglages en onglets](docs/reglages.png)
+
+## Nouveautés 0.8.2
 
 - **IA locale facultative pour l'assistant de l'atelier** (désactivée par défaut) : comprend les demandes libres en français et en anglais quand les règles intégrées ne suffisent pas (« garde cette fenêtre toujours au-dessus », « rappelle-moi de boire de l'eau »…). Tout reste sur le PC, chaque proposition est montrée en aperçu et rien n'est inséré sans validation.
-- **Deux moteurs** (Réglages → IA locale de l'assistant → Configurer…) : moteur **intégré** installé en un clic (llama.cpp + Qwen2.5 1,5B, ≈1,2 Go, empreintes SHA-256 vérifiées) ou **Ollama** déjà installé (`ollama pull qwen2.5:1.5b`).
+- **Deux moteurs** (bouton « IA : … » de la barre supérieure → IA locale) : moteur **intégré** installé en un clic (llama.cpp + Qwen2.5 1,5B, ≈1,2 Go, empreintes SHA-256 vérifiées) ou **Ollama** déjà installé (`ollama pull qwen2.5:1.5b`).
 - Mesuré sur 30 demandes libres, processeur seul : 26/30 (intégré) et 27/30 (Ollama) suites de blocs exactes, en 1 à 2 s. Détails : [docs/RELEASE-0.8.2.md](docs/RELEASE-0.8.2.md).
 
 ![Réglages de l'IA locale](docs/ia-locale.png)
@@ -103,8 +112,8 @@ DeckForge embarque un serveur MCP (**Model Context Protocol**) natif pour collab
 
 ## 🚀 Prise en main rapide
 
-1. Téléchargez **`DeckForge-0.8.2-Setup.exe`** depuis la [page des Releases](https://github.com/HatiFlash/DeckForge/releases) et lancez-le (aucun droit administrateur requis). DeckForge s'installe dans `%LOCALAPPDATA%\Programs\DeckForge` avec un raccourci dans le menu Démarrer.
-   - Version portable : `DeckForge-0.8.2-Windows.zip`, à extraire dans le dossier de votre choix.
+1. Téléchargez **`DeckForge-0.8.3-Setup.exe`** depuis la [page des Releases](https://github.com/HatiFlash/DeckForge/releases) et lancez-le (aucun droit administrateur requis). DeckForge s'installe dans `%LOCALAPPDATA%\Programs\DeckForge` avec un raccourci dans le menu Démarrer.
+   - Version portable : `DeckForge-0.8.3-Windows.zip`, à extraire dans le dossier de votre choix.
    - Vous utilisiez déjà la version portable ? Copiez `config.json`, `preferences.json`, `variables.json` et les dossiers `assets` et `plugins` de l'ancien dossier vers le dossier d'installation, DeckForge fermé.
 2. Lancez DeckForge depuis le menu Démarrer.
 3. *Note importante pour les possesseurs du FIFINE D6 :* veillez à fermer le logiciel officiel FIFINE afin de libérer l'accès USB exclusif pour DeckForge.
@@ -124,11 +133,11 @@ cd DeckForge
 # Compiler en mode Release
 cargo build --release --locked
 
-# Lancer la suite complète de tests (347 tests unitaires et d'intégration)
+# Lancer la suite complète de tests (350 tests unitaires et d'intégration)
 cargo test --locked
 
 # Construire l'installateur (Inno Setup 6 ou 7 requis)
-powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.2 -Build
+powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.3 -Build
 ```
 
 ---

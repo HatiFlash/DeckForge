@@ -142,6 +142,8 @@ fn natural(n: &str) -> Option<Step> {
     if has(n, &["bureau virtuel suivant", "next desktop", "next virtual desktop"]) { return shortcut("CTRL+WIN+RIGHT"); }
     if has(n, &["bureau virtuel precedent", "previous desktop", "previous virtual desktop"]) { return shortcut("CTRL+WIN+LEFT"); }
     if has(n, &["copier", "copie", "copy"]) && !has(n, &["texte", "text", "presse papiers", "clipboard"]) { return shortcut("CTRL+C"); }
+    if has(n, &["appuie sur entree", "appuyer sur entree", "touche entree", "valide avec entree", "press enter", "hit enter", "press return"]) { return shortcut("ENTER"); }
+    if has(n, &["appuie sur echap", "touche echap", "press escape", "press esc", "hit escape"]) { return shortcut("ESC"); }
     if has(n, &["coller", "colle", "paste"]) { return shortcut("CTRL+V"); }
     if has(n, &["annuler", "annule", "undo"]) { return shortcut("CTRL+Z"); }
     if has(n, &["tout selectionner", "selectionne tout", "select all"]) { return shortcut("CTRL+A"); }
@@ -153,6 +155,15 @@ fn natural(n: &str) -> Option<Step> {
     if has(n, &["previous track", "previous song"]) { return Some(Step::Media { command: "previous".into() }); }
     if has(n, &["next page"]) { return Some(Step::PageNext); }
     if has(n, &["previous page"]) { return Some(Step::PagePrevious); }
+    None
+}
+
+/// Demandes qui correspondent à plusieurs blocs : on reprend le préréglage du catalogue.
+fn multi_step(n: &str) -> Option<Vec<Step>> {
+    let plain = has(n, &["sans mise en forme", "sans formatage", "sans format", "texte brut", "plain text", "without formatting", "unformatted"]);
+    if plain && has(n, &["coller", "colle", "paste"]) {
+        return crate::catalog::presets().into_iter().find(|p| p.key.label == "Coller sans mise en forme").map(|p| p.key.steps);
+    }
     None
 }
 
@@ -447,6 +458,10 @@ pub fn propose(text: &str, config: &Config) -> Proposal {
         status: Status::Inconnue,
     };
     for clause in parser::clauses(text) {
+        if let Some(steps) = multi_step(&parser::normalize(&clause)) {
+            result.steps.extend(steps);
+            continue;
+        }
         let (step, status, notes) = parse_one(&clause);
         if let Some(status) = status {
             result.status = status;
@@ -499,6 +514,19 @@ mod tests {
         assert!(matches!(&p.steps[..], [Step::Delay { ms: 2000 }, Step::Url { url }, Step::Media { command }] if url == "https://example.com" && command == "play_pause"), "{:?}", p.steps);
         // Les validations existantes restent : le volume ambigu demande toujours une précision.
         assert!(matches!(first("baisse le volume de 10 %").status, Status::Ambigue { .. }));
+    }
+    #[test]
+    fn plain_paste_half_second_and_enter() {
+        let p = first("colle sans mise en forme");
+        assert_eq!(p.status, Status::Reconnue);
+        assert!(matches!(&p.steps[..], [Step::Clipboard { op, .. }, Step::Clipboard { .. }, Step::Hotkey { keys }] if op == "read_to_variable" && keys == "CTRL+V"), "{:?}", p.steps);
+        let p = first("wait half a second then press enter");
+        assert_eq!(p.status, Status::Reconnue, "{:?}", p.notes);
+        assert!(matches!(&p.steps[..], [Step::Delay { ms: 500 }, Step::Hotkey { keys }] if keys == "ENTER"), "{:?}", p.steps);
+        assert!(matches!(recognized("attends une demi-seconde"), Step::Delay { ms: 500 }));
+        assert!(matches!(recognized("attends deux secondes"), Step::Delay { ms: 2000 }));
+        assert!(matches!(recognized("wait one second"), Step::Delay { ms: 1000 }));
+        assert!(matches!(recognized("colle"), Step::Hotkey { keys } if keys == "CTRL+V"));
     }
     #[test]
     fn example_sequence() {

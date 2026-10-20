@@ -71,6 +71,8 @@ pub(super) struct ChatPreview {
     pub scope: (usize, String, usize),
     pub original: Option<Vec<Step>>,
     pub request: String,
+    /// Proposition venue de l'IA locale (sinon : règles intégrées).
+    pub ai: bool,
 }
 
 impl WorkshopChat {
@@ -146,6 +148,7 @@ impl App {
                     scope,
                     original: Some(before),
                     request,
+                    ai: false,
                 });
             } else {
                 self.workshop_chat.say(
@@ -168,9 +171,7 @@ impl App {
         let proposal = local_assistant::propose(&request, &self.config);
         if matches!(proposal.status, Status::Inconnue) && self.preferences.local_ai.enabled {
             // Règles muettes : l'IA locale traduit la demande (rien ne quitte le PC).
-            self.workshop_chat.say("Je demande à l'IA locale…");
-            let job = self.local_ai.spawn(&self.preferences.local_ai, request.clone());
-            self.workshop_chat.thinking = Some((job, request, scope, mode == "auto"));
+            self.ask_local_ai(request, scope, mode == "auto");
             return;
         }
         match &proposal.status {
@@ -190,7 +191,16 @@ impl App {
             scope,
             original: None,
             request,
+            ai: false,
         });
+    }
+
+    /// Envoie la demande à l'IA locale en arrière-plan (jamais d'insertion sans validation).
+    fn ask_local_ai(&mut self, request: String, scope: (usize, String, usize), offer_connected: bool) {
+        self.workshop_chat.pending = None;
+        self.workshop_chat.say("Je demande à l'IA locale…");
+        let job = self.local_ai.spawn(&self.preferences.local_ai, request.clone());
+        self.workshop_chat.thinking = Some((job, request, scope, offer_connected));
     }
 
     pub(super) fn workshop_chat(&mut self, ctx: &egui::Context, selection: Option<&[usize]>) {
@@ -362,6 +372,18 @@ impl App {
                                 theme::palette(ctx).muted,
                                 "Proposition périmée : touche, page ou profil changé.",
                             );
+                        }
+                        if self.preferences.local_ai.enabled
+                            && !pending.ai
+                            && pending.original.is_none()
+                            && !stale
+                            && self.workshop_chat.thinking.is_none()
+                            && ui
+                                .small_button("Pas ça ? Demander plutôt à l'IA locale")
+                                .on_hover_text("Les règles intégrées ont répondu ; l'IA locale peut mieux comprendre une demande libre. Rien ne quitte le PC.")
+                                .clicked()
+                        {
+                            action = Some(3);
                         }
                         match &pending.proposal.status {
                             Status::Ambigue { question, choix } => {
@@ -558,6 +580,11 @@ impl App {
                 }
             } else if action == 2 {
                 self.workshop_chat.pending = None;
+            } else if action == 3 {
+                if let Some(p) = self.workshop_chat.pending.take() {
+                    let offer = self.preferences.workshop_chat_mode == "auto";
+                    self.ask_local_ai(p.request, p.scope, offer);
+                }
             } else if !stale {
                 if let Some(p) = self.workshop_chat.pending.take() {
                     let p_missing = p.proposal.missing.clone();
@@ -633,7 +660,7 @@ impl App {
                 }
             }
         }
-        self.workshop_chat.pending = Some(ChatPreview { proposal, scope, original: None, request });
+        self.workshop_chat.pending = Some(ChatPreview { proposal, scope, original: None, request, ai: true });
     }
 
     /// Réglages → IA locale : moteur, modèle et test de connexion. Aucun téléchargement implicite.
@@ -669,12 +696,25 @@ impl App {
                 (false, _) => "Moteur intégré pas encore installé.",
                 (true, false) => "Moteur présent ; modèle Qwen2.5 1,5B à télécharger.",
                 (true, true) => "Moteur et modèle prêts.",
-            }).small().color(p.muted));
+            }).size(12.0).color(p.muted));
+            if server && model {
+                let state = if self.local_ai.loaded() {
+                    format!("En mémoire ({}) ; libéré automatiquement après 10 min sans demande.", self.local_ai.mode.lock().map(|m| m.clone()).unwrap_or_default())
+                } else {
+                    "Pas en mémoire : démarre à la première demande (quelques secondes).".into()
+                };
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new(state).size(12.0).color(p.muted));
+                    if self.local_ai.loaded() && ui.small_button("Libérer maintenant").clicked() {
+                        self.local_ai.stop();
+                    }
+                });
+            }
             self.local_ai_download_ui(ui, p, !(server && model));
         }
         ui.horizontal_wrapped(|ui| {
             let busy = self.local_ai_check.is_some();
-            if ui.add_enabled(!busy, egui::Button::new("Tester")).clicked() {
+            if ui.add_enabled(!busy && self.local_ai_install.is_none(), egui::Button::new("Tester")).clicked() {
                 self.local_ai_status = "Test en cours…".into();
                 self.local_ai_check = Some(self.local_ai.check(&self.preferences.local_ai));
             }
@@ -708,24 +748,36 @@ impl App {
                     self.local_ai_install = None;
                     self.local_ai_status = match result {
                         Ok(()) => "Moteur et modèle installés. Clique sur Tester.".into(),
+                        Err(e) if e == crate::local_llm::CANCELLED => "Installation annulée ; elle reprendra là où elle s'est arrêtée.".into(),
                         Err(e) => format!("Installation impossible : {e}"),
                     };
                 }
                 None => {
                     let (stage, received, total) = install.progress();
+                    let mut cancel = false;
                     ui.horizontal_wrapped(|ui| {
                         ui.spinner();
                         let fraction = if total > 0 { (received as f32 / total as f32).min(1.0) } else { 0.0 };
                         ui.add(egui::ProgressBar::new(fraction).desired_width(180.0).text(format!("{stage} : {} / {} Mo", received / 1_000_000, total / 1_000_000)));
+                        cancel = ui.button("Annuler").on_hover_text("Le téléchargement reprendra là où il s'est arrêté.").clicked();
                     });
+                    if cancel {
+                        install.cancel();
+                    }
                     ui.ctx().request_repaint_after(Duration::from_millis(500));
                     return;
                 }
             }
         }
         if needed {
-            ui.label(RichText::new("Téléchargement unique depuis GitHub (llama.cpp, 37 Mo) et Hugging Face (Qwen2.5 1,5B, 1,1 Go), vérifié par empreinte SHA-256, installé dans %LOCALAPPDATA%\\DeckForge\\ai.").small().color(p.muted));
-            if ui.button("Installer le moteur et le modèle (≈1,2 Go)").clicked() {
+            ui.label(RichText::new("Téléchargement unique depuis GitHub (llama.cpp, 37 Mo) et Hugging Face (Qwen2.5 1,5B, 1,1 Go), vérifié par empreinte SHA-256, installé dans %LOCALAPPDATA%\\DeckForge\\ai. Annulable ; reprend là où il s'est arrêté.").size(12.0).color(p.muted));
+            let dir = crate::local_llm::builtin_dir();
+            let (need, free) = (crate::local_llm::space_needed(&dir), crate::local_llm::free_space(dir.ancestors().find(|d| d.exists()).unwrap_or(&dir)));
+            let enough = free.is_none_or(|f| f >= need);
+            if !enough {
+                ui.colored_label(theme::WARNING, format!("Espace disque insuffisant : {} Mo nécessaires, {} Mo libres.", need / 1_000_000, free.unwrap_or(0) / 1_000_000));
+            }
+            if ui.add_enabled(enough, egui::Button::new("Installer le moteur et le modèle (≈1,2 Go)")).clicked() {
                 self.local_ai.stop();
                 self.local_ai_status.clear();
                 self.local_ai_install = Some(crate::local_llm::install_builtin());
