@@ -603,7 +603,7 @@ impl Default for Config {
         let mut profile = Profile::new("Bureau".into());
         profile.keys[0] = Key {
             label: "Exemple macro".into(),
-            color: [83, 66, 175],
+            color: Key::default().color,
             steps: vec![
                 Step::Delay { ms: 1500 },
                 Step::Hotkey {
@@ -615,7 +615,7 @@ impl Default for Config {
         };
         profile.keys[1] = Key {
             label: "Lecture".into(),
-            color: [30, 105, 99],
+            color: Key::default().color,
             steps: vec![Step::Media {
                 command: "play_pause".into(),
             }],

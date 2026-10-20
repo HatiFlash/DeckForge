@@ -3500,7 +3500,7 @@ impl App {
                         self.deck_key(ctx, ui, i, r, response, width, Some(s));
                     }
                     ui.painter().text(
-                        chassis.min + Vec2::new(700.0, 769.0) * s,
+                        crate::deck_chassis::svg_point(chassis, egui::pos2(700.0, 783.0)),
                         egui::Align2::CENTER_CENTER,
                         "DECKFORGE",
                         egui::FontId::proportional((20.0 * s).clamp(7.0, 12.0)),

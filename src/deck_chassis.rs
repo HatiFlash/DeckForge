@@ -1,4 +1,4 @@
-//! Habillage SVG du pavé 5 × 3 : châssis, reliefs, ombres et emplacements des touches.
+//! Châssis SVG 3D sans art individuel des touches ; relief et contenus dynamiques par egui.
 //!
 //! Trois couches :
 //! 1. ce châssis (`res/deck/chassis.svg`, sans les faces des touches), rastérisé une fois par
@@ -16,22 +16,29 @@ const ORIGIN: Vec2 = Vec2::new(22.0, 14.0);
 pub const VIEW: Vec2 = Vec2::new(1356.0, 838.0);
 pub const COLS: usize = 5;
 pub const ROWS: usize = 3;
-/// Face d'une touche dans la viewBox : origine, pas et taille.
-const FACE_ORIGIN: Vec2 = Vec2::new(113.0, 104.0);
-const FACE_PITCH: Vec2 = Vec2::new(244.0, 225.0);
-pub const FACE_SIZE: Vec2 = Vec2::new(202.0, 190.0);
-const FACE_RADIUS: f32 = 21.0;
+/// Le rectangle intérieur du SVG est la référence commune au châssis et aux 15 touches.
+const INNER_MIN: Vec2 = Vec2::new(65.0, 54.0);
+const INNER_SIZE: Vec2 = Vec2::new(1270.0, 730.0);
+const GRID_PADDING: Vec2 = Vec2::new(25.0, 26.0);
+const GRID_GAP: Vec2 = Vec2::new(20.0, 18.0);
+pub const FACE_SIZE: Vec2 = Vec2::new(
+    (INNER_SIZE.x - 2.0 * GRID_PADDING.x - 4.0 * GRID_GAP.x) / COLS as f32,
+    (INNER_SIZE.y - 2.0 * GRID_PADDING.y - 2.0 * GRID_GAP.y) / ROWS as f32,
+);
+const FACE_ORIGIN: Vec2 = Vec2::new(INNER_MIN.x + GRID_PADDING.x, INNER_MIN.y + GRID_PADDING.y);
+const FACE_PITCH: Vec2 = Vec2::new(FACE_SIZE.x + GRID_GAP.x, FACE_SIZE.y + GRID_GAP.y);
+const FACE_RADIUS: f32 = 18.0;
 
 /// Le châssis SVG ne sert qu'au format 5 × 3 (FIFINE D6 et équivalents).
 pub fn applies(cols: usize, rows: usize) -> bool {
     cols == COLS && rows == ROWS
 }
 
-/// Plus grand rectangle aux proportions du SVG dans `available`, centré horizontalement, en haut.
+/// Plus grand rectangle sans déformation, centré dans la zone disponible.
 pub fn fit(available: Rect) -> Rect {
     let scale = (available.width() / VIEW.x).min(available.height() / VIEW.y).max(0.05);
     let size = VIEW * scale;
-    Rect::from_min_size(egui::pos2(available.center().x - size.x / 2.0, available.top()), size)
+    Rect::from_center_size(available.center(), size)
 }
 
 /// Échelle du châssis (points d'écran par unité SVG).
@@ -39,12 +46,16 @@ pub fn scale(chassis: Rect) -> f32 {
     chassis.width() / VIEW.x
 }
 
-/// Face de la touche `index` (0 à 14), alignée sur son emplacement du SVG.
+/// Convertit une position SVG absolue en points d'écran avec le même repère que les touches.
+pub fn svg_point(chassis: Rect, point: egui::Pos2) -> egui::Pos2 {
+    chassis.min + (point.to_vec2() - ORIGIN) * scale(chassis)
+}
+
+/// Face de la touche `index` (0 à 14) dans le repère commun du SVG.
 pub fn face(chassis: Rect, index: usize) -> Rect {
-    let s = scale(chassis);
     let (col, row) = ((index % COLS) as f32, (index / COLS) as f32);
-    let min = chassis.min + (FACE_ORIGIN - ORIGIN + Vec2::new(FACE_PITCH.x * col, FACE_PITCH.y * row)) * s;
-    Rect::from_min_size(min, FACE_SIZE * s)
+    let min = svg_point(chassis, (FACE_ORIGIN + Vec2::new(FACE_PITCH.x * col, FACE_PITCH.y * row)).to_pos2());
+    Rect::from_min_size(min, FACE_SIZE * scale(chassis))
 }
 
 /// Zone carrée de l'aperçu LCD, centrée dans la face (le contenu n'est jamais déformé).
@@ -115,27 +126,29 @@ pub fn paint(painter: &egui::Painter, chassis: Rect) -> bool {
     true
 }
 
-/// Face dynamique d'une touche, dans le style du SVG (dégradé, liseré clair, reflets).
+/// Face 3D dynamique : ombre intérieure dans le dégradé, un unique contour et un reflet discret.
 pub fn paint_face(painter: &egui::Painter, face: Rect, scale: f32, selected: bool, flashing: bool) {
     let radius = FACE_RADIUS * scale;
+    // Le sommet sombre suggère l'enfoncement ; la base plus claire garde le relief lisible.
     let (top, bottom) = if flashing {
-        (Color32::from_rgb(40, 104, 92), Color32::from_rgb(20, 60, 56))
-    } else if selected {
-        (Color32::from_rgb(52, 88, 150), Color32::from_rgb(28, 50, 96))
+        (Color32::from_rgb(19, 47, 48), Color32::from_rgb(34, 63, 59))
     } else {
-        (Color32::from_rgb(64, 82, 110), Color32::from_rgb(32, 43, 64))
+        (Color32::from_rgb(24, 34, 50), Color32::from_rgb(39, 52, 72))
     };
     crate::theme::rounded_gradient(painter, face, radius, top, bottom);
-    painter.rect_stroke(face, radius, Stroke::new((1.5 * scale).max(1.0), Color32::from_rgba_unmultiplied(139, 175, 221, 178)), egui::StrokeKind::Inside);
-    let line = |a: Vec2, b: Vec2, alpha: u8| {
-        painter.line_segment([face.min + a * scale, face.min + b * scale], Stroke::new((2.0 * scale).max(1.0), Color32::from_rgba_unmultiplied(197, 223, 255, alpha)));
+    let (stroke, color) = if flashing {
+        (2.2, crate::theme::GREEN)
+    } else if selected {
+        (2.2, crate::theme::CYAN)
+    } else {
+        (1.15, Color32::from_rgba_unmultiplied(126, 157, 196, 125))
     };
-    line(Vec2::new(18.0, 4.0), Vec2::new(183.0, 4.0), 87);
-    line(Vec2::new(9.0, 33.0), Vec2::new(9.0, 153.0), 46);
-    if selected || flashing {
-        let color = if flashing { crate::theme::GREEN } else { crate::theme::CYAN };
-        painter.rect_stroke(face.expand(3.0 * scale + 1.0), radius + 3.0 * scale, Stroke::new((5.0 * scale).max(2.0), color), egui::StrokeKind::Outside);
-    }
+    painter.rect_stroke(face, radius, Stroke::new((stroke * scale).max(0.9), color), egui::StrokeKind::Inside);
+    // Un reflet local (pas un second rectangle qui doublerait les bordures).
+    painter.line_segment([
+        face.left_top() + Vec2::new(24.0, 3.0) * scale,
+        face.right_top() + Vec2::new(-24.0, 3.0) * scale,
+    ], Stroke::new((1.0 * scale).max(0.5), Color32::from_rgba_unmultiplied(202, 221, 244, 68)));
 }
 
 #[cfg(test)]
@@ -143,17 +156,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn faces_match_the_svg_slots_and_keep_proportions() {
-        // Les emplacements du SVG (puits + biseau) entourent chaque face d'environ 11 unités.
+    fn chassis_contains_no_key_art_and_dynamic_faces_fill_the_inner_shell() {
+        assert!(!SVG.contains("id=\"key-"), "aucune bordure de touche dans le SVG");
+        assert!(!SVG.contains("url(#edge)"), "aucun biseau individuel dans le SVG");
+        assert!(!SVG.contains("key-shadow"), "aucune ombre individuelle dans le SVG");
         let chassis = Rect::from_min_size(ORIGIN.to_pos2(), VIEW);
-        let slots = [(102.0, 93.0), (346.0, 93.0), (1078.0, 543.0)];
-        for (i, (x, y)) in [0usize, 1, 14].into_iter().zip(slots) {
-            let f = face(chassis, i);
-            assert_eq!((f.min.x - x, f.min.y - y), (11.0, 11.0), "touche {i}");
-            assert!(SVG.contains(&format!("x=\"{}\" y=\"{}\" width=\"224\" height=\"212\"", x as i32, y as i32)), "emplacement {i} présent");
+        let first = face(chassis, 0);
+        let last = face(chassis, 14);
+        assert_eq!(first.min, egui::pos2(90.0, 80.0));
+        assert_eq!(first.size(), Vec2::new(228.0, 214.0));
+        assert_eq!(last.max, egui::pos2(1310.0, 758.0));
+        assert_eq!((face(chassis, 1).left() - first.right()).round(), 20.0);
+        assert_eq!((face(chassis, 5).top() - first.bottom()).round(), 18.0);
+        for available in [Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(900.0,300.0)), Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(500.0,900.0))] {
+            let fitted = fit(available);
+            assert!(available.contains_rect(fitted));
+            assert!((fitted.width()/fitted.height()-VIEW.x/VIEW.y).abs()<1e-3);
+            assert!(fitted.contains_rect(face(fitted,0)) && fitted.contains_rect(face(fitted,14)));
         }
-        assert!(!SVG.contains("url(#key)"), "faces pleines retirées du SVG");
-        assert_eq!(SVG.matches("url(#edge)").count(), 15, "les 15 biseaux restent");
+    }
+
+    #[test]
+    fn dynamic_faces_remain_in_the_inner_shell_at_every_scale() {
+        let chassis = Rect::from_min_size(ORIGIN.to_pos2(), VIEW);
+        let inner = Rect::from_min_size(INNER_MIN.to_pos2(), INNER_SIZE);
+        for i in 0..15 {
+            assert!(inner.contains_rect(face(chassis, i)), "touche {i} contenue dans le châssis");
+        }
+        assert_eq!(face(chassis, 0).left()-inner.left(), GRID_PADDING.x);
+        assert_eq!(inner.right()-face(chassis, 4).right(), GRID_PADDING.x);
+        assert_eq!(inner.bottom()-face(chassis, 14).bottom(), GRID_PADDING.y);
         for available in [Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(900.0, 300.0)), Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(500.0, 900.0))] {
             let c = fit(available);
             assert!((c.width() / c.height() - VIEW.x / VIEW.y).abs() < 1e-3, "sans déformation");
@@ -178,11 +210,11 @@ mod tests {
         assert_eq!(image.size, [704, 435]);
         let opaque = image.pixels.iter().filter(|p| p.a() > 200).count();
         assert!(opaque > 704 * 435 / 2, "châssis visible");
-        // Centre d'une face : vide dans le SVG (biseau seulement), la face vient d'egui.
+        // Le centre de la touche reste le fond sombre du châssis, jamais une face SVG.
         let s = 704.0 / VIEW.x;
         let center = face(Rect::from_min_size(egui::Pos2::ZERO, VIEW * s), 7).center();
         let p = image.pixels[(center.y as usize) * 704 + center.x as usize];
-        assert!(p.r() > 20 || p.b() > 60, "le biseau de l'emplacement reste visible sous la face : {p:?}");
+        assert!(p.r() < 45 && p.b() < 90, "aucune surface de touche prédessinée : {p:?}");
         assert!(Arc::ptr_eq(&image, &rasterize(704).unwrap()));
     }
 }

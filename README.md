@@ -6,8 +6,8 @@
 
   [![Licence MIT](https://img.shields.io/badge/Licence-MIT-blue.svg)](LICENSE)
   [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
-  [![Tests](https://img.shields.io/badge/Tests-372%20pass%C3%A9s-brightgreen.svg)]()
-  [![Version](https://img.shields.io/badge/Release-v0.8.5-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.5)
+  [![Tests](https://img.shields.io/badge/Tests-374%20pass%C3%A9s-brightgreen.svg)]()
+  [![Version](https://img.shields.io/badge/Release-v0.8.6-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.6)
 </div>
 
 ---
@@ -18,7 +18,19 @@
 
 ---
 
-## 🆕 Nouveautés 0.8.5
+## 🆕 Nouveautés 0.8.6
+
+- **Châssis 3D sans touches pré-dessinées** : le SVG ne dessine que le boîtier. Les 15 touches interactives egui remplissent mieux l'intérieur (faces 228 × 214 au lieu de 202 × 190 en coordonnées SVG), avec des marges et écarts réduits, un relief léger et un seul contour. La grille et le boîtier partagent le même repère et s'adaptent sans déformation à la fenêtre et au DPI.
+- Les exemples d'origine « Exemple macro » et « Lecture » utilisent désormais le fond neutre des autres touches, sans aplats violet/vert. Les profils déjà personnalisés, leurs images, GIF, vidéos et actions ne sont pas remplacés ; les nouvelles couleurs concernent les profils créés avec les valeurs d'origine.
+- Vérifié sur le banc Windows : 374 tests réussis (18 ignorés), captures à 1060 × 720, 1380 × 900 et 1920 × 1080 à 125 % de DPI. Voir [les notes de la 0.8.6](docs/RELEASE-0.8.6.md).
+
+| Fenêtre compacte (1060 × 720) | HiDPI et médias d'essai (1920 × 1080, 125 %) |
+|---|---|
+| ![Pavé compact avec 15 touches egui](docs/deck-compact-1060.png) | ![Pavé HiDPI avec icônes et médias de test](docs/deck-1920-125.png) |
+
+*Captures de l'interface en banc VM, sans FIFINE D6 connecté. La vue HiDPI contient des médias de test, pas des images ou profils de l'utilisateur.*
+
+## Nouveautés 0.8.5
 
 - **Bibliothèque → Plugins** : le panneau défile sur toute sa hauteur, les cartes sont lisibles sur petite fenêtre, le bouton « Importer ce plugin » reste sous chaque plugin ; les détails longs sont repliés et l'audio natif reste accessible dans une section dédiée.
 - **Inspecteur de touche** : l'aperçu et « Changer l'icône » restent fixes à gauche ; seul le formulaire de propriétés défile à droite.
@@ -135,8 +147,8 @@ DeckForge embarque un serveur MCP (**Model Context Protocol**) natif pour collab
 
 ## 🚀 Prise en main rapide
 
-1. Téléchargez **`DeckForge-0.8.5-Setup.exe`** depuis la [page des Releases](https://github.com/HatiFlash/DeckForge/releases) et lancez-le (aucun droit administrateur requis). DeckForge s'installe dans `%LOCALAPPDATA%\Programs\DeckForge` avec un raccourci dans le menu Démarrer.
-   - Version portable : `DeckForge-0.8.5-Windows.zip`, à extraire dans le dossier de votre choix.
+1. Téléchargez **`DeckForge-0.8.6-Setup.exe`** depuis la [page des Releases](https://github.com/HatiFlash/DeckForge/releases) et lancez-le (aucun droit administrateur requis). DeckForge s'installe dans `%LOCALAPPDATA%\Programs\DeckForge` avec un raccourci dans le menu Démarrer.
+   - Version portable : `DeckForge-0.8.6-Windows.zip`, à extraire dans le dossier de votre choix.
    - Vous utilisiez déjà la version portable ? Copiez `config.json`, `preferences.json`, `variables.json` et les dossiers `assets` et `plugins` de l'ancien dossier vers le dossier d'installation, DeckForge fermé.
 2. Lancez DeckForge depuis le menu Démarrer.
 3. *Note importante pour les possesseurs du FIFINE D6 :* veillez à fermer le logiciel officiel FIFINE afin de libérer l'accès USB exclusif pour DeckForge.
@@ -160,7 +172,7 @@ cargo build --release --locked
 cargo test --locked
 
 # Construire l'installateur (Inno Setup 6 ou 7 requis)
-powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.5 -Build
+powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.6 -Build
 ```
 
 ---

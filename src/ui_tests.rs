@@ -590,7 +590,7 @@ fn deck_scales_with_window_without_scrolling() {
         h.warm(size);
         assert_eq!(h.app.drop_targets.len(), 15);
         let last = h.app.drop_targets[14].0;
-        assert!((last.width() / last.height() - 202.0 / 190.0).abs() < 0.01 && last.max.y <= size.y, "{size:?}: {last:?}");
+        assert!((last.width() / last.height() - crate::deck_chassis::FACE_SIZE.x / crate::deck_chassis::FACE_SIZE.y).abs() < 0.01 && last.max.y <= size.y, "{size:?}: {last:?}");
         widths.push(h.app.drop_targets[0].0.width());
     }
     assert!(widths[0] < widths[1] && widths[1] < widths[2], "{widths:?}");
@@ -611,7 +611,7 @@ fn all_fifteen_keys_remain_visible_in_both_themes_and_window_sizes() {
         assert_eq!(h.app.drop_targets.len(), 15);
         for (r, i) in &h.app.drop_targets {
             assert!(
-                r.width() > 47.0 && (r.width() / r.height() - 202.0 / 190.0).abs() < 0.01,
+                r.width() > 47.0 && (r.width() / r.height() - crate::deck_chassis::FACE_SIZE.x / crate::deck_chassis::FACE_SIZE.y).abs() < 0.01,
                 "Key {} clipped in {}: {:?}",
                 i + 1,
                 label,
@@ -1754,6 +1754,19 @@ fn startup_intro_page_fade_and_waiting_dot_animate_without_blocking() {
 }
 
 #[test]
+fn factory_example_keys_keep_actions_and_icons_but_use_no_colored_lcd_background() {
+    let cfg = Config::default();
+    for (i, label) in [(0, "Exemple macro"), (1, "Lecture")] {
+        let key = &cfg.keys()[i];
+        assert_eq!(key.label, label);
+        assert!(!key.steps.is_empty(), "actions conservées");
+        assert!(key.image.is_empty(), "icônes par défaut conservées");
+        assert!(key.background, "LCD cohérent avec les autres touches");
+        assert_eq!(key.color, Key::default().color, "aucun fond violet ou vert sur {label}");
+    }
+}
+
+#[test]
 fn svg_chassis_aligns_the_fifteen_live_keys_and_renders_once() {
     let dir = tempfile::tempdir().unwrap();
     // Contenus variés : image PNG, GIF animé, icône par défaut, titre seul, touche vide.
@@ -1784,9 +1797,9 @@ fn svg_chassis_aligns_the_fifteen_live_keys_and_renders_once() {
         let w = rects[0].width();
         for (i, r) in rects.iter().enumerate() {
             assert!(r.min.x >= 0.0 && r.max.x <= size.x && r.min.y >= 0.0 && r.max.y <= size.y, "{name} : touche {i} visible {r:?}");
-            assert!((r.width() / r.height() - 202.0 / 190.0).abs() < 0.01, "{name} : face aux proportions du SVG");
+            assert!((r.width() / r.height() - crate::deck_chassis::FACE_SIZE.x / crate::deck_chassis::FACE_SIZE.y).abs() < 0.01, "{name} : face aux proportions du SVG");
             let (col, row) = ((i % 5) as f32, (i / 5) as f32);
-            let expected = rects[0].min + vec2(244.0 * col, 225.0 * row) * (w / 202.0);
+            let expected = rects[0].min + vec2(248.0 * col, 232.0 * row) * (w / crate::deck_chassis::FACE_SIZE.x);
             assert!((r.min - expected).length() < 0.6, "{name} : touche {i} alignée sur son emplacement ({r:?} / {expected:?})");
         }
         assert!(w >= 40.0, "{name} : touches assez grandes ({w})");
