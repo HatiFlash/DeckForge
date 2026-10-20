@@ -20,15 +20,7 @@ jobs:
         env:
           DECKFORGE_MCP_EXE: ${{ github.workspace }}\target\release\deckforge-mcp.exe
         shell: pwsh
-        run: |
-          # Les journaux exigent une connexion : les tests en échec sont aussi publiés en annotations.
-          cargo test --locked 2>&1 | Tee-Object -FilePath test-output.log
-          $code = $LASTEXITCODE
-          if ($code -ne 0) {
-            Select-String -Path test-output.log -Pattern "panicked at|^test .* FAILED|^---- |exit code|error:" |
-              Select-Object -First 20 | ForEach-Object { "::error title=cargo test::$($_.Line.Trim())" }
-            exit $code
-          }
+        run: ./tools/ci-test.ps1
       - name: Package
         shell: pwsh
         run: |

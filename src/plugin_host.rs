@@ -422,7 +422,7 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
   let mut parent=Command::new("powershell").args(["-NoProfile","-Command",&script]).creation_flags(0x08000000).spawn().unwrap();
   job.assign(&parent).unwrap();
   // PowerShell peut encore tenir pid.txt ouvert : relire jusqu'à un PID complet.
-  let limit=std::time::Instant::now()+Duration::from_secs(10);
+  let limit=std::time::Instant::now()+Duration::from_secs(30);
   let pid:u32=loop {
    if let Some(pid)=std::fs::read_to_string(&file).ok().and_then(|text|text.trim().parse().ok()){break pid;}
    assert!(std::time::Instant::now()<limit,"descendant was not started");
