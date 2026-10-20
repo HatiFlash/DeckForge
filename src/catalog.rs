@@ -433,8 +433,31 @@ pub struct Preferences {
     /// Couleur d'accent (bleu, violet, emeraude, orange, rose).
     #[serde(default)]
     pub accent: String,
+    /// IA locale facultative de l'assistant de l'atelier (désactivée par défaut).
+    #[serde(default)]
+    pub local_ai: LocalAi,
 }
 fn default_chat_mode() -> String { "auto".into() }
+
+/// Réglages de l'IA locale : `ollama` (serveur installé à part) ou `integre` (moteur livré).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct LocalAi {
+    pub enabled: bool,
+    pub backend: String,
+    pub endpoint: String,
+    pub model: String,
+}
+impl Default for LocalAi {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            backend: "ollama".into(),
+            endpoint: "http://127.0.0.1:11434".into(),
+            model: "qwen2.5:1.5b".into(),
+        }
+    }
+}
 impl Default for Preferences {
     fn default() -> Self {
         Self {
@@ -448,6 +471,7 @@ impl Default for Preferences {
             allow_connected_ai: false,
             scheme: String::new(),
             accent: String::new(),
+            local_ai: LocalAi::default(),
         }
     }
 }

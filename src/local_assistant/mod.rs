@@ -424,6 +424,20 @@ fn obs_mode(n: &str) -> String {
     .into()
 }
 
+/// Proposition issue de l'IA locale : mêmes contrôles que les règles (champs manquants, profils…).
+pub fn from_model(steps: Vec<Step>, config: &Config) -> Proposal {
+    let status = if steps.is_empty() { Status::Inconnue } else { Status::Reconnue };
+    validator::validate(
+        Proposal {
+            steps,
+            notes: vec!["Proposé par l'IA locale : vérifie chaque bloc avant d'ajouter.".into()],
+            missing: vec![],
+            status,
+        },
+        config,
+    )
+}
+
 /// Analyse pure : aucune exécution ni mutation de la configuration.
 pub fn propose(text: &str, config: &Config) -> Proposal {
     let mut result = Proposal {

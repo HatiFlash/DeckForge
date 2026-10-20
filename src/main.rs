@@ -24,6 +24,7 @@ mod mcp_server;
 mod mcp_connect;
 #[allow(dead_code)]
 mod local_assistant;
+mod local_llm;
 mod model;
 mod obs;
 mod obs_monitor;

@@ -4,6 +4,8 @@ use crate::local_assistant::{self, Proposal, Status};
 #[derive(Default)]
 pub(super) struct WorkshopChat {
     pub open: bool,
+    /// Traduction en cours par l'IA locale : (travail, demande, destination, proposer l'IA connectée en cas d'échec).
+    pub thinking: Option<(crate::local_llm::Job, String, (usize, String, usize), bool)>,
     pub input: String,
     pub messages: VecDeque<String>,
     pub pending: Option<ChatPreview>,
@@ -104,6 +106,7 @@ impl App {
         self.workshop_chat.pending = None;
         self.workshop_chat.consent = None;
         self.workshop_chat.awaiting = None;
+        self.workshop_chat.thinking = None;
         let scope = (self.config.active, self.config.page.clone(), self.selected);
         let mode = self.preferences.workshop_chat_mode.as_str();
         if mode == "ia" {
@@ -163,6 +166,13 @@ impl App {
             request
         };
         let proposal = local_assistant::propose(&request, &self.config);
+        if matches!(proposal.status, Status::Inconnue) && self.preferences.local_ai.enabled {
+            // Règles muettes : l'IA locale traduit la demande (rien ne quitte le PC).
+            self.workshop_chat.say("Je demande à l'IA locale…");
+            let job = self.local_ai.spawn(&self.preferences.local_ai, request.clone());
+            self.workshop_chat.thinking = Some((job, request, scope, mode == "auto"));
+            return;
+        }
         match &proposal.status {
             Status::Inconnue => self.workshop_chat.say("Demande inconnue en local. Exemples : attends 2 s ; ouvre https://exemple.fr ; tape bonjour."),
             Status::Ambigue { question, .. } => self.workshop_chat.say(question.clone()),
@@ -191,6 +201,7 @@ impl App {
             .as_ref()
             .is_some_and(|p| p.scope != scope);
         mcp_request(&mut self.workshop_chat, &scope);
+        self.poll_local_ai(ctx);
         if self
             .workshop_chat
             .consent
@@ -313,6 +324,15 @@ impl App {
                                 self.connect_window = true;
                             }
                         }
+                    }
+                    if let Some((job, _, _, _)) = &self.workshop_chat.thinking {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.spinner();
+                            ui.label(format!("L'IA locale réfléchit… {} s", job.started.elapsed().as_secs()));
+                            if ui.button("Annuler").clicked() {
+                                consent_action = Some(false);
+                            }
+                        });
                     }
                     if self.workshop_chat.awaiting.is_some() {
                         ui.label("En attente de ton IA…");
@@ -512,6 +532,9 @@ impl App {
             } else {
                 self.workshop_chat.consent = None;
                 self.workshop_chat.awaiting = None;
+                if self.workshop_chat.thinking.take().is_some() {
+                    self.workshop_chat.say("Demande à l'IA locale annulée.");
+                }
             }
         }
         if save_mode {
@@ -577,6 +600,108 @@ impl App {
             self.workshop_chat_send(text, selection);
         }
     }
+
+    /// Récupère la traduction de l'IA locale et la montre en aperçu (jamais insérée d'office).
+    fn poll_local_ai(&mut self, ctx: &egui::Context) {
+        let Some((job, _, _, _)) = &self.workshop_chat.thinking else { return };
+        let Some(result) = job.poll() else {
+            ctx.request_repaint_after(Duration::from_millis(250));
+            return;
+        };
+        let (_, request, scope, offer_ai) = self.workshop_chat.thinking.take().unwrap();
+        let current = (self.config.active, self.config.page.clone(), self.selected);
+        if scope != current {
+            self.workshop_chat.say("Réponse de l'IA locale ignorée : la touche sélectionnée a changé.");
+            return;
+        }
+        let proposal = match result {
+            Ok(steps) => local_assistant::from_model(steps, &self.config),
+            Err(error) => {
+                self.workshop_chat.say(format!("IA locale indisponible : {error}"));
+                local_assistant::from_model(vec![], &self.config)
+            }
+        };
+        match &proposal.status {
+            Status::Reconnue => self.workshop_chat.say(format!(
+                "Aperçu de {} bloc(s) proposé par l'IA locale, sans exécution.",
+                proposal.steps.len()
+            )),
+            _ => {
+                self.workshop_chat.say("L'IA locale n'a pas trouvé de blocs pour cette demande. Reformule ou ajoute les blocs à la main.");
+                if offer_ai {
+                    self.workshop_chat.consent = Some(ConsentRequest::new(request.clone(), &self.config, self.selected));
+                }
+            }
+        }
+        self.workshop_chat.pending = Some(ChatPreview { proposal, scope, original: None, request });
+    }
+
+    /// Réglages → IA locale : moteur, modèle et test de connexion. Aucun téléchargement implicite.
+    pub(super) fn local_ai_settings(&mut self, ui: &mut egui::Ui, p: &theme::Palette) {
+        ui.label(RichText::new("IA locale de l'assistant (facultative)").size(18.0).strong());
+        ui.label(
+            RichText::new("Comprend les demandes libres en français et en anglais quand les règles intégrées ne suffisent pas. Tout reste sur ce PC ; chaque proposition est montrée avant ajout. Environ 1,2 Go de mémoire vidéo (ou de RAM).")
+                .small()
+                .color(p.muted),
+        );
+        let mut changed = ui.checkbox(&mut self.preferences.local_ai.enabled, "Utiliser une IA locale").changed();
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Moteur");
+            for (id, label) in [("integre", "Intégré à DeckForge"), ("ollama", "Ollama")] {
+                if ui.selectable_label(self.preferences.local_ai.backend == id, label).clicked() {
+                    self.preferences.local_ai.backend = id.into();
+                    self.local_ai.stop();
+                    changed = true;
+                }
+            }
+        });
+        if self.preferences.local_ai.backend == "ollama" {
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Adresse");
+                changed |= ui.add(egui::TextEdit::singleline(&mut self.preferences.local_ai.endpoint).desired_width(190.0)).lost_focus();
+                ui.label("Modèle");
+                changed |= ui.add(egui::TextEdit::singleline(&mut self.preferences.local_ai.model).desired_width(120.0)).lost_focus();
+            });
+            ui.label(RichText::new(format!("Installer Ollama (ollama.com), puis dans un terminal : ollama pull {}", crate::local_llm::OLLAMA_MODEL)).small().color(p.muted));
+        } else {
+            let server = crate::local_llm::builtin_server().exists();
+            let model = crate::local_llm::builtin_model().exists();
+            ui.label(RichText::new(match (server, model) {
+                (false, _) => "Moteur intégré absent de cette installation.",
+                (true, false) => "Moteur présent ; modèle Qwen2.5 1,5B (≈1 Go) à télécharger.",
+                (true, true) => "Moteur et modèle prêts.",
+            }).small().color(p.muted));
+            self.local_ai_download_ui(ui, p, server && !model);
+        }
+        ui.horizontal_wrapped(|ui| {
+            let busy = self.local_ai_check.is_some();
+            if ui.add_enabled(!busy, egui::Button::new("Tester")).clicked() {
+                self.local_ai_status = "Test en cours…".into();
+                self.local_ai_check = Some(self.local_ai.check(&self.preferences.local_ai));
+            }
+            if busy {
+                ui.spinner();
+            }
+            if let Some(result) = self.local_ai_check.as_ref().and_then(|j| j.poll()) {
+                self.local_ai_check = None;
+                self.local_ai_status = match result {
+                    Ok(steps) if !steps.is_empty() => "IA locale opérationnelle.".into(),
+                    Ok(_) => "Connexion établie, mais réponse vide du modèle.".into(),
+                    Err(e) => format!("Échec : {e}"),
+                };
+            } else if busy {
+                ui.ctx().request_repaint_after(Duration::from_millis(250));
+            }
+            if !self.local_ai_status.is_empty() {
+                ui.label(RichText::new(&self.local_ai_status).small());
+            }
+        });
+        if changed {
+            self.save_preferences();
+        }
+    }
+
+    fn local_ai_download_ui(&mut self, _ui: &mut egui::Ui, _p: &theme::Palette, _needed: bool) {}
 }
 
 #[cfg(test)]

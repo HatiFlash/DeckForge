@@ -226,6 +226,9 @@ pub struct App {
     quitting: bool,
     show_workflow: bool,
     workshop_chat: workshop_chat_ui::WorkshopChat,
+    local_ai: crate::local_llm::Runtime,
+    local_ai_check: Option<crate::local_llm::Job>,
+    local_ai_status: String,
     show_assets: bool,
     show_desktop_settings: bool,
     available_icons: Vec<crate::assets::Icon>,
@@ -429,6 +432,9 @@ impl App {
             quitting: false,
             show_workflow: false,
             workshop_chat: Default::default(),
+            local_ai: Default::default(),
+            local_ai_check: None,
+            local_ai_status: String::new(),
             show_assets: false,
             show_desktop_settings: false,
             available_icons: vec![],
@@ -4007,6 +4013,8 @@ impl App {
                         theme::apply(ctx, self.preferences.dark);
                         self.save_preferences();
                     }
+                    ui.separator();
+                    self.local_ai_settings(ui, &p);
                     ui.separator();
                     ui.label(RichText::new("Affichage").size(18.0).strong());
                     ui.add_space(8.0);
