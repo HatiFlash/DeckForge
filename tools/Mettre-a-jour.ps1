@@ -36,15 +36,15 @@ try {
     # preferences file or asset directory is copied, moved or removed.
     foreach ($name in $binaryNames) {
         $target=Join-Path $installDir $name
-        $backup=$target+'.avant-0.8.0.bak'
+        $backup=$target+'.avant-0.8.1.bak'
         if ((Test-Path -LiteralPath $target -PathType Leaf) -and -not (Test-Path -LiteralPath $backup)) { Copy-Item -LiteralPath $target -Destination $backup }
     }
-    foreach ($name in ($binaryNames+@('LISEZ-MOI.md','LICENSE','THIRD-PARTY-NOTICES.txt'))) { Copy-Item -LiteralPath (Join-Path $packageDir $name) -Destination (Join-Path $installDir $name) -Force }
+    foreach ($name in ($binaryNames+@('README.md','LICENSE','THIRD-PARTY-NOTICES.txt'))) { Copy-Item -LiteralPath (Join-Path $packageDir $name) -Destination (Join-Path $installDir $name) -Force }
     $docs=Join-Path $installDir 'docs'
     New-Item -ItemType Directory -Path $docs -Force | Out-Null
     foreach ($file in Get-ChildItem -LiteralPath (Join-Path $packageDir 'docs') -File) { Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $docs $file.Name) -Force }
-    Write-Host 'DeckForge 0.8.0 est prêt. Tes profils, préférences et icônes sont conservés.' -ForegroundColor Green
-    if ($ApplicationOnly) { Write-Host 'Le connecteur existant est conservé pour les fonctions déjà disponibles. Le nouveau champ background nécessite une mise à jour complète du connecteur 0.8.0.' }
+    Write-Host 'DeckForge 0.8.1 est prêt. Tes profils, préférences et icônes sont conservés.' -ForegroundColor Green
+    if ($ApplicationOnly) { Write-Host 'Le connecteur existant est conservé pour les fonctions déjà disponibles. Le nouveau champ background nécessite une mise à jour complète du connecteur 0.8.1.' }
     Write-Host "Tu peux ouvrir DeckForge depuis son dossier habituel quand tu veux. Rien n’est lancé automatiquement."
 } catch { Write-Host $_.Exception.Message -ForegroundColor Yellow }
 Read-Host 'Appuie sur Entrée pour fermer'

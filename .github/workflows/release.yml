@@ -34,6 +34,13 @@ jobs:
           foreach ($f in Get-ChildItem dist -Filter *.zip) { $hashes[$f.Name] = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower() }
           $hashes | ConvertTo-Json | Set-Content -Encoding utf8 dist/$name-sha256.json
           "VERSION=$version" >> $env:GITHUB_ENV
+      - name: Windows installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $known = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ }
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue) -and -not $known) { choco install innosetup -y --no-progress }
+          ./tools/Build-Installer.ps1 -Version $env:VERSION
+          Copy-Item "target/release-dist/DeckForge-$env:VERSION-Setup.exe", "target/release-dist/DeckForge-$env:VERSION-Setup.exe.sha256" dist/
       - name: Publish GitHub release
         shell: pwsh
         env:

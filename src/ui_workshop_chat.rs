@@ -334,35 +334,7 @@ impl App {
                             self.workshop_chat.open = false;
                         }
                     }
-                    egui::ScrollArea::vertical()
-                        .id_salt("chat_history")
-                        .max_height((screen.height() * 0.32).clamp(120.0, 320.0))
-                        .show(ui, |ui| {
-                            for message in &self.workshop_chat.messages {
-                                let user = message.starts_with("Vous : ");
-                                ui.with_layout(
-                                    egui::Layout::top_down(if user {
-                                        egui::Align::Max
-                                    } else {
-                                        egui::Align::Min
-                                    }),
-                                    |ui| {
-                                        egui::Frame::new()
-                                            .fill(if user {
-                                                theme::accent().gamma_multiply(0.35)
-                                            } else {
-                                                theme::palette(ctx).surface
-                                            })
-                                            .corner_radius(8)
-                                            .inner_margin(8)
-                                            .show(ui, |ui| {
-                                                ui.set_max_width((ui.available_width() - 16.0).max(80.0));
-                                                ui.add(egui::Label::new(message).wrap());
-                                            });
-                                    },
-                                );
-                            }
-                        });
+                    // Aperçu et boutons Ajouter/Annuler avant l'historique : visibles sans défiler.
                     if let Some(pending) = &self.workshop_chat.pending {
                         ui.separator();
                         if stale {
@@ -475,6 +447,36 @@ impl App {
                             }
                         }
                     }
+                    ui.separator();
+                    egui::ScrollArea::vertical()
+                        .id_salt("chat_history")
+                        .max_height((screen.height() * 0.32).clamp(120.0, 320.0))
+                        .show(ui, |ui| {
+                            for message in &self.workshop_chat.messages {
+                                let user = message.starts_with("Vous : ");
+                                ui.with_layout(
+                                    egui::Layout::top_down(if user {
+                                        egui::Align::Max
+                                    } else {
+                                        egui::Align::Min
+                                    }),
+                                    |ui| {
+                                        egui::Frame::new()
+                                            .fill(if user {
+                                                theme::accent().gamma_multiply(0.35)
+                                            } else {
+                                                theme::palette(ctx).surface
+                                            })
+                                            .corner_radius(8)
+                                            .inner_margin(8)
+                                            .show(ui, |ui| {
+                                                ui.set_max_width((ui.available_width() - 16.0).max(80.0));
+                                                ui.add(egui::Label::new(message).wrap());
+                                            });
+                                    },
+                                );
+                            }
+                        });
                 });
         };
         // Reserve room for the assistant before laying out the canvas at every size.

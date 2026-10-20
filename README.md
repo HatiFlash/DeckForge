@@ -6,8 +6,8 @@
 
   [![Licence MIT](https://img.shields.io/badge/Licence-MIT-blue.svg)](LICENSE)
   [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
-  [![Tests](https://img.shields.io/badge/Tests-334%20pass%C3%A9s-brightgreen.svg)]()
-  [![Version](https://img.shields.io/badge/Release-v0.8.0-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.0)
+  [![Tests](https://img.shields.io/badge/Tests-338%20pass%C3%A9s-brightgreen.svg)]()
+  [![Version](https://img.shields.io/badge/Release-v0.8.1-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.1)
 </div>
 
 ---
@@ -15,6 +15,19 @@
 **DeckForge** est une application indépendante écrite en **Rust** (egui + wgpu DirectX 12 / Vulkan) conçue pour piloter vos claviers macro physiques avec un niveau de performance, de personnalisation et de sécurité inégalé. Fini les logiciels propriétaires lourds et fermés : DeckForge vous offre une réactivité instantanée, un atelier d'automatisation visuel complet sans dépendance externe, un connecteur IA (MCP) natif et la compatibilité avec l'écosystème de plugins Elgato Stream Deck.
 
 ![Interface principale de DeckForge](docs/interface.png)
+
+---
+
+## 🆕 Nouveautés 0.8.1
+
+- **Installateur Windows** (`DeckForge-0.8.1-Setup.exe`) : sans droits administrateur, raccourcis menu Démarrer / Bureau, désinstallation propre ; profils, préférences, icônes et plugins conservés.
+- **Onglet Plugins corrigé** : plus de gel ni de rafale de fenêtres console à l'ouverture.
+- **Exécutable mieux identifié par Windows** : icône, informations de version et manifeste intégrés (moins de faux positifs Defender ; l'exécutable n'est pas encore signé).
+- **Thèmes** : thème clair refait, styles Bleu nuit, Graphite, Clair et Sable, cinq couleurs d'accent (Réglages → Thème de l'interface).
+- **Assistant de l'atelier plus naturel**, en français et en anglais : « ferme toutes les fenêtres sauf celle sur laquelle je suis », « réduis les autres fenêtres », « affiche le bureau », « wait 2 seconds then open https://… ». Nouveaux blocs *Fermer / Réduire les autres fenêtres*.
+- **Galerie** : bouton « Importer une icône… » ; **aperçu** des touches corrigé (images en portrait cadrées vers le haut, titre lisible) et bouton « Recadrer ».
+
+![Assistant de l'atelier](docs/atelier-assistant.png)
 
 ---
 
@@ -82,8 +95,10 @@ DeckForge embarque un serveur MCP (**Model Context Protocol**) natif pour collab
 
 ## 🚀 Prise en main rapide
 
-1. Téléchargez la dernière version Windows (`DeckForge-0.8.0-Windows.zip`) depuis la [page des Releases](https://github.com/HatiFlash/DeckForge/releases).
-2. Extrayez l'archive dans le dossier de votre choix et lancez `deckforge.exe`.
+1. Téléchargez **`DeckForge-0.8.1-Setup.exe`** depuis la [page des Releases](https://github.com/HatiFlash/DeckForge/releases) et lancez-le (aucun droit administrateur requis). DeckForge s'installe dans `%LOCALAPPDATA%\Programs\DeckForge` avec un raccourci dans le menu Démarrer.
+   - Version portable : `DeckForge-0.8.1-Windows.zip`, à extraire dans le dossier de votre choix.
+   - Vous utilisiez déjà la version portable ? Copiez `config.json`, `preferences.json`, `variables.json` et les dossiers `assets` et `plugins` de l'ancien dossier vers le dossier d'installation, DeckForge fermé.
+2. Lancez DeckForge depuis le menu Démarrer.
 3. *Note importante pour les possesseurs du FIFINE D6 :* veillez à fermer le logiciel officiel FIFINE afin de libérer l'accès USB exclusif pour DeckForge.
 4. Glissez simplement une action depuis la bibliothèque vers la touche souhaitée, ou ouvrez l'**Atelier de blocs** pour composer votre première macro !
 
@@ -101,8 +116,11 @@ cd DeckForge
 # Compiler en mode Release
 cargo build --release --locked
 
-# Lancer la suite complète de tests (334 tests unitaires et d'intégration)
+# Lancer la suite complète de tests (338 tests unitaires et d'intégration)
 cargo test --locked
+
+# Construire l'installateur (Inno Setup 6 ou 7 requis)
+powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.1 -Build
 ```
 
 ---

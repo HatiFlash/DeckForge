@@ -1,6 +1,6 @@
 # Script de génération de la distribution DeckForge Windows
 param(
-    [string]$Version = "0.8.0",
+    [string]$Version = "0.8.1",
     [string]$OutputDir = "target\release-dist"
 )
 

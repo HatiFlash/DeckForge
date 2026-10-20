@@ -134,6 +134,26 @@ fn workshop_chat_and_properties_fit_both_screen_sizes() {
 use super::*;
 use egui::{pos2, vec2, Event as Input, Modifiers, PointerButton, Rect};
 #[test]
+fn workshop_chat_previews_a_natural_request_without_running_it() {
+    let mut h = Harness::new();
+    let size = vec2(1366.0, 768.0);
+    h.app.show_workflow = true;
+    h.app.selected = 2;
+    let before = h.app.config.keys()[2].steps.clone();
+    h.app.workshop_chat.open = true;
+    h.app.workshop_chat_send("ferme toutes les fenêtres sauf celle sur laquelle je suis, puis attends 1 s".into(), None);
+    let pending = h.app.workshop_chat.pending.as_ref().expect("aperçu");
+    assert!(matches!(&pending.proposal.steps[..], [Step::WindowOp { op, .. }, Step::Delay { ms: 1000 }] if op == "close_others"));
+    assert_eq!(h.app.config.keys()[2].steps, before, "aucune insertion sans validation");
+    h.warm(size);
+    let output = h.warm(size);
+    assert!(text_position(&output.shapes, "Ajouter").is_some());
+    if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        std::fs::create_dir_all(&dir).unwrap();
+        h.png(size, output, &PathBuf::from(dir).join("atelier-assistant.png"));
+    }
+}
+#[test]
 fn gallery_imports_a_user_icon_without_overwriting_and_applies_it() {
     let mut h = Harness::new();
     let source_dir = tempfile::tempdir().unwrap();
