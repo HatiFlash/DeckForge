@@ -184,6 +184,7 @@ pub struct App {
     plugin_report_cache: HashMap<String, Option<crate::plugin_validation::Report>>,
     plugin_oracle_cache: HashMap<String, Option<crate::plugin_validation::OracleFile>>,
     plugin_real_confirmation: Option<crate::plugins::Plugin>,
+    plugin_inventory: Option<std::sync::Arc<plugin_store_ui::Inventory>>,
     assistant: Option<crate::mcp_server::Server>,
     proposals: crate::assistant::Proposals,
     assistant_cache: HashMap<String, Result<serde_json::Value, String>>,
@@ -384,6 +385,7 @@ impl App {
             plugin_report_cache: HashMap::new(),
             plugin_oracle_cache: HashMap::new(),
             plugin_real_confirmation: None,
+            plugin_inventory: None,
             plugins: if isolated || smoke { None } else { Some(crate::plugin_runtime::Manager::new(crate::plugin_import::installed_root().map(|root|crate::plugin_import::inventory(&root)).unwrap_or_default())) },
             assistant,
             proposals: Default::default(),
@@ -2441,6 +2443,9 @@ impl App {
                             if selected { p.ink } else { p.muted },
                         );
                         if response.clicked() {
+                            if i == 3 && self.catalog_tab != 3 {
+                                self.plugin_inventory = None;
+                            }
                             self.catalog_tab = i;
                             self.catalog_selection = None;
                             self.catalog_search.clear();

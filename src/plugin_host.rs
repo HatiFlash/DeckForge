@@ -4,7 +4,16 @@ use std::io::Write;
 use serde_json::{json,Value};
 use crate::plugins::{Plugin,Runtime};
 
+/// Résultat mis en cache par version minimale : chaque sonde lance `node --version`.
 fn node_executable(required:u32)->Option<std::path::PathBuf>{
+ static CACHE:std::sync::OnceLock<Mutex<HashMap<u32,Option<std::path::PathBuf>>>>=std::sync::OnceLock::new();
+ let cache=CACHE.get_or_init(Default::default);
+ if let Some(found)=cache.lock().ok().and_then(|c|c.get(&required).cloned()){return found;}
+ let found=find_node(required);
+ if let Ok(mut c)=cache.lock(){c.insert(required,found.clone());}
+ found
+}
+fn find_node(required:u32)->Option<std::path::PathBuf>{
  let mut candidates=Vec::new();
  if let Some(paths)=std::env::var_os("PATH"){candidates.extend(std::env::split_paths(&paths).map(|p|p.join("node.exe")));}
  if let Some(p)=std::env::var_os("ProgramFiles"){candidates.push(std::path::PathBuf::from(p).join("nodejs/node.exe"));}
@@ -13,7 +22,10 @@ fn node_executable(required:u32)->Option<std::path::PathBuf>{
  candidates.into_iter().filter(|p|p.is_file()).find(|p|node_major(p).is_some_and(|v|v>=required))
 }
 fn node_major(path:&std::path::Path)->Option<u32>{
- let output=Command::new(path).arg("--version").stdin(Stdio::null()).output().ok()?;
+ let mut command=Command::new(path);
+ command.arg("--version").stdin(Stdio::null());
+ #[cfg(windows)] command.creation_flags(0x08000000); // CREATE_NO_WINDOW : aucune console visible
+ let output=command.output().ok()?;
  if !output.status.success(){return None;}
  let text=std::str::from_utf8(&output.stdout).ok()?;
  text.trim().trim_start_matches('v').split('.').next()?.parse().ok()

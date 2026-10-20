@@ -14,12 +14,13 @@ impl App {
    if ui.button("Importer depuis FIFINE / StreamDock / Elgato").clicked(){self.plugin_import_request(None);}
    if ui.button("Importer un fichier .streamDeckPlugin").clicked(){self.plugin_import_dialog(true);}
    if ui.button("Importer un dossier .sdPlugin").clicked(){self.plugin_import_dialog(false);}
+   if ui.button("Actualiser la liste").on_hover_text("Relire les dossiers de plugins").clicked(){self.plugin_inventory=None;}
   });
   ui.label(RichText::new(&self.notice).small());
-  let root=plugin_import::installed_root().ok();
+  let inventory=self.plugin_inventory();
   egui::ScrollArea::vertical().id_salt("plugin_store").show(ui,|ui|{
    ui.separator();ui.label(RichText::new("Installés dans DeckForge").strong());
-   if let Some(root)=&root{for plugin in plugin_import::inventory(root){
+   {for plugin in inventory.installed.iter(){
     if !format!("{} {}",plugin.display_name(),plugin.uuid).to_lowercase().contains(search) && !plugin.actions.iter().any(|a|a.name.to_lowercase().contains(search)){continue;}
     let ty=match plugin.runtime{Runtime::Exe(_)|Runtime::Node(_)=>"programme",Runtime::Html(_)=>"web",Runtime::Protected=>"protégé",Runtime::Unsupported=>"indisponible"};
     ui.group(|ui|{ui.label(RichText::new(format!("{} · v{}",plugin.display_name(),plugin.version)).strong());
@@ -83,11 +84,11 @@ impl App {
     ui.label(RichText::new("La liste est actualisée automatiquement par Core Audio. Choisis ensuite les deux périphériques dans l’inspecteur ; aucune configuration de plugin existante n’est convertie.").small());
    });
   }
-   let mut available=Vec::new();let mut built_in=Vec::new();let mut protected=Vec::new();let mut unavailable=Vec::new();
-   for source in plugin_import::sources(){for plugin in plugin_import::inventory(&source){
-    if !format!("{} {}",plugin.display_name(),plugin.uuid).to_lowercase().contains(search){continue;}
-    match plugin_import::category(&plugin){Category::Available=>available.push(plugin),Category::BuiltIn=>built_in.push(plugin),Category::Protected=>protected.push(plugin),Category::NonExecutable=>unavailable.push(plugin)}
-   }}
+   let matches=|p:&&Plugin|format!("{} {}",p.display_name(),p.uuid).to_lowercase().contains(search);
+   let available:Vec<&Plugin>=inventory.available.iter().filter(matches).collect();
+   let built_in:Vec<&Plugin>=inventory.built_in.iter().filter(matches).collect();
+   let protected:Vec<&Plugin>=inventory.protected.iter().filter(matches).collect();
+   let unavailable:Vec<&Plugin>=inventory.unavailable.iter().filter(matches).collect();
    if !available.is_empty(){ui.horizontal(|ui|{
     ui.heading(format!("Disponibles ({})",available.len()));
     if ui.button(format!("Importer tout ({})",available.len())).clicked(){self.plugin_import_request(None);}
@@ -143,8 +144,13 @@ impl App {
    }))
   });
  }
+ /// Inventaire de l'onglet Plugins : lu une fois, puis réutilisé à chaque image egui.
+ /// Invalidé à l'ouverture de l'onglet, après un import et par « Actualiser la liste ».
+ fn plugin_inventory(&mut self)->std::sync::Arc<Inventory>{
+  self.plugin_inventory.get_or_insert_with(||std::sync::Arc::new(Inventory::scan())).clone()
+ }
  /// Après un import, le gestionnaire connaît le nouveau plugin sans redémarrage de l'application.
- fn refresh_plugin_catalog(&mut self){if let (Some(manager),Ok(root))=(self.plugins.as_mut(),plugin_import::installed_root()){manager.set_catalog(plugin_import::inventory(&root));}}
+ fn refresh_plugin_catalog(&mut self){self.plugin_inventory=None;if let (Some(manager),Ok(root))=(self.plugins.as_mut(),plugin_import::installed_root()){manager.set_catalog(plugin_import::inventory(&root));}}
  fn plugin_import_request(&mut self,source:Option<std::path::PathBuf>){
   self.start_dialog(move||{let result=plugin_import::installed_root().and_then(|root|match source{Some(folder)=>plugin_import::import_folder(&folder,&root).map(|copied|format!("Plugin : {}",if copied{"copié"}else{"déjà présent"})),None=>{let report=plugin_import::import_sources(&root);Ok(format!("Import : {} copiés, {} déjà présents, {} protégés, {} intégrés FIFINE, {} ignorés",report.copied,report.existing,report.protected,report.built_in,report.skipped))}});
    Some(Box::new(move |app:&mut App|match result{Ok(text)=>{app.notice=text.clone();app.log(text);app.refresh_plugin_catalog();},Err(e)=>app.fail(format!("Import plugin impossible : {e}"))}))
@@ -160,6 +166,19 @@ fn native_audio_switch(audio:&crate::audio::Snapshot,input:bool)->Option<Key>{
  let mut endpoints=audio.devices.iter().filter(|d|d.input==input);
  let first=endpoints.next()?;let second=endpoints.next()?;
  Some(Key{label:if input{"Basculer les micros"}else{"Basculer les sorties"}.into(),steps:vec![Step::AudioSwitch{first:first.id.clone(),second:second.id.clone(),input,first_label:first.name.clone(),second_label:second.name.clone(),first_icon:String::new(),second_icon:String::new()}],..Key::default()})
+}
+/// Plugins installés et plugins détectés dans les dossiers FIFINE / StreamDock / Elgato.
+#[derive(Default)]
+pub(super) struct Inventory{pub installed:Vec<Plugin>,pub available:Vec<Plugin>,pub built_in:Vec<Plugin>,pub protected:Vec<Plugin>,pub unavailable:Vec<Plugin>}
+impl Inventory{
+ fn scan()->Self{
+  let mut inventory=Self::default();
+  if let Ok(root)=plugin_import::installed_root(){inventory.installed=plugin_import::inventory(&root);}
+  for source in plugin_import::sources(){for plugin in plugin_import::inventory(&source){
+   match plugin_import::category(&plugin){Category::Available=>inventory.available.push(plugin),Category::BuiltIn=>inventory.built_in.push(plugin),Category::Protected=>inventory.protected.push(plugin),Category::NonExecutable=>inventory.unavailable.push(plugin)}
+  }}
+  inventory
+ }
 }
 fn plugin_type(runtime:&Runtime)->&'static str{match runtime{Runtime::Exe(_)|Runtime::Node(_)=>"Programme",Runtime::Html(_)=>"Web",_=>"Non exécutable"}}
 fn plugin_icon(ui:&mut egui::Ui,plugin:&Plugin){

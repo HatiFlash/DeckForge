@@ -34,20 +34,33 @@ fn main() {
     println!("cargo:rustc-env=DECKFORGE_BUILD_DATE={year:04}-{month:02}-{day:02}");
 }
 
-/// Embeds res/branding/deckforge.ico as the executable icon (Explorer, taskbar shortcut).
-/// Optional: without windres the build continues with the default icon.
+/// Ressources Windows de l'exécutable : icône, VERSIONINFO (éditeur, produit, version, copyright)
+/// et manifeste d'application. Compilées avec rc.exe du Windows SDK via `winresource` (fonctionne
+/// avec la chaîne MSVC et sur les runners GitHub). Un exécutable sans métadonnées est davantage
+/// suspecté par l'analyse heuristique de Microsoft Defender.
 fn embed_icon() {
     println!("cargo:rerun-if-changed=res/branding/deckforge.ico");
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") { return; }
-    let Ok(out) = std::env::var("OUT_DIR") else { return };
-    let icon = std::path::Path::new("res/branding/deckforge.ico");
-    let Ok(icon) = icon.canonicalize() else { return };
-    let rc = std::path::Path::new(&out).join("deckforge-icon.rc");
-    let obj = std::path::Path::new(&out).join("deckforge-icon.o");
-    let path = icon.to_string_lossy().trim_start_matches(r"\\?\").replace('\\', "/");
-    if std::fs::write(&rc, format!("1 ICON \"{path}\"\n")).is_err() { return; }
-    let ok = Command::new("windres").args(["-i"]).arg(&rc).args(["-O", "coff", "-o"]).arg(&obj).status().map(|s| s.success()).unwrap_or(false);
-    if ok {
-        println!("cargo:rustc-link-arg-bins={}", obj.display());
+    println!("cargo:rerun-if-changed=res/windows/deckforge.manifest");
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
+        return;
+    }
+    #[cfg(windows)]
+    {
+        let version = env!("CARGO_PKG_VERSION");
+        let mut res = winresource::WindowsResource::new();
+        res.set_icon("res/branding/deckforge.ico")
+            .set_manifest_file("res/windows/deckforge.manifest")
+            .set("ProductName", "DeckForge")
+            .set("FileDescription", "DeckForge - contrôleur de macros pour FIFINE AmpliGame D6")
+            .set("CompanyName", "HatiFlash")
+            .set("LegalCopyright", "© 2026 HatiFlash - licence MIT")
+            .set("InternalName", "DeckForge")
+            .set("Comments", "https://github.com/HatiFlash/DeckForge")
+            .set("ProductVersion", version)
+            .set("FileVersion", version)
+            .set_language(0x040c);
+        if let Err(e) = res.compile() {
+            println!("cargo:warning=Ressources Windows non intégrées (rc.exe introuvable ?) : {e}");
+        }
     }
 }

@@ -1481,6 +1481,10 @@ fn plugin_store_is_rendered_without_a_window() {
     if let Some(dir)=std::env::var_os("DECKFORGE_UI_OUTPUT") {
         h.png(size,output,&PathBuf::from(dir).join("plugins-store.png"));
     }
+    // Régression : l'onglet scannait les dossiers de plugins (et lançait reg.exe) à chaque image.
+    let first=h.app.plugin_inventory.clone().expect("inventaire mis en cache");
+    for _ in 0..5 { h.warm(size); }
+    assert!(std::sync::Arc::ptr_eq(&first,h.app.plugin_inventory.as_ref().unwrap()),"l'onglet Plugins ne doit pas relire le disque à chaque image");
 }
 
 #[test]

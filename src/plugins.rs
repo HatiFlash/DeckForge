@@ -12,12 +12,9 @@ fn windows_prerequisite(manifest:&Value)->Option<String>{
  let Some(windows)=systems.iter().find(|s|s["Platform"].as_str().is_some_and(|p|p.eq_ignore_ascii_case("windows"))) else{return Some("Plateforme Windows non déclarée dans OS".into())};
  let minimum=windows["MinimumVersion"].as_str().unwrap_or("");
  if minimum.is_empty(){return None;}
- let current=std::env::var("DECKFORGE_PLATFORM_VERSION").ok().or_else(||{
-  let output=std::process::Command::new("reg").args(["query",r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion","/v","CurrentBuildNumber"]).output().ok()?;
-  let text=String::from_utf8(output.stdout).ok()?;
-  let build=text.split_whitespace().last()?.parse::<u32>().ok()?;
-  Some(if build>=22000 {"11.0"}else{"10.0"}.into())
- });
+ // Lecture du registre une seule fois par processus et sans lancer reg.exe : l'inventaire peut
+ // analyser des dizaines de manifestes, un processus par manifeste ouvrait des consoles en rafale.
+ let current=std::env::var("DECKFORGE_PLATFORM_VERSION").ok().or_else(detected_windows_version);
  let Some(current)=current else{return Some(format!("Version Windows non vérifiable (minimum : {minimum})"))};
  fn parts(v:&str)->Option<Vec<u32>>{v.split('.').map(str::parse::<u32>).collect::<Result<Vec<_>,_>>().ok()}
  match (parts(&current),parts(minimum)) {
@@ -25,6 +22,27 @@ fn windows_prerequisite(manifest:&Value)->Option<String>{
   _=>Some(format!("Version Windows minimale non vérifiable : {minimum}")),
  }
 }
+/// Version Windows (« 10.0 » ou « 11.0 ») lue une seule fois, sans processus externe.
+fn detected_windows_version()->Option<String>{
+ static CACHE:std::sync::OnceLock<Option<String>>=std::sync::OnceLock::new();
+ CACHE.get_or_init(read_windows_build).clone()
+}
+#[cfg(windows)]
+fn read_windows_build()->Option<String>{
+ use windows_sys::Win32::System::Registry::{RegGetValueW,HKEY_LOCAL_MACHINE,RRF_RT_REG_SZ};
+ let wide=|s:&str|s.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+ let key=wide(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+ let value=wide("CurrentBuildNumber");
+ let mut buffer=[0u16;32];
+ let mut size=(buffer.len()*2) as u32;
+ let status=unsafe{RegGetValueW(HKEY_LOCAL_MACHINE,key.as_ptr(),value.as_ptr(),RRF_RT_REG_SZ,std::ptr::null_mut(),buffer.as_mut_ptr().cast(),&mut size)};
+ if status!=0 {return None;}
+ let len=buffer.iter().position(|&c|c==0).unwrap_or(buffer.len());
+ let build=String::from_utf16(&buffer[..len]).ok()?.trim().parse::<u32>().ok()?;
+ Some(if build>=22000 {"11.0"}else{"10.0"}.into())
+}
+#[cfg(not(windows))]
+fn read_windows_build()->Option<String>{None}
 pub fn parse(folder:&Path,bytes:&[u8])->anyhow::Result<Plugin>{
  anyhow::ensure!(bytes.len()<=2_000_000,"Manifeste trop volumineux");
  if bytes.starts_with(b"ELGATO\x01") {return Ok(Plugin{uuid:folder.file_name().unwrap_or_default().to_string_lossy().into_owned(),name:"Protégé par Elgato, non pris en charge".into(),version:String::new(),author:String::new(),icon:None,folder:folder.into(),runtime:Runtime::Protected,actions:vec![],inspector:None,node_version:None,prerequisite:Some("Manifeste protégé".into()),applications:vec![]});}
@@ -42,6 +60,11 @@ pub fn parse(folder:&Path,bytes:&[u8])->anyhow::Result<Plugin>{
 }
 pub fn discover()->Vec<Plugin>{let mut roots=vec![];if let Some(p)=std::env::var_os("APPDATA"){roots.push(PathBuf::from(p).join("Elgato/StreamDeck/Plugins"));}if let Ok(exe)=std::env::current_exe(){if let Some(p)=exe.parent(){roots.push(p.join("plugins"));}}roots.into_iter().flat_map(|r|std::fs::read_dir(r).into_iter().flatten().flatten().take(256)).filter_map(|e|{let p=e.path();parse(&p,&std::fs::read(p.join("manifest.json")).ok()?).ok()}).collect()}
 #[cfg(test)] mod tests {use super::*;
+ #[cfg(windows)] #[test] fn windows_version_is_read_natively_and_cached(){
+  let first=detected_windows_version();
+  assert!(matches!(first.as_deref(),Some("10.0")|Some("11.0")),"{first:?}");
+  assert_eq!(detected_windows_version(),first);
+ }
  #[test] fn dotted_code_path_without_exe_suffix(){let d=tempfile::tempdir().unwrap();std::fs::write(d.path().join("com.vendor.tool.exe"),b"").unwrap();
   // Stream Deck Windows ajoute .exe à CodePath : "com.vendor.tool" désigne com.vendor.tool.exe.
   let p=parse(d.path(),br#"{"UUID":"com.vendor.tool","CodePath":"com.vendor.tool"}"#).unwrap();
