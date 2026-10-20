@@ -35,6 +35,17 @@ impl ConsentRequest {
             created: std::time::Instant::now(),
         }
     }
+    /// Destination lisible (« Touche 3 · page Accueil · profil Jeu ») au lieu du JSON transmis.
+    pub fn destination_label(&self) -> String {
+        let d = &self.destination;
+        let page = d["page"].as_str().filter(|p| !p.is_empty()).unwrap_or("principale");
+        format!(
+            "Touche {} · page {} · profil {}",
+            d["key"].as_u64().unwrap_or(0),
+            page,
+            d["profile"].as_str().unwrap_or("?")
+        )
+    }
     pub fn public(&self) -> serde_json::Value {
         serde_json::json!({"text":self.text,"destination":self.destination,"blocks":self.blocks,"created":self.created.elapsed().as_secs()})
     }
@@ -204,7 +215,10 @@ impl App {
         let mut consent_action = None;
         let screen = ctx.screen_rect();
         let chat_content = |ui: &mut egui::Ui| {
-            ui.horizontal(|ui| {
+            // egui n'enroule pas les textes dans les rangées horizontales par défaut : ils
+            // débordaient du panneau (messages, destination, boutons coupés).
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+            ui.horizontal_wrapped(|ui| {
                 ui.label(RichText::new("Assistant · Atelier").strong());
                 if ui.button("Retour à la séquence").clicked() {
                     open = false;
@@ -214,7 +228,7 @@ impl App {
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut self.workshop_chat.input)
                         .hint_text("Décris une action...")
-                        .desired_width((ui.available_width() - 90.0).max(60.0)),
+                        .desired_width((ui.available_width() - 84.0).max(60.0)),
                 );
                 if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))
                     || ui.button("Envoyer").clicked()
@@ -222,6 +236,21 @@ impl App {
                     send = Some(std::mem::take(&mut self.workshop_chat.input));
                 }
             });
+            // Raccourcis toujours visibles sous la saisie (avant : en bas du défilement, hors écran).
+            ui.horizontal_wrapped(|ui| {
+                for label in [
+                    "Créer une macro",
+                    "Expliquer ce bloc",
+                    "Corriger cette macro",
+                    "Optimiser",
+                    "Ajouter une temporisation",
+                ] {
+                    if ui.small_button(label).clicked() {
+                        send = Some(label.to_owned());
+                    }
+                }
+            });
+            ui.separator();
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
@@ -256,15 +285,9 @@ impl App {
                     });
                     if let Some(request) = &self.workshop_chat.consent {
                         ui.separator();
-                        ui.label("Contexte transmis uniquement après ton accord :");
-                        ui.label(format!("Demande : {}", request.text));
-                        ui.label(format!("Destination : {}", request.destination));
-                        ui.label(format!(
-                            "Blocs actuels (types uniquement) : {}",
-                            request.blocks.join(", ")
-                        ));
-                        ui.label("Aucun chemin personnel ni secret des blocs n'est transmis.");
-                        ui.horizontal(|ui| {
+                        ui.label(RichText::new("Demande inconnue en local : la transmettre à ton IA ?").strong());
+                        // Choix en premier : visible sans défiler, même sur petit écran.
+                        ui.horizontal_wrapped(|ui| {
                             if ui.button("Transmettre à mon IA").clicked() {
                                 consent_action = Some(true);
                             }
@@ -272,6 +295,15 @@ impl App {
                                 consent_action = Some(false);
                             }
                         });
+                        let muted = theme::palette(ctx).muted;
+                        ui.label(RichText::new("Contexte transmis uniquement après ton accord :").small().color(muted));
+                        ui.label(RichText::new(format!("Demande : {}", request.text)).small());
+                        ui.label(RichText::new(format!("Destination : {}", request.destination_label())).small());
+                        ui.label(RichText::new(format!(
+                            "Blocs actuels (types uniquement) : {}",
+                            request.blocks.join(", ")
+                        )).small());
+                        ui.label(RichText::new("Aucun chemin personnel ni secret des blocs n'est transmis.").small().color(muted));
                     }
                     if self.workshop_chat.consent.is_some() || self.workshop_chat.awaiting.is_some()
                     {
@@ -304,16 +336,16 @@ impl App {
                     }
                     egui::ScrollArea::vertical()
                         .id_salt("chat_history")
-                        .max_height((screen.height() * 0.22).min(150.0))
+                        .max_height((screen.height() * 0.32).clamp(120.0, 320.0))
                         .show(ui, |ui| {
                             for message in &self.workshop_chat.messages {
                                 let user = message.starts_with("Vous : ");
                                 ui.with_layout(
-                                    if user {
-                                        egui::Layout::right_to_left(egui::Align::TOP)
+                                    egui::Layout::top_down(if user {
+                                        egui::Align::Max
                                     } else {
-                                        egui::Layout::left_to_right(egui::Align::TOP)
-                                    },
+                                        egui::Align::Min
+                                    }),
                                     |ui| {
                                         egui::Frame::new()
                                             .fill(if user {
@@ -324,8 +356,8 @@ impl App {
                                             .corner_radius(8)
                                             .inner_margin(8)
                                             .show(ui, |ui| {
-                                                ui.set_max_width(ui.available_width().min(290.0));
-                                                ui.label(message);
+                                                ui.set_max_width((ui.available_width() - 16.0).max(80.0));
+                                                ui.add(egui::Label::new(message).wrap());
                                             });
                                     },
                                 );
@@ -408,7 +440,7 @@ impl App {
                                             ui.label(note);
                                         }
                                     });
-                                ui.horizontal(|ui| {
+                                ui.horizontal_wrapped(|ui| {
                                     let valid = !stale
                                         && pending.proposal.insertable()
                                         && (pending.original.is_some()
@@ -443,26 +475,15 @@ impl App {
                             }
                         }
                     }
-                    ui.separator();
-                    ui.horizontal_wrapped(|ui| {
-                        for label in [
-                            "Créer une macro",
-                            "Expliquer ce bloc",
-                            "Corriger cette macro",
-                            "Optimiser",
-                            "Ajouter une temporisation",
-                        ] {
-                            if ui.small_button(label).clicked() {
-                                send = Some(label.to_owned());
-                            }
-                        }
-                    });
                 });
         };
         // Reserve room for the assistant before laying out the canvas at every size.
+        // Panneau redimensionnable (bord gauche) : largeur par défaut adaptée à l'écran.
+        let max_width = (screen.width() * 0.5).max(300.0);
         egui::SidePanel::right("workshop_chat_panel")
-            .resizable(false)
-            .exact_width((screen.width() * 0.38).clamp(290.0, 360.0))
+            .resizable(true)
+            .default_width((screen.width() * 0.34).clamp(300.0, 420.0))
+            .width_range(280.0..=max_width)
             .show(ctx, chat_content);
         self.workshop_chat.open = open;
         if let Some(agree) = consent_action {

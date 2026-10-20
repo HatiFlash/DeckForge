@@ -133,6 +133,45 @@ fn workshop_chat_and_properties_fit_both_screen_sizes() {
 }
 use super::*;
 use egui::{pos2, vec2, Event as Input, Modifiers, PointerButton, Rect};
+#[test]
+fn workshop_chat_texts_and_buttons_stay_inside_the_panel() {
+    // Régression : textes et boutons du chat coupés (messages longs, destination JSON, boutons).
+    for (size, dpi) in [(vec2(1000.0, 700.0), 1.0), (vec2(1366.0, 768.0), 1.25), (vec2(1920.0, 1080.0), 1.5)] {
+        let mut h = Harness::new();
+        h.ctx.set_pixels_per_point(dpi);
+        let size = size / dpi;
+        h.app.show_workflow = true;
+        h.app.config.keys_mut()[2].steps = vec![Step::Delay { ms: 100 }];
+        h.app.selected = 2;
+        h.app.workshop_chat.open = true;
+        h.app.preferences.workshop_chat_mode = "auto".into();
+        h.app.workshop_chat_send("fermer toutes les fenetres sauf celle sur laquelle je suis, puis ouvrir https://exemple.fr/une/adresse/tres/longue/sans/espaces".into(), None);
+        assert!(h.app.workshop_chat.consent.is_some());
+        h.warm(size);
+        let output = h.warm(size);
+        let panel = egui::containers::panel::PanelState::load(&h.ctx, egui::Id::new("workshop_chat_panel")).unwrap().rect;
+        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+            std::fs::create_dir_all(&dir).unwrap();
+            h.png(size, output.clone(), &PathBuf::from(dir).join(format!("atelier-chat-consent-{}.png", (size.x * dpi) as u32)));
+        }
+        let mut seen = 0;
+        for shape in &output.shapes {
+            if let egui::Shape::Text(t) = &shape.shape {
+                let r = t.visual_bounding_rect();
+                if t.galley.job.text.trim().is_empty() || !r.is_finite() || r.left() + 0.5 < panel.left() { continue; }
+                seen += 1;
+                assert!(r.right() <= panel.right() + 1.0, "{:?} dépasse {panel:?} à {size:?}@{dpi}: {r:?}", t.galley.job.text);
+            }
+        }
+        assert!(seen > 8, "chat non rendu ({seen})");
+        assert!(h.app.workshop_chat.consent.as_ref().unwrap().destination_label().starts_with("Touche 3 · page"), "destination lisible attendue");
+        assert!(!output.shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.job.text.contains("{\"key\""))), "JSON brut affiché");
+        for label in ["Transmettre à mon IA", "Non merci", "Ajouter une temporisation"] {
+            let pos = text_position(&output.shapes, label).unwrap_or_else(|| panic!("{label} absent à {size:?}"));
+            assert!(pos.y < size.y && pos.x >= panel.left(), "{label} hors du panneau {pos:?}");
+        }
+    }
+}
 
 #[test]
 fn grids_render_without_overflow_or_touching_hardware() {
