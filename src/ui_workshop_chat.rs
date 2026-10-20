@@ -110,7 +110,8 @@ impl App {
         self.workshop_chat.awaiting = None;
         self.workshop_chat.thinking = None;
         let scope = (self.config.active, self.config.page.clone(), self.selected);
-        let mode = self.preferences.workshop_chat_mode.as_str();
+        let mode = self.preferences.workshop_chat_mode.clone();
+        let mode = mode.as_str();
         if mode == "ia" {
             self.workshop_chat.consent =
                 Some(ConsentRequest::new(request, &self.config, self.selected));
@@ -168,7 +169,8 @@ impl App {
         } else {
             request
         };
-        let proposal = local_assistant::propose(&request, &self.config);
+        let knowledge = self.local_knowledge();
+        let proposal = local_assistant::propose_with(&request, &self.config, &knowledge);
         if matches!(proposal.status, Status::Inconnue) && self.preferences.local_ai.enabled {
             // Règles muettes : l'IA locale traduit la demande (rien ne quitte le PC).
             self.ask_local_ai(request, scope, mode == "auto");
@@ -195,11 +197,22 @@ impl App {
         });
     }
 
+    /// Connaissances de l'IA locale (`ia-locale.json` à côté de la configuration), relues à chaque demande.
+    pub(super) fn local_knowledge(&mut self) -> crate::local_llm::Knowledge {
+        let dir = self.path.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
+        let (knowledge, warning) = crate::local_llm::Knowledge::load(&dir);
+        if let Some(warning) = warning {
+            self.workshop_chat.say(warning);
+        }
+        knowledge
+    }
+
     /// Envoie la demande à l'IA locale en arrière-plan (jamais d'insertion sans validation).
     fn ask_local_ai(&mut self, request: String, scope: (usize, String, usize), offer_connected: bool) {
         self.workshop_chat.pending = None;
         self.workshop_chat.say("Je demande à l'IA locale…");
-        let job = self.local_ai.spawn(&self.preferences.local_ai, request.clone());
+        let knowledge = self.local_knowledge();
+        let job = self.local_ai.spawn(&self.preferences.local_ai, request.clone(), knowledge);
         self.workshop_chat.thinking = Some((job, request, scope, offer_connected));
     }
 
@@ -671,6 +684,27 @@ impl App {
                 .color(p.muted),
         );
         let mut changed = ui.checkbox(&mut self.preferences.local_ai.enabled, "Utiliser une IA locale").changed();
+        // Fichier de connaissances : applications, consignes et exemples, modifiables par l'utilisateur.
+        let dir = self.path.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
+        let file = crate::local_llm::Knowledge::path(&dir);
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new("Connaissances").strong());
+            if ui.add(crate::iconset::button(ui.ctx(), crate::iconset::Ico::Edit, "Modifier ia-locale.json"))
+                .on_hover_text("Applications (nom → programme .exe), consignes et exemples « demande → blocs ». Relu à chaque demande.")
+                .clicked()
+            {
+                let _ = crate::local_llm::Knowledge::load(&dir);
+                if let Err(e) = std::process::Command::new("notepad.exe").arg(&file).spawn() {
+                    self.local_ai_status = format!("Impossible d'ouvrir le fichier : {e}");
+                }
+            }
+            if ui.small_button("Revenir aux valeurs d'origine").clicked() {
+                let _ = std::fs::remove_file(&file);
+                let _ = crate::local_llm::Knowledge::load(&dir);
+                self.local_ai_status = "Connaissances d'origine rétablies.".into();
+            }
+        });
+        ui.label(RichText::new(file.display().to_string()).size(11.0).color(p.muted));
         ui.horizontal_wrapped(|ui| {
             ui.label("Moteur");
             for (id, label) in [("integre", "Intégré à DeckForge"), ("ollama", "Ollama")] {

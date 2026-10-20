@@ -813,7 +813,7 @@ fn run_steps(
                     }
                 }
                 let args = args.iter().map(|arg| interpolate_runtime(arg, variables, cancel)).collect::<Result<Vec<_>>>()?;
-                let mut child = std::process::Command::new(program).args(&args).spawn()?;
+                let mut child = std::process::Command::new(resolve_program(program)).args(&args).spawn()?;
                 std::thread::spawn(move || {
                     let _ = child.wait();
                 });
@@ -985,6 +985,32 @@ fn monitor_areas() -> Vec<RECT> {
     ordered_monitors(screens)
 }
 struct WindowSearch { query: String, by_title: bool, explicit_self: bool, found: Option<HWND> }
+/// Programme sans chemin (« brave.exe ») : Windows ne cherche que dans le PATH avec CreateProcess.
+/// Comme l'Exécuter de Windows, on consulte aussi « App Paths » (utilisateur puis machine),
+/// où les navigateurs et la plupart des applications installées s'enregistrent.
+pub(crate) fn resolve_program(program: &str) -> std::path::PathBuf {
+    let plain = !program.contains(['\\', '/', ':']) && program.to_ascii_lowercase().ends_with(".exe");
+    if !plain {
+        return program.into();
+    }
+    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ};
+    let wide = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+    let key = wide(&format!("Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\{program}"));
+    for root in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
+        let mut buffer = [0u16; 1024];
+        let mut size = (buffer.len() * 2) as u32;
+        let status = unsafe { RegGetValueW(root, key.as_ptr(), std::ptr::null(), RRF_RT_REG_SZ, std::ptr::null_mut(), buffer.as_mut_ptr().cast(), &mut size) };
+        if status == 0 {
+            let len = buffer.iter().position(|c| *c == 0).unwrap_or(0);
+            let path = String::from_utf16_lossy(&buffer[..len]).trim().trim_matches('"').to_owned();
+            if !path.is_empty() && std::path::Path::new(&path).is_file() {
+                return path.into();
+            }
+        }
+    }
+    program.into()
+}
+
 unsafe extern "system" fn find_op_window(hwnd: HWND, data: LPARAM) -> BOOL {
     let search = &mut *(data as *mut WindowSearch);
     if IsWindowVisible(hwnd) == 0 || GetWindow(hwnd, GW_OWNER) != std::ptr::null_mut() { return 1; }
@@ -1499,6 +1525,21 @@ mod tests {
         assert!(wait(60_000, &cancel).is_err());
         thread.join().unwrap();
         assert!(start.elapsed() < Duration::from_secs(1));
+    }
+}
+
+#[cfg(test)]
+mod launch_tests {
+    #[test]
+    fn programs_without_path_are_found_in_app_paths() {
+        assert_eq!(super::resolve_program("C:\\Outils\\x.exe"), std::path::PathBuf::from("C:\\Outils\\x.exe"));
+        assert_eq!(super::resolve_program("introuvable-deckforge.exe"), std::path::PathBuf::from("introuvable-deckforge.exe"));
+        // WordPad s'enregistre dans App Paths sur Windows 10 et 11 (sans être dans le PATH).
+        let wordpad = super::resolve_program("wordpad.exe");
+        if wordpad.is_absolute() {
+            assert!(wordpad.is_file(), "{wordpad:?}");
+        }
+        eprintln!("APP_PATHS wordpad.exe -> {wordpad:?}");
     }
 }
 

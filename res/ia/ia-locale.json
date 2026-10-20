@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "aide": "Connaissances de l'IA locale de DeckForge. Tu peux modifier ce fichier : ajoute tes applications (noms que tu utilises -> programme .exe), des consignes, et des exemples « demande -> blocs ». DeckForge le relit à chaque demande. Supprime-le pour revenir aux valeurs d'origine. Les blocs proposés restent toujours affichés avant d'être ajoutés.",
+  "applications": [
+    { "noms": ["brave", "brave browser", "navigateur brave"], "exe": "brave.exe", "fenetre": "Brave" },
+    { "noms": ["chrome", "google chrome"], "exe": "chrome.exe", "fenetre": "Google Chrome" },
+    { "noms": ["firefox", "mozilla"], "exe": "firefox.exe", "fenetre": "Firefox" },
+    { "noms": ["edge", "microsoft edge"], "exe": "msedge.exe", "fenetre": "Edge" },
+    { "noms": ["opera", "opera gx"], "exe": "opera.exe", "fenetre": "Opera" },
+    { "noms": ["discord"], "exe": "Discord.exe", "fenetre": "Discord" },
+    { "noms": ["spotify"], "exe": "Spotify.exe", "fenetre": "Spotify" },
+    { "noms": ["obs", "obs studio"], "exe": "obs64.exe", "fenetre": "OBS" },
+    { "noms": ["steam"], "exe": "steam.exe", "fenetre": "Steam" },
+    { "noms": ["vlc"], "exe": "vlc.exe", "fenetre": "VLC" },
+    { "noms": ["bloc-notes", "bloc notes", "bloc note", "notepad"], "exe": "notepad.exe", "fenetre": "Bloc-notes" },
+    { "noms": ["calculatrice", "calculette", "calculator"], "exe": "calc.exe", "fenetre": "Calculatrice" },
+    { "noms": ["explorateur", "explorateur de fichiers", "file explorer"], "exe": "explorer.exe", "fenetre": "Explorateur" },
+    { "noms": ["paint"], "exe": "mspaint.exe", "fenetre": "Paint" },
+    { "noms": ["word"], "exe": "winword.exe", "fenetre": "Word" },
+    { "noms": ["excel"], "exe": "excel.exe", "fenetre": "Excel" },
+    { "noms": ["outlook"], "exe": "outlook.exe", "fenetre": "Outlook" },
+    { "noms": ["teams"], "exe": "ms-teams.exe", "fenetre": "Teams" },
+    { "noms": ["vs code", "vscode", "visual studio code"], "exe": "Code.exe", "fenetre": "Visual Studio Code" },
+    { "noms": ["terminal", "windows terminal"], "exe": "wt.exe", "fenetre": "Terminal" },
+    { "noms": ["telegram"], "exe": "Telegram.exe", "fenetre": "Telegram" },
+    { "noms": ["zoom"], "exe": "Zoom.exe", "fenetre": "Zoom" }
+  ],
+  "consignes": [
+    "Une condition « si X est ouvert / lancé / tourne » devient un bloc if_app : steps_if_true quand X tourne, steps_otherwise quand X ne tourne pas. « si X n'est PAS ouvert, A, sinon B » donne steps_if_true = B et steps_otherwise = A.",
+    "Pour agir dans une application déjà ouverte (nouvel onglet, raccourci propre à l'application), mets-la d'abord au premier plan avec focus_app, puis envoie le raccourci.",
+    "Nouvel onglet CTRL+T ; fermer l'onglet CTRL+W ; rouvrir l'onglet fermé CTRL+SHIFT+T ; nouvelle fenêtre CTRL+N ; navigation privée CTRL+SHIFT+N ; recharger F5 ; flèche du bas DOWN ; flèche du haut UP.",
+    "« N fois » ou « répète » donne un bloc repeat avec les blocs à répéter dans steps.",
+    "Utilise le programme .exe de la liste des applications connues ; n'invente pas de chemin."
+  ],
+  "exemples": [
+    { "demande": "ferme tout sauf la fenetre ou je suis puis attend 2 secondes", "blocs": [{ "action": "window_op", "op": "close_others" }, { "action": "delay", "ms": 2000 }] },
+    { "demande": "open youtube and pause the music", "blocs": [{ "action": "url", "url": "https://www.youtube.com" }, { "action": "media", "command": "play_pause" }] },
+    { "demande": "copie, attends une demi seconde et colle", "blocs": [{ "action": "hotkey", "keys": "CTRL+C" }, { "action": "delay", "ms": 500 }, { "action": "hotkey", "keys": "CTRL+V" }] },
+    { "demande": "lance paint et dis moi c'est parti", "blocs": [{ "action": "launch", "program": "mspaint.exe", "args": [] }, { "action": "notify", "message": "C'est parti" }] },
+    { "demande": "mets en pause", "blocs": [{ "action": "media", "command": "play_pause" }] },
+    { "demande": "affiche le bureau", "blocs": [{ "action": "hotkey", "keys": "WIN+D" }] },
+    { "demande": "si chrome n'est pas lancé, démarre-le, sinon ouvre une nouvelle fenêtre", "blocs": [{ "action": "if_app", "exe": "chrome.exe", "steps_if_true": [{ "action": "focus_app", "exe": "chrome.exe" }, { "action": "hotkey", "keys": "CTRL+N" }], "steps_otherwise": [{ "action": "launch", "program": "chrome.exe", "args": [] }] }] },
+    { "demande": "if spotify is running pause the music", "blocs": [{ "action": "if_app", "exe": "Spotify.exe", "steps_if_true": [{ "action": "media", "command": "play_pause" }], "steps_otherwise": [] }] },
+    { "demande": "si une fenêtre twitch est ouverte affiche la sinon ouvre twitch", "blocs": [{ "action": "if_window", "contains": "Twitch", "steps_if_true": [{ "action": "focus_window", "contains": "Twitch" }], "steps_otherwise": [{ "action": "url", "url": "https://www.twitch.tv" }] }] },
+    { "demande": "appuie 4 fois sur la flèche du bas en attendant 200 ms entre chaque", "blocs": [{ "action": "repeat", "count": 4, "steps": [{ "action": "hotkey", "keys": "DOWN" }, { "action": "delay", "ms": 200 }] }] },
+    { "demande": "mets discord au premier plan puis coupe le micro avec ctrl shift m", "blocs": [{ "action": "focus_app", "exe": "Discord.exe" }, { "action": "hotkey", "keys": "CTRL+SHIFT+M" }] }
+  ]
+}

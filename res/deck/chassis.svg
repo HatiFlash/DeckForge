@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="22 14 1356 838" width="1356" height="838" role="img" aria-label="Fond vectoriel de pavé DeckForge quinze touches, léger relief 3D">
+<!-- Châssis DeckForge : faces des 15 touches retirées (dessinées dynamiquement par l'interface au-dessus des emplacements).
+     Faces : x = 113 + 244 × colonne, y = 104 + 225 × ligne, 202 × 190, rayon 21 (coordonnées d'origine 1400 × 860 ; viewBox recadrée sur le boîtier et son ombre). -->
+<defs>
+ <linearGradient id="case" x1="0" y1="0" x2="0.85" y2="1"><stop stop-color="#34435b"/><stop offset="0.22" stop-color="#202d41"/><stop offset="0.65" stop-color="#131d2d"/><stop offset="1" stop-color="#0a111c"/></linearGradient>
+ <linearGradient id="inset" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#090f1a"/><stop offset="1" stop-color="#1a2638"/></linearGradient>
+ <linearGradient id="key" x1="0" y1="0" x2=".95" y2="1"><stop stop-color="#455875"/><stop offset="0.12" stop-color="#35455e"/><stop offset="0.54" stop-color="#2c394e"/><stop offset="1" stop-color="#202b40"/></linearGradient>
+ <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#83b8f8"/><stop offset="0.28" stop-color="#3b6aab"/><stop offset="0.7" stop-color="#183d76"/><stop offset="1" stop-color="#357ee7"/></linearGradient>
+ <linearGradient id="blue" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#16488a"/><stop offset="0.26" stop-color="#328afa"/><stop offset="0.5" stop-color="#183858"/><stop offset="0.78" stop-color="#2263b9"/><stop offset="1" stop-color="#164a8c"/></linearGradient>
+ <filter id="shadow" x="-15%" y="-25%" width="130%" height="150%"><feGaussianBlur stdDeviation="13"/></filter>
+ <filter id="key-shadow" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#030815" flood-opacity=".78"/></filter>
+</defs>
+<rect x="36" y="49" width="1328" height="780" rx="84" fill="#010813" opacity=".75" filter="url(#shadow)"/>
+<rect x="31" y="20" width="1338" height="798" rx="82" fill="url(#case)" stroke="#111a2b" stroke-width="6"/>
+<rect x="37" y="26" width="1326" height="786" rx="79" fill="none" stroke="url(#blue)" stroke-width="6"/>
+<rect x="49" y="37" width="1302" height="763" rx="73" fill="none" stroke="#789dce" stroke-opacity=".55" stroke-width="2"/>
+<rect x="65" y="54" width="1270" height="730" rx="63" fill="url(#inset)" stroke="#5b7295" stroke-opacity=".5" stroke-width="2"/>
+<path d="M108 60 H1290" stroke="#d0e7ff" stroke-width="2" stroke-linecap="round" opacity=".14"/>
+<g id="key-01" data-key="1" filter="url(#key-shadow)">
+  <rect x="102" y="93" width="224" height="212" rx="35" fill="#050b15" stroke="#3b5271" stroke-width="2"/>
+  <rect x="109" y="100" width="210" height="198" rx="25" fill="url(#edge)" stroke="#14243b" stroke-width="3"/>
+ </g>
+<g id="key-02" data-key="2" filter="url(#key-shadow)">
+  <rect x="346" y="93" width="224" height="212" rx="35" fill="#050b15" stroke="#3b5271" stroke-width="2"/>
+  <rect x="353" y="100" width="210" height="198" rx="25" fill="url(#edge)" stroke="#14243b" stroke-width="3"/>
+ </g>
+<g id="key-03" data-key="3" filter="url(#key-shadow)">
+  <rect x="590" y="93" width="224" height="212" rx="35" fill="#050b15" stroke="#3b5271" stroke-width="2"/>
+  <rect x="597" y="100" width="210" height="198" rx="25" fill="url(#edge)" stroke="#14243b" stroke-width="3"/>
+ </g>
+<g id="key-04" data-key="4" filter="url(#key-shadow)">
+  <rect x="834" y="93" width="224" height="212" rx="35" fill="#050b15" stroke="#3b5271" stroke-width="2"/>
+  <rect x="841" y="100" width="210" height="198" rx="25" fill="url(#edge)" stroke="#14243b" stroke-width="3"/>
+ </g>
+<g id="key-05" data-key="5" filter="url(#key-shadow)">
+  <rect x="1078" y="93" width="224" height="212" rx="35" fill="#050b15" stroke="#3b5271" stroke-width="2"/>
+  <rect x="1085" y="100" width="210" height="198" rx="25" fill="url(#edge)" stroke="#14243b" stroke-width="3"/>
+ </g>
+<g id="key-06" data-key="6" filter="url(#key-shadow)">
+  <rect x="102" y="318" width="224" height="212" rx="35" fill="#050b15" stroke="#3b5271" stroke-width="2"/>
+  <rect x="109" y="325" width="210" height="198" rx="25" fill="url(#edge)" stroke="#14243b" stroke-width="3"/>
+ </g>
+<g id="key-07" data-key="7" filter="url(#key-shadow)">
+  <rect x="346" y="318" width="224" height="212" rx="35" fill="#050b15" stroke="#3b5271" stroke-width="2"/>
+  <rect x="353" y="325" width="210" height="198" rx="25" fill="url(#edge)" stroke="#14243b" stroke-width="3"/>
+ </g>
+<g id="key-08" data-key="8" filter="url(#key-shadow)">
+  <rect x="590" y="318" width="224" height="212" rx="35" fill="#050b15" stroke="#3b5271" stroke-width="2"/>
+  <rect x="597" y="325" width="210" height="198" rx="25" fill="url(#edge)" stroke="#14243b" stroke-width="3"/>
+ </g>
+<g id="key-09" data-key="9" filter="url(#key-shadow)">
+  <rect x="834" y="318" width="224" height="212" rx="35" fill="#050b15" stroke="#3b5271" stroke-width="2"/>
+  <rect x="841" y="325" width="210" height="198" rx="25" fill="url(#edge)" stroke="#14243b" stroke-width="3"/>
+ </g>
+<g id="key-10" data-key="10" filter="url(#key-shadow)">
+  <rect x="1078" y="318" width="224" height="212" rx="35" fill="#050b15" stroke="#3b5271" stroke-width="2"/>
+  <rect x="1085" y="325" width="210" height="198" rx="25" fill="url(#edge)" stroke="#14243b" stroke-width="3"/>
+ </g>
+<g id="key-11" data-key="11" filter="url(#key-shadow)">
+  <rect x="102" y="543" width="224" height="212" rx="35" fill="#050b15" stroke="#3b5271" stroke-width="2"/>
+  <rect x="109" y="550" width="210" height="198" rx="25" fill="url(#edge)" stroke="#14243b" stroke-width="3"/>
+ </g>
+<g id="key-12" data-key="12" filter="url(#key-shadow)">
+  <rect x="346" y="543" width="224" height="212" rx="35" fill="#050b15" stroke="#3b5271" stroke-width="2"/>
+  <rect x="353" y="550" width="210" height="198" rx="25" fill="url(#edge)" stroke="#14243b" stroke-width="3"/>
+ </g>
+<g id="key-13" data-key="13" filter="url(#key-shadow)">
+  <rect x="590" y="543" width="224" height="212" rx="35" fill="#050b15" stroke="#3b5271" stroke-width="2"/>
+  <rect x="597" y="550" width="210" height="198" rx="25" fill="url(#edge)" stroke="#14243b" stroke-width="3"/>
+ </g>
+<g id="key-14" data-key="14" filter="url(#key-shadow)">
+  <rect x="834" y="543" width="224" height="212" rx="35" fill="#050b15" stroke="#3b5271" stroke-width="2"/>
+  <rect x="841" y="550" width="210" height="198" rx="25" fill="url(#edge)" stroke="#14243b" stroke-width="3"/>
+ </g>
+<g id="key-15" data-key="15" filter="url(#key-shadow)">
+  <rect x="1078" y="543" width="224" height="212" rx="35" fill="#050b15" stroke="#3b5271" stroke-width="2"/>
+  <rect x="1085" y="550" width="210" height="198" rx="25" fill="url(#edge)" stroke="#14243b" stroke-width="3"/>
+ </g>
+<path d="M109 780 H1290" stroke="#7b9bc3" stroke-opacity=".18" stroke-width="2"/>
+</svg>

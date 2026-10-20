@@ -143,7 +143,11 @@ fn jpeg_with_options(k: &crate::model::Key, size: u32, font: &FontArc, frame: Op
     }
     let has_icon = k.image.is_empty() && !k.steps.is_empty();
     if has_icon {
-        if k.icon_scale == 100 {
+        if let Some(ico) = crate::key_icons::for_key(k) {
+            // Icône par défaut IconPark (aucun visuel choisi) ; pastille seulement sur fond noir.
+            let (center, side) = crate::key_icons::layout(size, k.icon_scale, !k.label.is_empty());
+            crate::key_icons::draw(&mut image, ico, center, side, background == [0, 0, 0]);
+        } else if k.icon_scale == 100 {
             crate::icons::draw(&mut image, crate::icons::kind(k));
         } else {
             let side = ((size as f32 * k.icon_scale.clamp(20, 200) as f32 / 100.0).round() as u32).max(32);

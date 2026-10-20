@@ -1,5 +1,6 @@
 mod intent_parser;
 mod proposal;
+mod structured;
 mod templates;
 mod validator;
 
@@ -142,6 +143,30 @@ fn natural(n: &str) -> Option<Step> {
     if has(n, &["bureau virtuel suivant", "next desktop", "next virtual desktop"]) { return shortcut("CTRL+WIN+RIGHT"); }
     if has(n, &["bureau virtuel precedent", "previous desktop", "previous virtual desktop"]) { return shortcut("CTRL+WIN+LEFT"); }
     if has(n, &["copier", "copie", "copy"]) && !has(n, &["texte", "text", "presse papiers", "clipboard"]) { return shortcut("CTRL+C"); }
+    // Navigateur (s'applique à la fenêtre active).
+    for (words, key) in [
+        (&["rouvre l onglet", "rouvrir l onglet", "reopen the tab", "reopen closed tab"][..], "CTRL+SHIFT+T"),
+        (&["navigation privee", "fenetre privee", "private window", "incognito"][..], "CTRL+SHIFT+N"),
+        (&["nouvel onglet", "nouveau onglet", "new tab"][..], "CTRL+T"),
+        (&["nouvelle fenetre", "new window"][..], "CTRL+N"),
+        (&["ferme l onglet", "ferme cet onglet", "fermer l onglet", "close the tab", "close tab"][..], "CTRL+W"),
+        (&["recharge la page", "actualise la page", "rafraichis la page", "recharge", "reload", "refresh the page"][..], "F5"),
+    ] {
+        if has(n, words) { return shortcut(key); }
+    }
+    for (words, key) in [
+        (&["fleche du bas", "fleche bas", "down arrow", "arrow down", "touche bas"][..], "DOWN"),
+        (&["fleche du haut", "fleche haut", "up arrow", "arrow up", "touche haut"][..], "UP"),
+        (&["fleche de gauche", "fleche gauche", "left arrow", "arrow left"][..], "LEFT"),
+        (&["fleche de droite", "fleche droite", "right arrow", "arrow right"][..], "RIGHT"),
+        (&["touche tab", "appuie sur tab", "press tab"][..], "TAB"),
+        (&["touche espace", "barre d espace", "press space", "spacebar"][..], "SPACE"),
+    ] {
+        if has(n, words) { return shortcut(key); }
+    }
+    if has(n, &["mets la musique en pause", "met la musique en pause", "mets en pause", "met en pause", "mets pause", "met pause", "pause la musique", "pause the music", "pause music", "play pause"]) {
+        return Some(Step::Media { command: "play_pause".into() });
+    }
     if has(n, &["appuie sur entree", "appuyer sur entree", "touche entree", "valide avec entree", "press enter", "hit enter", "press return"]) { return shortcut("ENTER"); }
     if has(n, &["appuie sur echap", "touche echap", "press escape", "press esc", "hit escape"]) { return shortcut("ESC"); }
     if has(n, &["coller", "colle", "paste"]) { return shortcut("CTRL+V"); }
@@ -451,6 +476,54 @@ pub fn from_model(steps: Vec<Step>, config: &Config) -> Proposal {
 
 /// Analyse pure : aucune exécution ni mutation de la configuration.
 pub fn propose(text: &str, config: &Config) -> Proposal {
+    propose_with(text, config, &crate::local_llm::Knowledge::builtin())
+}
+
+const OPEN_VERBS: &[&str] = &["ouvre", "ouvrir", "lance", "lancer", "demarre", "demarrer", "open", "launch", "start"];
+
+/// La clause ne contient que « ouvre » + le nom de l'application (« démarre l'enregistrement OBS » n'en est pas une).
+fn only_opens(n: &str, app: &crate::local_llm::KnownApp) -> bool {
+    let names: Vec<String> = app.noms.iter().map(|name| parser::normalize(name)).chain(std::iter::once(parser::normalize(&app.exe))).collect();
+    let mut rest = format!(" {n} ");
+    for name in names.iter().filter(|n| !n.is_empty()) {
+        rest = rest.replace(&format!(" {name} "), " ");
+    }
+    rest.split_whitespace().all(|w| OPEN_VERBS.contains(&w) || ["le", "la", "l", "les", "un", "une", "moi", "stp", "please", "the", "app", "application", "appli", "logiciel", "programme", "navigateur", "exe"].contains(&w))
+}
+
+/// Comme [`propose`], avec les applications connues du fichier `ia-locale.json`.
+/// Une demande conditionnelle ou répétée est soit comprise en entier, soit laissée à l'IA
+/// locale (statut inconnu) : jamais de proposition partielle.
+pub fn propose_with(text: &str, config: &Config, knowledge: &crate::local_llm::Knowledge) -> Proposal {
+    let n = parser::normalize(text);
+    let rules = |t: &str| {
+        let p = propose_plain(t, config, knowledge);
+        matches!(p.status, Status::Reconnue).then_some(p.steps)
+    };
+    let structured = if structured::is_conditional(&n) {
+        Some(structured::condition(text, knowledge, &rules))
+    } else if structured::is_repetition(&n) {
+        // « répète 3 fois » seul : les règles ordinaires créent la répétition et demandent quoi répéter.
+        structured::repetition(text, &rules).map(|step| Some((step, "Répétition : vérifie le nombre de tours avant d'ajouter.".to_owned())))
+    } else {
+        None
+    };
+    match structured {
+        Some(Some((step, note))) => validator::validate(
+            Proposal { steps: vec![step], notes: vec![note], missing: vec![], status: Status::Reconnue },
+            config,
+        ),
+        Some(None) => Proposal {
+            steps: vec![],
+            notes: vec!["Demande avec condition ou répétition non comprise par les règles : l'IA locale peut la traduire (ou reformule : « si Brave est ouvert, … sinon … », « appuie 3 fois sur … »).".into()],
+            missing: vec![],
+            status: Status::Inconnue,
+        },
+        None => propose_plain(text, config, knowledge),
+    }
+}
+
+fn propose_plain(text: &str, config: &Config, knowledge: &crate::local_llm::Knowledge) -> Proposal {
     let mut result = Proposal {
         steps: vec![],
         notes: vec![],
@@ -458,9 +531,25 @@ pub fn propose(text: &str, config: &Config) -> Proposal {
         status: Status::Inconnue,
     };
     for clause in parser::clauses(text) {
-        if let Some(steps) = multi_step(&parser::normalize(&clause)) {
+        let cn = parser::normalize(&clause);
+        if let Some(steps) = multi_step(&cn) {
             result.steps.extend(steps);
             continue;
+        }
+        // « mets Edge au premier plan » : fenêtre de l'application connue.
+        if has(&cn, &["premier plan", "en avant", "bascule sur", "bascule vers", "passe sur", "switch to", "bring", "focus"]) && !has(&cn, &["toujours", "always"]) {
+            if let Some(app) = knowledge.find_app(&clause) {
+                result.steps.push(Step::WindowOp { target: "exe".into(), value: app.exe.clone(), op: "activate".into(), x: 0, y: 0, w: 800, h: 600, monitor: 2 });
+                continue;
+            }
+        }
+        // « ouvre Brave » : programme tiré des applications connues, jamais inventé.
+        if has(&cn, OPEN_VERBS) {
+            if let Some(app) = knowledge.find_app(&clause).filter(|app| only_opens(&cn, app)) {
+                result.steps.push(Step::Launch { program: app.exe.clone(), args: vec![], focus_if_running: false });
+                result.notes.push(format!("Programme : {} (applications connues de ia-locale.json).", app.exe));
+                continue;
+            }
         }
         let (step, status, notes) = parse_one(&clause);
         if let Some(status) = status {
@@ -533,12 +622,10 @@ mod tests {
         let p = first("Lance OBS, attends 2 s, passe sur Gaming");
         assert_eq!(p.status, Status::Reconnue);
         assert!(
-            matches!(&p.steps[..], [Step::Launch { program, .. }, Step::Delay { ms: 2000 }, Step::ObsScene { name }] if program.is_empty() && name == "Gaming")
+            matches!(&p.steps[..], [Step::Launch { program, .. }, Step::Delay { ms: 2000 }, Step::ObsScene { name }] if program == "obs64.exe" && name == "Gaming")
         );
-        assert_eq!(p.missing[0].field, "program");
-        assert_eq!(p.missing[0].path, vec![0]);
-        // Insertable as a draft: the path stays empty for the user to fill in.
-        assert!(p.insertable());
+        // OBS est une application connue : programme rempli, plus rien à compléter.
+        assert!(p.missing.is_empty() && p.insertable());
     }
     #[test]
     fn volume_ambigu() {
@@ -582,7 +669,7 @@ mod tests {
     }
     #[test]
     fn launch_requires_path() {
-        let p = first("ouvre l'application OBS");
+        let p = first("ouvre l'application MonOutilMaison");
         assert!(matches!(p.steps[0], Step::Launch { .. }));
         assert_eq!(p.missing[0].field, "program");
     }

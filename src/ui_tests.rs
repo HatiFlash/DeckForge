@@ -590,7 +590,7 @@ fn deck_scales_with_window_without_scrolling() {
         h.warm(size);
         assert_eq!(h.app.drop_targets.len(), 15);
         let last = h.app.drop_targets[14].0;
-        assert!((last.width() - last.height()).abs() < 0.5 && last.max.y <= size.y, "{size:?}: {last:?}");
+        assert!((last.width() / last.height() - 202.0 / 190.0).abs() < 0.01 && last.max.y <= size.y, "{size:?}: {last:?}");
         widths.push(h.app.drop_targets[0].0.width());
     }
     assert!(widths[0] < widths[1] && widths[1] < widths[2], "{widths:?}");
@@ -611,7 +611,7 @@ fn all_fifteen_keys_remain_visible_in_both_themes_and_window_sizes() {
         assert_eq!(h.app.drop_targets.len(), 15);
         for (r, i) in &h.app.drop_targets {
             assert!(
-                r.width() > 47.0 && (r.width() - r.height()).abs() < 0.5,
+                r.width() > 47.0 && (r.width() / r.height() - 202.0 / 190.0).abs() < 0.01,
                 "Key {} clipped in {}: {:?}",
                 i + 1,
                 label,
@@ -1692,6 +1692,58 @@ fn startup_intro_page_fade_and_waiting_dot_animate_without_blocking() {
 }
 
 #[test]
+fn svg_chassis_aligns_the_fifteen_live_keys_and_renders_once() {
+    let dir = tempfile::tempdir().unwrap();
+    // Contenus variés : image PNG, GIF animé, icône par défaut, titre seul, touche vide.
+    let png = dir.path().join("photo.png");
+    image::RgbImage::from_fn(96, 96, |x, y| image::Rgb([(x * 2) as u8, (y * 2) as u8, 180])).save(&png).unwrap();
+    let gif = dir.path().join("anim.gif");
+    {
+        let mut encoder = image::codecs::gif::GifEncoder::new(std::fs::File::create(&gif).unwrap());
+        encoder.set_repeat(image::codecs::gif::Repeat::Infinite).unwrap();
+        for c in [40u8, 200] {
+            let frame = image::RgbaImage::from_pixel(64, 64, image::Rgba([c, 90, 255 - c, 255]));
+            encoder.encode_frame(image::Frame::from_parts(frame, 0, 0, image::Delay::from_numer_denom_ms(200, 1))).unwrap();
+        }
+    }
+    for (size, scale, name) in [(vec2(1380.0, 900.0), 1.0, "deck-1380"), (vec2(1060.0, 720.0), 1.0, "deck-1060"), (vec2(1920.0, 1080.0) / 1.25, 1.25, "deck-1920-125")] {
+        let mut h = Harness::new();
+        h.ctx.set_pixels_per_point(scale);
+        let keys = h.app.config.keys_mut();
+        keys[5].image = png.to_string_lossy().into_owned();
+        keys[5].label = "Photo".into();
+        keys[6].image = gif.to_string_lossy().into_owned();
+        keys[7] = Key { label: "Stop".into(), steps: vec![Step::Media { command: "stop".into() }], ..Default::default() };
+        keys[8] = Key { label: "Page +".into(), steps: vec![Step::PageNext], ..Default::default() };
+        keys[9] = Key { steps: vec![Step::Hotkey { keys: "CTRL+C".into() }], ..Default::default() };
+        keys[10] = Key { label: "Titre seul".into(), ..Default::default() };
+        let out = h.warm(size);
+        let rects: Vec<Rect> = (0..15).map(|i| h.app.drop_targets.iter().find(|(_, k)| *k == i).expect("touche présente").0).collect();
+        let w = rects[0].width();
+        for (i, r) in rects.iter().enumerate() {
+            assert!(r.min.x >= 0.0 && r.max.x <= size.x && r.min.y >= 0.0 && r.max.y <= size.y, "{name} : touche {i} visible {r:?}");
+            assert!((r.width() / r.height() - 202.0 / 190.0).abs() < 0.01, "{name} : face aux proportions du SVG");
+            let (col, row) = ((i % 5) as f32, (i / 5) as f32);
+            let expected = rects[0].min + vec2(244.0 * col, 225.0 * row) * (w / 202.0);
+            assert!((r.min - expected).length() < 0.6, "{name} : touche {i} alignée sur son emplacement ({r:?} / {expected:?})");
+        }
+        assert!(w >= 40.0, "{name} : touches assez grandes ({w})");
+        let loaded = crate::deck_chassis::textures_loaded(&h.ctx);
+        for _ in 0..20 { h.frame(size, vec![]); }
+        assert!(loaded <= 2 && crate::deck_chassis::textures_loaded(&h.ctx) == loaded, "{name} : châssis jamais rendu de nouveau image après image");
+        // Clic et sélection inchangés.
+        h.click(size, rects[12].center());
+        assert_eq!(h.app.selected, 12, "{name} : clic sur la touche 13");
+        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+            std::fs::create_dir_all(&dir).unwrap();
+            let out = h.warm(size);
+            h.png(size, out, &PathBuf::from(&dir).join(format!("{name}.png")));
+        }
+        let _ = out;
+    }
+}
+
+#[test]
 fn flicker_ui_start_mouse_transition_stop_writes_real_trace() {
     let mut h = Harness::new();
     let size = vec2(1380.0, 900.0);
@@ -1749,7 +1801,8 @@ fn inspector_dpi_keeps_keys_and_primary_actions_visible_without_button_overlap()
             for (r, index) in &h.app.drop_targets {
                 assert!(r.min.x >= 0.0 && r.min.y >= 0.0 && r.max.x <= size.x && r.max.y <= size.y,
                     "Key {} clipped at {physical:?} @ {scale}: {r:?}", index + 1);
-                assert!(r.width() >= 40.0 && r.height() >= 40.0, "{physical:?} @ {scale}: key {index} {r:?}");
+                // Faces aux proportions du châssis SVG (202 × 190) : 40 × 38 points minimum (50 × 48 px à 125 %).
+                assert!(r.width() >= 40.0 && r.height() >= 37.5, "{physical:?} @ {scale}: key {index} {r:?}");
             }
             for name in ["Simuler", "Tester pour de vrai", "Atelier de blocs"] {
                 assert!(text_position(&output.shapes, name).is_some(), "{name} hidden at {physical:?} @ {scale}");

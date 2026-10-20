@@ -2897,7 +2897,7 @@ impl App {
                 egui::Frame::new().fill(p.bg).corner_radius(10).inner_margin(egui::Margin::same(3)).show(ui, |ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
                     for (i, ico, label) in [(0u8, Ico::Actions, "Action"), (1u8, Ico::Palette, "Apparence"), (2u8, Ico::Advanced, "Avancé")] {
-                        let response = if roomy { iconset::tab(ui, tab == i, ico, label) } else { ui.selectable_label(tab == i, label) };
+                        let response = if roomy { iconset::tab(ui, tab == i, ico, label) } else { iconset::plain_tab(ui, tab == i, label) };
                         if response.on_hover_text(label).clicked() { tab = i; }
                     }
                 });
@@ -3167,6 +3167,175 @@ impl App {
         });
     }
 
+    /// Une touche de la grille : face, aperçu LCD, repères et interactions.
+    /// Commun au châssis SVG (5 × 3, `chassis` = échelle) et à l'ancien habillage (autres formats).
+    #[allow(clippy::too_many_arguments)]
+    fn deck_key(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, i: usize, r: egui::Rect, response: egui::Response, width: f32, chassis: Option<f32>) {
+        let p = theme::palette(ctx);
+
+                                            let mut key = self.presented_key(i);
+                                            let face = self.plugin_face(i).cloned();
+                                            if let Some(face) = &face {
+                                                key = self.plugin_render_key(i, key, face);
+                                            }
+                                            let selected = i == self.selected;
+                                            let flashing = self.last_key.is_some_and(|(idx, t)| {
+                                                idx == i && t.elapsed() < Duration::from_millis(350)
+                                            });
+                                            let hovering = self.drag.moving()
+                                                && self
+                                                    .drag
+                                                    .position
+                                                    .is_some_and(|pos| r.contains(pos));
+                                            match chassis {
+                                                Some(s) => crate::deck_chassis::paint_face(ui.painter(), r, s, selected || hovering, flashing),
+                                                None => theme::key_face(ui.painter(), r, selected || hovering, flashing),
+                                            }
+                                            let lcd = chassis.map_or(r.shrink(5.0), |s| crate::deck_chassis::lcd(r, s));
+                                            match self.key_previews.texture(
+                                                ctx,
+                                                i,
+                                                &key,
+                                                self.config.image_size,
+                                                face.as_ref(),
+                                            ) {
+                                                Ok(texture) => {
+                                                    ui.painter().image(
+                                                        texture.id(),
+                                                        lcd,
+                                                        egui::Rect::from_min_max(
+                                                            egui::Pos2::ZERO,
+                                                            egui::pos2(1.0, 1.0),
+                                                        ),
+                                                        Color32::WHITE,
+                                                    );
+                                                }
+                                                Err(error) => {
+                                                    ui.painter().text(
+                                                        lcd.center(),
+                                                        egui::Align2::CENTER_CENTER,
+                                                        "Aperçu indisponible",
+                                                        egui::FontId::proportional(9.0),
+                                                        p.muted,
+                                                    );
+                                                    ui.painter().text(
+                                                        lcd.left_top(),
+                                                        egui::Align2::LEFT_TOP,
+                                                        "!",
+                                                        egui::FontId::proportional(12.0),
+                                                        Color32::LIGHT_RED,
+                                                    );
+                                                    let _ = error;
+                                                }
+                                            }
+                                            // Editing hints never alter the image sent to the LCD.
+                                            if !key.long_steps.is_empty() {
+                                                ui.painter().rect_filled(
+                                                    egui::Rect::from_min_size(
+                                                        lcd.right_top() - Vec2::new(17.0, 0.0),
+                                                        Vec2::new(17.0, 16.0),
+                                                    ),
+                                                    3.0,
+                                                    p.surface,
+                                                );
+                                                ui.painter().text(
+                                                    lcd.right_top() + Vec2::new(-8.0, 8.0),
+                                                    egui::Align2::CENTER_CENTER,
+                                                    "L",
+                                                    egui::FontId::proportional(11.0),
+                                                    p.ink,
+                                                );
+                                            }
+                                            if key.steps.is_empty()
+                                                && key.image.is_empty()
+                                                && key.label.is_empty()
+                                            {
+                                                theme::symbol(
+                                                    ui.painter(),
+                                                    r.center(),
+                                                    r.width().min(r.height()) * 0.22,
+                                                    8,
+                                                    p.muted,
+                                                );
+                                            }
+                                            if crate::model::validate_key_in_profile(
+                                                &self.config.keys()[i],
+                                                &self.config,
+                                                &self.config.profiles[self.config.active],
+                                            )
+                                            .is_err()
+                                            {
+                                                ui.painter().circle_filled(
+                                                    r.left_top() + Vec2::new(10.0, 10.0),
+                                                    4.0,
+                                                    Color32::from_rgb(242, 126, 106),
+                                                );
+                                            }
+                                            if width >= 70.0 {
+                                                ui.painter().text(
+                                                    r.right_bottom() + Vec2::new(0.0, 3.0),
+                                                    egui::Align2::RIGHT_TOP,
+                                                    format!("{:02}", i + 1),
+                                                    egui::FontId::proportional(8.0),
+                                                    p.muted,
+                                                );
+                                            }
+                                            self.drag_sources.push((
+                                                r.intersect(ui.clip_rect()),
+                                                DragItem::Position(
+                                                    self.config.active,
+                                                    self.config.page.clone(),
+                                                    i,
+                                                ),
+                                            ));
+                                            self.drop_targets
+                                                .push((r.intersect(ui.clip_rect()), i));
+                                            if response.clicked() {
+                                                self.selected = i;
+                                                self.retarget_gallery();
+                                            }
+                                            response.context_menu(|ui| {
+                                                if ui.button("Copier").clicked() {
+                                                    self.selected = i;
+                                                    self.copy_key();
+                                                    ui.close_menu();
+                                                }
+                                                if ui
+                                                    .add_enabled(
+                                                        self.clipboard.is_some(),
+                                                        egui::Button::new("Coller"),
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    self.paste_key(i);
+                                                    ui.close_menu();
+                                                }
+                                                if ui
+                                                    .button("Dupliquer vers la prochaine touche vide")
+                                                    .clicked()
+                                                {
+                                                    self.duplicate_key(i);
+                                                    ui.close_menu();
+                                                }
+                                                if ui.button("Vider").clicked() {
+                                                    self.assign(DragItem::Bind(Key::default()), i);
+                                                    ui.close_menu();
+                                                }
+                                            });
+                                            if response.double_clicked() {
+                                                if let Some(step @ Step::Folder { .. }) =
+                                                    key.steps.first()
+                                                {
+                                                    self.navigate(step.clone());
+                                                }
+                                            }
+
+                                            response.on_hover_text(format!(
+                                                "Touche {:02} · {}\nGlisse depuis la bibliothèque pour affecter un bind. Glisse une touche sur une autre pour les échanger.",
+                                                i + 1,
+                                                key.label
+                                            ));
+    }
     fn deck(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
         let grid = self.grid();
@@ -3309,7 +3478,33 @@ impl App {
                         .color(p.muted),
                     );
                 }
-                {
+                if crate::deck_chassis::applies(grid.cols, grid.rows) {
+                    // Châssis SVG (couche 1), faces dynamiques (couche 2), aperçus LCD (couche 3).
+                    // Bornée à l'écran : à la première image, la zone disponible peut être démesurée.
+                    let available = ui.available_rect_before_wrap().intersect(ctx.screen_rect());
+                    let chassis = crate::deck_chassis::fit(available);
+                    ui.allocate_rect(egui::Rect::from_min_max(available.min, egui::pos2(available.max.x, chassis.max.y)), egui::Sense::hover());
+                    let s = crate::deck_chassis::scale(chassis);
+                    let width = crate::deck_chassis::FACE_SIZE.x * s;
+                    if self.flicker.as_ref().is_some_and(|session| session.active()) {
+                        self.diagnostic_key_width = width;
+                    }
+                    if !crate::deck_chassis::paint(ui.painter(), chassis) {
+                        theme::device_shell(ui.painter(), chassis);
+                    }
+                    for i in 0..grid.keys {
+                        let r = crate::deck_chassis::face(chassis, i);
+                        let response = ui.interact(r, ui.id().with(("deck_key", i)), egui::Sense::click_and_drag());
+                        self.deck_key(ctx, ui, i, r, response, width, Some(s));
+                    }
+                    ui.painter().text(
+                        chassis.min + Vec2::new(700.0, 769.0) * s,
+                        egui::Align2::CENTER_CENTER,
+                        "DECKFORGE",
+                        egui::FontId::proportional((20.0 * s).clamp(7.0, 12.0)),
+                        Color32::from_rgba_unmultiplied(150, 172, 204, 150),
+                    );
+                } else {
                     // Le pavé suit la taille de la fenêtre : il occupe tout l'espace disponible, sans barre de défilement.
                     let width = grid.key_width(ui.available_width(), ui.available_height());
                     if self.flicker.as_ref().is_some_and(|session| session.active()) {
@@ -3344,174 +3539,11 @@ impl App {
                                     .spacing([14.0, 14.0])
                                     .show(ui, |ui| {
                                         for i in 0..grid.keys {
-                                            let mut key = self.presented_key(i);
-                                            let face = self.plugin_face(i).cloned();
-                                            if let Some(face) = &face {
-                                                key = self.plugin_render_key(i, key, face);
-                                            }
-                                            let selected = i == self.selected;
-                                            let flashing = self.last_key.is_some_and(|(idx, t)| {
-                                                idx == i && t.elapsed() < Duration::from_millis(350)
-                                            });
                                             let (r, response) = ui.allocate_exact_size(
                                                 Vec2::splat(width),
                                                 egui::Sense::click_and_drag(),
                                             );
-                                            let hovering = self.drag.moving()
-                                                && self
-                                                    .drag
-                                                    .position
-                                                    .is_some_and(|pos| r.contains(pos));
-                                            theme::key_face(
-                                                ui.painter(),
-                                                r,
-                                                selected || hovering,
-                                                flashing,
-                                            );
-                                            let lcd = r.shrink(5.0);
-                                            match self.key_previews.texture(
-                                                ctx,
-                                                i,
-                                                &key,
-                                                self.config.image_size,
-                                                face.as_ref(),
-                                            ) {
-                                                Ok(texture) => {
-                                                    ui.painter().image(
-                                                        texture.id(),
-                                                        lcd,
-                                                        egui::Rect::from_min_max(
-                                                            egui::Pos2::ZERO,
-                                                            egui::pos2(1.0, 1.0),
-                                                        ),
-                                                        Color32::WHITE,
-                                                    );
-                                                }
-                                                Err(error) => {
-                                                    ui.painter().text(
-                                                        lcd.center(),
-                                                        egui::Align2::CENTER_CENTER,
-                                                        "Aperçu indisponible",
-                                                        egui::FontId::proportional(9.0),
-                                                        p.muted,
-                                                    );
-                                                    ui.painter().text(
-                                                        lcd.left_top(),
-                                                        egui::Align2::LEFT_TOP,
-                                                        "!",
-                                                        egui::FontId::proportional(12.0),
-                                                        Color32::LIGHT_RED,
-                                                    );
-                                                    let _ = error;
-                                                }
-                                            }
-                                            // Editing hints never alter the image sent to the LCD.
-                                            if !key.long_steps.is_empty() {
-                                                ui.painter().rect_filled(
-                                                    egui::Rect::from_min_size(
-                                                        lcd.right_top() - Vec2::new(17.0, 0.0),
-                                                        Vec2::new(17.0, 16.0),
-                                                    ),
-                                                    3.0,
-                                                    p.surface,
-                                                );
-                                                ui.painter().text(
-                                                    lcd.right_top() + Vec2::new(-8.0, 8.0),
-                                                    egui::Align2::CENTER_CENTER,
-                                                    "L",
-                                                    egui::FontId::proportional(11.0),
-                                                    p.ink,
-                                                );
-                                            }
-                                            if key.steps.is_empty()
-                                                && key.image.is_empty()
-                                                && key.label.is_empty()
-                                            {
-                                                theme::symbol(
-                                                    ui.painter(),
-                                                    r.center(),
-                                                    width * 0.22,
-                                                    8,
-                                                    p.muted,
-                                                );
-                                            }
-                                            if crate::model::validate_key_in_profile(
-                                                &self.config.keys()[i],
-                                                &self.config,
-                                                &self.config.profiles[self.config.active],
-                                            )
-                                            .is_err()
-                                            {
-                                                ui.painter().circle_filled(
-                                                    r.left_top() + Vec2::new(10.0, 10.0),
-                                                    4.0,
-                                                    Color32::from_rgb(242, 126, 106),
-                                                );
-                                            }
-                                            if width >= 70.0 {
-                                                ui.painter().text(
-                                                    r.right_bottom() + Vec2::new(0.0, 3.0),
-                                                    egui::Align2::RIGHT_TOP,
-                                                    format!("{:02}", i + 1),
-                                                    egui::FontId::proportional(8.0),
-                                                    p.muted,
-                                                );
-                                            }
-                                            self.drag_sources.push((
-                                                r.intersect(ui.clip_rect()),
-                                                DragItem::Position(
-                                                    self.config.active,
-                                                    self.config.page.clone(),
-                                                    i,
-                                                ),
-                                            ));
-                                            self.drop_targets
-                                                .push((r.intersect(ui.clip_rect()), i));
-                                            if response.clicked() {
-                                                self.selected = i;
-                                                self.retarget_gallery();
-                                            }
-                                            response.context_menu(|ui| {
-                                                if ui.button("Copier").clicked() {
-                                                    self.selected = i;
-                                                    self.copy_key();
-                                                    ui.close_menu();
-                                                }
-                                                if ui
-                                                    .add_enabled(
-                                                        self.clipboard.is_some(),
-                                                        egui::Button::new("Coller"),
-                                                    )
-                                                    .clicked()
-                                                {
-                                                    self.paste_key(i);
-                                                    ui.close_menu();
-                                                }
-                                                if ui
-                                                    .button("Dupliquer vers la prochaine touche vide")
-                                                    .clicked()
-                                                {
-                                                    self.duplicate_key(i);
-                                                    ui.close_menu();
-                                                }
-                                                if ui.button("Vider").clicked() {
-                                                    self.assign(DragItem::Bind(Key::default()), i);
-                                                    ui.close_menu();
-                                                }
-                                            });
-                                            if response.double_clicked() {
-                                                if let Some(step @ Step::Folder { .. }) =
-                                                    key.steps.first()
-                                                {
-                                                    self.navigate(step.clone());
-                                                }
-                                            }
-
-                                            response.on_hover_text(format!(
-                                                "Touche {:02} · {}\nGlisse depuis la bibliothèque pour affecter un bind. Glisse une touche sur une autre pour les échanger.",
-                                                i + 1,
-                                                key.label
-                                            ));
+                                            self.deck_key(ctx, ui, i, r, response, width, None);
                                             if i % grid.cols == grid.cols - 1 {
                                                 ui.end_row();
                                             }

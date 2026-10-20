@@ -17,6 +17,8 @@ mod engine;
 mod flicker_diagnostic;
 mod gesture;
 mod icons;
+mod key_icons;
+mod deck_chassis;
 mod iconset;
 mod motion;
 mod key_render;

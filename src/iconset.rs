@@ -138,6 +138,11 @@ icons! {
     Add => "add-one", Accent;
     Save => "save", Accent;
     Delete => "delete", Danger;
+    Edit => "edit", Accent;
+    Stop => "square", Media;
+    PageNext => "right-c", Accent;
+    PagePrevious => "left-c", Accent;
+    Back => "arrow-circle-left", Accent;
     // États
     Warning => "attention", Warning;
     Error => "caution", Danger;
@@ -318,7 +323,16 @@ pub fn tab(ui: &mut egui::Ui, selected: bool, ico: Ico, text: impl Into<egui::Wi
         Some(image) => egui::Button::image_and_text(image.tint(Color32::WHITE.gamma_multiply(if selected { 1.0 } else { 0.8 })), text),
         None => egui::Button::new(text),
     };
-    ui.add(button.selected(selected).frame(selected))
+    // Coins arrondis comme le fond des onglets (sinon le bleu de sélection reste carré).
+    ui.add(button.selected(selected).frame(selected).corner_radius(TAB_RADIUS))
+}
+
+/// Rayon des onglets sélectionnés (fond des groupes d'onglets : 10, marge 3).
+pub const TAB_RADIUS: u8 = 7;
+
+/// Onglet sans icône, même forme que [`tab`].
+pub fn plain_tab(ui: &mut egui::Ui, selected: bool, text: impl Into<egui::WidgetText>) -> egui::Response {
+    ui.add(egui::Button::new(text).selected(selected).frame(selected).corner_radius(TAB_RADIUS))
 }
 
 /// Titre de section avec icône.
@@ -352,7 +366,7 @@ pub fn for_step(step: &Step) -> Ico {
             "mute" => Ico::Mute,
             "next" => Ico::Next,
             "previous" => Ico::Previous,
-            "stop" => Ico::Pause,
+            "stop" => Ico::Stop,
             _ => Ico::Play,
         },
         Step::AppVolume { .. } | Step::DeviceVolume { input: false, .. } => Ico::Speaker,
@@ -367,7 +381,10 @@ pub fn for_step(step: &Step) -> Ico {
         Step::SetVariable { .. } | Step::Math { .. } => Ico::Variable,
         Step::Profile { .. } => Ico::Profile,
         Step::Folder { .. } => Ico::Folder,
-        Step::Page { .. } | Step::PageNext | Step::PagePrevious | Step::Back => Ico::Page,
+        Step::Page { .. } => Ico::Page,
+        Step::PageNext => Ico::PageNext,
+        Step::PagePrevious => Ico::PagePrevious,
+        Step::Back => Ico::Back,
         Step::D6Brightness { .. } | Step::D6Sleep => Ico::Brightness,
         Step::ObsRecord { .. } | Step::ObsReplay { .. } => Ico::Record,
         Step::ObsStream { .. } => Ico::Broadcast,
