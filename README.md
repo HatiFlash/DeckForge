@@ -25,6 +25,12 @@
 - **Pavé FIFINE D6** : châssis SVG redimensionnable à 15 touches (5 × 3), icônes par défaut IconPark et onglets arrondis. Les médias personnalisés des touches ne sont pas remplacés.
 - **Assistant local facultatif** : connaissances configurables dans `res/ia/ia-locale.json`, demandes conditionnelles et répétitives avec aperçu préalable ; aucune action n'est exécutée automatiquement. Voir [notes de la 0.8.5](docs/RELEASE-0.8.5.md).
 
+| Importation de plugins | Défilement de l'inspecteur |
+|---|---|
+| ![Exemple de carte de plugin et bouton d’import, capture du banc UI](docs/plugins-store.png) | ![Aperçu de touche fixe et propriétés défilantes à droite](docs/inspector-scroll-right.png) |
+
+*Captures du banc d’interface, sans périphérique connecté ; la carte de plugin utilise un exemple de test, pas un plugin installé.*
+
 ## Nouveautés 0.8.4
 
 - **Icônes multi-couleurs IconPark** dans toute l'interface, une couleur par famille d'actions (clavier, applications, web, logique, médias, audio, système, OBS, plugins, IA, images), lisibles en thème sombre comme en clair. Seuls les 66 pictogrammes utilisés sont embarqués ; le rendu des touches du périphérique ne change pas.
@@ -86,7 +92,7 @@ Composez des automatisations puissantes en glissant-déposant des blocs directem
 ### 🧩 Écosystème de Plugins Stream Deck & OpenAction
 Importez directement vos archives de plugins préférées (`.streamDeckPlugin` / `.sdPlugin`) depuis le magasin intégré. Dans **Bibliothèque → Plugins**, faites défiler la liste et cliquez sur **Importer ce plugin** dans la carte voulue ; « Importer tout » et l’import depuis un fichier ou un dossier restent disponibles :
 
-![Magasin de plugins](docs/plugins-store.png)
+![Exemple de plugin dans la bibliothèque (banc UI, données de test)](docs/plugins-store.png)
 
 - **Multi-moteurs d'exécution** : Prise en charge des exécutables natifs C++/Rust/C#, des scripts Node.js (`@elgato/streamdeck` v2) et des plugins avec moteur backend HTML (`Runtime::Html`).
 - **Property Inspectors HTML sécurisés** : Les fenêtres de réglages s'exécutent dans un sous-processus WebView2 isolé (`--isolated-inspector`) avec proxy loopback strict interdisant toute fuite réseau non autorisée (anti-TOCTOU, pas d'accès internet sauvage).
