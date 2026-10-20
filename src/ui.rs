@@ -2928,7 +2928,7 @@ impl App {
             let long_editor = self.long_editor;
             let active=self.config.active; let names=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
             let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let image_size=self.config.image_size;let key=&mut self.config.keys_mut()[selected];
-            let mut removed_step=false; let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut state_icon=None; let mut pick_audio=None; let mut open_workflow=false; let mut open_model=false; let mut advanced: Option<u8>=None;
+            let mut removed_step=false; let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut recrop=false; let mut state_icon=None; let mut pick_audio=None; let mut open_workflow=false; let mut open_model=false; let mut advanced: Option<u8>=None;
             if let Some(binding)=key.plugin.clone(){
                 ui.horizontal(|ui|{
                     ui.label(format!("Plugin : {} · {}",binding.plugin,binding.action));
@@ -2955,6 +2955,9 @@ impl App {
                     if roomy {
                         ui.label(RichText::new(&key.label).strong());
                         if ui.button("Changer l'icône").clicked() { open_icons = true; }
+                        let lower = key.image.to_ascii_lowercase();
+                        if !key.image.is_empty() && !lower.ends_with(".svg") && std::path::Path::new(&key.image).is_file()
+                            && ui.button("Recadrer").on_hover_text("Ajuster le cadrage de l'image avec aperçu avant validation").clicked() { recrop = true; }
                     }
                 });
                 ui.separator();
@@ -3130,7 +3133,12 @@ impl App {
             if open_workflow {self.show_workflow=true;}if open_model {self.show_workflow=true;}
             if let Some(step)=record_step {self.recording=Some((active,self.config.page.clone(),self.selected,vec![step],self.gate.enabled));self.recording_error.clear();self.gate.enabled=false;self.engine.stop();self.refresh_hotkeys();}
             if changed {self.edited(); if removed_step {self.log("Étape retirée — Ctrl+Z pour annuler".into());}}
-            if open_icons{self.open_icon_gallery(None);}if let Some(target)=pick_audio{self.open_icon_gallery(Some(target));}
+            if open_icons{self.open_icon_gallery(None);}
+            if recrop {
+                let path = std::path::PathBuf::from(&self.config.keys()[selected].image);
+                let page = self.config.page.clone();
+                self.open_crop_editor(active, page, selected, path, self.config.image_size);
+            }if let Some(target)=pick_audio{self.open_icon_gallery(Some(target));}
             if let Some(active)=state_icon { self.open_state_icon_gallery(active); }
             if let Some(i)=add_kind {if i==12{self.create_page(true);}else if long_editor {
                 let action = catalog::action(i,&names[active]);

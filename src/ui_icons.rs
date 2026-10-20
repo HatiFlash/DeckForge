@@ -256,6 +256,7 @@ impl App {
         let mut done = false;
         let mut open = true;
         let mut import = false;
+        let mut import_icon = false;
         let mut folder = false;
         let mut rescan = false;
         let mut marketplace = false;
@@ -273,7 +274,7 @@ impl App {
                         selection_border(ui,r,selected.as_deref()==Some(std::path::Path::new(id)),response.hovered());if response.clicked(){choose=Some((id.to_string(),label.to_string()));}
                     }});
                 }
-                ui.horizontal(|ui|{if ui.button("Importer un pack…").clicked(){import=true;}if ui.button("Parcourir un dossier…").clicked(){folder=true;}if ui.button("Actualiser").clicked(){rescan=true;}ui.label(format!("{} icônes",self.available_icons.len()));});
+                ui.horizontal_wrapped(|ui|{if ui.add(theme::primary(RichText::new("Importer une icône…").color(Color32::WHITE))).on_hover_text("Image, GIF ou vidéo depuis ton PC, appliquée à cette touche").clicked(){import_icon=true;}if ui.button("Importer un pack…").clicked(){import=true;}if ui.button("Parcourir un dossier…").clicked(){folder=true;}if ui.button("Actualiser").clicked(){rescan=true;}ui.label(format!("{} icônes",self.available_icons.len()));});
                 ui.add(egui::TextEdit::singleline(&mut self.icon_search).hint_text("Rechercher un nom ou un pack…").desired_width(f32::INFINITY));
                 let mut packs=self.available_icons.iter().map(|i|i.pack.clone()).collect::<Vec<_>>();packs.sort();packs.dedup();
                 egui::ComboBox::from_id_salt("icon_pack").selected_text(if self.icon_pack.is_empty(){"Tous les packs"}else{&self.icon_pack}).show_ui(ui,|ui|{ui.selectable_value(&mut self.icon_pack,String::new(),"Tous les packs");for name in packs{ui.selectable_value(&mut self.icon_pack,name.clone(),name);}});
@@ -331,6 +332,35 @@ impl App {
                 }
             });
         }
+        if import_icon {
+            let tx=self.dialog_tx.clone();
+            let assets=self.path.parent().unwrap().join("assets/mes-icones");
+            let size=self.config.image_size;
+            let target=target.clone();
+            std::thread::spawn(move || {
+                let Some(path)=rfd::FileDialog::new()
+                    .add_filter("Images et vidéos", &["png","jpg","jpeg","webp","bmp","ico","svg","gif","mp4","webm","mov","mkv","avi"])
+                    .pick_file() else {return};
+                let svg=path.extension().is_some_and(|e|e.eq_ignore_ascii_case("svg"));
+                if matches!(target.destination, Destination::Key) && !svg {
+                    // Touche entière : passer par l'éditeur de recadrage (aperçu avant validation).
+                    let _=tx.send(Some(Box::new(move |app: &mut App| {
+                        app.show_assets=false;
+                        app.open_crop_editor(target.profile, target.page.clone(), target.key, path, size);
+                    }) as DialogEffect));
+                    return;
+                }
+                let imported: Result<PathBuf,String> = if crate::assets::is_video(&path) {
+                    crate::assets::import_video(&path,&assets,size).map_err(|e|e.to_string())
+                } else {
+                    Ok(path)
+                };
+                let _=tx.send(Some(Box::new(move |app: &mut App| {
+                    let result=imported.and_then(|p|app.import_icon_from(&target,&p));
+                    if let Err(e)=result {app.fail(format!("Import impossible : {e}"));}
+                }) as DialogEffect));
+            });
+        }
         if import {
             let tx=self.dialog_tx.clone();let assets=self.path.parent().unwrap().join("assets/mes-icones");
             let size=self.config.image_size;
@@ -356,6 +386,26 @@ impl App {
                 }) as DialogEffect));
             });
         }
+    }
+    /// Copie une image de l'utilisateur dans assets/mes-icones (sans écraser) et l'applique
+    /// à la cible de la galerie. Les GIF déjà convertis depuis une vidéo sont repris tels quels.
+    pub(super) fn import_icon_from(&mut self, target: &Target, source: &std::path::Path) -> Result<PathBuf, String> {
+        target.image(&self.config)?;
+        let assets = self.path.parent().unwrap().join("assets/mes-icones");
+        let name = source.file_stem().and_then(|s| s.to_str()).unwrap_or("icone").to_owned();
+        let stored = if source.starts_with(&assets) {
+            source.to_path_buf()
+        } else {
+            let bytes = std::fs::read(source).map_err(|e| e.to_string())?;
+            crate::assets::import_image(&bytes, &assets, &name).map_err(|e| e.to_string())?
+        };
+        target.assign(&mut self.config, stored.to_string_lossy().into_owned())?;
+        self.icon_selected = Some(stored.clone());
+        self.edited();
+        self.reload_icons();
+        self.icon_notice = format!("Icône « {name} » importée et appliquée · {}", target.label(&self.config));
+        self.log(self.icon_notice.clone());
+        Ok(stored)
     }
     pub(super) fn choose_icon(&mut self, path: &str, name: &str) -> Result<(), String> {
         let target = self

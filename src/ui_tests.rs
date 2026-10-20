@@ -134,6 +134,24 @@ fn workshop_chat_and_properties_fit_both_screen_sizes() {
 use super::*;
 use egui::{pos2, vec2, Event as Input, Modifiers, PointerButton, Rect};
 #[test]
+fn gallery_imports_a_user_icon_without_overwriting_and_applies_it() {
+    let mut h = Harness::new();
+    let source_dir = tempfile::tempdir().unwrap();
+    let source = source_dir.path().join("mon logo.png");
+    image::RgbaImage::from_pixel(40, 40, image::Rgba([10, 200, 90, 255])).save(&source).unwrap();
+    let target = icon_ui::Target { profile: h.app.config.active, page: h.app.config.page.clone(), key: 4, destination: icon_ui::Destination::Key };
+    let first = h.app.import_icon_from(&target, &source).unwrap();
+    assert!(first.is_file());
+    assert_eq!(h.app.config.keys()[4].image, first.to_string_lossy());
+    let second = h.app.import_icon_from(&target, &source).unwrap();
+    assert!(first.is_file() && second.is_file(), "aucun fichier écrasé");
+    assert_eq!(h.app.config.keys()[4].image, second.to_string_lossy());
+    h.app.show_assets = true;
+    h.app.open_icon_gallery(None);
+    let output = h.warm(vec2(1380.0, 900.0));
+    assert!(text_position(&output.shapes, "Importer une icône…").is_some(), "bouton d'import visible dans la galerie");
+}
+#[test]
 fn workshop_chat_texts_and_buttons_stay_inside_the_panel() {
     // Régression : textes et boutons du chat coupés (messages longs, destination JSON, boutons).
     for (size, dpi) in [(vec2(1000.0, 700.0), 1.0), (vec2(1366.0, 768.0), 1.25), (vec2(1920.0, 1080.0), 1.5)] {

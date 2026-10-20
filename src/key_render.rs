@@ -123,8 +123,7 @@ fn jpeg_with_options(k: &crate::model::Key, size: u32, font: &FontArc, frame: Op
             None => crate::assets::decode_image(&std::fs::read(&k.image)?, 512)
                 .with_context(|| format!("Image invalide pour {}", k.label))?,
         };
-        let icon = source.resize_to_fill(size, size, image::imageops::FilterType::Lanczos3)
-            .into_rgba8();
+        let icon = fill_square(&source, size).into_rgba8();
         // At 100%, keep the original pixel path byte-for-byte identical.
         let scaled = if k.icon_scale == 100 { icon } else {
             let side = ((size as f32 * k.icon_scale.clamp(20, 200) as f32 / 100.0).round() as u32).max(1);
@@ -179,40 +178,52 @@ fn jpeg_with_options(k: &crate::model::Key, size: u32, font: &FontArc, frame: Op
             size as f32 - height * lines.len() as f32 - 4.0
         };
         if !k.image.is_empty() {
-            for y in (y0.max(0.0) as u32)..size {
+            // Dégradé sous le titre plutôt qu'un bandeau noir opaque : l'image reste visible
+            // et le texte lisible (ombre portée ci-dessous).
+            let ramp = (height * 0.8).max(4.0);
+            let start = (y0 - ramp).max(0.0);
+            for y in (start as u32)..size {
+                let t = ((y as f32 - start) / ramp).clamp(0.0, 1.0);
+                let factor = 1.0 - 0.6 * t;
                 for x in 0..size {
                     let pixel = image.get_pixel_mut(x, y);
                     for ch in &mut pixel.0 {
-                        *ch = (*ch as f32 * 0.25) as u8;
+                        *ch = (*ch as f32 * factor) as u8;
                     }
                 }
             }
         }
+        let shadow = !k.image.is_empty();
         for (line_idx, line) in lines.iter().enumerate() {
             let width: f32 = line
                 .chars()
                 .map(|c| scaled.h_advance(scaled.glyph_id(c)))
                 .sum();
-            let mut x = (size as f32 - width) / 2.0;
+            let x_start = (size as f32 - width) / 2.0;
             let y = y0 + line_idx as f32 * height + scaled.ascent();
-            for c in line.chars() {
-                let id = scaled.glyph_id(c);
-                let glyph = id.with_scale_and_position(scaled.scale(), ab_glyph::point(x, y));
-                if let Some(outline) = font.outline_glyph(glyph) {
-                    let bounds = outline.px_bounds();
-                    outline.draw(|gx, gy, coverage| {
-                        let px = bounds.min.x as i32 + gx as i32;
-                        let py = bounds.min.y as i32 + gy as i32;
-                        if px >= 0 && py >= 0 && px < size as i32 && py < size as i32 {
-                            let p = image.get_pixel_mut(px as u32, py as u32);
-                            for channel in &mut p.0 {
-                                *channel =
-                                    (*channel as f32 * (1.0 - coverage) + 255.0 * coverage) as u8;
+            // Ombre (1 px) puis texte blanc, seulement sur une image de fond.
+            let passes: &[(f32, f32)] = if shadow { &[(1.0, 0.0), (0.0, 255.0)] } else { &[(0.0, 255.0)] };
+            for &(offset, ink) in passes {
+                let mut x = x_start + offset;
+                for c in line.chars() {
+                    let id = scaled.glyph_id(c);
+                    let glyph = id.with_scale_and_position(scaled.scale(), ab_glyph::point(x, y + offset));
+                    if let Some(outline) = font.outline_glyph(glyph) {
+                        let bounds = outline.px_bounds();
+                        outline.draw(|gx, gy, coverage| {
+                            let px = bounds.min.x as i32 + gx as i32;
+                            let py = bounds.min.y as i32 + gy as i32;
+                            if px >= 0 && py >= 0 && px < size as i32 && py < size as i32 {
+                                let p = image.get_pixel_mut(px as u32, py as u32);
+                                for channel in &mut p.0 {
+                                    *channel =
+                                        (*channel as f32 * (1.0 - coverage) + ink * coverage) as u8;
+                                }
                             }
-                        }
-                    });
+                        });
+                    }
+                    x += scaled.h_advance(id);
                 }
-                x += scaled.h_advance(id);
             }
         }
     }
@@ -282,6 +293,21 @@ fn jpeg_with_options(k: &crate::model::Key, size: u32, font: &FontArc, frame: Op
         image::ExtendedColorType::Rgb8,
     )?;
     Ok(bytes)
+}
+
+/// Remplit le carré de la touche. Une image en portrait est cadrée vers le haut (visages, sujets)
+/// au lieu du centre, qui coupait le haut ; carré et paysage gardent le cadrage centré d'origine.
+/// L'éditeur de recadrage reste disponible pour un cadrage précis.
+fn fill_square(source: &image::DynamicImage, size: u32) -> image::DynamicImage {
+    use image::GenericImageView;
+    let (w, h) = source.dimensions();
+    if w == 0 || h <= w {
+        return source.resize_to_fill(size, size, image::imageops::FilterType::Lanczos3);
+    }
+    let scaled_h = ((h as f64 * size as f64 / w as f64).round() as u32).max(size);
+    let resized = source.resize_exact(size, scaled_h, image::imageops::FilterType::Lanczos3);
+    let top = ((scaled_h - size) as f32 * 0.2).round() as u32;
+    resized.crop_imm(0, top, size, size)
 }
 
 /// The same canonical JPEG path is used for the still preview, D6 upload and animation.
@@ -435,6 +461,25 @@ mod tests {
         for (actual, expected) in blended.get_pixel(0, 0).0.into_iter().zip([120u8, 25, 5]) {
             assert!(actual.abs_diff(expected) <= 3);
         }
+    }
+
+    #[test]
+    fn portrait_images_keep_their_top_and_label_band_keeps_the_image_visible() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("portrait.png");
+        // 100x200 : 30 px rouges en haut, puis bleu. Un cadrage centré (y=50..150) perdait le rouge.
+        let mut img = image::RgbImage::from_pixel(100, 200, image::Rgb([20, 40, 230]));
+        for y in 0..30 { for x in 0..100 { img.put_pixel(x, y, image::Rgb([230, 20, 20])); } }
+        img.save(&path).unwrap();
+        let mut key = Key { image: path.to_string_lossy().into_owned(), ..Key::default() };
+        let top = preview(&key, 126).unwrap();
+        let p = top.get_pixel(63, 2).0;
+        assert!(p[0] > 150 && p[2] < 100, "haut de l'image conservé : {p:?}");
+        key.label = "Volume +".into();
+        let labelled = preview(&key, 126).unwrap();
+        // Sous le titre, le bleu reste perceptible (avant : assombri à 25 %).
+        let below = labelled.get_pixel(3, 124).0;
+        assert!(below[2] >= 80, "image visible sous le titre : {below:?}");
     }
 
     #[test]
