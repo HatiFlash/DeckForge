@@ -24,10 +24,8 @@ Le dossier `keys/` contient les 15 écrans LCD rendus par `key_render` (252 px) 
 
 `python scripts/media/generate-branding.py --preview CHEMIN` régénère les PNG et ICO avec leur canal alpha. Utiliser le PNG utilisateur transparent comme source ; ne jamais ajouter de fond opaque aux icônes.
 
-## Vidéo 0.8.11 : Remotion
+## Vidéo publiée et ancien pipeline
 
-**Pipeline actuel : [remotion/README.md](remotion/README.md).** 43 s, 1920 × 1080, 30 i/s, H.264 et AAC. Sept chapitres, scène de pavé en vraie 3D, mouvements déterministes, captures réelles, nouveau logo et son procédural synchronisé aux transitions. Le fichier publié est `docs/media/novydeck-demo.mp4`.
+Le fichier publié `docs/media/novydeck-demo.mp4` est maintenant un film de présentation de 40 s en 1920 × 1080 à 60 i/s, avec son, réalisé hors du dépôt avec Remotion et three.js : pavé D6 en 3D, captures réelles de l'interface et musique synthétisée. Le pipeline [remotion/](remotion/README.md) du dépôt reste disponible pour la présentation précédente ; il ne produit pas ce film publié.
 
-Le rendu de publication a été exécuté sur le portable Windows de Hatim avec ANGLE et l'Iris Xe. TypeScript et les ressources ont été contrôlés avant rendu ; des images du MP4 final ont été relues.
-
-Les anciens pipelines `promo/` (HTML/Playwright) et `build-demo-video.sh` (fondus FFmpeg) sont conservés comme outils historiques ; ils ne produisent pas le film Remotion livré en 0.8.9.
+La procédure de rendu décrite dans `remotion/README.md` concerne cette présentation précédente, et non la vidéo actuellement publiée. Les anciens pipelines `promo/` (HTML/Playwright) et `build-demo-video.sh` (fondus FFmpeg) restent conservés comme outils historiques.

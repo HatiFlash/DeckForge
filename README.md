@@ -1,270 +1,146 @@
-# NovyDeck
-
-**Anciennement DeckForge** — même application, nouveaux nom et logo à partir de la version 0.8.9.
+English · [Français](README.fr.md)
 
 <div align="center">
-  <img src="res/branding/novydeck-logo.png" width="112" alt="Logo NovyDeck"><br>
-  <strong>Logiciel libre pour Windows qui pilote le pavé FIFINE AmpliGame D6 : touches, macros, médias et plugins, sans le logiciel officiel.</strong>
-  <br><br>
-
-  [![Release](https://img.shields.io/badge/Release-v0.8.11-3478F6.svg)](https://github.com/HatiFlash/NovyDeck/releases/tag/v0.8.11)
-  [![Licence MIT](https://img.shields.io/badge/Licence-MIT-22C58B.svg)](LICENSE)
+  <img src="res/branding/novydeck-logo.png" width="120" alt="NovyDeck logo">
+  <h1>NovyDeck</h1>
+  <p>Open-source Windows software for stream decks: keys, macros, media and plugins, without the official software. Tested on the FIFINE AmpliGame D6 and the Elgato Stream Deck.</p>
+  <p>
+    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.8.11"><img src="https://img.shields.io/badge/Release-v0.8.11-3478F6.svg" alt="Release v0.8.11"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-22C58B.svg" alt="MIT license"></a>
+    <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-555.svg" alt="Windows 10/11">
+  </p>
 </div>
 
-![NovyDeck : profil de démonstration, les 15 touches du D6 remplies](docs/images/novydeck-main.png)
+![NovyDeck demo profile filling all 15 D6 keys](docs/images/novydeck-main.png)
 
-<sub>Capture réelle de l'interface (rendu hors écran à 2560 × 1600, profil « NovyDeck Demo / README » fourni avec l'application, aucun périphérique connecté).</sub>
+<sub>Actual interface capture rendered off-screen at 2560 × 1600 with the included “NovyDeck Demo / README” profile; no device connected.</sub>
 
-## Vidéo de présentation
+## Presentation video
 
-[![Vidéo de présentation de NovyDeck (43 s, son)](docs/media/novydeck-demo-poster.png)](docs/media/novydeck-demo.mp4)
+[![Watch the NovyDeck presentation film](docs/media/novydeck-demo-poster.png)](docs/media/novydeck-demo.mp4)
 
-*Montage Remotion, pavé D6 modélisé en 3D (three.js) avec les vrais écrans des 15 touches du profil de démonstration et les vraies captures de l'application ; bande-son procédurale. Sources et procédure : [scripts/media/promo](scripts/media/remotion/README.md).*
+A 40-second presentation film in 1920 × 1080 at 60 fps with sound, made with Remotion and three.js. It features a 3D D6 deck, actual interface captures and synthesized music. The published film was produced outside this repository.
 
-Présentation Remotion en 1920 × 1080, avec son : nouveau logo, pavé 3D, profils, atelier de blocs et assistant. Les images proviennent de l'interface réelle ([procédure](scripts/media/README.md)).
+## Highlights
 
-## Points clés
+- **15 customizable LCD keys:** icons, colors, images, GIFs and short videos, with a preview matching the D6 display.
+- **Profiles, pages and folders:** automatically switch profiles based on the foreground application.
+- **Visual block editor:** build macros without scripts using shortcuts, text, applications, media, windows, conditions, loops and variables; simulate before running for real.
+- **Local assistant:** turn a sentence in English or French into previewed blocks. Nothing is inserted without confirmation; optional local AI is off by default.
+- **Stream Deck / OpenAction plugins:** import `.streamDeckPlugin` and `.sdPlugin` packages with isolated HTML settings ([compatibility, French](docs/PLUGINS-COMPATIBILITE.md)).
+- **MCP server:** work with Claude, Codex or Cursor while approving every proposed change ([MCP guide, French](docs/MCP.md)).
 
-- **15 touches personnalisées** : icônes, couleurs, images, GIF et vidéos courtes, avec un aperçu identique à l'écran du D6.
-- **Profils, pages et dossiers**, avec changement automatique de profil selon l'application au premier plan.
-- **Atelier de blocs** : macros sans script (raccourcis, texte, applications, médias, fenêtres, conditions, répétitions, variables), simulation avant exécution réelle.
-- **Assistant local** : une phrase en français ou en anglais devient des blocs, montrés en aperçu ; rien n'est inséré sans validation. IA locale facultative, désactivée par défaut.
-- **Plugins Stream Deck / OpenAction** : import de `.streamDeckPlugin` et `.sdPlugin`, réglages HTML isolés ([compatibilité](docs/PLUGINS-COMPATIBILITE.md)).
-- **Serveur MCP** pour Claude, Codex ou Cursor, avec validation humaine de chaque modification ([MCP](docs/MCP.md)).
+## Compatibility
 
-## Compatibilité
-
-| Élément | État |
+| Component | Status |
 |---|---|
-| Windows 10 et 11, 64 bits | Disponible (installateur sans droits administrateur, ou ZIP portable) |
-| FIFINE AmpliGame D6 (15 touches) | Disponible, périphérique principal du projet |
-| Elgato Stream Deck, Mirabox, AJAZZ / Stream Dock | Expérimental |
-| Plugins Stream Deck | Disponible pour les plugins non chiffrés ; plugins Elgato chiffrés non pris en charge |
-| IA locale (llama.cpp ou Ollama) | Facultatif, désactivé par défaut |
-| macOS, Linux | Non pris en charge |
+| Windows 10 and 11, 64-bit | Supported; per-user installer or portable ZIP |
+| FIFINE AmpliGame D6 (15 keys) | Supported and tested; primary device |
+| Elgato Stream Deck | Tested |
+| Other Mirabox-based decks (Mirabox, AJAZZ / Stream Dock…) | Expected to work; not tested yet |
+| Stream Deck plugins | Unencrypted plugins supported; encrypted Elgato plugins not supported |
+| Local AI (llama.cpp or Ollama) | Optional; disabled by default |
+| macOS, Linux | Not supported |
 
-Fermez le logiciel officiel FIFINE Control Deck : il garde l'accès USB exclusif au D6.
+NovyDeck is designed to work with any stream deck. So far it has been tested on the **FIFINE AmpliGame D6** and the **Elgato Stream Deck**. Since the D6 is built on Mirabox hardware, other brands based on the same Mirabox platform should also be compatible, but they have not been tested yet — reports are welcome in the [issues](https://github.com/HatiFlash/NovyDeck/issues).
 
-## Installation rapide
+Close FIFINE Control Deck before using the D6: it holds exclusive USB access to the device.
 
-1. Téléchargez **`NovyDeck-0.8.11-Setup.exe`** depuis la [dernière release](https://github.com/HatiFlash/NovyDeck/releases/latest) et lancez-le (aucun droit administrateur requis), ou extrayez `NovyDeck-0.8.11-Windows.zip`.
-   - Vous utilisiez DeckForge installé ? L’installateur réutilise son emplacement et conserve les profils. En portable : fermez l’application puis extrayez les nouveaux exécutables dans le même dossier, sans supprimer `config.json`, les préférences, `assets` ni `plugins`. Une nouvelle installation utilise `%LOCALAPPDATA%\Programs\NovyDeck`.
-2. Lancez NovyDeck depuis le menu Démarrer et branchez le D6.
-3. Pour découvrir l'application sans toucher à vos profils : **Profils → ••• → Profil de démonstration (15 touches)**. Ce profil se réinitialise par la même commande et peut être supprimé comme un autre.
-4. Glissez une action de la bibliothèque sur une touche, ou ouvrez l'**Atelier de blocs**.
+## Quick start / installation
 
-## Galerie
+1. Download **`NovyDeck-0.8.11-Setup.exe`** from the [latest release](https://github.com/HatiFlash/NovyDeck/releases/latest) and run it without administrator rights, or extract `NovyDeck-0.8.11-Windows.zip`. A fresh installation uses `%LOCALAPPDATA%\Programs\NovyDeck`.
+2. For updates, the installer updates an existing installation while preserving profiles, media and plugins. For a portable installation, close the app and replace the executables without deleting `config.json`, preferences, `assets` or `plugins`.
+3. Launch NovyDeck from the Start menu (or the portable folder) and connect the D6. To explore without changing your profiles, choose **Profiles → ••• → Demo profile (15 keys)**. The same command resets the demo profile; you can also delete it like any other profile.
+4. Drag an action from the library onto a key, or open the block editor.
 
-| Atelier de blocs | Assistant local |
+## Gallery
+
+| Block editor | Local assistant |
 |---|---|
-| ![Macro de 5 blocs et propriétés du raccourci sélectionné](docs/images/novydeck-block-editor.png) | ![Phrase convertie en condition Si / Sinon, en aperçu](docs/images/novydeck-assistant.png) |
-| Macro de démonstration en cinq blocs ; le panneau de droite règle le bloc choisi. | Réponse réelle des règles locales : condition « Brave ouvert ? », aperçu avant ajout. |
+| ![Five-block macro with shortcut properties](docs/images/novydeck-block-editor.png) | ![Preview of a conditional macro proposed by local rules](docs/images/novydeck-assistant.png) |
+| Edit the selected block in the right panel. | Preview a conditional action before adding it. |
 
-| Recadrage d'image | Coins des touches (0.8.8) |
+| Media cropping | Rounded key corners |
 |---|---|
-| ![Recadrage du paysage de démonstration pour l'écran 126 × 126](docs/images/novydeck-media-crop.png) | ![Avant](docs/images/key-corners-before.png) ![Après](docs/images/key-corners-after.png) |
-| Aperçu fidèle sur la touche ; le fichier d'origine est conservé. | Avant / après : le fond suit désormais l'arrondi de la touche. |
+| ![Crop preview for a D6 key](docs/images/novydeck-media-crop.png) | ![Before](docs/images/key-corners-before.png) ![After](docs/images/key-corners-after.png) |
+| Preview on the key without changing the original file. | Backgrounds now follow the shape of each key. |
+
+| Plugin settings: Elgato | Plugin settings: VolumeController |
+|---|---|
+| ![Elgato property inspector](docs/pi-product.png) | ![VolumeController property inspector](docs/pi-volume.png) |
+| ![SignalRGB settings](docs/pi-signalrgb.png) | ![Elgato counter settings](docs/pi-counter.png) |
+
+The plugin screenshots use UI test data, not installed user plugins.
+
+## Features in detail
+
+### Devices
+
+The **FIFINE AmpliGame D6** is the primary controller, with 15 LCD keys, visual feedback, brightness control and automatic sleep. The **Elgato Stream Deck** has also been tested, using a direct HID driver with key synchronization and state feedback. Other Mirabox-based controllers (Mirabox, AJAZZ / Stream Dock…) share the D6's hardware platform and should work, but have not been tested yet.
+
+### Visual block editor
+
+Compose automations by dragging blocks in the interface, without AutoHotkey or scripts.
+
+![NovyDeck block workflow](docs/workflow.png)
+
+- **Audio:** adjust the foreground app or a specific executable without changing Windows master volume; switch between headset and speakers and immediately update the key icon and label.
+- **Streaming and media:** control OBS Studio scenes, recording, streaming, replay buffer, sources and microphone; use Discord, the built-in soundboard and media controls.
+- **Logic:** if/then/else blocks draw on 14 real-time conditions, including active window, playing audio, muted microphone, connected headset and global variables; a wait-until block is also available.
+- **System and windows:** move or snap windows, bring them forward, simulate held keys with debounce and move the mouse relatively.
+- **Variables and triggers:** react to applications opening or closing, scheduled times or audio events; insert dynamic values such as `{heure}`, `{date}` and `{presse_papiers}` into messages and requests.
+
+### Stream Deck and OpenAction plugins
+
+Import `.streamDeckPlugin` and `.sdPlugin` packages from the built-in store, a file or a folder. In **Library → Plugins**, choose **Import this plugin** on a card, or use **Import all**.
+
+![Plugin library card from a UI test](docs/plugins-store.png)
+
+Native C++/Rust/C# executables, Node.js scripts (`@elgato/streamdeck` v2) and plugins with an HTML backend (`Runtime::Html`) are supported. HTML property inspectors run in an isolated WebView2 subprocess (`--isolated-inspector`) behind a restricted loopback proxy. Offline `sdpi-components` v3/v4 and BarRaider EasyPI are included, with dark-theme integration. Settings synchronize both ways (`setSettings`, `setGlobalSettings`) between the UI and hardware. Encrypted Elgato plugins are not supported.
+
+### Media and cropping
+
+Crop images and videos non-destructively before sending them to a key: Fill or Fit/letterbox, 0.5×–3.0× zoom, repositioning and an immediate key preview. Windows Media Foundation decodes short videos without requiring FFmpeg; looping GIFs are supported. The gallery accepts PNG, JPEG, WebP and transparent SVG images as well as animations.
+
+### Reliability and Elgato import
+
+NovyDeck retains the last five healthy rotating backups (`backups/config-*.bak`) and offers guided restoration without overwriting good data with a corrupted file. Import a complete Elgato `.StreamDeckProfilesBackup` archive in one step, with automatic detection and conversion of its profiles. Macro simulation has no unsolicited system side effects.
+
+### MCP integration
+
+The built-in Model Context Protocol server connects to Claude Desktop, Claude Code, Codex CLI or Cursor from the AI toolbar. Assistants can inspect profiles and propose key layouts and macros; every proposed change is previewed and requires explicit approval before it is applied. No JSON configuration editing is required for the one-click connection.
+
+### Interface and rendering
+
+The interface uses hardware-accelerated wgpu rendering (DirectX 12 / Vulkan, with OpenGL fallback). Its key grid adapts to window size and display resolution. LCD keys can display images, looping GIFs and short videos. Profiles can be organized into folders and switched automatically when an application starts.
+
+## Privacy
+
+NovyDeck works offline. Local AI stays on your PC and is optional and disabled by default; connected AI and network-enabled plugins are activated only with your explicit consent. Proposed assistant actions are previewed before insertion or application.
 
 ## Documentation
 
-[Identité visuelle](docs/DESIGN.md) · [MCP et IA](docs/MCP.md) · [Plugins : architecture](docs/PLUGINS-ARCHITECTURE.md) et [compatibilité](docs/PLUGINS-COMPATIBILITE.md) · [Import Elgato](docs/ELGATO.md) · [Tests périphériques](docs/TEST-PERIPHERIQUES.md) · [Médias de présentation](scripts/media/README.md)
+[Visual design (French)](docs/DESIGN.md) · [MCP and AI (French)](docs/MCP.md) · [Plugin architecture (French)](docs/PLUGINS-ARCHITECTURE.md) · [Plugin compatibility (French)](docs/PLUGINS-COMPATIBILITE.md) · [Elgato import (French)](docs/ELGATO.md) · [Device tests (French)](docs/TEST-PERIPHERIQUES.md) · [Media guide (French)](scripts/media/README.md)
 
-**Confidentialité :** tout fonctionne hors ligne. L'IA locale reste sur le PC ; l'IA connectée et les plugins réseau ne s'activent qu'avec votre accord explicite.
+## Latest release
 
-## Historique des versions
+- **0.8.11:** NOVYDECK lettering on the deck chassis, with UI test coverage and updated captures and video.
+- **0.8.10:** preserve the user's transparent logo across PNGs and Windows icon sizes; add reproducible resource generation and an alpha-channel regression test.
 
-### Nouveautés 0.8.11 — marquage du châssis
+See [GitHub Releases](https://github.com/HatiFlash/NovyDeck/releases) for full release notes.
 
-- Le libellé peint sur le châssis affiche désormais **NOVYDECK**, et non l’ancien nom.
-- Test UI sur le texte réellement dessiné, captures et vidéo actualisées ; transparence des icônes de la 0.8.10 conservée.
+## Build from source
 
-### Nouveautés 0.8.10 — logo transparent
-
-- Transparence du logo utilisateur conservée dans les PNG et toutes les tailles d’icônes Windows ; le carré noir ajouté en 0.8.9 est supprimé.
-- Captures, README et vidéo Remotion régénérés à partir du logo transparent, sans cadre opaque dans la signature vidéo.
-- Générateur de ressources reproductible et test de non-régression du canal alpha.
-
-### Nouveautés 0.8.9 — NovyDeck
-
-- **Nouveau nom et nouveau logo** : NovyDeck dans l'interface, l'icône Windows, les exécutables, l'installateur et GitHub.
-- **Compatibilité DeckForge** : profils et médias existants préservés ; anciens chemins détectés sans écraser vos données. Les identifiants de compatibilité nécessaires aux plugins et intégrations existantes sont conservés.
-- **Nouvelle vidéo Remotion** : animation 3D, captures NovyDeck réelles, nouveau logo et bande-son ; sources reproductibles dans `scripts/media/remotion/`.
-- Rust et egui/eframe restent sur la même génération ; les fonctions d'actions, macros, profils et plugins ne sont pas refondues. [Validation 0.8.9](docs/TEST-0.8.9.md).
-
-*Les notes et captures des anciennes versions ci-dessous constituent des archives ; elles peuvent encore afficher l'ancien nom DeckForge.*
-
-### Nouveautés 0.8.8
-
-- **Coins des touches corrigés** : fonds, images, GIF et vidéos sont masqués à l'arrondi de l'écran de chaque touche (grille et inspecteur), net jusqu'à 200 %. L'image envoyée au D6 ne change pas.
-- **Profil de démonstration** « NovyDeck Demo / README » : 15 touches remplies avec des actions existantes et des médias générés par l'application, ajouté sans modifier vos profils.
-- **README et identité visuelle** : captures réelles en 2560 × 1600, vidéo de présentation reproductible, jetons de design documentés ([DESIGN.md](docs/DESIGN.md)).
-- Correction : dans les propriétés d'un raccourci clavier, le bouton « Enregistrer… » n'est plus coupé par un panneau étroit. Détails : [docs/RELEASE-0.8.8.md](docs/RELEASE-0.8.8.md).
-
-### Nouveautés 0.8.7
-
-- **Inspecteur des touches plugin** : « Réglages du plugin » et « Retirer le plugin » restent visibles ; l'identifiant long du plugin est raccourci à gauche (nom complet au survol).
-- **Atelier de blocs, mode Simple** : cliquer sur un bloc, y compris dans ALORS / SINON, ouvre toujours ses propriétés modifiables, même en fenêtre compacte quand la bibliothèque ou l'assistant était ouvert.
-- **Assistant (règles + IA locale)** : « ouvre Brave s'il n'est pas ouvert, et s'il est déjà ouvert ouvre un nouvel onglet » donne une vraie condition (onglet si Brave tourne, lancement sinon). Nouveaux raccourcis reconnus : rouvrir l'onglet fermé, onglet suivant/précédent, plein écran.
-- **Activation d'une application déjà ouverte** plus fiable depuis une touche du D6 (contournement documenté du verrou de premier plan de Windows, court délai avant le raccourci). Windows peut encore refuser : l'erreur reste affichée, jamais un faux succès.
-- **Consommation de RAM** : backport du correctif officiel egui #7928. Quand une image du rendu graphique (WGPU) est abandonnée, ses tampons de transfert, alloués en RAM système, n'étaient pas libérés et s'accumulaient. Défaut réel reproduit en banc (mémoire privée du processus passée d'environ 4,6 à 7,2 Go en quelques secondes sans correctif, stable avec) ; la pointe de 35 Go observée sur un PC n'est pas démontrée comme venant de ce défaut. Voir [les notes de la 0.8.7](docs/RELEASE-0.8.7.md).
-
-| Touche plugin (1060 px) | Atelier Simple : propriétés d'un bloc imbriqué |
-|---|---|
-| ![Ligne plugin raccourcie, bouton Retirer visible](docs/plugin-header-1060.png) | ![Propriétés du bloc Lancer brave.exe en mode Simple](docs/atelier-simple-proprietes.png) |
-
-*Captures du banc d'interface sans D6 ; le plugin Govee affiché est une donnée de test, pas un plugin installé.*
-
-### Nouveautés 0.8.6
-
-- **Châssis 3D sans touches pré-dessinées** : le SVG ne dessine que le boîtier. Les 15 touches interactives egui remplissent mieux l'intérieur (faces 228 × 214 au lieu de 202 × 190 en coordonnées SVG), avec des marges et écarts réduits, un relief léger et un seul contour. La grille et le boîtier partagent le même repère et s'adaptent sans déformation à la fenêtre et au DPI.
-- Les exemples d'origine « Exemple macro » et « Lecture » utilisent désormais le fond neutre des autres touches, sans aplats violet/vert. Les profils déjà personnalisés, leurs images, GIF, vidéos et actions ne sont pas remplacés ; les nouvelles couleurs concernent les profils créés avec les valeurs d'origine.
-- Vérifié sur le banc Windows : 374 tests réussis (18 ignorés), captures à 1060 × 720, 1380 × 900 et 1920 × 1080 à 125 % de DPI. Voir [les notes de la 0.8.6](docs/RELEASE-0.8.6.md).
-
-| Fenêtre compacte (1060 × 720) | HiDPI et médias d'essai (1920 × 1080, 125 %) |
-|---|---|
-| ![Pavé compact avec 15 touches egui](docs/deck-compact-1060.png) | ![Pavé HiDPI avec icônes et médias de test](docs/deck-1920-125.png) |
-
-*Captures de l'interface en banc VM, sans FIFINE D6 connecté. La vue HiDPI contient des médias de test, pas des images ou profils de l'utilisateur.*
-
-### Nouveautés 0.8.5
-
-- **Bibliothèque → Plugins** : le panneau défile sur toute sa hauteur, les cartes sont lisibles sur petite fenêtre, le bouton « Importer ce plugin » reste sous chaque plugin ; les détails longs sont repliés et l'audio natif reste accessible dans une section dédiée.
-- **Inspecteur de touche** : l'aperçu et « Changer l'icône » restent fixes à gauche ; seul le formulaire de propriétés défile à droite.
-- **Pavé FIFINE D6** : châssis SVG redimensionnable à 15 touches (5 × 3), icônes par défaut IconPark et onglets arrondis. Les médias personnalisés des touches ne sont pas remplacés.
-- **Assistant local facultatif** : connaissances configurables dans `res/ia/ia-locale.json`, demandes conditionnelles et répétitives avec aperçu préalable ; aucune action n'est exécutée automatiquement. Voir [notes de la 0.8.5](docs/RELEASE-0.8.5.md).
-
-| Importation de plugins | Défilement de l'inspecteur |
-|---|---|
-| ![Exemple de carte de plugin et bouton d’import, capture du banc UI](docs/plugins-store.png) | ![Aperçu de touche fixe et propriétés défilantes à droite](docs/inspector-scroll-right.png) |
-
-*Captures du banc d’interface, sans périphérique connecté ; la carte de plugin utilise un exemple de test, pas un plugin installé.*
-
-### Nouveautés 0.8.4
-
-- **Icônes multi-couleurs IconPark** dans toute l'interface, une couleur par famille d'actions (clavier, applications, web, logique, médias, audio, système, OBS, plugins, IA, images), lisibles en thème sombre comme en clair. Seuls les 66 pictogrammes utilisés sont embarqués ; le rendu des touches du périphérique ne change pas.
-- **Animations** : intro au démarrage, indicateur de chargement NovyDeck pendant les attentes, point « En attente » animé pendant la connexion, fondus au changement de page, de profil et d'onglet. Réglage « Réduire les animations » dans Réglages → Général.
-- Correction : les boutons de l'inspecteur ne recouvrent plus « Appui court » sur petit écran. Détails : [docs/RELEASE-0.8.4.md](docs/RELEASE-0.8.4.md).
-
-| Démarrage | Icônes de l'interface |
-|---|---|
-| ![Intro au démarrage](docs/intro.png) | ![Icônes IconPark multi-couleurs](docs/iconset.png) |
-
-### Nouveautés 0.8.3
-
-- **Interface allégée** : un seul bouton « Assistant IA » (IA locale et IA connectée dans la même fenêtre, à onglets), « Arrêter les macros » visible seulement pendant une exécution, plus de badge rouge « Aucun périphérique » en double.
-- **Réglages en onglets** (Général, Périphérique, Diagnostic) : tiennent sur un écran de portable, valeurs avec unités.
-- **« Simuler » / « Tester pour de vrai »** : la différence est explicite partout.
-- **IA locale plus sûre** : mémoire libérée après 10 min sans demande, repli automatique sur le processeur, installation annulable et reprise, vérification de l'espace disque, bouton « Demander plutôt à l'IA locale ». Assistant complet : 28/30 (intégré) et 29/30 (Ollama) sur le banc de 30 demandes libres. Détails : [docs/RELEASE-0.8.3.md](docs/RELEASE-0.8.3.md).
-
-![Réglages en onglets](docs/reglages.png)
-
-### Nouveautés 0.8.2
-
-- **IA locale facultative pour l'assistant de l'atelier** (désactivée par défaut) : comprend les demandes libres en français et en anglais quand les règles intégrées ne suffisent pas (« garde cette fenêtre toujours au-dessus », « rappelle-moi de boire de l'eau »…). Tout reste sur le PC, chaque proposition est montrée en aperçu et rien n'est inséré sans validation.
-- **Deux moteurs** (bouton « IA : … » de la barre supérieure → IA locale) : moteur **intégré** installé en un clic (llama.cpp + Qwen2.5 1,5B, ≈1,2 Go, empreintes SHA-256 vérifiées) ou **Ollama** déjà installé (`ollama pull qwen2.5:1.5b`).
-- Mesuré sur 30 demandes libres, processeur seul : 26/30 (intégré) et 27/30 (Ollama) suites de blocs exactes, en 1 à 2 s. Détails : [docs/RELEASE-0.8.2.md](docs/RELEASE-0.8.2.md).
-
-![Réglages de l'IA locale](docs/ia-locale.png)
-
-### Nouveautés 0.8.1
-
-- **Installateur Windows** (`NovyDeck-0.8.1-Setup.exe`) : sans droits administrateur, raccourcis menu Démarrer / Bureau, désinstallation propre ; profils, préférences, icônes et plugins conservés.
-- **Onglet Plugins corrigé** : plus de gel ni de rafale de fenêtres console à l'ouverture.
-- **Exécutable mieux identifié par Windows** : icône, informations de version et manifeste intégrés (moins de faux positifs Defender ; l'exécutable n'est pas encore signé).
-- **Thèmes** : thème clair refait, styles Bleu nuit, Graphite, Clair et Sable, cinq couleurs d'accent (Réglages → Thème de l'interface).
-- **Assistant de l'atelier plus naturel**, en français et en anglais : « ferme toutes les fenêtres sauf celle sur laquelle je suis », « réduis les autres fenêtres », « affiche le bureau », « wait 2 seconds then open https://… ». Nouveaux blocs *Fermer / Réduire les autres fenêtres*.
-- **Galerie** : bouton « Importer une icône… » ; **aperçu** des touches corrigé (images en portrait cadrées vers le haut, titre lisible) et bouton « Recadrer ».
-
-![Assistant de l'atelier](docs/atelier-assistant.png)
-
----
-
-## Fonctionnalités en détail
-
-### 🎮 Périphériques pris en charge
-- **FIFINE AmpliGame D6 (15 touches LCD)** : périphérique principal, utilisé au quotidien ; retour visuel sur chaque touche, luminosité et mise en veille automatique.
-- **Elgato Stream Deck** (expérimental) : pilote HID direct, synchronisation des touches et retour d'état.
-- **Autres contrôleurs HID** (expérimental) : architecture prévue pour d'autres modèles (Mirabox, AJAZZ / Stream Dock).
-
-### ⚡ Atelier de blocs natif (Sans scripts ni dépendance)
-Composez des automatisations puissantes en glissant-déposant des blocs directement dans l'interface, sans avoir besoin d'AutoHotkey :
-
-![Atelier de blocs NovyDeck](docs/workflow.png)
-
-- **Gestion audio intelligente** : Ajustez le volume de l'application au premier plan ou d'un exécutable précis sans jamais altérer le volume général de Windows. Basculez d'un clic entre casque et enceintes avec mise à jour immédiate de l'icône et du titre sur la touche.
-- **Intégrations streaming & multimédia** : Contrôle natif d'OBS Studio (changement de scènes, enregistrement, stream, replay buffer, bascule des sources et micro), Discord, soundboard intégrée et commandes multimédias.
-- **Logique conditionnelle avancée** : Blocs *Si... alors... sinon* basés sur 14 conditions en temps réel (fenêtre active, son en cours de lecture, micro muet, casque branché, variables globales) et bloc *Attendre que...*.
-- **Contrôle système & fenêtres** : Déplacement de fenêtres vers un second écran, ancrage, premier plan forcé, simulation fluide de frappes clavier (maintien de touche, anti-rebond) et déplacements relatifs de souris.
-- **Variables & Déclencheurs automatiques** : Déclenchez des actions lors de l'ouverture/fermeture d'un jeu ou logiciel, à heure fixe ou sur événement audio. Insérez des variables dynamiques `{heure}`, `{date}`, `{presse_papiers}` dans vos messages et requêtes.
-
-### 🧩 Écosystème de Plugins Stream Deck & OpenAction
-Importez directement vos archives de plugins préférées (`.streamDeckPlugin` / `.sdPlugin`) depuis le magasin intégré. Dans **Bibliothèque → Plugins**, faites défiler la liste et cliquez sur **Importer ce plugin** dans la carte voulue ; « Importer tout » et l’import depuis un fichier ou un dossier restent disponibles :
-
-![Exemple de plugin dans la bibliothèque (banc UI, données de test)](docs/plugins-store.png)
-
-- **Multi-moteurs d'exécution** : Prise en charge des exécutables natifs C++/Rust/C#, des scripts Node.js (`@elgato/streamdeck` v2) et des plugins avec moteur backend HTML (`Runtime::Html`).
-- **Property Inspectors HTML sécurisés** : Les fenêtres de réglages s'exécutent dans un sous-processus WebView2 isolé (`--isolated-inspector`) avec proxy loopback strict interdisant toute fuite réseau non autorisée (anti-TOCTOU, pas d'accès internet sauvage).
-- **Composants sdpi intégrés hors-ligne** : Support natif des `sdpi-components` officiels v3 et v4 (embarqués localement) et BarRaider EasyPI avec injection automatique du thème sombre.
-- **Persistance bidirectionnelle** : Synchronisation temps réel des réglages (`setSettings`, `setGlobalSettings`) entre l'interface et le matériel.
-
-<div align="center">
-
-| Property Inspector Elgato (sdpi-components) | Réglages VolumeController (BarRaider) |
-| :---: | :---: |
-| ![PI Elgato Product](docs/pi-product.png) | ![PI VolumeController](docs/pi-volume.png) |
-| **SignalRGB (EasyPI + thème NovyDeck)** | **Compteur Elgato (Node.js)** |
-| ![PI SignalRGB](docs/pi-signalrgb.png) | ![PI Counter](docs/pi-counter.png) |
-
-</div>
-
-### 🎨 Éditeur de recadrage interactif intégré & Galerie multimédia
-- **Recadrage non destructif des images et vidéos** : Ajustez visuellement vos photos et vidéos directement dans NovyDeck avant envoi aux touches (modes Remplir ou Ajuster/Letterbox, zoom progressif 0.5x–3.0x, recentrage et prévisualisation instantanée du rendu fidèle sur touche D6 112x112 px).
-- **Décodage vidéo Media Foundation Windows & GIF infinis** : Import direct sans FFmpeg requis pour vos clips courts et animations en boucle.
-- **Galerie multimédia riche** : Prise en charge complète des images PNG, JPEG, WebP, SVG transparents et animations.
-
-### 🛡️ Fiabilité, Sauvegardes rotatives & Import Elgato 1-Clic
-- **Sauvegardes automatiques rotatives & restauration guidée** : Rétention des 5 derniers points de restauration sains (`backups/config-*.bak`) avec protection stricte contre l'écrasement par un fichier corrompu.
-- **Import 1-clic des sauvegardes Elgato (`.StreamDeckProfilesBackup`)** : Détection et conversion automatique de tous les profils d'une archive complète sans décompression manuelle.
-- **Simulation sécurisée & isolée** : Mode test de macros sans aucun effet système de bord non sollicité.
-
-### 🤖 Intégration IA Plug-and-Play (Protocole MCP)
-NovyDeck embarque un serveur MCP (**Model Context Protocol**) natif pour collaborer avec vos assistants d'IA sans aucune ligne de code ni modification de fichier JSON :
-- Connectez d'un clic **Claude Desktop**, **Claude Code**, **Codex CLI** ou **Cursor** via le bouton **IA** dans la barre d'outils.
-- L'IA peut explorer vos profils, vous suggérer des agencements de touches optimisés pour vos jeux ou outils de création, et générer des macros complètes.
-- **Contrôle humain préservé** : chaque proposition d'action formulée par l'IA apparaît en prévisualisation et attend votre validation explicite avant d'être appliquée sur votre profil.
-
-### 🎨 Interface Studio & Rendu Direct wgpu
-- **Rendu matériel wgpu (DirectX 12 / Vulkan)**, repli OpenGL si nécessaire.
-- **Pavé dynamique réactif** : La grille de touches s'adapte automatiquement à la résolution de votre écran et aux redimensionnements de la fenêtre.
-- **Galerie multimédia riche** : Prise en charge complète des images PNG, JPEG, SVG transparents, mais aussi des GIF animés et des vidéos courtes lues en boucle directement sur les touches LCD.
-- **Gestion multi-profils et dossiers** : Créez des profils dédiés par application avec basculement automatique au lancement de vos jeux ou logiciels créatifs, et organisez vos touches en dossiers.
-
----
-
-## 🛠️ Compilation & Développement
-
-NovyDeck est développé en Rust et se compile en mode verrouillé (`--locked`) :
+NovyDeck is written in Rust. Build and test with locked dependencies; building the Windows installer requires Inno Setup 6 or 7.
 
 ```bash
-# Cloner le dépôt
 git clone https://github.com/HatiFlash/NovyDeck.git
 cd NovyDeck
-
-# Compiler en mode Release
 cargo build --release --locked
-
-# Lancer la suite complète de tests unitaires et d'intégration
 cargo test --locked
-
-# Construire l'installateur (Inno Setup 6 ou 7 requis)
-powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.8 -Build
+powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.11 -Build
 ```
 
----
+## License & credits
 
-## 📄 Licence & Mentions
-
-Ce projet est distribué sous [licence MIT](LICENSE). Aucun binaire tiers propriétaire, archive protégée ou pack de ressources fermé n'est inclus dans le dépôt de code source.
-
-Les icônes d'interface proviennent d'[IconPark](https://github.com/bytedance/IconPark) (ByteDance), sous licence Apache 2.0 : seuls les pictogrammes utilisés sont embarqués, recolorés selon la palette de NovyDeck (voir [res/iconpark/NOTICE.md](res/iconpark/NOTICE.md) et [res/iconpark/LICENSE](res/iconpark/LICENSE)). La licence est aussi consultable dans « À propos de NovyDeck ».
-Pour les notices relatives aux dépendances open-source et bibliothèques embarquées, consultez [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).
+NovyDeck is distributed under the [MIT license](LICENSE). The source repository does not include proprietary third-party binaries, protected archives or closed resource packs. Interface icons come from [IconPark](https://github.com/bytedance/IconPark) (ByteDance), licensed under Apache 2.0; only the icons in use are bundled and recolored for NovyDeck ([notice](res/iconpark/NOTICE.md), [license](res/iconpark/LICENSE)). See [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt) for notices covering open-source dependencies and bundled libraries.
