@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>DeckForge — présentation</title>
+<style>
+@font-face { font-family: Inter; src: url(fonts/Inter-Regular.otf); font-weight: 400; }
+@font-face { font-family: Inter; src: url(fonts/Inter-Medium.otf); font-weight: 500; }
+@font-face { font-family: Inter; src: url(fonts/Inter-SemiBold.otf); font-weight: 600; }
+@font-face { font-family: InterDisplay; src: url(fonts/InterDisplay-SemiBold.otf); font-weight: 600; }
+@font-face { font-family: InterDisplay; src: url(fonts/InterDisplay-Bold.otf); font-weight: 700; }
+@font-face { font-family: Mono; src: url(fonts/DejaVuSansMono.ttf); }
+:root { --ink:#F2F5FA; --muted:#8FA0BD; --accent:#3478F6; --cyan:#22C3EE; --green:#22C58B; --bg:#070B14; }
+html, body { margin:0; width:1920px; height:1080px; overflow:hidden; background:var(--bg); }
+#gl { position:absolute; inset:0; width:1920px; height:1080px; }
+.layer { position:absolute; inset:0; pointer-events:none; }
+.t { position:absolute; color:var(--ink); font-family:Inter; will-change:transform,opacity; white-space:nowrap; }
+.mask { position:absolute; overflow:hidden; padding:0 0.1em 0.12em 0; }
+.mask > span { display:inline-block; }
+.label { font-family:Mono; font-size:22px; letter-spacing:0.22em; color:var(--muted); text-transform:uppercase; }
+.display { font-family:InterDisplay; font-weight:700; letter-spacing:-0.025em; line-height:1; }
+.accent { color:var(--cyan); }
+.caption { font-family:InterDisplay; font-weight:600; font-size:64px; letter-spacing:-0.02em; line-height:1.05; }
+.sub { font-family:Inter; font-weight:500; font-size:32px; color:#C5D0E4; }
+.pill { position:absolute; font-family:Inter; font-weight:600; font-size:26px; color:var(--ink); padding:14px 24px 14px 20px;
+  background:rgba(11,18,32,0.86); border:1.5px solid rgba(52,120,246,0.75); border-radius:999px;
+  box-shadow:0 10px 40px rgba(0,0,0,0.45), 0 0 24px rgba(52,120,246,0.25); white-space:nowrap; }
+.pill i { display:inline-block; width:12px; height:12px; border-radius:50%; background:var(--cyan); margin-right:14px;
+  box-shadow:0 0 12px var(--cyan); vertical-align:2px; }
+.dot { position:absolute; width:14px; height:14px; border-radius:50%; background:var(--cyan); box-shadow:0 0 16px var(--cyan), 0 0 0 6px rgba(34,195,238,0.18); }
+.line { position:absolute; height:2px; background:linear-gradient(90deg, rgba(34,195,238,0.9), rgba(34,195,238,0.15)); transform-origin:0 50%; }
+.bubble { position:absolute; font-family:Inter; font-weight:500; font-size:30px; color:#fff; background:#1F4FB8;
+  padding:20px 28px; border-radius:24px 24px 6px 24px; box-shadow:0 18px 50px rgba(0,0,0,0.5); white-space:nowrap; }
+.caret { display:inline-block; width:3px; height:32px; background:#fff; vertical-align:-5px; margin-left:3px; }
+.card { position:absolute; width:620px; font-family:Inter; color:var(--ink); background:rgba(13,21,37,0.94);
+  border:1.5px solid rgba(139,92,246,0.7); border-radius:22px; padding:26px 30px; box-shadow:0 24px 70px rgba(0,0,0,0.55), 0 0 40px rgba(139,92,246,0.18); }
+.card .k { font-family:Mono; font-size:19px; letter-spacing:0.18em; color:#B49CFF; }
+.card .row { font-size:27px; font-weight:500; margin-top:14px; }
+.card b { color:var(--cyan); font-weight:600; }
+.chip { position:absolute; font-family:Inter; font-weight:600; font-size:30px; color:var(--ink); padding:22px 30px;
+  background:rgba(14,22,40,0.88); border:1.5px solid rgba(143,160,189,0.28); border-radius:20px; white-space:nowrap;
+  box-shadow:0 16px 50px rgba(0,0,0,0.45); }
+.chip small { display:block; font-family:Mono; font-size:17px; letter-spacing:0.16em; color:var(--muted); margin-bottom:8px; font-weight:400; }
+#grain { position:absolute; inset:0; width:1920px; height:1080px; opacity:0.075; mix-blend-mode:overlay; }
+#vignette { position:absolute; inset:0; background:radial-gradient(ellipse at 50% 46%, rgba(0,0,0,0) 52%, rgba(0,0,0,0.62) 100%); }
+#flash { position:absolute; inset:0; background:#cfe2ff; opacity:0; mix-blend-mode:screen; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./three/build/three.module.js", "three/addons/": "./three/examples/jsm/" } }
+</script>
+<script src="timeline.js"></script>
+</head>
+<body>
+<canvas id="gl" width="1920" height="1080"></canvas>
+<div class="layer" id="scrimL" style="background:linear-gradient(90deg,rgba(7,11,20,0.94) 0%,rgba(7,11,20,0.8) 28%,rgba(7,11,20,0) 58%);opacity:0"></div>
+<div class="layer" id="scrimB" style="background:linear-gradient(0deg,rgba(7,11,20,0.96) 0%,rgba(7,11,20,0.82) 20%,rgba(7,11,20,0) 42%);opacity:0"></div>
+<div class="layer" id="ui">
+  <!-- S1 -->
+  <div class="t label" id="s1label" style="left:132px;top:640px">FIFINE AmpliGame D6 · Windows 10/11</div>
+  <div class="mask" id="s1titleM" style="left:122px;top:680px"><span class="t display" id="s1title" style="position:relative;font-size:176px">DeckForge</span></div>
+  <div class="mask" id="s1tagM" style="left:130px;top:880px"><span class="t display" id="s1tag" style="position:relative;font-size:64px;font-weight:600">Ton pavé. <span class="accent">Tes règles.</span></span></div>
+  <!-- S2 -->
+  <div class="mask" id="s2c1M" style="left:120px;top:760px"><span class="t caption" id="s2c1" style="position:relative">15 touches LCD.</span></div>
+  <div class="mask" id="s2c2M" style="left:122px;top:845px"><span class="t sub" id="s2c2" style="position:relative;font-size:38px">Une action, une macro ou <span class="accent">un média</span> sur chacune.</span></div>
+  <div class="t label" id="s2key" style="left:124px;top:715px"></div>
+  <!-- S3 -->
+  <div class="mask" id="s3cM" style="left:120px;top:868px"><span class="t caption" id="s3c" style="position:relative;font-size:56px">Tout le pavé, <span class="accent">en un coup d'œil.</span></span></div>
+  <div class="t label" id="s3l" style="left:124px;top:826px">L'application</div>
+  <!-- S4 -->
+  <div class="t label" id="s4l" style="left:124px;top:826px">Atelier de blocs</div>
+  <div class="mask" id="s4cM" style="left:120px;top:868px"><span class="t caption" id="s4c" style="position:relative;font-size:56px">Des macros <span class="accent">sans une ligne de code.</span></span></div>
+  <!-- S5 -->
+  <div class="t label" id="s5l" style="left:124px;top:826px">Assistant local</div>
+  <div class="mask" id="s5cM" style="left:120px;top:868px"><span class="t caption" id="s5c" style="position:relative;font-size:56px">Tu le dis. <span class="accent">Il construit.</span></span></div>
+  <div class="bubble" id="bubble" style="left:120px;top:600px;font-size:27px"><span id="typed"></span><span class="caret" id="caret"></span></div>
+  <!-- S6 -->
+  <div class="mask" id="s6tM" style="left:0;width:1920px;top:250px;text-align:center"><span class="t caption" id="s6t" style="position:relative;font-size:72px">Et tout le reste.</span></div>
+  <div id="chips"></div>
+  <!-- S7 -->
+  <div id="endrow" style="position:absolute;left:0;width:1920px;top:690px;display:flex;justify-content:center;align-items:center;gap:30px">
+    <img id="logo" src="assets/deckforge-logo.png" style="width:112px;height:112px">
+    <div style="position:relative;overflow:hidden;padding:0 0.1em 0.14em 0"><span class="t display" id="s7t" style="position:relative;display:inline-block;font-size:124px">DeckForge</span></div>
+  </div>
+  <div class="t" id="s7u" style="left:0;width:1920px;top:860px;text-align:center;font-family:Inter;font-weight:600;font-size:40px">github.com/HatiFlash/<span class="accent">DeckForge</span></div>
+  <div class="t label" id="s7v" style="left:0;width:1920px;top:930px;text-align:center"></div>
+</div>
+<div class="layer" id="pills"></div>
+<canvas id="grain" width="960" height="540"></canvas>
+<div id="vignette"></div>
+<div id="flash"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
+import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
+
+const TL = window.TL;
+const $ = (id) => document.getElementById(id);
+
+// ---------- easing (bezier curves from the motion-design rules) ----------
+function bezier(x1, y1, x2, y2) {
+  const ax = 3 * x1 - 3 * x2 + 1, bx = 3 * x2 - 6 * x1, cx = 3 * x1;
+  const ay = 3 * y1 - 3 * y2 + 1, by = 3 * y2 - 6 * y1, cy = 3 * y1;
+  const sx = (t) => ((ax * t + bx) * t + cx) * t, sy = (t) => ((ay * t + by) * t + cy) * t;
+  const dx = (t) => (3 * ax * t + 2 * bx) * t + cx;
+  return (x) => {
+    if (x <= 0) return 0; if (x >= 1) return 1;
+    let t = x;
+    for (let i = 0; i < 8; i++) { const e = sx(t) - x; const d = dx(t); if (Math.abs(e) < 1e-5 || Math.abs(d) < 1e-6) break; t -= e / d; }
+    return sy(Math.min(1, Math.max(0, t)));
+  };
+}
+const easeOut = bezier(0.16, 1, 0.3, 1), easeIn = bezier(0.6, 0, 0.9, 0.35), easeInOut = bezier(0.65, 0, 0.35, 1);
+const overshoot = bezier(0.55, 0, 0.2, 1.12);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const prog = (t, a, b, e = easeOut) => e(clamp((t - a) / (b - a)));
+const lerp = (a, b, k) => a + (b - a) * k;
+// entrance (0..1) then fast exit (1..0)
+const life = (t, a, inDur, exitAt, outDur = 0.4) => prog(t, a, a + inDur) * (1 - prog(t, exitAt, exitAt + outDur, easeIn));
+function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+
+// ---------- renderer ----------
+const canvas = $('gl');
+const renderer = new THREE.WebGLRenderer({canvas, antialias: false, preserveDrawingBuffer: true});
+renderer.setPixelRatio(1); renderer.setSize(1920, 1080, false);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#070B14');
+scene.fog = new THREE.Fog('#070B14', 18, 60);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const camera = new THREE.PerspectiveCamera(38, 1920 / 1080, 0.1, 200);
+const target = new THREE.WebGLRenderTarget(1920, 1080, {type: THREE.HalfFloatType, samples: 4});
+const composer = new EffectComposer(renderer, target);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(960, 540), 0.55, 0.6, 0.78);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+scene.add(new THREE.HemisphereLight('#9fb8ff', '#0a0f1c', 0.55));
+const keyLight = new THREE.DirectionalLight('#ffffff', 1.6); keyLight.position.set(-6, 8, 9); scene.add(keyLight);
+const rim = new THREE.DirectionalLight('#3478F6', 2.4); rim.position.set(6, -2, -8); scene.add(rim);
+
+// ---------- textures ----------
+const loader = new THREE.TextureLoader();
+const loadTex = (url) => new Promise((ok) => loader.load(url, (tx) => { tx.colorSpace = THREE.SRGBColorSpace; tx.anisotropy = 8; ok(tx); }));
+function roundedAlpha(w, h, r) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff';
+  g.beginPath(); g.roundRect(2, 2, w - 4, h - 4, r); g.fill();
+  const t = new THREE.CanvasTexture(c); return t;
+}
+function ringTex(w, h, r, lw) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
+  g.strokeStyle = '#fff'; g.lineWidth = lw; g.shadowColor = '#fff'; g.shadowBlur = 8;
+  g.beginPath(); g.roundRect(lw + 4, lw + 4, w - 2 * lw - 8, h - 2 * lw - 8, r); g.stroke();
+  return new THREE.CanvasTexture(c);
+}
+const lcdAlpha = roundedAlpha(256, 256, 30);
+const panelAlpha = roundedAlpha(1600, 1000, 26);
+function gradientTex(stops, w = 512) {
+  const c = document.createElement('canvas'); c.width = w; c.height = w; const g = c.getContext('2d');
+  const gr = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
+  stops.forEach(([o, col]) => gr.addColorStop(o, col)); g.fillStyle = gr; g.fillRect(0, 0, w, w);
+  return new THREE.CanvasTexture(c);
+}
+
+// ---------- the D6 deck ----------
+const deck = new THREE.Group(); scene.add(deck);
+const COLS = 5, ROWS = 3, PITCH_X = 1.1, PITCH_Y = 1.08;
+const chassis = new THREE.Mesh(new RoundedBoxGeometry(6.2, 4.05, 0.5, 6, 0.42),
+  new THREE.MeshStandardMaterial({color: '#121C30', metalness: 0.55, roughness: 0.48, envMapIntensity: 0.6}));
+deck.add(chassis);
+const bezel = new THREE.Mesh(new RoundedBoxGeometry(5.82, 3.62, 0.08, 4, 0.3),
+  new THREE.MeshStandardMaterial({color: '#0A1120', metalness: 0.3, roughness: 0.7}));
+bezel.position.z = 0.245; deck.add(bezel);
+const edgeGlow = new THREE.Mesh(new RoundedBoxGeometry(6.3, 4.15, 0.08, 6, 0.46),
+  new THREE.MeshBasicMaterial({color: '#3478F6', transparent: true, opacity: 0.0, toneMapped: false}));
+edgeGlow.position.z = -0.24; deck.add(edgeGlow);
+const shadow = new THREE.Mesh(new THREE.PlaneGeometry(11, 8), new THREE.MeshBasicMaterial({
+  map: gradientTex([[0, 'rgba(52,120,246,0.32)'], [0.45, 'rgba(20,40,90,0.12)'], [1, 'rgba(0,0,0,0)']]), transparent: true, depthWrite: false}));
+shadow.position.z = -0.6; deck.add(shadow);
+const keyGeo = new RoundedBoxGeometry(0.98, 0.98, 0.2, 4, 0.12);
+const keyMat = new THREE.MeshStandardMaterial({color: '#1B2740', metalness: 0.35, roughness: 0.42, envMapIntensity: 0.7});
+const keys = [];
+for (let i = 0; i < 15; i++) {
+  const col = i % COLS, row = Math.floor(i / COLS);
+  const g = new THREE.Group();
+  g.position.set((col - 2) * PITCH_X, (1 - row) * PITCH_Y, 0.36);
+  const cap = new THREE.Mesh(keyGeo, keyMat); g.add(cap);
+  const lcdMat = new THREE.MeshBasicMaterial({color: '#ffffff', alphaMap: lcdAlpha, transparent: true, toneMapped: false});
+  const lcd = new THREE.Mesh(new THREE.PlaneGeometry(0.84, 0.84), lcdMat); lcd.position.z = 0.102; g.add(lcd);
+  const glowMat = new THREE.MeshBasicMaterial({color: '#22C3EE', transparent: true, opacity: 0, toneMapped: false, depthWrite: false,
+    map: gradientTex([[0, 'rgba(255,255,255,1)'], [0.35, 'rgba(255,255,255,0.35)'], [1, 'rgba(255,255,255,0)']], 256), blending: THREE.AdditiveBlending});
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 2.0), glowMat); glow.position.z = 0.0; g.add(glow);
+  deck.add(g); keys.push({g, lcd, lcdMat, glow, glowMat, col, row});
+}
+
+// ---------- screenshot panels in world space ----------
+function makePanel(tex, x, y = 0, z = -2) {
+  const g = new THREE.Group(); g.position.set(x, y, z); scene.add(g);
+  const sh = new THREE.Mesh(new THREE.PlaneGeometry(13, 9.5), new THREE.MeshBasicMaterial({
+    map: gradientTex([[0, 'rgba(0,0,0,0.75)'], [0.6, 'rgba(0,0,0,0.25)'], [1, 'rgba(0,0,0,0)']]), transparent: true, depthWrite: false}));
+  sh.position.set(0.2, -0.35, -0.08); g.add(sh);
+  const halo = new THREE.Mesh(new THREE.PlaneGeometry(11.5, 8), new THREE.MeshBasicMaterial({
+    map: gradientTex([[0, 'rgba(52,120,246,0.22)'], [0.7, 'rgba(52,120,246,0.06)'], [1, 'rgba(0,0,0,0)']]), transparent: true, depthWrite: false, toneMapped: false}));
+  halo.position.z = -0.12; g.add(halo);
+  const mat = new THREE.MeshBasicMaterial({map: tex, alphaMap: panelAlpha, transparent: true, toneMapped: false});
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry(9.6, 6.0), mat); g.add(plane);
+  return {g, mat};
+}
+
+// ---------- dust for depth ----------
+{
+  const r = rng(7), n = 900, pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { pos[i * 3] = -14 + r() * 74; pos[i * 3 + 1] = -9 + r() * 18; pos[i * 3 + 2] = -16 + r() * 22; }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  var dust = new THREE.Points(geo, new THREE.PointsMaterial({color: '#6F8FD8', size: 0.045, transparent: true, opacity: 0.55, depthWrite: false}));
+  scene.add(dust);
+}
+// faint floor grid
+const grid = new THREE.GridHelper(160, 160, '#1B2B4D', '#111C33'); grid.position.set(22, -4.6, -4); grid.material.transparent = true; grid.material.opacity = 0.35; scene.add(grid);
+
+// ---------- camera path ----------
+const CAM = [
+  [0.0, [-1.2, -3.4, 10.4], [-2.6, -0.1, 0], 38],
+  [5.5, [2.4, -2.0, 9.0], [-2.2, 0.1, 0], 38],
+  [6.9, [1.0, 0.2, 7.6], [-1.7, -0.1, 0], 38],
+  [11.8, [0.2, 0.4, 7.0], [-1.9, 0.0, 0], 38],
+  [13.0, [10.0, 0.0, 10.5], [14, -0.6, -2], 40],
+  [18.4, [14.5, -0.45, 9.0], [14.1, -0.6, -2], 40],
+  [19.8, [26.0, 0.0, 8.0], [28, -0.4, -2], 40],
+  [22.1, [27.0, 0.2, 3.9], [27.0, 0.25, -2], 40],
+  [25.5, [27.4, 0.1, 4.5], [27.3, 0.2, -2], 40],
+  [26.9, [43.0, 0.2, 8.0], [44.2, 0.2, -2], 40],
+  [29.2, [44.0, 0.4, 4.3], [44.15, 0.4, -2], 40],
+  [32.0, [44.0, 0.45, 4.5], [44.1, 0.4, -2], 40],
+  [33.6, [26, 7.5, 22], [24, -0.5, -2], 44],
+  [35.6, [24, 8.2, 23], [24, -0.3, -2], 44],
+  [36.7, [0, -0.6, 11.2], [0, -1.15, 0], 38],
+  [42.0, [0, -0.9, 10.4], [0, -1.15, 0], 38],
+];
+const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3();
+function cameraAt(t) {
+  let i = 0; while (i < CAM.length - 2 && t > CAM[i + 1][0]) i++;
+  const [t0, p0, l0, f0] = CAM[i], [t1, p1, l1, f1] = CAM[i + 1];
+  const k = easeInOut(clamp((t - t0) / (t1 - t0)));
+  camera.position.set(lerp(p0[0], p1[0], k), lerp(p0[1], p1[1], k), lerp(p0[2], p1[2], k));
+  // handheld micro drift
+  camera.position.x += Math.sin(t * 0.7) * 0.05; camera.position.y += Math.sin(t * 0.53 + 1) * 0.04;
+  tmpA.set(lerp(l0[0], l1[0], k), lerp(l0[1], l1[1], k), lerp(l0[2], l1[2], k));
+  camera.lookAt(tmpA); camera.fov = lerp(f0, f1, k); camera.updateProjectionMatrix();
+  // speed of the camera → motion feel for the dust
+  return k;
+}
+
+// ---------- DOM helpers ----------
+function reveal(el, k, kOut = 0, dist = 1.0) {
+  // slide up out of mask + slight tilt, exit slides up faster
+  const y = (1 - k) * 110 * dist - kOut * 90 * dist;
+  el.style.transform = `translateY(${y}%) rotate(${(1 - k) * 4}deg)`;
+  el.style.opacity = String(Math.min(k, 1 - kOut));
+}
+function fadeRise(el, k, kOut = 0, px = 24) {
+  el.style.opacity = String(k * (1 - kOut));
+  el.style.transform = `translateY(${(1 - k) * px - kOut * px * 0.6}px) scale(${0.96 + 0.04 * k})`;
+  el.style.filter = `blur(${(1 - k) * 8}px)`;
+}
+const project = (v) => { const p = v.clone().project(camera); return [(p.x + 1) * 960, (1 - p.y) * 540, p.z]; };
+
+// pills for S3 (anchors in screenshot uv coords on the app panel)
+const PILLS = [
+  {txt: 'Profils & pages', u: 0.065, v: 0.21, dx: -10, dy: -110},
+  {txt: '15 touches du D6', u: 0.45, v: 0.36, dx: 40, dy: -330},
+  {txt: "Bibliothèque d'actions", u: 0.9, v: 0.3, dx: -60, dy: -140},
+  {txt: 'Inspecteur de touche', u: 0.42, v: 0.84, dx: 260, dy: -10},
+];
+const pillLayer = $('pills');
+for (const p of PILLS) {
+  p.dot = document.createElement('div'); p.dot.className = 'dot'; pillLayer.appendChild(p.dot);
+  p.line = document.createElement('div'); p.line.className = 'line'; pillLayer.appendChild(p.line);
+  p.el = document.createElement('div'); p.el.className = 'pill'; p.el.innerHTML = '<i></i>' + p.txt; pillLayer.appendChild(p.el);
+}
+const S4PILL = document.createElement('div'); S4PILL.className = 'pill'; S4PILL.innerHTML = "<i></i>Simuler avant d'exécuter"; pillLayer.appendChild(S4PILL);
+const S5PILL = document.createElement('div'); S5PILL.className = 'pill'; S5PILL.innerHTML = "<i></i>Aperçu · rien n'est exécuté"; pillLayer.appendChild(S5PILL);
+
+const CHIPS = [
+  ['PLUGINS', 'Stream Deck & OpenAction'], ['IA', 'Serveur MCP intégré'], ['PROFILS', 'Changement automatique'],
+  ['MÉDIAS', 'Images, GIF, vidéos'], ['CONFIDENTIALITÉ', '100 % hors ligne'], ['LICENCE', 'Open source · MIT'],
+];
+const chipEls = CHIPS.map(([k, v], i) => {
+  const el = document.createElement('div'); el.className = 'chip'; el.innerHTML = `<small>${k}</small>${v}`;
+  $('chips').appendChild(el); return el;
+});
+const KEYNAMES = ['Exemple macro · 5 blocs', 'Lecture / pause', 'Volume +', 'Volume −', 'Muet', 'Bloc-notes', 'OBS · scène Démo', 'Dossier',
+  'Photo · ouvrir un site', 'Animation GIF', 'Raccourci Ctrl+Maj+Échap', 'Signature', 'Notification', 'Micro · couper', 'Page suivante'];
+$('s7v').textContent = `Version ${TL.version} · Gratuit · Windows 10/11`;
+const SENTENCE = "ouvre brave s'il est pas ouvert, sinon un nouvel onglet";
+
+// grain frames (seeded)
+const grainCanvas = $('grain'), gctx = grainCanvas.getContext('2d');
+const grains = [];
+{ const r = rng(42); for (let f = 0; f < 8; f++) { const img = gctx.createImageData(960, 540);
+  for (let i = 0; i < img.data.length; i += 4) { const v = 128 + (r() - 0.5) * 255; img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255; }
+  grains.push(img); } }
+
+// sweep highlight boxes for S4 (blocks of the macro, in panel uv)
+const SWEEP = [0.2025, 0.2775, 0.351, 0.425, 0.499].map((v) => ({u0: 0.175, u1: 0.507, v}));
+const sweepMat = SWEEP.map(() => new THREE.MeshBasicMaterial({color: '#22C3EE', transparent: true, opacity: 0, toneMapped: false, depthWrite: false}));
+
+const answerMat = new THREE.MeshBasicMaterial({color: '#22C3EE', transparent: true, opacity: 0, toneMapped: false, depthWrite: false, blending: THREE.AdditiveBlending});
+let panels, keyTex = [], gifTex = [];
+async function setup() {
+  await document.fonts.ready;
+  const shots = await Promise.all(['main', 'block-editor', 'assistant'].map((n) => loadTex(`assets/shots/deckforge-${n}.png`)));
+  panels = {app: makePanel(shots[0], 14), work: makePanel(shots[1], 28), chat: makePanel(shots[2], 42)};
+  keyTex = await Promise.all([...Array(15).keys()].map((i) => loadTex(`assets/keys/key-${String(i).padStart(2, '0')}.png`)));
+  gifTex = await Promise.all([...Array(12).keys()].map((f) => loadTex(`assets/keys/key-09-f${String(f).padStart(2, '0')}.png`)));
+  keys.forEach((k, i) => { k.lcdMat.map = keyTex[i]; k.lcdMat.needsUpdate = true; });
+  // sweep outlines on workshop panel
+  SWEEP.forEach((s, i) => {
+    const w = (s.u1 - s.u0) * 9.6, h = 0.052 * 6;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.12, h + 0.08), sweepMat[i]);
+    m.position.set(((s.u0 + s.u1) / 2 - 0.5) * 9.6, (0.5 - s.v) * 6, 0.02);
+    sweepMat[i].map = ringTex(512, 64, 16, 4); sweepMat[i].blending = THREE.AdditiveBlending;
+    m.renderOrder = 2; panels.work.g.add(m);
+  });
+  {
+    const u0 = 0.739, u1 = 0.903, v0 = 0.398, v1 = 0.562;
+    answerMat.map = ringTex(512, 512 * ((v1 - v0) * 6) / ((u1 - u0) * 9.6), 18, 5);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry((u1 - u0) * 9.6 + 0.1, (v1 - v0) * 6 + 0.1), answerMat);
+    m.position.set(((u0 + u1) / 2 - 0.5) * 9.6, (0.5 - (v0 + v1) / 2) * 6, 0.02); m.renderOrder = 2; panels.chat.g.add(m);
+  }
+  window.READY = true;
+}
+
+function uvToWorld(panel, u, v) { return new THREE.Vector3((u - 0.5) * 9.6, (0.5 - v) * 6, 0.02).add(panel.g.position); }
+
+window.render = function render(t) {
+  if (!window.READY) return;
+  cameraAt(t);
+  const s1 = TL.s1, s2 = TL.s2, s3 = TL.s3, s4 = TL.s4, s5 = TL.s5, s6 = TL.s6, s7 = TL.s7;
+
+  // ----- deck -----
+  const finale = prog(t, s7.fly, s7.fly + 1.0, easeInOut);
+  deck.rotation.y = lerp(-0.28 + 0.18 * prog(t, 0, 6, easeInOut), -0.42 + 0.5 * prog(t, s7.fly, s7.end, easeInOut), finale) + Math.sin(t * 0.6) * 0.012;
+  deck.rotation.x = lerp(0.22 - 0.16 * prog(t, 0, 7, easeInOut), -0.06, finale);
+  deck.position.y = Math.sin(t * 0.8) * 0.04 + (1 - finale) * 0 + finale * 0.35;
+  const impact = Math.exp(-Math.max(0, t - s7.impact) * 3.2) * (t >= s7.impact ? 1 : 0);
+  edgeGlow.material.opacity = 0.18 + 0.25 * prog(t, s1.keysOn, s1.keysOn + 2) + 0.6 * impact;
+  keys.forEach((k, i) => {
+    const wave = s1.keysOn + (k.col + k.row) * 0.085;
+    let lit = 0.1 + 0.9 * prog(t, wave, wave + 0.6);
+    // presses
+    const pi = s2.pressStart + i * s2.pressStep;
+    const dt = t - pi;
+    const press = dt < 0 ? 0 : dt < 0.07 ? dt / 0.07 : Math.exp(-(dt - 0.07) * 9);
+    const ring = dt < 0 ? 0 : Math.exp(-dt * 3.5) * (dt < 1.2 ? 1 : 0);
+    // re-light in finale with a cascade
+    const fin = s7.impact + (Math.abs(k.col - 2) + Math.abs(k.row - 1)) * 0.05;
+    const fd = t - fin; const flash = fd < 0 ? 0 : Math.exp(-fd * 4);
+    k.g.position.z = 0.36 - 0.09 * press - 0.05 * flash;
+    k.lcdMat.color.setScalar(Math.min(1.6, lit + 0.55 * ring + 0.9 * flash));
+    k.glowMat.opacity = 0.75 * ring + 0.9 * flash;
+    k.glowMat.color.set(i % 3 === 0 ? '#3478F6' : '#22C3EE');
+    if (i === 9) { const f = Math.floor(t / 0.09) % 12; if (k.lcdMat.map !== gifTex[f]) { k.lcdMat.map = gifTex[f]; } }
+  });
+  bloom.strength = 0.5 + 0.7 * impact;
+
+  // panels: pop in as the camera arrives (scale + rise), never before
+  const pApp = prog(t, 12.0, 13.4), pWork = prog(t, 19.0, 20.3), pChat = prog(t, 25.9, 27.2);
+  const pAll = prog(t, s6.pull, s6.pull + 1.0);
+  for (const [p, k, rot] of [[panels.app, Math.max(pApp, pAll), 0.06], [panels.work, Math.max(pWork, pAll), 0], [panels.chat, Math.max(pChat, pAll), -0.05]]) {
+    p.g.scale.setScalar(0.86 + 0.14 * k); p.g.position.y = (1 - k) * -1.2; p.g.rotation.y = rot * (1 - k) * 4;
+    p.mat.opacity = k;
+  }
+  SWEEP.forEach((s, i) => {
+    const a = s4.sweep + i * s4.sweepStep; const d = t - a;
+    sweepMat[i].opacity = d < 0 ? 0 : (prog(t, a, a + 0.18) * (0.55 + 0.45 * Math.exp(-d * 4))) * (1 - prog(t, s4.exit, s4.exit + 0.4, easeIn)) * 0.85;
+  });
+  answerMat.opacity = 0.9 * prog(t, s5.card, s5.card + 0.5) * (1 - prog(t, s5.exit, s5.exit + 0.4, easeIn)) * (0.75 + 0.25 * Math.sin(t * 5));
+  scene.children.forEach((c) => { if (c.isPoints) { c.rotation.y = t * 0.004; c.position.y = Math.sin(t * 0.2) * 0.2; } });
+  grid.position.x = 22 + (t * 0.15) % 1;
+
+  // ----- DOM: S1 -----
+  fadeRise($('s1label'), prog(t, s1.label, s1.label + 0.7), prog(t, s1.exit, s1.exit + 0.35, easeIn));
+  reveal($('s1title'), prog(t, s1.title, s1.title + 0.9), prog(t, s1.exit, s1.exit + 0.4, easeIn));
+  reveal($('s1tag'), prog(t, s1.tagline, s1.tagline + 0.8), prog(t, s1.exit + 0.05, s1.exit + 0.4, easeIn));
+  // S2
+  reveal($('s2c1'), prog(t, s2.caption1, s2.caption1 + 0.8), prog(t, s2.exit, s2.exit + 0.35, easeIn));
+  reveal($('s2c2'), prog(t, s2.caption2, s2.caption2 + 0.8), prog(t, s2.exit + 0.05, s2.exit + 0.4, easeIn));
+  {
+    const idx = clamp(Math.floor((t - s2.pressStart) / s2.pressStep), 0, 14);
+    const el = $('s2key'); el.textContent = `Touche ${String(idx + 1).padStart(2, '0')} · ${KEYNAMES[idx]}`;
+    fadeRise(el, prog(t, s2.pressStart, s2.pressStart + 0.4), prog(t, s2.exit, s2.exit + 0.3, easeIn), 10);
+  }
+  // S3
+  fadeRise($('s3l'), prog(t, s3.caption, s3.caption + 0.6), prog(t, s3.exit, s3.exit + 0.3, easeIn), 10);
+  reveal($('s3c'), prog(t, s3.caption + 0.1, s3.caption + 0.9), prog(t, s3.exit, s3.exit + 0.35, easeIn));
+  PILLS.forEach((p, i) => {
+    const k = prog(t, s3.pills[i], s3.pills[i] + 0.7, overshoot), kOut = prog(t, s3.exit - 0.15, s3.exit + 0.2, easeIn);
+    const [x, y] = project(uvToWorld(panels.app, p.u, p.v));
+    const vis = k * (1 - kOut);
+    p.dot.style.left = (x - 7) + 'px'; p.dot.style.top = (y - 7) + 'px'; p.dot.style.opacity = vis; p.dot.style.transform = `scale(${0.4 + 0.6 * k})`;
+    const px = x + p.dx, py = y + p.dy;
+    const len = Math.hypot(px - x, py - y), ang = Math.atan2(py - y, px - x);
+    p.line.style.left = x + 'px'; p.line.style.top = y + 'px'; p.line.style.width = len + 'px';
+    p.line.style.transform = `rotate(${ang}rad) scaleX(${prog(t, s3.pills[i], s3.pills[i] + 0.45)})`; p.line.style.opacity = vis;
+    p.el.style.left = (px - (p.dx < 0 ? p.el.offsetWidth : 0)) + 'px'; p.el.style.top = (py - p.el.offsetHeight / 2) + 'px';
+    p.el.style.opacity = vis; p.el.style.transform = `scale(${0.85 + 0.15 * k}) translateY(${(1 - k) * 14}px)`;
+  });
+  // S4
+  fadeRise($('s4l'), prog(t, s4.caption, s4.caption + 0.6), prog(t, s4.exit, s4.exit + 0.3, easeIn), 10);
+  reveal($('s4c'), prog(t, s4.caption + 0.1, s4.caption + 0.9), prog(t, s4.exit, s4.exit + 0.35, easeIn));
+  {
+    const k = prog(t, s4.pill, s4.pill + 0.6, overshoot), kOut = prog(t, s4.exit - 0.1, s4.exit + 0.25, easeIn);
+    S4PILL.style.left = '1280px'; S4PILL.style.top = '700px'; S4PILL.style.opacity = k * (1 - kOut);
+    S4PILL.style.transform = `scale(${0.85 + 0.15 * k}) translateY(${(1 - k) * 16}px)`;
+  }
+  // S5
+  fadeRise($('s5l'), prog(t, s5.caption, s5.caption + 0.6), prog(t, s5.exit, s5.exit + 0.3, easeIn), 10);
+  reveal($('s5c'), prog(t, s5.caption + 0.1, s5.caption + 0.9), prog(t, s5.exit, s5.exit + 0.35, easeIn));
+  {
+    const n = Math.floor(SENTENCE.length * clamp((t - s5.typeStart) / (s5.typeEnd - s5.typeStart)));
+    $('typed').textContent = SENTENCE.slice(0, n);
+    const bub = $('bubble'); fadeRise(bub, prog(t, s5.typeStart - 0.35, s5.typeStart + 0.15), prog(t, s5.exit, s5.exit + 0.3, easeIn), 20);
+    $('caret').style.opacity = (t < s5.typeEnd || Math.floor(t * 2.4) % 2 === 0) ? 1 : 0;
+    const k = prog(t, s5.pill, s5.pill + 0.6, overshoot), kOut = prog(t, s5.exit, s5.exit + 0.25, easeIn);
+    S5PILL.style.left = '1330px'; S5PILL.style.top = '470px'; S5PILL.style.opacity = k * (1 - kOut);
+    S5PILL.style.transform = `scale(${0.85 + 0.15 * k}) translateY(${(1 - k) * 16}px)`;
+  }
+  // S6 chips: 3 x 2 grid, centered
+  reveal($('s6t'), prog(t, s6.pull + 0.4, s6.pull + 1.2), prog(t, s6.exit, s6.exit + 0.35, easeIn));
+  chipEls.forEach((el, i) => {
+    const col = i % 3, row = Math.floor(i / 3);
+    const a = s6.chips + i * s6.chipStep;
+    const k = prog(t, a, a + 0.75, overshoot), kOut = prog(t, s6.exit + i * 0.03, s6.exit + 0.3 + i * 0.03, easeIn);
+    const w = el.offsetWidth;
+    el.style.left = (960 + (col - 1) * 470 - w / 2) + 'px'; el.style.top = (420 + row * 170) + 'px';
+    el.style.opacity = k * (1 - kOut);
+    el.style.transform = `translateY(${(1 - k) * 40 - kOut * 20}px) scale(${0.9 + 0.1 * k})`;
+    el.style.borderColor = `rgba(52,120,246,${0.25 + 0.5 * Math.exp(-Math.max(0, t - a - 0.2) * 3)})`;
+  });
+  // S7
+  const lk = prog(t, s7.logo, s7.logo + 0.9, overshoot);
+  const logo = $('logo'); logo.style.opacity = lk; logo.style.transform = `translateY(${(1 - lk) * 30}px) scale(${0.7 + 0.3 * lk}) rotate(${(1 - lk) * -8}deg)`;
+  reveal($('s7t'), prog(t, s7.logo + 0.15, s7.logo + 1.05));
+  fadeRise($('s7u'), prog(t, s7.url, s7.url + 0.7));
+  fadeRise($('s7v'), prog(t, s7.version, s7.version + 0.7), 0, 12);
+  // dim 3D under the final title so it reads
+  $('vignette').style.background = `radial-gradient(ellipse at 50% 46%, rgba(0,0,0,${0.0 + 0.35 * prog(t, s7.logo - 0.2, s7.logo + 0.8)}) 30%, rgba(0,0,0,0.65) 100%)`;
+  $('scrimL').style.opacity = String(prog(t, 1.6, 2.4) * (1 - prog(t, s2.exit, s2.exit + 0.6, easeIn)));
+  $('scrimB').style.opacity = String(prog(t, s3.caption - 0.4, s3.caption + 0.3) * (1 - prog(t, s4.exit, s4.exit + 0.6, easeIn))
+    + prog(t, s7.logo - 0.4, s7.logo + 0.6) * 0.9);
+  $('flash').style.opacity = String(0.16 * impact);
+  // grain on twos
+  gctx.putImageData(grains[Math.floor(t * 15) % grains.length], 0, 0);
+
+  composer.render();
+};
+setup();
+</script>
+</body>
+</html>

@@ -1135,6 +1135,17 @@ fn demo_video_keyframes() {
         h.png(size, out, &dir.join(format!("{name}.png")));
     };
     let mut h = demo_harness();
+    // Écrans LCD réels des 15 touches (moteur `key_render`, 252 px) pour la séquence 3D.
+    let keys_dir = dir.join("keys");
+    std::fs::create_dir_all(&keys_dir).unwrap();
+    let font = crate::key_render::font().unwrap();
+    for (i, key) in h.app.config.keys().iter().take(15).enumerate() {
+        crate::key_render::preview(key, 252).unwrap().save(keys_dir.join(format!("key-{i:02}.png"))).unwrap();
+        for (f, frame) in crate::key_render::animated(key, 252, &font).unwrap().iter().enumerate() {
+            let upright = image::imageops::rotate180(&image::load_from_memory(&frame.jpeg).unwrap().into_rgb8());
+            upright.save(keys_dir.join(format!("key-{i:02}-f{f:02}.png"))).unwrap();
+        }
+    }
     shot(&mut h, "01-main");
     h.app.navigate(Step::PageNext);
     shot(&mut h, "02-page-2");

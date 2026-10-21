@@ -13,21 +13,17 @@ Le test produit quatre fichiers à 2560 × 1600 pixels : `deckforge-main.png`, `
 
 ## Vidéo de présentation
 
-1. Images clés à 1920 × 1080 pixels, prises dans des états réels de l'interface (profil de démonstration, page 2, touche photo, atelier, bloc ajouté puis réglé, assistant, recadrage) :
+La vidéo `docs/media/deckforge-demo.mp4` (42 s, 1920 × 1080, 30 i/s, H.264 + AAC) est une scène three.js rendue image par image : pavé D6 en 3D avec les écrans réels des 15 touches, caméra qui traverse les vraies captures de l'application, typographie animée et bande-son procédurale.
+
+1. Écrans des touches et images clés, issus de l'application :
 
    ```powershell
    $env:DECKFORGE_VIDEO_OUTPUT = "C:\chemin\frames"
    cargo test --locked --bin deckforge -- demo_video_keyframes --ignored --test-threads=1
    ```
 
-2. Montage avec FFmpeg (Linux, macOS ou WSL). Outils nécessaires : `ffmpeg`/`ffprobe` 6 ou plus récent (avec libx264 et drawtext), `fc-match` et la police Inter (SIL Open Font License).
+   Le dossier `keys/` contient les 15 écrans LCD rendus par `key_render` (252 px) et les 12 images de la touche animée.
 
-   ```bash
-   scripts/media/build-demo-video.sh /chemin/frames docs/media/deckforge-demo.mp4
-   ```
+2. Rendu : voir [promo/README.md](promo/README.md) (Playwright + Chromium, FFmpeg). Avec un GPU (ANGLE D3D11), le rendu complet prend environ 10 minutes sur un portable Iris Xe.
 
-**Sortie :** MP4 H.264 en 1920 × 1080 à 30 i/s, d'environ 30 secondes, avec `+faststart`, sans son ni musique. Une vignette `deckforge-demo-poster.png` est créée à côté.
-
-**Animations :** fondus enchaînés de 0,5 s, rapprochement de 2 % par scène et légendes en fondu. Il n'y a ni zoom brusque ni effet lumineux.
-
-Version des outils lors du dernier rendu : FFmpeg 7.1.5 (Debian 13), Inter 4.x.
+L'ancien montage par fondus (`build-demo-video.sh`) reste disponible pour une vidéo simple sans 3D.

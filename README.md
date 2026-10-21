@@ -15,7 +15,9 @@
 
 ## Vidéo de présentation
 
-[![Vidéo de présentation de DeckForge (30 s)](docs/media/deckforge-demo-poster.png)](docs/media/deckforge-demo.mp4)
+[![Vidéo de présentation de DeckForge (42 s, son)](docs/media/deckforge-demo-poster.png)](docs/media/deckforge-demo.mp4)
+
+*Pavé D6 modélisé en 3D (three.js) avec les vrais écrans des 15 touches du profil de démonstration et les vraies captures de l'application ; bande-son procédurale. Sources et procédure : [scripts/media/promo](scripts/media/promo/README.md).*
 
 30 secondes, 1920 × 1080, sans son : profil, pages, atelier de blocs, assistant et recadrage. Les images proviennent de l'interface réelle ([procédure](scripts/media/README.md)).
 

@@ -1,0 +1,11 @@
+{
+  "duration": 42.0,
+  "fps": 30,
+  "s1": { "keysOn": 0.45, "label": 1.9, "title": 2.15, "tagline": 3.55, "exit": 5.55 },
+  "s2": { "caption1": 6.9, "caption2": 8.5, "pressStart": 7.1, "pressStep": 0.31, "exit": 11.75 },
+  "s3": { "arrive": 12.4, "caption": 13.0, "pills": [13.6, 13.85, 14.1, 14.35], "exit": 18.55 },
+  "s4": { "arrive": 19.3, "caption": 19.9, "sweep": 22.2, "sweepStep": 0.24, "pill": 24.0, "exit": 25.6 },
+  "s5": { "arrive": 26.2, "caption": 26.6, "typeStart": 27.1, "typeEnd": 29.2, "card": 29.55, "pill": 30.35, "exit": 32.2 },
+  "s6": { "pull": 32.4, "chips": 33.1, "chipStep": 0.2, "exit": 35.75 },
+  "s7": { "fly": 35.8, "impact": 36.6, "logo": 37.3, "url": 38.1, "version": 38.5, "end": 42.0 }
+}
