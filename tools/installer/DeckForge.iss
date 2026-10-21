@@ -1,5 +1,5 @@
 ﻿; Installateur Windows de DeckForge (Inno Setup 6.x ou 7.x).
-; Compilation : tools\Build-Installer.ps1 -Version 0.8.7   (ou ISCC /DAppVersion=0.8.7 /DSourceDir=...)
+; Compilation : tools\Build-Installer.ps1 -Version 0.8.8   (ou ISCC /DAppVersion=0.8.8 /DSourceDir=...)
 ; Installation par utilisateur, sans droits administrateur, dans %LOCALAPPDATA%\Programs\DeckForge.
 ; Les données de l'utilisateur (config.json, preferences.json, variables.json, assets\, plugins\)
 ; vivent à côté de l'exécutable : elles ne sont ni écrasées à la mise à jour ni supprimées à la
@@ -71,6 +71,7 @@ Source: "{#RepoDir}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoDir}\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#RepoDir}\docs\*.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "{#RepoDir}\docs\*.png"; DestDir: "{app}\docs"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#RepoDir}\docs\images\*.png"; DestDir: "{app}\docs\images"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{autoprograms}\DeckForge"; Filename: "{app}\deckforge.exe"; WorkingDir: "{app}"

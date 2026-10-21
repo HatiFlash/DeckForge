@@ -28,7 +28,8 @@ jobs:
           $name = "DeckForge-$version"
           New-Item -ItemType Directory -Force dist/$name/docs | Out-Null
           Copy-Item target/release/deckforge.exe, target/release/deckforge-mcp.exe, LICENSE, THIRD-PARTY-NOTICES.txt, README.md dist/$name/
-          Copy-Item docs/MCP.md, docs/PLUGINS-COMPATIBILITE.md dist/$name/docs/
+          Copy-Item docs/MCP.md, docs/PLUGINS-COMPATIBILITE.md, docs/DESIGN.md dist/$name/docs/
+          Copy-Item docs/images -Destination dist/$name/docs/images -Recurse
           Compress-Archive -Path dist/$name/* -DestinationPath dist/$name-Windows.zip
           git archive --format=zip --prefix="$name/" -o dist/$name-source.zip HEAD
           $hashes = [ordered]@{}

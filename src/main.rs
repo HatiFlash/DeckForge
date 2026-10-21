@@ -19,6 +19,7 @@ mod gesture;
 mod icons;
 mod key_icons;
 mod deck_chassis;
+mod demo_profile;
 mod iconset;
 mod motion;
 mod key_render;

@@ -1040,6 +1040,25 @@ impl App {
         self.selected = 0;
         self.edited();
     }
+    /// Ajoute (ou réinitialise) le profil de démonstration, sans toucher aux autres profils.
+    pub(super) fn add_demo_profile(&mut self) {
+        let dir = self.path.parent().unwrap().join("assets").join("demo");
+        let profile = match crate::demo_profile::write_media(&dir) {
+            Ok((photo, animation)) => crate::demo_profile::profile(&photo, &animation),
+            Err(e) => { self.fail(format!("Profil de démonstration non créé : {e}")); return; }
+        };
+        let index = match self.config.profiles.iter().position(|p| p.name == crate::demo_profile::NAME) {
+            Some(i) => { self.config.profiles[i] = profile; i }
+            None if self.config.profiles.len() < 64 => { self.config.profiles.push(profile); self.config.profiles.len() - 1 }
+            None => { self.fail("64 profils au maximum : supprime un profil pour ajouter la démonstration.".into()); return; }
+        };
+        self.config.active = index;
+        self.base_profile = index;
+        self.auto_active = false;
+        self.config.reset_navigation();
+        self.selected = 0;
+        self.edited();
+    }
     fn start_dialog(&mut self, task: impl FnOnce() -> Option<DialogEffect> + Send + 'static) {
         if self.dialog_pending { return; }
         self.dialog_pending = true;
@@ -1507,6 +1526,13 @@ impl App {
                                         }
                                         if ui.button("Applications associées").clicked() {
                                             self.show_apps = true;
+                                            ui.close_menu();
+                                        }
+                                        if ui.button("Profil de démonstration (15 touches)")
+                                            .on_hover_text("Ajoute ou réinitialise « DeckForge Demo / README ». Tes autres profils ne sont pas modifiés.")
+                                            .clicked()
+                                        {
+                                            self.add_demo_profile();
                                             ui.close_menu();
                                         }
                                     });
@@ -2977,7 +3003,7 @@ impl App {
                     theme::key_face(ui.painter(), rect, true, false);
                     let lcd = rect.shrink(5.0);
                     match &preview {
-                        Ok(texture) => { ui.painter().image(texture.id(), lcd, egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)), Color32::WHITE); },
+                        Ok(texture) => theme::rounded_image(ui.painter(), texture.id(), lcd, theme::KEY_LCD_RADIUS),
                         Err(_) => { ui.painter().text(lcd.center(), egui::Align2::CENTER_CENTER, "Aperçu indisponible", egui::FontId::proportional(9.0), p.muted); },
                     }
                     if roomy {
@@ -3202,6 +3228,7 @@ impl App {
                                                 None => theme::key_face(ui.painter(), r, selected || hovering, flashing),
                                             }
                                             let lcd = chassis.map_or(r.shrink(5.0), |s| crate::deck_chassis::lcd(r, s));
+                                            let lcd_radius = chassis.map_or(theme::KEY_LCD_RADIUS, |s| crate::deck_chassis::lcd_radius(r, s));
                                             match self.key_previews.texture(
                                                 ctx,
                                                 i,
@@ -3209,17 +3236,7 @@ impl App {
                                                 self.config.image_size,
                                                 face.as_ref(),
                                             ) {
-                                                Ok(texture) => {
-                                                    ui.painter().image(
-                                                        texture.id(),
-                                                        lcd,
-                                                        egui::Rect::from_min_max(
-                                                            egui::Pos2::ZERO,
-                                                            egui::pos2(1.0, 1.0),
-                                                        ),
-                                                        Color32::WHITE,
-                                                    );
-                                                }
+                                                Ok(texture) => theme::rounded_image(ui.painter(), texture.id(), lcd, lcd_radius),
                                                 Err(error) => {
                                                     ui.painter().text(
                                                         lcd.center(),
@@ -4859,7 +4876,11 @@ fn edit_step(
         }
         Step::Hotkey { keys } => {
             ui.horizontal(|ui| {
-                changed |= ui.text_edit_singleline(keys).changed();
+                // Le champ laisse la place au bouton : panneau de propriétés étroit compris.
+                let button = ui.fonts(|f| f.layout_no_wrap("Enregistrer…".into(), egui::TextStyle::Button.resolve(ui.style()), Color32::WHITE).size().x)
+                    + ui.spacing().button_padding.x * 2.0;
+                let width = (ui.available_width() - button - ui.spacing().item_spacing.x).max(60.0);
+                changed |= ui.add(egui::TextEdit::singleline(keys).desired_width(width)).changed();
                 if ui.button("Enregistrer…").clicked() {
                     *record = true;
                 }

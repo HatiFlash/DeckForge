@@ -293,10 +293,17 @@ impl Harness {
         self.frame(size, vec![button(pos, false)]);
     }
     fn png(&self, size: Vec2, output: egui::FullOutput, path: &std::path::Path) {
-        let width = size.x as u32;
-        let height = size.y as u32;
+        self.raster(size, output).save(path).unwrap();
+    }
+    /// Rastérise à la résolution physique (taille logique × pixels_per_point), avec un
+    /// échantillonnage bilinéaire comme le filtre LINEAR du rendu GPU : pas d'agrandissement après coup.
+    fn raster(&self, size: Vec2, output: egui::FullOutput) -> image::RgbaImage {
+        let ppp = output.pixels_per_point;
+        let width = (size.x * ppp).round() as u32;
+        let height = (size.y * ppp).round() as u32;
+        let size = vec2(width as f32, height as f32);
         let mut image = image::RgbaImage::from_pixel(width, height, image::Rgba([24, 26, 31, 255]));
-        let primitives = self.ctx.tessellate(output.shapes, output.pixels_per_point);
+        let primitives = self.ctx.tessellate(output.shapes, ppp);
         for primitive in primitives {
             let egui::epaint::Primitive::Mesh(mesh) = primitive.primitive else {
                 continue;
@@ -304,10 +311,12 @@ impl Harness {
             let Some(texture) = self.textures.get(&mesh.texture_id) else {
                 continue;
             };
+            let clip = Rect::from_min_max(primitive.clip_rect.min * ppp, primitive.clip_rect.max * ppp);
             for triangle in mesh.indices.chunks_exact(3) {
-                let a = mesh.vertices[triangle[0] as usize];
-                let b = mesh.vertices[triangle[1] as usize];
-                let c = mesh.vertices[triangle[2] as usize];
+                let scaled = |i: u32| { let mut v = mesh.vertices[i as usize]; v.pos = (v.pos.to_vec2() * ppp).to_pos2(); v };
+                let a = scaled(triangle[0]);
+                let b = scaled(triangle[1]);
+                let c = scaled(triangle[2]);
                 let cross = |u: egui::Vec2, v: egui::Vec2| u.x * v.y - u.y * v.x;
                 let area = cross(b.pos - a.pos, c.pos - a.pos);
                 if area.abs() < 0.00001 {
@@ -323,7 +332,7 @@ impl Harness {
                         a.pos.y.max(b.pos.y).max(c.pos.y),
                     ),
                 )
-                .intersect(primitive.clip_rect)
+                .intersect(clip)
                 .intersect(Rect::from_min_size(egui::Pos2::ZERO, size));
                 for y in (bounds.top().floor().max(0.0) as u32)
                     ..(bounds.bottom().ceil().min(height as f32) as u32)
@@ -339,15 +348,17 @@ impl Harness {
                             continue;
                         }
                         let uv = a.uv.to_vec2() * wa + b.uv.to_vec2() * wb + c.uv.to_vec2() * wc;
-                        let tx = (uv.x * texture.size[0] as f32)
-                            .floor()
-                            .clamp(0.0, (texture.size[0] - 1) as f32)
-                            as usize;
-                        let ty = (uv.y * texture.size[1] as f32)
-                            .floor()
-                            .clamp(0.0, (texture.size[1] - 1) as f32)
-                            as usize;
-                        let tex = texture[(tx, ty)].to_array();
+                        let (tw, th) = (texture.size[0], texture.size[1]);
+                        let fx = (uv.x * tw as f32 - 0.5).clamp(0.0, (tw - 1) as f32);
+                        let fy = (uv.y * th as f32 - 0.5).clamp(0.0, (th - 1) as f32);
+                        let (x0, y0) = (fx.floor() as usize, fy.floor() as usize);
+                        let (x1, y1) = ((x0 + 1).min(tw - 1), (y0 + 1).min(th - 1));
+                        let (dx, dy) = (fx - x0 as f32, fy - y0 as f32);
+                        let mut tex = [0.0_f32; 4];
+                        for (px, py, w) in [(x0, y0, (1.0 - dx) * (1.0 - dy)), (x1, y0, dx * (1.0 - dy)), (x0, y1, (1.0 - dx) * dy), (x1, y1, dx * dy)] {
+                            let t = texture[(px, py)].to_array();
+                            for ch in 0..4 { tex[ch] += t[ch] as f32 * w; }
+                        }
                         let ac = a.color.to_array();
                         let bc = b.color.to_array();
                         let cc = c.color.to_array();
@@ -368,7 +379,7 @@ impl Harness {
                 }
             }
         }
-        image.save(path).unwrap();
+        image
     }
 }
 fn button(pos: egui::Pos2, pressed: bool) -> Input {
@@ -1034,6 +1045,152 @@ fn fully_visible(shapes: &[egui::epaint::ClippedShape], text: &str) -> bool {
         }
     }
     shapes.iter().any(|s| find(&s.shape, text).is_some_and(|r| s.clip_rect.expand(0.5).contains_rect(r)))
+}
+
+/// Laisse le temps au décodage des GIF (fil d'arrière-plan) puis renvoie une image stable.
+fn settle(h: &mut Harness, size: Vec2) -> egui::FullOutput {
+    for _ in 0..30 {
+        h.frame(size, vec![]);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    h.warm(size)
+}
+
+fn demo_harness() -> Harness {
+    let mut h = Harness::new();
+    h.app.add_demo_profile();
+    h
+}
+
+#[test]
+fn demo_profile_is_added_beside_user_profiles_and_resets_by_name() {
+    let mut h = Harness::new();
+    h.app.config.profiles[0].keys[3].label = "Mon réglage".into();
+    let before = serde_json::to_value(&h.app.config.profiles).unwrap();
+    h.app.add_demo_profile();
+    h.app.add_demo_profile();
+    let after = serde_json::to_value(&h.app.config.profiles).unwrap();
+    assert_eq!(after.as_array().unwrap().len(), before.as_array().unwrap().len() + 1, "un seul profil de démonstration");
+    assert_eq!(after.as_array().unwrap()[..before.as_array().unwrap().len()], before.as_array().unwrap()[..], "profils de l'utilisateur intacts");
+    assert_eq!(h.app.config.profiles[h.app.config.active].name, crate::demo_profile::NAME);
+    assert!(h.app.config.keys().iter().take(15).all(|k| !k.steps.is_empty()));
+    let size = vec2(1380.0, 900.0);
+    settle(&mut h, size);
+    assert_eq!(h.app.drop_targets.len(), 15);
+    h.app.navigate(Step::PageNext);
+    h.warm(size);
+    assert_eq!(h.app.config.page, "demo-page-2");
+}
+
+/// Captures du README : vraie interface rendue hors écran à 2560 px de large (1600 × 1000 points à 160 %).
+#[test]
+fn readme_captures_from_the_demo_profile() {
+    let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") else { return };
+    let dir = PathBuf::from(dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let size = vec2(1600.0, 1000.0);
+    let shot = |h: &mut Harness, name: &str| {
+        h.ctx.set_pixels_per_point(1.6);
+        let out = settle(h, size);
+        let shapes = out.shapes.clone();
+        h.png(size, out, &dir.join(name));
+        shapes
+    };
+    let mut h = demo_harness();
+    h.app.selected = 8;
+    shot(&mut h, "deckforge-main.png");
+    let mut h = demo_harness();
+    h.app.show_workflow = true;
+    h.app.preferences.workshop_advanced = false;
+    h.app.selected = 0;
+    h.warm(size); // l'atelier oublie la sélection quand la touche ciblée change
+    h.ctx.data_mut(|d| d.insert_temp(egui::Id::new("workshop_path"), vec![1_usize]));
+    let shapes = shot(&mut h, "deckforge-block-editor.png");
+    assert!(fully_visible(&shapes, "Enregistrer…"), "bouton d'enregistrement du raccourci coupé");
+    let mut h = demo_harness();
+    h.app.show_workflow = true;
+    h.app.selected = 5;
+    h.app.workshop_chat.open = true;
+    h.app.workshop_chat_send("ouvre le navigateur brave s'il est pas ouvert et si il deja ouvert ouvre un nouvel onglet".into(), None);
+    assert!(matches!(h.app.workshop_chat.pending.as_ref().expect("proposition réelle").proposal.steps.as_slice(), [Step::IfCondition { .. }]));
+    shot(&mut h, "deckforge-assistant.png");
+    let mut h = demo_harness();
+    let photo = PathBuf::from(&h.app.config.keys()[8].image);
+    let page = h.app.config.page.clone();
+    h.app.open_crop_editor(h.app.config.active, page, 8, photo, 126);
+    assert!(h.app.crop_session.is_some(), "recadrage ouvert");
+    shot(&mut h, "deckforge-media-crop.png");
+}
+
+/// Images clés de la vidéo de présentation (1920 × 1080) : uniquement des états réels de l'interface.
+#[test]
+#[ignore = "produit les images de la vidéo ; DECKFORGE_VIDEO_OUTPUT requis"]
+fn demo_video_keyframes() {
+    let dir = PathBuf::from(std::env::var_os("DECKFORGE_VIDEO_OUTPUT").expect("DECKFORGE_VIDEO_OUTPUT"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let size = vec2(1280.0, 720.0);
+    let shot = |h: &mut Harness, name: &str| {
+        h.ctx.set_pixels_per_point(1.5);
+        let out = settle(h, size);
+        h.png(size, out, &dir.join(format!("{name}.png")));
+    };
+    let mut h = demo_harness();
+    shot(&mut h, "01-main");
+    h.app.navigate(Step::PageNext);
+    shot(&mut h, "02-page-2");
+    h.app.navigate(Step::PagePrevious);
+    h.app.selected = 8;
+    shot(&mut h, "03-photo-key");
+    h.app.selected = 0;
+    h.app.show_workflow = true;
+    h.app.preferences.workshop_advanced = false;
+    h.warm(size);
+    h.ctx.data_mut(|d| d.insert_temp(egui::Id::new("workshop_path"), vec![1_usize]));
+    shot(&mut h, "04-workshop");
+    let path = crate::workshop_ops::apply(&mut h.app.config.keys_mut()[0].steps,
+        crate::workshop_ops::Edit::Insert(vec![4], Step::Delay { ms: 500 })).expect("bloc inséré");
+    h.ctx.data_mut(|d| d.insert_temp(egui::Id::new("workshop_path"), path.clone()));
+    shot(&mut h, "05-block-added");
+    if let Some(Step::Delay { ms }) = h.app.config.keys_mut()[0].steps.get_mut(4) { *ms = 1200; }
+    shot(&mut h, "06-block-edited");
+    h.app.workshop_chat.open = true;
+    h.app.workshop_chat_send("ouvre le navigateur brave s'il est pas ouvert et si il deja ouvert ouvre un nouvel onglet".into(), None);
+    shot(&mut h, "07-assistant");
+    let mut h = demo_harness();
+    let photo = PathBuf::from(&h.app.config.keys()[8].image);
+    let page = h.app.config.page.clone();
+    h.app.open_crop_editor(h.app.config.active, page, 8, photo, 126);
+    shot(&mut h, "08-media-crop");
+}
+
+#[test]
+fn key_media_is_masked_by_the_rounded_lcd_corners() {
+    // Fond plein jusqu'aux bords : aucun angle carré ne doit dépasser de l'arrondi de la touche.
+    let mut failures = Vec::new();
+    for dpi in [1.0_f32, 1.5, 2.0] {
+        let mut h = Harness::new();
+        h.ctx.set_pixels_per_point(dpi);
+        let size = vec2(1380.0, 900.0);
+        h.app.config.keys_mut()[0] = Key { label: String::new(), color: [230, 20, 20], background: true, steps: vec![Step::Delay { ms: 1 }], ..Default::default() };
+        h.app.selected = 0;
+        let out = h.warm(size);
+        let face = h.app.drop_targets.iter().find(|(_, k)| *k == 0).unwrap().0;
+        let lcd = crate::deck_chassis::lcd(face, face.width() / crate::deck_chassis::FACE_SIZE.x);
+        let img = h.raster(size, out);
+        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+            std::fs::create_dir_all(&dir).unwrap();
+            let r = Rect::from_center_size(face.center(), face.size() * 1.15);
+            let crop = image::imageops::crop_imm(&img, (r.left() * dpi) as u32, (r.top() * dpi) as u32, (r.width() * dpi) as u32, (r.height() * dpi) as u32).to_image();
+            crop.save(PathBuf::from(dir).join(format!("key-corners-{}.png", (dpi * 100.0) as u32))).unwrap();
+        }
+        let px = |p: egui::Pos2| *img.get_pixel((p.x * dpi) as u32, (p.y * dpi) as u32);
+        let red = |c: image::Rgba<u8>| c.0[0] > 150 && c.0[1] < 90 && c.0[2] < 90;
+        if !(red(px(lcd.left_center() + vec2(2.0, 0.0))) && red(px(lcd.center_top() + vec2(0.0, 2.0)))) { failures.push(format!("média absent des bords à {dpi}")); }
+        for corner in [lcd.left_top() + vec2(1.0, 1.0), lcd.right_top() + vec2(-1.0, 1.0), lcd.left_bottom() + vec2(1.0, -1.0), lcd.right_bottom() + vec2(-1.0, -1.0)] {
+            if red(px(corner)) { failures.push(format!("angle carré du média visible à {dpi} : {corner:?}")); }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
 }
 
 #[test]

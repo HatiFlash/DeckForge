@@ -1,6 +1,6 @@
 [package]
 name = "deckforge"
-version = "0.8.7"
+version = "0.8.8"
 edition = "2021"
 license = "MIT"
 description = "Independent Windows macro controller for FIFINE D6 3142:0060"

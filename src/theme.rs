@@ -7,6 +7,16 @@ pub const CYAN: Color32 = Color32::from_rgb(34, 195, 238);
 pub const WARNING: Color32 = Color32::from_rgb(245, 173, 66);
 pub const DANGER: Color32 = Color32::from_rgb(242, 95, 112);
 
+/// Jetons de mise en page DeckForge (voir docs/DESIGN.md) : espacements et rayons partagés.
+pub const SPACE: [f32; 6] = [4.0, 8.0, 12.0, 16.0, 24.0, 32.0];
+/// Rayons : contrôle (bouton, champ), menu/carte, fenêtre/panneau.
+pub const RADIUS_SM: u8 = 8;
+pub const RADIUS_MD: u8 = 12;
+pub const RADIUS_LG: u8 = 14;
+/// Écran d'une touche hors châssis SVG (face `key_face` de rayon 10, écran inséré de 5) :
+/// les fonds et médias sont masqués à ce rayon, concentrique à la face.
+pub const KEY_LCD_RADIUS: f32 = 6.0;
+
 fn decode_icon(bytes: &[u8]) -> egui::IconData {
     match image::load_from_memory(bytes) {
         Ok(image) => {
@@ -80,6 +90,48 @@ pub fn rounded_gradient(
     let n = mesh.vertices.len() as u32 - 1;
     for i in 1..=n {
         mesh.add_triangle(0, i, if i == n { 1 } else { i + 1 });
+    }
+    p.add(egui::Shape::mesh(mesh));
+}
+
+/// Dessine une texture masquée par un rectangle arrondi (fond, image, image de GIF ou vidéo).
+/// `clip_rect` d'egui est rectangulaire : le masque est donc la géométrie elle-même, un
+/// éventail de triangles texturés dont les UV suivent la position. Une couronne d'un pixel
+/// physique passe de l'opacité à la transparence pour lisser le bord sans halo coloré :
+/// aucune texture ni masque n'est recalculé image après image.
+pub fn rounded_image(p: &egui::Painter, texture: egui::TextureId, r: egui::Rect, radius: f32) {
+    let radius = radius.clamp(0.0, r.width().min(r.height()) * 0.5);
+    let feather = 1.0 / p.ctx().pixels_per_point();
+    let uv = |pos: egui::Pos2| egui::pos2((pos.x - r.left()) / r.width(), (pos.y - r.top()) / r.height());
+    let segments = ((radius * p.ctx().pixels_per_point()).sqrt().ceil() as usize).clamp(2, 12);
+    let mut mesh = egui::Mesh::with_texture(texture);
+    let inner = r.shrink(feather * 0.5);
+    let corner_radius = (radius - feather * 0.5).max(0.0);
+    mesh.vertices.push(egui::epaint::Vertex { pos: r.center(), uv: uv(r.center()), color: Color32::WHITE });
+    let mut ring = Vec::new();
+    for (center, start) in [
+        (inner.left_top() + Vec2::splat(corner_radius), std::f32::consts::PI),
+        (inner.right_top() + Vec2::new(-corner_radius, corner_radius), std::f32::consts::PI * 1.5),
+        (inner.right_bottom() - Vec2::splat(corner_radius), 0.0),
+        (inner.left_bottom() + Vec2::new(corner_radius, -corner_radius), std::f32::consts::FRAC_PI_2),
+    ] {
+        for i in 0..=segments {
+            let dir = Vec2::angled(start + i as f32 * std::f32::consts::FRAC_PI_2 / segments as f32);
+            ring.push((center + dir * corner_radius, dir));
+        }
+    }
+    let n = ring.len() as u32;
+    for &(pos, dir) in &ring {
+        mesh.vertices.push(egui::epaint::Vertex { pos, uv: uv(pos), color: Color32::WHITE });
+        let outer = pos + dir * feather;
+        mesh.vertices.push(egui::epaint::Vertex { pos: outer, uv: uv(outer), color: Color32::TRANSPARENT });
+    }
+    for i in 0..n {
+        let j = (i + 1) % n;
+        let (a, a_out, b, b_out) = (1 + 2 * i, 2 + 2 * i, 1 + 2 * j, 2 + 2 * j);
+        mesh.add_triangle(0, a, b);
+        mesh.add_triangle(a, a_out, b_out);
+        mesh.add_triangle(a, b_out, b);
     }
     p.add(egui::Shape::mesh(mesh));
 }
@@ -332,11 +384,11 @@ pub fn apply(ctx: &egui::Context, dark: bool) {
     style.visuals.error_fg_color = p.danger;
     style.visuals.selection.bg_fill = p.wash;
     style.visuals.selection.stroke = Stroke::new(1.0_f32, p.accent);
-    style.visuals.window_corner_radius = egui::CornerRadius::same(14);
+    style.visuals.window_corner_radius = egui::CornerRadius::same(RADIUS_LG);
     style.visuals.window_stroke = Stroke::new(1.0_f32, p.border);
-    style.visuals.menu_corner_radius = egui::CornerRadius::same(12);
+    style.visuals.menu_corner_radius = egui::CornerRadius::same(RADIUS_MD);
 
-    style.visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(12);
+    style.visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(RADIUS_MD);
     style.visuals.widgets.noninteractive.bg_fill = p.surface;
     style.visuals.widgets.noninteractive.weak_bg_fill = p.card;
     style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, p.border);
@@ -348,7 +400,7 @@ pub fn apply(ctx: &egui::Context, dark: bool) {
         &mut style.visuals.widgets.active,
         &mut style.visuals.widgets.open,
     ] {
-        widget.corner_radius = egui::CornerRadius::same(8);
+        widget.corner_radius = egui::CornerRadius::same(RADIUS_SM);
         widget.bg_stroke = Stroke::new(1.0_f32, p.line);
         widget.fg_stroke = Stroke::new(1.0_f32, p.ink);
     }
@@ -368,7 +420,7 @@ pub fn apply(ctx: &egui::Context, dark: bool) {
     style.visuals.widgets.open.weak_bg_fill = p.hover;
     style.visuals.widgets.open.bg_stroke = Stroke::new(1.0_f32, p.accent);
 
-    style.spacing.item_spacing = Vec2::new(8.0, 8.0);
+    style.spacing.item_spacing = Vec2::splat(SPACE[1]);
     style.spacing.button_padding = Vec2::new(10.0, 6.0);
     style.spacing.interact_size.y = 32.0;
 

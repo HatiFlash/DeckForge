@@ -64,6 +64,12 @@ pub fn lcd(face: Rect, scale: f32) -> Rect {
     Rect::from_center_size(face.center(), Vec2::splat(side))
 }
 
+/// Rayon de l'écran d'une touche : concentrique à l'arrondi de la face (même centre de courbure).
+pub fn lcd_radius(face: Rect, scale: f32) -> f32 {
+    let inset = (face.height() - lcd(face, scale).height()) * 0.5;
+    (FACE_RADIUS * scale - inset).max(4.0 * scale)
+}
+
 fn rasterize(width_px: u32) -> Option<Arc<egui::ColorImage>> {
     static CACHE: OnceLock<Mutex<HashMap<u32, Arc<egui::ColorImage>>>> = OnceLock::new();
     let cache = CACHE.get_or_init(Default::default);

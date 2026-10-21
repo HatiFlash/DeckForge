@@ -1,24 +1,82 @@
 # DeckForge
 
 <div align="center">
-  <img src="res/branding/deckforge-logo.png" width="120" alt="Logo DeckForge"><br>
-  <h3>Le centre de contrôle macro & streamdeck open-source, ultra-rapide et sécurisé pour Windows</h3>
+  <img src="res/branding/deckforge-logo.png" width="112" alt="Logo DeckForge"><br>
+  <strong>Logiciel libre pour Windows qui pilote le pavé FIFINE AmpliGame D6 : touches, macros, médias et plugins, sans le logiciel officiel.</strong>
+  <br><br>
 
-  [![Licence MIT](https://img.shields.io/badge/Licence-MIT-blue.svg)](LICENSE)
-  [![Rust](https://img.shields.io/badge/Rust-1.80%2B-orange.svg)](https://www.rust-lang.org/)
-  [![Tests](https://img.shields.io/badge/Tests-378%20pass%C3%A9s-brightgreen.svg)]()
-  [![Version](https://img.shields.io/badge/Release-v0.8.7-purple.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.7)
+  [![Release](https://img.shields.io/badge/Release-v0.8.8-3478F6.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.8)
+  [![Licence MIT](https://img.shields.io/badge/Licence-MIT-22C58B.svg)](LICENSE)
 </div>
 
----
+![DeckForge : profil de démonstration, les 15 touches du D6 remplies](docs/images/deckforge-main.png)
 
-**DeckForge** est une application indépendante écrite en **Rust** (egui + wgpu DirectX 12 / Vulkan) conçue pour piloter vos claviers macro physiques avec un niveau de performance, de personnalisation et de sécurité inégalé. Fini les logiciels propriétaires lourds et fermés : DeckForge vous offre une réactivité instantanée, un atelier d'automatisation visuel complet sans dépendance externe, un connecteur IA (MCP) natif et la compatibilité avec l'écosystème de plugins Elgato Stream Deck.
+<sub>Capture réelle de l'interface (rendu hors écran à 2560 × 1600, profil « DeckForge Demo / README » fourni avec l'application, aucun périphérique connecté).</sub>
 
-![Interface principale de DeckForge](docs/interface.png)
+## Vidéo de présentation
 
----
+[![Vidéo de présentation de DeckForge (30 s)](docs/media/deckforge-demo-poster.png)](docs/media/deckforge-demo.mp4)
 
-## 🆕 Nouveautés 0.8.7
+30 secondes, 1920 × 1080, sans son : profil, pages, atelier de blocs, assistant et recadrage. Les images proviennent de l'interface réelle ([procédure](scripts/media/README.md)).
+
+## Points clés
+
+- **15 touches personnalisées** : icônes, couleurs, images, GIF et vidéos courtes, avec un aperçu identique à l'écran du D6.
+- **Profils, pages et dossiers**, avec changement automatique de profil selon l'application au premier plan.
+- **Atelier de blocs** : macros sans script (raccourcis, texte, applications, médias, fenêtres, conditions, répétitions, variables), simulation avant exécution réelle.
+- **Assistant local** : une phrase en français ou en anglais devient des blocs, montrés en aperçu ; rien n'est inséré sans validation. IA locale facultative, désactivée par défaut.
+- **Plugins Stream Deck / OpenAction** : import de `.streamDeckPlugin` et `.sdPlugin`, réglages HTML isolés ([compatibilité](docs/PLUGINS-COMPATIBILITE.md)).
+- **Serveur MCP** pour Claude, Codex ou Cursor, avec validation humaine de chaque modification ([MCP](docs/MCP.md)).
+
+## Compatibilité
+
+| Élément | État |
+|---|---|
+| Windows 10 et 11, 64 bits | Disponible (installateur sans droits administrateur, ou ZIP portable) |
+| FIFINE AmpliGame D6 (15 touches) | Disponible, périphérique principal du projet |
+| Elgato Stream Deck, Mirabox, AJAZZ / Stream Dock | Expérimental |
+| Plugins Stream Deck | Disponible pour les plugins non chiffrés ; plugins Elgato chiffrés non pris en charge |
+| IA locale (llama.cpp ou Ollama) | Facultatif, désactivé par défaut |
+| macOS, Linux | Non pris en charge |
+
+Fermez le logiciel officiel FIFINE Control Deck : il garde l'accès USB exclusif au D6.
+
+## Installation rapide
+
+1. Téléchargez **`DeckForge-0.8.8-Setup.exe`** depuis la [dernière release](https://github.com/HatiFlash/DeckForge/releases/latest) et lancez-le (aucun droit administrateur requis), ou extrayez `DeckForge-0.8.8-Windows.zip`.
+   - Vous utilisiez la version portable ? DeckForge fermé, copiez `config.json`, `preferences.json`, `variables.json` et les dossiers `assets` et `plugins` vers `%LOCALAPPDATA%\Programs\DeckForge`.
+2. Lancez DeckForge depuis le menu Démarrer et branchez le D6.
+3. Pour découvrir l'application sans toucher à vos profils : **Profils → ••• → Profil de démonstration (15 touches)**. Ce profil se réinitialise par la même commande et peut être supprimé comme un autre.
+4. Glissez une action de la bibliothèque sur une touche, ou ouvrez l'**Atelier de blocs**.
+
+## Galerie
+
+| Atelier de blocs | Assistant local |
+|---|---|
+| ![Macro de 5 blocs et propriétés du raccourci sélectionné](docs/images/deckforge-block-editor.png) | ![Phrase convertie en condition Si / Sinon, en aperçu](docs/images/deckforge-assistant.png) |
+| Macro de démonstration en cinq blocs ; le panneau de droite règle le bloc choisi. | Réponse réelle des règles locales : condition « Brave ouvert ? », aperçu avant ajout. |
+
+| Recadrage d'image | Coins des touches (0.8.8) |
+|---|---|
+| ![Recadrage du paysage de démonstration pour l'écran 126 × 126](docs/images/deckforge-media-crop.png) | ![Avant](docs/images/key-corners-before.png) ![Après](docs/images/key-corners-after.png) |
+| Aperçu fidèle sur la touche ; le fichier d'origine est conservé. | Avant / après : le fond suit désormais l'arrondi de la touche. |
+
+## Documentation
+
+[Identité visuelle](docs/DESIGN.md) · [MCP et IA](docs/MCP.md) · [Plugins : architecture](docs/PLUGINS-ARCHITECTURE.md) et [compatibilité](docs/PLUGINS-COMPATIBILITE.md) · [Import Elgato](docs/ELGATO.md) · [Tests périphériques](docs/TEST-PERIPHERIQUES.md) · [Médias de présentation](scripts/media/README.md)
+
+**Confidentialité :** tout fonctionne hors ligne. L'IA locale reste sur le PC ; l'IA connectée et les plugins réseau ne s'activent qu'avec votre accord explicite.
+
+## Historique des versions
+
+### Nouveautés 0.8.8
+
+- **Coins des touches corrigés** : fonds, images, GIF et vidéos sont masqués à l'arrondi de l'écran de chaque touche (grille et inspecteur), net jusqu'à 200 %. L'image envoyée au D6 ne change pas.
+- **Profil de démonstration** « DeckForge Demo / README » : 15 touches remplies avec des actions existantes et des médias générés par l'application, ajouté sans modifier vos profils.
+- **README et identité visuelle** : captures réelles en 2560 × 1600, vidéo de présentation reproductible, jetons de design documentés ([DESIGN.md](docs/DESIGN.md)).
+- Correction : dans les propriétés d'un raccourci clavier, le bouton « Enregistrer… » n'est plus coupé par un panneau étroit. Détails : [docs/RELEASE-0.8.8.md](docs/RELEASE-0.8.8.md).
+
+### Nouveautés 0.8.7
 
 - **Inspecteur des touches plugin** : « Réglages du plugin » et « Retirer le plugin » restent visibles ; l'identifiant long du plugin est raccourci à gauche (nom complet au survol).
 - **Atelier de blocs, mode Simple** : cliquer sur un bloc, y compris dans ALORS / SINON, ouvre toujours ses propriétés modifiables, même en fenêtre compacte quand la bibliothèque ou l'assistant était ouvert.
@@ -32,7 +90,7 @@
 
 *Captures du banc d'interface sans D6 ; le plugin Govee affiché est une donnée de test, pas un plugin installé.*
 
-## Nouveautés 0.8.6
+### Nouveautés 0.8.6
 
 - **Châssis 3D sans touches pré-dessinées** : le SVG ne dessine que le boîtier. Les 15 touches interactives egui remplissent mieux l'intérieur (faces 228 × 214 au lieu de 202 × 190 en coordonnées SVG), avec des marges et écarts réduits, un relief léger et un seul contour. La grille et le boîtier partagent le même repère et s'adaptent sans déformation à la fenêtre et au DPI.
 - Les exemples d'origine « Exemple macro » et « Lecture » utilisent désormais le fond neutre des autres touches, sans aplats violet/vert. Les profils déjà personnalisés, leurs images, GIF, vidéos et actions ne sont pas remplacés ; les nouvelles couleurs concernent les profils créés avec les valeurs d'origine.
@@ -44,7 +102,7 @@
 
 *Captures de l'interface en banc VM, sans FIFINE D6 connecté. La vue HiDPI contient des médias de test, pas des images ou profils de l'utilisateur.*
 
-## Nouveautés 0.8.5
+### Nouveautés 0.8.5
 
 - **Bibliothèque → Plugins** : le panneau défile sur toute sa hauteur, les cartes sont lisibles sur petite fenêtre, le bouton « Importer ce plugin » reste sous chaque plugin ; les détails longs sont repliés et l'audio natif reste accessible dans une section dédiée.
 - **Inspecteur de touche** : l'aperçu et « Changer l'icône » restent fixes à gauche ; seul le formulaire de propriétés défile à droite.
@@ -57,7 +115,7 @@
 
 *Captures du banc d’interface, sans périphérique connecté ; la carte de plugin utilise un exemple de test, pas un plugin installé.*
 
-## Nouveautés 0.8.4
+### Nouveautés 0.8.4
 
 - **Icônes multi-couleurs IconPark** dans toute l'interface, une couleur par famille d'actions (clavier, applications, web, logique, médias, audio, système, OBS, plugins, IA, images), lisibles en thème sombre comme en clair. Seuls les 66 pictogrammes utilisés sont embarqués ; le rendu des touches du périphérique ne change pas.
 - **Animations** : intro au démarrage, indicateur de chargement DeckForge pendant les attentes, point « En attente » animé pendant la connexion, fondus au changement de page, de profil et d'onglet. Réglage « Réduire les animations » dans Réglages → Général.
@@ -67,7 +125,7 @@
 |---|---|
 | ![Intro au démarrage](docs/intro.png) | ![Icônes IconPark multi-couleurs](docs/iconset.png) |
 
-## Nouveautés 0.8.3
+### Nouveautés 0.8.3
 
 - **Interface allégée** : un seul bouton « Assistant IA » (IA locale et IA connectée dans la même fenêtre, à onglets), « Arrêter les macros » visible seulement pendant une exécution, plus de badge rouge « Aucun périphérique » en double.
 - **Réglages en onglets** (Général, Périphérique, Diagnostic) : tiennent sur un écran de portable, valeurs avec unités.
@@ -76,7 +134,7 @@
 
 ![Réglages en onglets](docs/reglages.png)
 
-## Nouveautés 0.8.2
+### Nouveautés 0.8.2
 
 - **IA locale facultative pour l'assistant de l'atelier** (désactivée par défaut) : comprend les demandes libres en français et en anglais quand les règles intégrées ne suffisent pas (« garde cette fenêtre toujours au-dessus », « rappelle-moi de boire de l'eau »…). Tout reste sur le PC, chaque proposition est montrée en aperçu et rien n'est inséré sans validation.
 - **Deux moteurs** (bouton « IA : … » de la barre supérieure → IA locale) : moteur **intégré** installé en un clic (llama.cpp + Qwen2.5 1,5B, ≈1,2 Go, empreintes SHA-256 vérifiées) ou **Ollama** déjà installé (`ollama pull qwen2.5:1.5b`).
@@ -84,7 +142,7 @@
 
 ![Réglages de l'IA locale](docs/ia-locale.png)
 
-## Nouveautés 0.8.1
+### Nouveautés 0.8.1
 
 - **Installateur Windows** (`DeckForge-0.8.1-Setup.exe`) : sans droits administrateur, raccourcis menu Démarrer / Bureau, désinstallation propre ; profils, préférences, icônes et plugins conservés.
 - **Onglet Plugins corrigé** : plus de gel ni de rafale de fenêtres console à l'ouverture.
@@ -97,12 +155,12 @@
 
 ---
 
-## ✨ Fonctionnalités phares
+## Fonctionnalités en détail
 
 ### 🎮 Périphériques pris en charge
-- **FIFINE AmpliGame D6 (15 touches LCD)** : Prise en charge matérielle complète, retour visuel dynamique sur chaque touche, réglage de la luminosité et mise en veille automatique.
-- **Elgato Stream Deck (Testé & Compatible)** : Prise en charge native via le pilote HID direct pour les claviers Stream Deck physiques, avec synchronisation des touches et retour d'état en direct.
-- **Contrôleurs compatibles HID** : Architecture modulaire extensible pour d'autres modèles du marché (Mirabox, AJAZZ / Stream Dock).
+- **FIFINE AmpliGame D6 (15 touches LCD)** : périphérique principal, utilisé au quotidien ; retour visuel sur chaque touche, luminosité et mise en veille automatique.
+- **Elgato Stream Deck** (expérimental) : pilote HID direct, synchronisation des touches et retour d'état.
+- **Autres contrôleurs HID** (expérimental) : architecture prévue pour d'autres modèles (Mirabox, AJAZZ / Stream Dock).
 
 ### ⚡ Atelier de blocs natif (Sans scripts ni dépendance)
 Composez des automatisations puissantes en glissant-déposant des blocs directement dans l'interface, sans avoir besoin d'AutoHotkey :
@@ -152,21 +210,10 @@ DeckForge embarque un serveur MCP (**Model Context Protocol**) natif pour collab
 - **Contrôle humain préservé** : chaque proposition d'action formulée par l'IA apparaît en prévisualisation et attend votre validation explicite avant d'être appliquée sur votre profil.
 
 ### 🎨 Interface Studio & Rendu Direct wgpu
-- **Rendu matériel wgpu (DirectX 12 / Vulkan)** : Finis les scintillements et artefacts d'affichage rencontrés sur d'autres outils egui ; l'interface est parfaitement fluide à 60+ FPS.
+- **Rendu matériel wgpu (DirectX 12 / Vulkan)**, repli OpenGL si nécessaire.
 - **Pavé dynamique réactif** : La grille de touches s'adapte automatiquement à la résolution de votre écran et aux redimensionnements de la fenêtre.
 - **Galerie multimédia riche** : Prise en charge complète des images PNG, JPEG, SVG transparents, mais aussi des GIF animés et des vidéos courtes lues en boucle directement sur les touches LCD.
-- **Gestion multi-profils et dossiers** : Créez des profils dédiés par application avec basculement automatique au lancement de vos jeux ou logiciels créatifs, et organisez vos touches en sous-dossiers infinis.
-
----
-
-## 🚀 Prise en main rapide
-
-1. Téléchargez **`DeckForge-0.8.7-Setup.exe`** depuis la [page des Releases](https://github.com/HatiFlash/DeckForge/releases) et lancez-le (aucun droit administrateur requis). DeckForge s'installe dans `%LOCALAPPDATA%\Programs\DeckForge` avec un raccourci dans le menu Démarrer.
-   - Version portable : `DeckForge-0.8.7-Windows.zip`, à extraire dans le dossier de votre choix.
-   - Vous utilisiez déjà la version portable ? Copiez `config.json`, `preferences.json`, `variables.json` et les dossiers `assets` et `plugins` de l'ancien dossier vers le dossier d'installation, DeckForge fermé.
-2. Lancez DeckForge depuis le menu Démarrer.
-3. *Note importante pour les possesseurs du FIFINE D6 :* veillez à fermer le logiciel officiel FIFINE afin de libérer l'accès USB exclusif pour DeckForge.
-4. Glissez simplement une action depuis la bibliothèque vers la touche souhaitée, ou ouvrez l'**Atelier de blocs** pour composer votre première macro !
+- **Gestion multi-profils et dossiers** : Créez des profils dédiés par application avec basculement automatique au lancement de vos jeux ou logiciels créatifs, et organisez vos touches en dossiers.
 
 ---
 
@@ -186,7 +233,7 @@ cargo build --release --locked
 cargo test --locked
 
 # Construire l'installateur (Inno Setup 6 ou 7 requis)
-powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.7 -Build
+powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.8 -Build
 ```
 
 ---
