@@ -10,7 +10,7 @@
 
 ## Exécution
 - « Activer la fenêtre » : si Windows refuse le premier plan (touche pressée depuis le D6), DeckForge réessaie en partageant l'entrée avec la fenêtre active, puis laisse 120 ms à l'application avant le raccourci suivant. Un refus persistant reste signalé comme erreur.
-- Backport du correctif officiel egui #7928 dans `vendor/egui-wgpu` (egui/eframe restent en 0.31.1). Banc : sortie forcée après préparation des buffers, mémoire WGPU 3,77 Go en 9 s sans correctif, stable à 0,92 Mo avec. La minimisation ordinaire n'a pas reproduit la hausse sur la VM ; la cause des 35 Go signalés reste non démontrée.
+- Backport du correctif officiel egui #7928 dans `vendor/egui-wgpu` (egui/eframe restent en 0.31.1). Ces tampons sont alloués en RAM système, pas dans la mémoire de la carte graphique. Banc : sortie forcée après préparation des buffers ; sans correctif, les tampons WGPU atteignent 3,77 Go en 9 s et la mémoire privée (RAM) du processus passe d'environ 4,6 à 7,2 Go ; avec correctif, ils restent stables à 0,92 Mo. La minimisation ordinaire n'a pas reproduit la hausse sur la VM ; la cause des 35 Go signalés reste non démontrée.
 
 ## Limites
 - Vérifié sur la VM Windows sans FIFINE D6 ni Brave réel : 378 tests réussis, 0 échec, 18 ignorés, compilation release et installateur ; tests automatiques et captures du banc. L'effet de Ctrl+T dans Brave et l'activation depuis le vrai D6 restent à confirmer sur le PC.

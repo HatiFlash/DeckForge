@@ -24,7 +24,7 @@
 - **Atelier de blocs, mode Simple** : cliquer sur un bloc, y compris dans ALORS / SINON, ouvre toujours ses propriétés modifiables, même en fenêtre compacte quand la bibliothèque ou l'assistant était ouvert.
 - **Assistant (règles + IA locale)** : « ouvre Brave s'il n'est pas ouvert, et s'il est déjà ouvert ouvre un nouvel onglet » donne une vraie condition (onglet si Brave tourne, lancement sinon). Nouveaux raccourcis reconnus : rouvrir l'onglet fermé, onglet suivant/précédent, plein écran.
 - **Activation d'une application déjà ouverte** plus fiable depuis une touche du D6 (contournement documenté du verrou de premier plan de Windows, court délai avant le raccourci). Windows peut encore refuser : l'erreur reste affichée, jamais un faux succès.
-- **Mémoire GPU** : backport du correctif officiel egui #7928 (file WGPU soumise quand une image est abandonnée). Il corrige un défaut réel reproduit en banc ; la pointe de 35 Go observée sur un PC n'est pas démontrée comme venant de ce défaut. Voir [les notes de la 0.8.7](docs/RELEASE-0.8.7.md).
+- **Consommation de RAM** : backport du correctif officiel egui #7928. Quand une image du rendu graphique (WGPU) est abandonnée, ses tampons de transfert, alloués en RAM système, n'étaient pas libérés et s'accumulaient. Défaut réel reproduit en banc (mémoire privée du processus passée d'environ 4,6 à 7,2 Go en quelques secondes sans correctif, stable avec) ; la pointe de 35 Go observée sur un PC n'est pas démontrée comme venant de ce défaut. Voir [les notes de la 0.8.7](docs/RELEASE-0.8.7.md).
 
 | Touche plugin (1060 px) | Atelier Simple : propriétés d'un bloc imbriqué |
 |---|---|
