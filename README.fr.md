@@ -5,7 +5,7 @@
   <h1>NovyDeck</h1>
   <p>Logiciel libre pour Windows qui pilote les stream decks : touches, macros, médias et plugins, sans le logiciel officiel. Testé sur le FIFINE AmpliGame D6 et l'Elgato Stream Deck.</p>
   <p>
-    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.8.11"><img src="https://img.shields.io/badge/Release-v0.8.11-3478F6.svg" alt="Version 0.8.11"></a>
+    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.8.12"><img src="https://img.shields.io/badge/Release-v0.8.12-3478F6.svg" alt="Version 0.8.12"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/Licence-MIT-22C58B.svg" alt="Licence MIT"></a>
     <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-555.svg" alt="Windows 10/11">
   </p>
@@ -29,6 +29,8 @@ Un film de présentation de 40 s en 1920 × 1080 à 60 i/s, avec son, réalisé 
 - **Assistant local :** une phrase en français ou en anglais devient des blocs présentés en aperçu. Rien n'est inséré sans validation ; l'IA locale facultative est désactivée par défaut.
 - **Plugins Stream Deck / OpenAction :** import des archives `.streamDeckPlugin` et `.sdPlugin`, réglages HTML isolés ([compatibilité](docs/PLUGINS-COMPATIBILITE.md)).
 - **Serveur MCP :** utilisation avec Claude, Codex ou Cursor et validation humaine de chaque modification proposée ([guide MCP](docs/MCP.md)).
+- **Bibliothèque communautaire de plugins :** parcourez et installez les plugins partagés par la communauté depuis [novydeck-plugins](https://github.com/HatiFlash/novydeck-plugins). NovyDeck ne se connecte qu'avec votre accord, demande confirmation et vérifie l'empreinte SHA-256 de chaque téléchargement ; les plugins communautaires sont signalés comme non vérifiés.
+- **Rapport matériel :** vous testez une autre marque de deck ? **Signaler un problème avec mon deck** prépare un rapport anonymisé (avec aperçu) et ouvre une issue GitHub préremplie ; il suffit d'indiquer le modèle du deck et ce qui ne va pas.
 
 ## Compatibilité
 
@@ -42,13 +44,13 @@ Un film de présentation de 40 s en 1920 × 1080 à 60 i/s, avec son, réalisé 
 | IA locale (llama.cpp ou Ollama) | Facultative ; désactivée par défaut |
 | macOS, Linux | Non pris en charge |
 
-NovyDeck est conçu pour être compatible avec tous les decks. Pour l'instant, il a été testé sur le **FIFINE AmpliGame D6** et l'**Elgato Stream Deck**. Le D6 reposant sur une base matérielle Mirabox, les autres marques qui utilisent cette même base devraient aussi être compatibles, mais elles n'ont pas encore été testées : vos retours sont les bienvenus dans les [issues](https://github.com/HatiFlash/NovyDeck/issues).
+NovyDeck est conçu pour être compatible avec tous les decks. Pour l'instant, il a été testé sur le **FIFINE AmpliGame D6** et l'**Elgato Stream Deck**. Le D6 reposant sur une base matérielle Mirabox, les autres marques qui utilisent cette même base devraient aussi être compatibles, mais elles n'ont pas encore été testées : vos retours sont les bienvenus : utilisez **Signaler un problème avec mon deck** dans l'application, ou ouvrez une [issue](https://github.com/HatiFlash/NovyDeck/issues/new?template=hardware-report.yml).
 
 Fermez FIFINE Control Deck avant d'utiliser le D6 : ce logiciel conserve l'accès USB exclusif au périphérique.
 
 ## Démarrage rapide / installation
 
-1. Téléchargez **`NovyDeck-0.8.11-Setup.exe`** depuis la [dernière version](https://github.com/HatiFlash/NovyDeck/releases/latest) et lancez-le sans droits administrateur, ou extrayez `NovyDeck-0.8.11-Windows.zip`. Une nouvelle installation utilise `%LOCALAPPDATA%\Programs\NovyDeck`.
+1. Téléchargez **`NovyDeck-0.8.12-Setup.exe`** depuis la [dernière version](https://github.com/HatiFlash/NovyDeck/releases/latest) et lancez-le sans droits administrateur, ou extrayez `NovyDeck-0.8.12-Windows.zip`. Une nouvelle installation utilise `%LOCALAPPDATA%\Programs\NovyDeck`.
 2. Pour une mise à jour, l'installateur met à jour l'installation existante en conservant profils, médias et plugins. En version portable, fermez l'application et remplacez les exécutables sans supprimer `config.json`, les préférences, `assets` ni `plugins`.
 3. Lancez NovyDeck depuis le menu Démarrer (ou le dossier portable) et branchez le D6. Pour découvrir l'application sans toucher à vos profils, choisissez **Profils → ••• → Profil de démonstration (15 touches)**. Cette commande réinitialise aussi le profil de démonstration ; vous pouvez le supprimer comme tout autre profil.
 4. Glissez une action de la bibliothèque sur une touche, ou ouvrez l'atelier de blocs.
@@ -124,6 +126,7 @@ NovyDeck fonctionne hors ligne. L'IA locale reste sur votre PC ; elle est facult
 
 ## Dernière version
 
+- **0.8.12 :** bibliothèque communautaire de plugins (Bibliothèque → Plugins → Communauté), rapport matériel anonymisé avec issue GitHub préremplie, et le bouton **Recadrer** sous l'aperçu de la touche n'est plus coupé.
 - **0.8.11 :** inscription NOVYDECK sur le châssis, avec test UI et actualisation des captures et de la vidéo.
 - **0.8.10 :** préservation de la transparence du logo utilisateur dans les PNG et toutes les tailles d'icônes Windows ; génération reproductible des ressources et test de non-régression du canal alpha.
 
@@ -138,7 +141,7 @@ git clone https://github.com/HatiFlash/NovyDeck.git
 cd NovyDeck
 cargo build --release --locked
 cargo test --locked
-powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.11 -Build
+powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.12 -Build
 ```
 
 ## Licence et crédits

@@ -2136,3 +2136,83 @@ fn inspector_dpi_keeps_keys_and_primary_actions_visible_without_button_overlap()
         }
     }
 }
+
+#[test]
+fn inspector_recrop_button_stays_visible_under_the_key_preview() {
+    // Retour utilisateur : « Recadrer » était coupé par le bas du panneau sous « Changer l'icône ».
+    fn visible(shapes: &[egui::epaint::ClippedShape], label: &str) -> Option<(egui::Rect, egui::Rect)> {
+        fn find(shape: &egui::Shape, label: &str) -> Option<egui::Rect> {
+            match shape {
+                egui::Shape::Text(t) if t.galley.job.text == label => {
+                    assert_eq!(t.galley.rows.len(), 1, "{label} ne doit pas passer sur deux lignes");
+                    // Le cadre du bouton dépasse le texte du rembourrage vertical (4 px).
+                    Some(egui::Rect::from_min_size(t.pos, t.galley.size()).expand2(vec2(0.0, 4.0)))
+                }
+                egui::Shape::Vec(v) => v.iter().find_map(|s| find(s, label)),
+                _ => None,
+            }
+        }
+        shapes.iter().find_map(|s| find(&s.shape, label).map(|r| (r, s.clip_rect)))
+    }
+    let mut checked = 0;
+    for height in [700.0, 760.0, 820.0, 900.0, 1000.0, 1100.0] {
+        let size = vec2(1600.0, height);
+        let mut h = demo_harness();
+        h.app.selected = h.app.config.keys().iter().position(|k| k.label == "Photo").expect("touche Photo du profil de démonstration");
+        h.ctx.data_mut(|d| d.insert_persisted(egui::Id::new("inspector_tab"), 1u8));
+        let out = settle(&mut h, size);
+        // Panneau trop bas : l'aperçu seul est affiché, sans boutons (comportement voulu).
+        if visible(&out.shapes, "Changer l'icône").is_none() { continue; }
+        checked += 1;
+        for label in ["Changer l'icône", "Recadrer"] {
+            // egui ne peint pas un bouton hors de la zone visible : absent = coupé.
+            let (rect, clip) = visible(&out.shapes, label).unwrap_or_else(|| panic!("{label} invisible (coupé) à la hauteur {height}"));
+            assert!(clip.contains_rect(rect), "{label} coupé à la hauteur {height} : {rect:?} hors de {clip:?}");
+        }
+    }
+    assert!(checked >= 2, "les boutons de l'aperçu doivent apparaître pour au moins deux hauteurs de fenêtre");
+}
+
+#[test]
+fn community_library_waits_for_consent_below_local_plugins() {
+    let mut h = Harness::new();
+    h.app.catalog_tab = 3;
+    let size = vec2(1180.0, 3200.0);
+    let out = h.warm(size);
+    let installed = text_position(&out.shapes, "Installés dans NovyDeck").expect("inventaire local visible");
+    let community = text_position(&out.shapes, "Communauté").expect("section Communauté présente");
+    assert!(community.y > installed.y, "la section en ligne doit suivre l'inventaire local");
+    // Hors ligne par défaut : seul le bouton de consentement est proposé.
+    assert!(text_position(&out.shapes, "Se connecter à la bibliothèque").is_some());
+    assert!(text_position(&out.shapes, "Actualiser la bibliothèque").is_none());
+}
+
+/// Contrôle manuel (réseau + captures) : `cargo test -- --ignored release_0812_review`.
+#[test]
+#[ignore]
+fn release_0812_review() {
+    // Vrai catalogue GitHub via WinHTTP (HTTPS, redirections).
+    let entries = crate::community_plugins::fetch().expect("catalogue communautaire joignable");
+    println!("COMMUNITY_ENTRIES={}", entries.len());
+    let dir = PathBuf::from(std::env::var_os("NOVYDECK_UI_OUTPUT").expect("NOVYDECK_UI_OUTPUT"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let size = vec2(1380.0, 900.0);
+    let mut h = demo_harness();
+    h.app.open_hardware_report();
+    let report = h.app.hardware_report.as_ref().unwrap();
+    let user = std::env::var("USERNAME").unwrap_or_default();
+    assert!(user.len() < 3 || !report.text.to_lowercase().contains(&user.to_lowercase()), "nom d'utilisateur présent dans le rapport");
+    std::fs::write(dir.join("report-preview.txt"), &report.text).unwrap();
+    std::fs::write(dir.join("report-issue-url.txt"), &report.issue_url).unwrap();
+    let out = settle(&mut h, size);
+    h.png(size, out, &dir.join("report-window.png"));
+    let mut h = demo_harness();
+    h.app.selected = h.app.config.keys().iter().position(|k| k.label == "Photo").unwrap();
+    h.ctx.data_mut(|d| d.insert_persisted(egui::Id::new("inspector_tab"), 1u8));
+    let out = settle(&mut h, vec2(1600.0, 820.0));
+    h.png(vec2(1600.0, 820.0), out, &dir.join("inspector-recrop-820.png"));
+    let mut h = Harness::new();
+    h.app.catalog_tab = 3;
+    let out = h.warm(vec2(1180.0, 2400.0));
+    h.png(vec2(1180.0, 2400.0), out, &dir.join("plugins-community.png"));
+}

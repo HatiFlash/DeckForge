@@ -48,6 +48,9 @@ mod plugin_validation_proxy;
 #[allow(dead_code)]
 mod plugin_import;
 mod plugin_catalog;
+mod https_get;
+mod community_plugins;
+mod hardware_report;
 mod recorder;
 mod soundboard;
 mod store;

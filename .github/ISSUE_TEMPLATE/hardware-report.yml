@@ -1,0 +1,36 @@
+name: Hardware report / Rapport matériel
+description: Report an issue with a deck model / Signaler un problème avec un deck
+title: "[Hardware] "
+labels: [hardware]
+body:
+  - type: input
+    id: deck-model
+    attributes:
+      label: Deck brand and exact model / Marque et modèle exact
+      placeholder: e.g. AJAZZ AKP03R rev. 2
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Problème
+      description: What happened, and what did you expect? / Que s'est-il passé ?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / Environnement
+      description: Filled in by NovyDeck when opened from the app; review it before submitting.
+    validations:
+      required: false
+  - type: markdown
+    attributes:
+      value: "Drag your `novydeck-report-*.txt` file here after reviewing it. / Glissez ici le fichier `novydeck-report-*.txt` après vérification. Nothing is uploaded by the app."
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy / Confidentialité
+      options:
+        - label: I reviewed the report and it contains no private information. / J'ai relu le rapport ; il ne contient aucune information privée.
+          required: true

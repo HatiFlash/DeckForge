@@ -161,6 +161,7 @@ pub struct App {
     show_logs: bool,
     settings: bool,
     show_device_report: bool,
+    hardware_report: Option<crate::hardware_report::Report>,
     show_hardware_test: bool,
     hardware_test: Option<crate::devices::test_assistant::Session>,
     show_saved_variables: bool,
@@ -373,6 +374,7 @@ impl App {
             show_logs: false,
             settings: false,
             show_device_report: false,
+            hardware_report: None,
             show_hardware_test: false,
             hardware_test: None,
             show_saved_variables: false,
@@ -479,6 +481,10 @@ impl App {
         app.refresh_hotkeys();
         app.sync_state_display();
         app
+    }
+    fn open_hardware_report(&mut self) {
+        self.hardware_report = Some(crate::hardware_report::collect(
+            &self.path, &self.status, &self.device_label(), self.gate.connected, &self.logs));
     }
     fn log(&mut self, s: String) {
         while self.logs.len() >= 300 {
@@ -1836,6 +1842,10 @@ impl App {
                                 self.show_device_report = true;
                                 ui.close_menu();
                             }
+                            if ui.button("Signaler un problème avec mon deck").clicked() {
+                                self.open_hardware_report();
+                                ui.close_menu();
+                            }
                             if ui.add(iconset::button(ctx, Ico::Device, format!("Réglages — {}", self.device_name()))).clicked() {
                                 self.settings = true;
                                 ui.close_menu();
@@ -1989,6 +1999,10 @@ impl App {
                             }
                             if ui.add(iconset::button(ctx, Ico::Log, "Rapport périphérique…")).clicked() {
                                 self.show_device_report = true;
+                                ui.close_menu();
+                            }
+                            if ui.button("Signaler un problème avec mon deck").clicked() {
+                                self.open_hardware_report();
                                 ui.close_menu();
                             }
                             if ui.add(iconset::button(ctx, Ico::Device, format!("Réglages — {}", self.device_name()))).clicked() {
@@ -2996,9 +3010,17 @@ impl App {
             let (body, _) = ui.allocate_exact_size(Vec2::new(width, body_height), egui::Sense::hover());
             let mut body_ui = ui.new_child(egui::UiBuilder::new().max_rect(body).layout(egui::Layout::left_to_right(egui::Align::Min)));
             body_ui.horizontal_top(|ui| {
+                let lower = key.image.to_ascii_lowercase();
+                let can_recrop = !key.image.is_empty() && !lower.ends_with(".svg") && std::path::Path::new(&key.image).is_file();
+                // Hauteur réservée sous l'aperçu : nom + « Changer l'icône », et « Recadrer » quand il est proposé.
+                let button_height = ui.text_style_height(&egui::TextStyle::Button) + 2.0 * ui.spacing().button_padding.y;
+                let controls = 62.0 + if can_recrop { button_height + ui.spacing().item_spacing.y + 6.0 } else { 0.0 };
                 let roomy = body_height >= 150.0;
-                let preview_width = (if width < 650.0 { 76.0 } else { 140.0_f32 }).min(if roomy { body_height - 62.0 } else { body_height - 6.0 }).max(40.0);
-                ui.allocate_ui_with_layout(Vec2::new(preview_width + 18.0, body_height), egui::Layout::top_down(egui::Align::Center), |ui| {
+                let preview_width = (if width < 650.0 { 76.0 } else { 140.0_f32 }).min(if roomy { body_height - controls } else { body_height - 6.0 }).max(40.0);
+                // La colonne garde la largeur des boutons même quand l'aperçu rétrécit : pas de libellé sur deux lignes.
+                let button_width = if roomy { ui.fonts(|f| f.layout_no_wrap("Changer l'icône".to_owned(), egui::TextStyle::Button.resolve(ui.style()), Color32::WHITE).size().x) + 2.0 * ui.spacing().button_padding.x } else { 0.0 };
+                let preview_width_column = preview_width.max(button_width);
+                ui.allocate_ui_with_layout(Vec2::new(preview_width_column + 18.0, body_height), egui::Layout::top_down(egui::Align::Center), |ui| {
                     let (rect, _) = ui.allocate_exact_size(Vec2::splat(preview_width), egui::Sense::hover());
                     theme::key_face(ui.painter(), rect, true, false);
                     let lcd = rect.shrink(5.0);
@@ -3009,13 +3031,12 @@ impl App {
                     if roomy {
                         ui.label(RichText::new(&key.label).strong());
                         if ui.button("Changer l'icône").clicked() { open_icons = true; }
-                        let lower = key.image.to_ascii_lowercase();
-                        if !key.image.is_empty() && !lower.ends_with(".svg") && std::path::Path::new(&key.image).is_file()
+                        if can_recrop
                             && ui.button("Recadrer").on_hover_text("Ajuster le cadrage de l'image avec aperçu avant validation").clicked() { recrop = true; }
                     }
                 });
                 ui.separator();
-                ui.allocate_ui_with_layout(Vec2::new((width-preview_width-32.0).max(100.0),body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
+                ui.allocate_ui_with_layout(Vec2::new((width-preview_width_column-32.0).max(100.0),body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
                     if tab == 2 {
                         egui::ScrollArea::vertical().id_salt("inspector_advanced").max_height(body_height).show(ui,|ui|{
                             ui.label(RichText::new("Comportement").strong());
@@ -3881,6 +3902,7 @@ impl App {
                     if ui.button("Ouvrir la page GitHub").clicked() {
                         ui.ctx().open_url(egui::OpenUrl::new_tab("https://github.com/HatiFlash/NovyDeck"));
                     }
+                    about::hardware_report_button(ui, self);
                     ui.separator();
                     ui.label("Icônes d'interface : IconPark (ByteDance), licence Apache 2.0.");
                     egui::CollapsingHeader::new("Licence IconPark (Apache 2.0)").show(ui, |ui| {
@@ -4248,6 +4270,7 @@ impl App {
                 });
             self.rename = open;
         }
+        about::hardware_report_window(ctx, self);
     }
     fn frame(&mut self, ctx: &egui::Context) {
         let history_before = self.config.clone();
@@ -4270,6 +4293,7 @@ impl App {
             || self.settings
             || self.show_hardware_test
             || self.show_device_report
+            || self.hardware_report.is_some()
             || self.show_saved_variables
             || self.show_about
             || self.rename

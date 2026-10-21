@@ -4,6 +4,20 @@ use crate::{model::{Key,Step,PluginBinding},plugins::{Plugin,Runtime},plugin_imp
 use eframe::egui::{self,RichText};
 use crate::iconset::{self,Ico};
 use crate::plugin_validation;
+use crate::community_plugins::{self,Entry};
+use std::sync::{mpsc::{self,Receiver},Mutex,OnceLock};
+
+#[derive(Default)]
+struct CommunityState {
+ consent:bool,
+ entries:Vec<Entry>,
+ loading:bool,
+ fetching:Option<Receiver<Result<Vec<Entry>,String>>>,
+ installing:Option<Receiver<Result<bool,String>>>,
+ confirmation:Option<Entry>,
+ message:String,
+}
+fn community_state()->&'static Mutex<CommunityState>{static STATE:OnceLock<Mutex<CommunityState>>=OnceLock::new();STATE.get_or_init(||Mutex::new(CommunityState::default()))}
 impl App {
  pub(super) fn plugin_store(&mut self,ui:&mut egui::Ui,search:&str){
   // Keep the entire tab inside one bounded viewport, including import controls and results.
@@ -128,8 +142,74 @@ impl App {
    ui.collapsing(format!("Protégés ({})",protected.len()),|ui|{
     for plugin in &protected{ui.label(plugin.display_name());}
    });
+   // Après les plugins locaux : la section en ligne ne repousse pas l'inventaire hors de vue.
+   self.community_section(ui,search);
   });
+  self.community_confirmation(ui);
   self.plugin_confirm_real(ui);
+ }
+ fn community_section(&mut self,ui:&mut egui::Ui,search:&str){
+  let mut state=community_state().lock().unwrap_or_else(|e|e.into_inner());
+  if let Some(rx)=state.fetching.as_ref(){if let Ok(result)=rx.try_recv(){
+   state.loading=false;state.fetching=None;
+   match result{Ok(entries)=>{state.entries=entries;state.message="Bibliothèque actualisée.".into();},Err(error)=>state.message=format!("Bibliothèque indisponible : {error}")}
+  }}
+  if let Some(rx)=state.installing.as_ref(){if let Ok(result)=rx.try_recv(){
+   state.installing=None;
+   match result{Ok(installed)=>{state.message=if installed{"Plugin communautaire importé."}else{"Plugin déjà présent."}.into();self.refresh_plugin_catalog();},Err(error)=>state.message=format!("Installation impossible : {error}")}
+  }}
+  ui.separator();iconset::heading(ui,Ico::Store,RichText::new("Communauté").strong());
+  if !state.consent{
+   ui.add(egui::Label::new("La bibliothèque communautaire nécessite une connexion à GitHub.").wrap());
+   if ui.button("Se connecter à la bibliothèque").clicked(){state.consent=true;start_community_fetch(&mut state,ui.ctx());}
+   return;
+  }
+  if ui.add_enabled(!state.loading,egui::Button::new("Actualiser la bibliothèque")).clicked(){start_community_fetch(&mut state,ui.ctx());}
+  if state.loading{ui.label("Chargement de la bibliothèque…");}
+  if !state.message.is_empty(){ui.add(egui::Label::new(&state.message).wrap());}
+  if !state.loading && state.entries.is_empty(){
+   ui.label("Aucun plugin communautaire pour l'instant.");
+   if ui.button("Proposer un plugin").clicked(){ui.ctx().open_url(egui::OpenUrl::new_tab(community_plugins::CONTRIBUTE_URL));}
+  }
+  for entry in state.entries.clone(){
+   if !community_matches(&entry,search){continue;}
+   ui.push_id(&entry.id,|ui|ui.group(|ui|{
+    ui.set_max_width(ui.available_width());
+    ui.add(egui::Label::new(RichText::new(format!("{} · {}",entry.name,entry.version)).strong()).wrap());
+    ui.label("Communauté — non vérifié");
+    ui.add(egui::Label::new(format!("{} · {}",entry.author,entry.license)).wrap());
+    ui.add(egui::Label::new(entry.description_fr.as_deref().unwrap_or(&entry.description)).wrap());
+    if !entry.tested_decks.is_empty(){ui.add(egui::Label::new(format!("Decks testés : {}",entry.tested_decks.join(", "))).wrap());}
+    if !entry.compatible{ui.label(format!("Incompatible : nécessite NovyDeck {} ou plus récent",entry.min_novydeck));}
+    ui.horizontal_wrapped(|ui|{
+     if ui.button("Voir la page").clicked(){ui.ctx().open_url(egui::OpenUrl::new_tab(&entry.homepage));}
+     if ui.add_enabled(entry.compatible && state.installing.is_none(),egui::Button::new("Installer…")).clicked(){state.confirmation=Some(entry.clone());}
+    });
+   }));
+  }
+ }
+ fn community_confirmation(&mut self,ui:&egui::Ui){
+  let mut state=community_state().lock().unwrap_or_else(|e|e.into_inner());
+  let Some(entry)=state.confirmation.clone() else{return;};
+  let mut open=true;
+  egui::Window::new("Confirmer l'installation communautaire").open(&mut open).collapsible(false).show(ui.ctx(),|ui|{
+   ui.label(format!("Plugin : {} · Auteur : {}",entry.name,entry.author));
+   ui.add(egui::Label::new(format!("Téléchargement : {}",entry.download)).wrap());
+   ui.add(egui::Label::new(format!("SHA-256 attendu : {}",entry.sha256)).wrap());
+   ui.label("Ce plugin exécute du code tiers avec vos droits utilisateur.");
+   ui.horizontal(|ui|{
+    if ui.add_enabled(state.installing.is_none(),egui::Button::new("Confirmer et installer")).clicked(){
+     let (tx,rx)=mpsc::channel();state.installing=Some(rx);state.confirmation=None;
+     let ctx=ui.ctx().clone();
+     std::thread::spawn(move||{
+      let result=plugin_import::installed_root().and_then(|root|community_plugins::install(&entry,&root)).map_err(|e|e.to_string());
+      let _=tx.send(result);ctx.request_repaint();
+     });
+    }
+    if ui.button("Annuler").clicked(){state.confirmation=None;}
+   });
+  });
+  if !open{state.confirmation=None;}
  }
  // Conversion UTC sans E/S disque et sans dépendance supplémentaire.
  fn plugin_confirm_real(&mut self,ui:&egui::Ui){
@@ -175,6 +255,15 @@ impl App {
   Some(Box::new(move |app:&mut App|match result{Ok(copied)=>{app.refresh_plugin_catalog();app.notice=if copied{"Plugin importé"}else{"Plugin déjà présent"}.into();},Err(e)=>app.fail(format!("Import plugin impossible : {e}"))}))
  });}
 }
+fn start_community_fetch(state:&mut CommunityState,ctx:&egui::Context){
+ let (tx,rx)=mpsc::channel();state.fetching=Some(rx);state.loading=true;state.message.clear();
+ let ctx=ctx.clone();std::thread::spawn(move||{let result=community_plugins::fetch().map_err(|e|e.to_string());let _=tx.send(result);ctx.request_repaint();});
+}
+fn community_matches(entry:&Entry,search:&str)->bool{
+ let search=search.trim().to_lowercase();
+ search.is_empty() || [entry.name.as_str(),entry.author.as_str(),entry.version.as_str(),entry.description.as_str(),entry.description_fr.as_deref().unwrap_or(""),entry.license.as_str()]
+  .into_iter().chain(entry.tested_decks.iter().map(String::as_str)).any(|field|field.to_lowercase().contains(&search))
+}
 fn native_audio_switch(audio:&crate::audio::Snapshot,input:bool)->Option<Key>{
  let mut endpoints=audio.devices.iter().filter(|d|d.input==input);
  let first=endpoints.next()?;let second=endpoints.next()?;
@@ -215,6 +304,11 @@ fn egui_file_dialog_archive()->Option<std::path::PathBuf>{rfd::FileDialog::new()
   assert!(native_audio_switch(&audio,true).is_none());
  }
  #[test] fn binding_for_imported_action_roundtrips(){let k=Key{plugin:Some(PluginBinding{plugin:"fixture.plugin".into(),action:"fixture.action".into(),settings:serde_json::json!({}),state:0}),..Key::default()};let value=serde_json::to_value(&k).unwrap();assert_eq!(serde_json::from_value::<Key>(value).unwrap().plugin.unwrap().action,"fixture.action");}
+ #[test] fn community_search_covers_author_version_license_and_decks(){
+  let entry=Entry{id:"x".into(),name:"Nom".into(),author:"Alice".into(),version:"1.2.0".into(),description:"Audio".into(),description_fr:Some("Son".into()),homepage:"https://example.org".into(),download:"https://example.org/x.zip".into(),sha256:"a".repeat(64),license:"MIT".into(),tested_decks:vec!["FIFINE D6".into()],min_novydeck:"0.8.12".into(),compatible:true};
+  for query in ["nom","alice","1.2","audio","son","mit","fifine"]{assert!(community_matches(&entry,query),"{query}");}
+  assert!(!community_matches(&entry,"inconnu"));
+ }
 }
 
 fn report_date(timestamp:u64)->String {
