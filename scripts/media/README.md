@@ -20,7 +20,11 @@ cargo test --locked --bin novydeck demo_video_keyframes -- --ignored --test-thre
 
 Le dossier `keys/` contient les 15 écrans LCD rendus par `key_render` (252 px) et les 12 photogrammes de la touche animée. Les recopier dans `remotion/public/keys/`. Les anciennes variables d'environnement `DECKFORGE_*_OUTPUT` restent acceptées.
 
-## Vidéo 0.8.9 : Remotion
+## Logo transparent
+
+`python scripts/media/generate-branding.py --preview CHEMIN` régénère les PNG et ICO avec leur canal alpha. Utiliser le PNG utilisateur transparent comme source ; ne jamais ajouter de fond opaque aux icônes.
+
+## Vidéo 0.8.10 : Remotion
 
 **Pipeline actuel : [remotion/README.md](remotion/README.md).** 43 s, 1920 × 1080, 30 i/s, H.264 et AAC. Sept chapitres, scène de pavé en vraie 3D, mouvements déterministes, captures réelles, nouveau logo et son procédural synchronisé aux transitions. Le fichier publié est `docs/media/novydeck-demo.mp4`.
 

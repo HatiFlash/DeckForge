@@ -41,6 +41,10 @@ Typographie : texte courant à 14 pt, petite légende à 11–12 pt, titres de s
 
 L'interface utilise un sous-ensemble verrouillé d'[IconPark](https://github.com/bytedance/IconPark) (Apache 2.0) : les 66 pictogrammes utilisés sont embarqués dans `res/iconpark`, recolorés par famille d'actions et mis en cache en texture. Ils n'ont pas été remplacés par Tabler Icons. Un tel changement toucherait plus de soixante écrans et icônes de touches par défaut, pour un gain de cohérence nul : la bibliothèque actuelle est déjà homogène, sous licence libre et embarquée localement.
 
+## Transparence du logo (0.8.10)
+
+La source utilisateur RGBA et son alpha sont conservés. Les déclinaisons sont redimensionnées sur un canevas `(0,0,0,0)`, jamais sur un fond noir opaque. Le générateur `scripts/media/generate-branding.py` contrôle les coins transparents des PNG et de chaque taille ICO. Relire les aperçus sur fond blanc, gris et sombre avant publication ; ces fonds de contrôle ne sont pas incorporés aux ressources.
+
 ## Captures et vidéo
 
 - Les captures `docs/images/*.png` sont produites par `readme_captures_from_the_demo_profile` (`src/ui_tests.rs`). Ce test exécute le vrai code d'interface hors écran, à **2560 × 1600 pixels** (1600 × 1000 points à 160 %), avec le profil « NovyDeck Demo / README ». Il ne fait aucun agrandissement après coup, et le filtrage des textures est bilinéaire comme dans le rendu GPU. Le contenu des touches reste l'image réelle de 126 × 126 pixels envoyée au D6.

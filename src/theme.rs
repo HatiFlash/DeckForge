@@ -877,6 +877,24 @@ pub fn symbol(p: &egui::Painter, c: egui::Pos2, size: f32, kind: usize, color: C
 #[cfg(test)]
 mod theme_tests {
     #[test]
+    fn branding_assets_keep_transparency_and_visible_pixels() {
+        for bytes in [
+            include_bytes!("../res/branding/novydeck-logo.png").as_slice(),
+            include_bytes!("../res/branding/novydeck-32.png").as_slice(),
+            include_bytes!("../res/branding/novydeck-64.png").as_slice(),
+            include_bytes!("../res/branding/novydeck-256.png").as_slice(),
+        ] {
+            let image = image::load_from_memory(bytes).unwrap().to_rgba8();
+            for (x, y) in [(0, 0), (image.width() - 1, 0), (0, image.height() - 1), (image.width() - 1, image.height() - 1)] {
+                assert_eq!(image.get_pixel(x, y).0[3], 0, "logo corner must be transparent");
+            }
+            assert!(image.pixels().any(|pixel| pixel.0[3] > 0 && pixel.0[3] < 255), "logo must retain semi-transparent pixels");
+        }
+        let icon = super::window_icon();
+        assert_eq!(icon.rgba[3], 0, "window icon corner must be transparent");
+    }
+
+    #[test]
     fn every_scheme_and_accent_keeps_readable_text_and_buttons() {
         fn lum(c: super::Color32) -> f32 {
             let f = |v: u8| { let v = v as f32 / 255.0; if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) } };
