@@ -2216,3 +2216,21 @@ fn release_0812_review() {
     let out = h.warm(vec2(1180.0, 2400.0));
     h.png(vec2(1180.0, 2400.0), out, &dir.join("plugins-community.png"));
 }
+
+#[test]
+fn audio_switch_can_be_dropped_before_choosing_its_devices() {
+    // Retour utilisateur : « Affectation refusée : Choisis deux périphériques audio différents »
+    // en glissant l'action sur une touche, alors que les périphériques se règlent ensuite.
+    let mut h = Harness::new();
+    h.app.assign(DragItem::Action(catalog::action(13, "Bureau")), 6);
+    assert!(matches!(&h.app.config.keys()[6].steps[..], [Step::AudioSwitch { first, second, .. }] if first.is_empty() && second.is_empty()),
+        "la touche doit recevoir l'action audio à configurer : {}", h.app.notice);
+    assert!(h.app.notice.contains("Choisis maintenant les deux périphériques audio"), "{}", h.app.notice);
+    // Les deux mêmes périphériques restent refusés une fois choisis.
+    let mut same = catalog::action(13, "Bureau");
+    if let Step::AudioSwitch { first, second, .. } = &mut same.steps[0] { *first = "casque".into(); *second = "casque".into(); }
+    let before = h.app.config.keys()[7].clone();
+    h.app.assign(DragItem::Action(same), 7);
+    assert_eq!(h.app.config.keys()[7].steps, before.steps);
+    assert!(h.app.notice.contains("deux périphériques audio différents"), "{}", h.app.notice);
+}

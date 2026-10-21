@@ -2194,10 +2194,12 @@ impl App {
             return;
         }
         self.edited();
+        let audio_unset = self.config.keys()[target].steps.iter().any(|s| matches!(s, Step::AudioSwitch { first, second, .. } if first.is_empty() || second.is_empty()));
 
         self.log(format!(
-            "Touche {:02} mise à jour. Ctrl+Z pour annuler.",
-            target + 1
+            "Touche {:02} mise à jour.{} Ctrl+Z pour annuler.",
+            target + 1,
+            if audio_unset { " Choisis maintenant les deux périphériques audio dans l'inspecteur." } else { "" }
         ));
     }
     fn record_history(&mut self, before: Config, ctx: &egui::Context) {

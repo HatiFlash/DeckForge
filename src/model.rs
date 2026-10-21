@@ -1064,8 +1064,10 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
                 if device.trim().is_empty() || device.len() > 512 || device.chars().any(char::is_control)
                     || !["up", "down", "set", "mute", "unmute", "toggle_mute"].contains(&action.as_str())
                     || !(1..=100).contains(step) || *level > 100 => bail!("Périphérique, action ou niveau de volume invalide"),
+            // Une touche peut être posée avant le choix des deux périphériques (réglés ensuite dans
+            // l'inspecteur) ; seul un même périphérique choisi deux fois est refusé.
             Step::AudioSwitch { first, second, .. }
-                if first.is_empty() || second.is_empty() || first == second =>
+                if !first.is_empty() && first == second =>
             {
                 bail!("Choisis deux périphériques audio différents")
             }

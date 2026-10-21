@@ -152,6 +152,8 @@ pub fn set_default(target: &str, input: bool) -> Result<()> {
     }
 }
 pub fn toggle(first: &str, second: &str, input: bool) -> Result<String> {
+    anyhow::ensure!(!first.is_empty() && !second.is_empty(),
+        "Basculer l'audio : choisis les deux périphériques dans l'inspecteur de la touche");
     let s = snapshot()?;
     let active = if input { s.input } else { s.output };
     let target = if active == first { second } else { first };
