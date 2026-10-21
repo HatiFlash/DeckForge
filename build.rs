@@ -39,8 +39,8 @@ fn main() {
 /// avec la chaîne MSVC et sur les runners GitHub). Un exécutable sans métadonnées est davantage
 /// suspecté par l'analyse heuristique de Microsoft Defender.
 fn embed_icon() {
-    println!("cargo:rerun-if-changed=res/branding/deckforge.ico");
-    println!("cargo:rerun-if-changed=res/windows/deckforge.manifest");
+    println!("cargo:rerun-if-changed=res/novydeck.ico");
+    println!("cargo:rerun-if-changed=res/windows/novydeck.manifest");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }
@@ -48,14 +48,14 @@ fn embed_icon() {
     {
         let version = env!("CARGO_PKG_VERSION");
         let mut res = winresource::WindowsResource::new();
-        res.set_icon("res/branding/deckforge.ico")
-            .set_manifest_file("res/windows/deckforge.manifest")
-            .set("ProductName", "DeckForge")
-            .set("FileDescription", "DeckForge - contrôleur de macros pour FIFINE AmpliGame D6")
+        res.set_icon("res/novydeck.ico")
+            .set_manifest_file("res/windows/novydeck.manifest")
+            .set("ProductName", "NovyDeck")
+            .set("FileDescription", "NovyDeck - contrôleur de macros pour FIFINE AmpliGame D6")
             .set("CompanyName", "HatiFlash")
             .set("LegalCopyright", "© 2026 HatiFlash - licence MIT")
-            .set("InternalName", "DeckForge")
-            .set("Comments", "https://github.com/HatiFlash/DeckForge")
+            .set("InternalName", "NovyDeck")
+            .set("Comments", "https://github.com/HatiFlash/NovyDeck")
             .set("ProductVersion", version)
             .set("FileVersion", version)
             .set_language(0x040c);

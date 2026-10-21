@@ -59,7 +59,7 @@ fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
     Color32::from_rgb(m(a.r(), b.r()), m(a.g(), b.g()), m(a.b(), b.b()))
 }
 
-/// Peint l'indicateur DeckForge : 4 touches (2 × 2) qui s'allument tour à tour, comme le logo.
+/// Peint l'indicateur NovyDeck : 4 touches (2 × 2) qui s'allument tour à tour, comme le logo.
 pub fn paint_loader(painter: &egui::Painter, center: egui::Pos2, size: f32, accent: Color32, time: f64) {
     let gap = size * 0.12;
     let cell = (size - gap) / 2.0;
@@ -136,7 +136,7 @@ pub fn intro(ctx: &egui::Context, logo: &egui::TextureHandle, enabled: bool) -> 
     painter.text(
         center + Vec2::new(0.0, 80.0),
         egui::Align2::CENTER_CENTER,
-        "DeckForge",
+        "NovyDeck",
         egui::FontId::proportional(26.0),
         p.ink.gamma_multiply(alpha),
     );

@@ -225,9 +225,33 @@ pub const FFMPEG_MISSING: &str = "FFmpeg absent";
 
 const FFMPEG_URL: &str = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
 
-/// Folder where DeckForge keeps its own copy of FFmpeg (per user, always writable).
+/// Reuse installed assets from the old application; never move or delete them.
+/// A fresh installation writes under NovyDeck instead.
+pub fn user_data_dir(local: &std::path::Path) -> PathBuf {
+    let legacy = local.join("DeckForge");
+    if legacy.is_dir() { legacy } else { local.join("NovyDeck") }
+}
+
 pub fn tools_dir() -> Option<PathBuf> {
-    Some(PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join("DeckForge").join("tools"))
+    Some(user_data_dir(&PathBuf::from(std::env::var_os("LOCALAPPDATA")?)).join("tools"))
+}
+
+#[cfg(test)]
+mod branding_compat_tests {
+    use super::*;
+    #[test]
+    fn reuse_legacy_data_without_copying_or_deleting_it() {
+        let temp = tempfile::tempdir().unwrap();
+        let new = temp.path().join("NovyDeck");
+        assert_eq!(user_data_dir(temp.path()), new);
+        let legacy = temp.path().join("DeckForge");
+        std::fs::create_dir(&legacy).unwrap();
+        let profile = legacy.join("config.json");
+        std::fs::write(&profile, b"existing profile").unwrap();
+        assert_eq!(user_data_dir(temp.path()), legacy);
+        assert_eq!(std::fs::read(&profile).unwrap(), b"existing profile");
+        assert!(!new.exists());
+    }
 }
 
 fn hidden(program: &str) -> std::process::Command {
@@ -306,7 +330,7 @@ fn video_log(dest: &Path, line: &str) {
     if std::fs::create_dir_all(&folder).is_err() { return; }
     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(folder.join("import-video.log")) {
         let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-        let _ = writeln!(file, "[{secs}] DeckForge {} | {line}", env!("CARGO_PKG_VERSION"));
+        let _ = writeln!(file, "[{secs}] NovyDeck {} | {line}", env!("CARGO_PKG_VERSION"));
     }
 }
 

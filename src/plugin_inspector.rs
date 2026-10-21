@@ -58,7 +58,7 @@ pub(crate) fn allowed_initial(raw: &str) -> bool {
 /// The WebView2 resource event is the enforcement boundary; CSP and navigation are extra layers.
 /// A PI may only talk to the loopback server that created its session (including SDK WebSocket).
 /// Read-only BarRaider EasyPI files on jsDelivr, the most common remote PI dependency. It has no
-/// licence allowing redistribution, so DeckForge cannot bundle it; only these exact library
+/// licence allowing redistribution, so NovyDeck cannot bundle it; only these exact library
 /// paths may be fetched by the page, never another CDN path, host or API.
 pub(crate) fn allowed_cdn_library(raw: &str) -> bool {
     let Ok(u)=url::Url::parse(raw) else { return false };
@@ -99,7 +99,7 @@ pub fn run() -> anyhow::Result<()> {
         && ws.parse::<u16>().unwrap().to_string()==ws,"invalid isolated inspector URL");
     let ws_port=ws.parse::<u16>()?;let url=url.to_owned();
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new().with_title(if runtime {"DeckForge HTML plugin"} else {"DeckForge Plugin Inspector"})
+    let window = WindowBuilder::new().with_title(if runtime {"NovyDeck HTML plugin"} else {"NovyDeck Plugin Inspector"})
         .with_visible(!runtime)
         .with_inner_size(tao::dpi::LogicalSize::new(900.0, 650.0)).build(&event_loop)?;
     let expected = url.clone();

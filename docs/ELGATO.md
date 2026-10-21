@@ -1,6 +1,6 @@
 # Importer depuis Elgato Stream Deck
 
-Dans DeckForge : **Réglages → Importer depuis Stream Deck…**. Choisis un export
+Dans NovyDeck : **Réglages → Importer depuis Stream Deck…**. Choisis un export
 **.streamDeckProfile**, une action exportée dont le manifest est reconnu, ou un
 manifest JSON. Un aperçu affiche les conversions et les avertissements. Le bouton
 **Importer ce profil** ajoute un nouveau profil ; les touches restent en pause.
@@ -30,11 +30,11 @@ leurs connexions OAuth, les plugins OBS/Wave Link/Discord, les dials, les toggle
 les scripts embarqués et les raccourcis macOS ne sont pas exécutés directement.
 Les actions incompatibles restent vides avec leur titre et un avertissement.
 Une multi-action partiellement compatible est laissée entièrement vide.
-Les fichiers SVG portant une extension PNG sont signalés et remplacés par l’icône DeckForge.
+Les fichiers SVG portant une extension PNG sont signalés et remplacés par l’icône NovyDeck.
 
 Les images importées sont dans **assets/import-…/** près de l’exécutable.
 Conserve ce dossier avec config.json pour garder leurs chemins utilisables.
-Les exports JSON personnels de DeckForge n’embarquent pas les images.
+Les exports JSON personnels de NovyDeck n’embarquent pas les images.
 
 Validation locale : le profil Notion 15 touches de
 [danewrx/Streamdeck-Profiles](https://github.com/danewrx/Streamdeck-Profiles)

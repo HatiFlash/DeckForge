@@ -130,7 +130,7 @@ fn worker(rx: Receiver<Command>, tx: Sender<Event>, config_path: PathBuf) {
                     test_running = false;
                     deck = None;
                     key_images.fill(None);
-                    let _ = tx.send(Event::Device(false, "Périphérique déconnecté de DeckForge".into()));
+                    let _ = tx.send(Event::Device(false, "Périphérique déconnecté de NovyDeck".into()));
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => return,

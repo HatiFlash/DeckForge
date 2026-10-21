@@ -28,7 +28,7 @@ impl Locations {
 }
 
 pub fn connector(app_config: &Path) -> Result<PathBuf, String> {
-    let exe = app_config.with_file_name("deckforge-mcp.exe");
+    let exe = app_config.with_file_name("novydeck-mcp.exe");
     if !exe.is_file() { return Err(format!("Connecteur introuvable : {}", exe.display())); }
     Ok(exe)
 }
@@ -180,7 +180,7 @@ mod tests {
     fn json_clients_preserve_existing_and_remove_only_own_entry() {
         let dir=tempfile::tempdir().unwrap();
         let loc=Locations{home:dir.path().join("home"),appdata:dir.path().join("roaming")};
-        let exe=dir.path().join("deckforge-mcp.exe");std::fs::write(&exe,"").unwrap();
+        let exe=dir.path().join("novydeck-mcp.exe");std::fs::write(&exe,"").unwrap();
         for client in [Client::Desktop,Client::Code,Client::Cursor] {
             let path=loc.path(client);std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(&path,r#"{"other":42,"mcpServers":{"existing":{"command":"elsewhere"}}}"#).unwrap();
@@ -207,14 +207,14 @@ mod tests {
     fn connector_responds_with_eleven_tools_when_available() {
         let Ok(exe)=std::env::var("DECKFORGE_MCP_EXE") else {return};
         let dir=tempfile::tempdir().unwrap();
-        let target=dir.path().join("deckforge-mcp.exe");std::fs::copy(exe,&target).unwrap();
+        let target=dir.path().join("novydeck-mcp.exe");std::fs::copy(exe,&target).unwrap();
         let config=dir.path().join("config.json");
         assert_eq!(test_connection(&config).unwrap(),"✓ 11 outils disponibles");
     }
     #[test]
     fn codex_block_is_replaced_without_touching_neighbors() {
         let dir=tempfile::tempdir().unwrap();let loc=Locations{home:dir.path().join("home"),appdata:dir.path().join("app")};
-        let exe=dir.path().join("deckforge-mcp.exe");std::fs::write(&exe,"").unwrap();
+        let exe=dir.path().join("novydeck-mcp.exe");std::fs::write(&exe,"").unwrap();
         let path=loc.path(Client::Codex);std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path,"[other]\na = 1\n[mcp_servers.deckforge]\ncommand = 'old'\n[tail]\nb = 2\n").unwrap();
         configure(Client::Codex,&loc,&exe,false).unwrap();let s=std::fs::read_to_string(&path).unwrap();

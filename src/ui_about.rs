@@ -3,10 +3,10 @@ use std::{process::{Command, Stdio}, thread, time::{Duration, Instant}};
 
 pub(super) const HASH: &str = env!("DECKFORGE_GIT_HASH");
 pub(super) const DATE: &str = env!("DECKFORGE_BUILD_DATE");
-const REPOSITORY: &str = "repos/HatiFlash/DeckForge";
+const REPOSITORY: &str = "repos/HatiFlash/NovyDeck";
 
 pub(super) fn information() -> String {
-    format!("DeckForge {}\nCompilation : {} ({})", env!("CARGO_PKG_VERSION"), HASH, DATE)
+    format!("NovyDeck {}\nCompilation : {} ({})", env!("CARGO_PKG_VERSION"), HASH, DATE)
 }
 
 // Pure decision logic: never equate a failed or malformed response to an up-to-date build.

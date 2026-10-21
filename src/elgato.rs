@@ -207,7 +207,7 @@ fn convert(files: HashMap<String, Vec<u8>>) -> Result<Report> {
     let unresolved_order =
         !order.is_empty() && !sources.iter().any(|(id, _, _)| order.contains(id));
     if unresolved_order {
-        warnings.push("Les identifiants de pages ne correspondent pas aux dossiers de l’archive : chaque contenu est importé comme page indépendante. Vérifie leur ordre dans DeckForge.".into());
+        warnings.push("Les identifiants de pages ne correspondent pas aux dossiers de l’archive : chaque contenu est importé comme page indépendante. Vérifie leur ordre dans NovyDeck.".into());
         sources.sort_by_key(|(_, path, v)| {
             (
                 v["Name"].as_str().unwrap_or_default().is_empty(),
@@ -332,7 +332,7 @@ fn convert(files: HashMap<String, Vec<u8>>) -> Result<Report> {
                         }
                     } else {
                         warnings.push(format!(
-                            "Icône de {title} absente de l’archive ; icône DeckForge utilisée."
+                            "Icône de {title} absente de l’archive ; icône NovyDeck utilisée."
                         ));
                     }
                 } else {

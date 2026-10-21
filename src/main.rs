@@ -146,10 +146,10 @@ fn main() -> eframe::Result<()> {
         if desktop::show_existing() {
             return Ok(());
         }
-        let message = "DeckForge est déjà ouvert dans cette session.\0"
+        let message = "NovyDeck (ou DeckForge) est déjà ouvert dans cette session.\0"
             .encode_utf16()
             .collect::<Vec<_>>();
-        let title = "DeckForge\0".encode_utf16().collect::<Vec<_>>();
+        let title = "NovyDeck\0".encode_utf16().collect::<Vec<_>>();
         unsafe {
             windows_sys::Win32::UI::WindowsAndMessaging::MessageBoxW(
                 std::ptr::null_mut(),
@@ -171,7 +171,7 @@ fn main() -> eframe::Result<()> {
     };
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("DeckForge")
+            .with_title("NovyDeck")
             .with_icon(theme::window_icon())
             .with_visible(!std::env::args().any(|a| a == "--background"))
             .with_inner_size(size)
@@ -181,7 +181,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "DeckForge",
+        "NovyDeck",
         options,
         Box::new(|cc| Ok(Box::new(ui::App::new(cc)))),
     )

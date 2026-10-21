@@ -145,9 +145,9 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, w: WPARAM, l: LPARAM) -> LR
                 WM_RBUTTONUP => {
                     let menu = CreatePopupMenu();
                     for (id, label) in [
-                        (1, "Ouvrir DeckForge"),
+                        (1, "Ouvrir NovyDeck"),
                         (2, "Activer / suspendre les macros"),
-                        (3, "Quitter DeckForge"),
+                        (3, "Quitter NovyDeck"),
                     ] {
                         AppendMenuW(menu, MF_STRING, id, wide(label).as_ptr());
                     }
@@ -258,7 +258,7 @@ pub fn spawn(tx: Sender<Event>, ctx: eframe::egui::Context) -> Desktop {
         if !own_icon {
             icon.hIcon = LoadIconW(std::ptr::null_mut(), IDI_APPLICATION);
         }
-        let tip = wide("DeckForge");
+        let tip = wide("NovyDeck");
         icon.szTip[..tip.len()].copy_from_slice(&tip);
         let state = Box::new(State {
             tx: tx.clone(),
@@ -405,6 +405,7 @@ pub fn startup(enable: bool) -> Result<()> {
             std::ptr::null_mut(),
         );
         anyhow::ensure!(code == ERROR_SUCCESS, "Démarrage Windows : erreur {code}");
+        // Keep the existing Run entry; changing its key would launch two instances after upgrade.
         let name = wide("DeckForge");
         let code = if enable {
             let exe = std::env::current_exe()?;

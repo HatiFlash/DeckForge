@@ -96,7 +96,7 @@ fn workshop_advanced_cards_start_folded_and_reveal_real_controls() {
         h.app.preferences.workshop_advanced = true;
         h.app.config.keys_mut()[0].steps = vec![Step::Delay { ms: 125 }];
         let output = h.warm(size);
-        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
             let snapshot = h.warm(size);
             h.png(size, snapshot, &PathBuf::from(dir).join(format!("atelier-advanced-folded-{}-{}.png", physical.x as u32, (dpi * 100.0) as u32)));
         }
@@ -104,7 +104,7 @@ fn workshop_advanced_cards_start_folded_and_reveal_real_controls() {
         let id = egui::Id::new("block_fold").with(vec![0_usize]);
         h.ctx.data_mut(|d| d.insert_temp(id, false));
         let output = h.warm(size);
-        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
             let snapshot = h.warm(size);
             h.png(size, snapshot, &PathBuf::from(dir).join(format!("atelier-advanced-expanded-{}-{}.png", physical.x as u32, (dpi * 100.0) as u32)));
         }
@@ -121,7 +121,7 @@ fn workshop_chat_and_properties_fit_both_screen_sizes() {
         h.app.workshop_chat.open = true;
         let output = h.warm(size);
         assert!(!output.shapes.is_empty());
-        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
             let snapshot = h.warm(size);
             h.png(size, snapshot, &PathBuf::from(dir).join(format!("atelier-chat-{}.png", size.x as u32)));
         }
@@ -148,7 +148,7 @@ fn workshop_chat_previews_a_natural_request_without_running_it() {
     h.warm(size);
     let output = h.warm(size);
     assert!(text_position(&output.shapes, "Ajouter").is_some());
-    if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+    if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
         std::fs::create_dir_all(&dir).unwrap();
         h.png(size, output, &PathBuf::from(dir).join("atelier-assistant.png"));
     }
@@ -188,7 +188,7 @@ fn workshop_chat_texts_and_buttons_stay_inside_the_panel() {
         h.warm(size);
         let output = h.warm(size);
         let panel = egui::containers::panel::PanelState::load(&h.ctx, egui::Id::new("workshop_chat_panel")).unwrap().rect;
-        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
             std::fs::create_dir_all(&dir).unwrap();
             h.png(size, output.clone(), &PathBuf::from(dir).join(format!("atelier-chat-consent-{}.png", (size.x * dpi) as u32)));
         }
@@ -629,7 +629,7 @@ fn all_fifteen_keys_remain_visible_in_both_themes_and_window_sizes() {
                 r
             );
         }
-        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
             std::fs::create_dir_all(&dir).unwrap();
             h.png(size, output, &std::path::PathBuf::from(dir).join(label));
         }
@@ -718,7 +718,7 @@ fn editor_textures_match_usb_images_with_custom_files_audio_states_and_fallbacks
                 );
             }
         }
-        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
             std::fs::create_dir_all(&dir).unwrap();
             h.png(size, output, &PathBuf::from(dir).join(name));
         }
@@ -813,7 +813,7 @@ fn imports_real_export_when_reference_is_provided() {
     if let Some(path) = std::env::var_os("DECKFORGE_ELGATO_REFERENCE") {
         let report = crate::elgato::load(&PathBuf::from(path)).unwrap();
         assert!(report.converted > 0);
-        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
             std::fs::create_dir_all(&dir).unwrap();
             let result = serde_json::json!({"converted":report.converted,"pages":report.profile.pages.len()+1,"icons":report.icons.len(),"warnings":report.warnings});
             std::fs::write(
@@ -1085,7 +1085,7 @@ fn demo_profile_is_added_beside_user_profiles_and_resets_by_name() {
 /// Captures du README : vraie interface rendue hors écran à 2560 px de large (1600 × 1000 points à 160 %).
 #[test]
 fn readme_captures_from_the_demo_profile() {
-    let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") else { return };
+    let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) else { return };
     let dir = PathBuf::from(dir);
     std::fs::create_dir_all(&dir).unwrap();
     let size = vec2(1600.0, 1000.0);
@@ -1098,14 +1098,14 @@ fn readme_captures_from_the_demo_profile() {
     };
     let mut h = demo_harness();
     h.app.selected = 8;
-    shot(&mut h, "deckforge-main.png");
+    shot(&mut h, "novydeck-main.png");
     let mut h = demo_harness();
     h.app.show_workflow = true;
     h.app.preferences.workshop_advanced = false;
     h.app.selected = 0;
     h.warm(size); // l'atelier oublie la sélection quand la touche ciblée change
     h.ctx.data_mut(|d| d.insert_temp(egui::Id::new("workshop_path"), vec![1_usize]));
-    let shapes = shot(&mut h, "deckforge-block-editor.png");
+    let shapes = shot(&mut h, "novydeck-block-editor.png");
     assert!(fully_visible(&shapes, "Enregistrer…"), "bouton d'enregistrement du raccourci coupé");
     let mut h = demo_harness();
     h.app.show_workflow = true;
@@ -1113,20 +1113,20 @@ fn readme_captures_from_the_demo_profile() {
     h.app.workshop_chat.open = true;
     h.app.workshop_chat_send("ouvre le navigateur brave s'il est pas ouvert et si il deja ouvert ouvre un nouvel onglet".into(), None);
     assert!(matches!(h.app.workshop_chat.pending.as_ref().expect("proposition réelle").proposal.steps.as_slice(), [Step::IfCondition { .. }]));
-    shot(&mut h, "deckforge-assistant.png");
+    shot(&mut h, "novydeck-assistant.png");
     let mut h = demo_harness();
     let photo = PathBuf::from(&h.app.config.keys()[8].image);
     let page = h.app.config.page.clone();
     h.app.open_crop_editor(h.app.config.active, page, 8, photo, 126);
     assert!(h.app.crop_session.is_some(), "recadrage ouvert");
-    shot(&mut h, "deckforge-media-crop.png");
+    shot(&mut h, "novydeck-media-crop.png");
 }
 
 /// Images clés de la vidéo de présentation (1920 × 1080) : uniquement des états réels de l'interface.
 #[test]
 #[ignore = "produit les images de la vidéo ; DECKFORGE_VIDEO_OUTPUT requis"]
 fn demo_video_keyframes() {
-    let dir = PathBuf::from(std::env::var_os("DECKFORGE_VIDEO_OUTPUT").expect("DECKFORGE_VIDEO_OUTPUT"));
+    let dir = PathBuf::from(std::env::var_os("NOVYDECK_VIDEO_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_VIDEO_OUTPUT")).expect("DECKFORGE_VIDEO_OUTPUT"));
     std::fs::create_dir_all(&dir).unwrap();
     let size = vec2(1280.0, 720.0);
     let shot = |h: &mut Harness, name: &str| {
@@ -1188,7 +1188,7 @@ fn key_media_is_masked_by_the_rounded_lcd_corners() {
         let face = h.app.drop_targets.iter().find(|(_, k)| *k == 0).unwrap().0;
         let lcd = crate::deck_chassis::lcd(face, face.width() / crate::deck_chassis::FACE_SIZE.x);
         let img = h.raster(size, out);
-        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
             std::fs::create_dir_all(&dir).unwrap();
             let r = Rect::from_center_size(face.center(), face.size() * 1.15);
             let crop = image::imageops::crop_imm(&img, (r.left() * dpi) as u32, (r.top() * dpi) as u32, (r.width() * dpi) as u32, (r.height() * dpi) as u32).to_image();
@@ -1218,7 +1218,7 @@ fn plugin_header_keeps_remove_button_visible_with_long_plugin_ids() {
         h.app.plugin_errors.insert("com.geekyeggo.goveecontroller".into(), "Commande plugin expirée sans enregistrement WebSocket".into());
         let output = h.warm(size);
         assert!(fully_visible(&output.shapes, "Retirer le plugin"), "bouton hors champ à {size:?}");
-        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
             let snapshot = h.warm(size);
             h.png(size, snapshot, &PathBuf::from(dir).join(format!("plugin-header-{}.png", size.x as u32)));
         }
@@ -1247,7 +1247,7 @@ fn workshop_simple_mode_click_on_nested_block_opens_its_properties() {
         assert_eq!(h.ctx.data(|d| d.get_temp::<Vec<usize>>(egui::Id::new("workshop_path"))), Some(vec![0, 1, 0]));
         assert!(text_position(&output.shapes, "Propriétés du bloc").is_some(), "propriétés du bloc imbriqué (assistant {chat})");
         assert!(text_position(&output.shapes, "Programme").is_some() || text_position(&output.shapes, "brave.exe").is_some(), "champ modifiable");
-        if let (false, Some(dir)) = (chat, std::env::var_os("DECKFORGE_UI_OUTPUT")) {
+        if let (false, Some(dir)) = (chat, std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT"))) {
             let snapshot = h.warm(size);
             h.png(size, snapshot, &PathBuf::from(dir).join("atelier-simple-proprietes.png"));
         }
@@ -1324,7 +1324,7 @@ fn workflow_preview_shows_conditional_blocks() {
     assert!(text_position(&output.shapes, "Construis ton automatisation").is_some());
     assert!(text_position(&output.shapes, "BIBLIOTHÈQUE DE BLOCS").is_some());
     assert!(text_position(&output.shapes, "Clavier").is_some());
-    if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+    if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
         h.png(size, output, &PathBuf::from(dir).join("workflow.png"));
     }
 }
@@ -1364,7 +1364,7 @@ fn gallery_click_retargets_to_current_selected_key() {
         .any(|s| matches!(&s.shape,egui::Shape::Circle(c) if c.radius==8.0 && c.fill==accent())));
     assert!(h.app.icon_notice.contains("appliquée"));
     assert!(h.app.icon_notice.contains("08"));
-    if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+    if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
         h.png(
             size,
             output,
@@ -1481,7 +1481,7 @@ fn both_audio_state_previews_are_visible_in_the_compact_inspector() {
             resets, 2,
             "Both states' icon controls must be visible without scrolling"
         );
-        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
             h.png(size, output, &PathBuf::from(dir).join(name));
         }
     }
@@ -1774,7 +1774,7 @@ fn mcp_connect_window_previews_all_clients_without_touching_real_settings() {
         if let egui::Shape::Text(t)=&shape.shape {Some(t.galley.job.text.as_str())}else{None}
     }).collect::<Vec<_>>().join(" ");
     for client in ["Claude Desktop","Claude Code","Codex CLI","Cursor","ChatGPT"] {assert!(text.contains(client),"Carte manquante : {client}");}
-    if let Some(dir)=std::env::var_os("DECKFORGE_UI_OUTPUT") {
+    if let Some(dir)=std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
         h.png(size,output,&PathBuf::from(dir).join("mcp-connect.png"));
     }
 }
@@ -1805,7 +1805,7 @@ fn plugin_cards_keep_an_import_button_visible_inside_the_library_on_small_window
         let title = text_position(&out.shapes, "Un plugin au titre plutôt long pour le panneau")
             .expect("plugin lisible quand sa carte est visible");
         assert!(panel.contains(title), "nom hors du panneau : {title:?} / {panel:?}");
-        if let Some(dir)=std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        if let Some(dir)=std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
             let dir=PathBuf::from(dir); std::fs::create_dir_all(&dir).unwrap();
             h.png(physical,out,&dir.join(format!("plugins-import-{}.png",physical.x as u32)));
         }
@@ -1834,7 +1834,7 @@ fn only_the_inspector_properties_scroll_and_its_preview_stays_fixed() {
     let after_right = text_position(&out.shapes, "Changer l'icône").expect("aperçu fixe après défilement à droite");
     let header_final = text_position(&out.shapes, "Apparence").unwrap();
     assert!(((after_right.y - header_final.y) - (before.y - header_before.y)).abs() < 1.0, "aperçu ne suit pas le défilement des propriétés");
-    if let Some(dir)=std::env::var_os("DECKFORGE_UI_OUTPUT") {
+    if let Some(dir)=std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
         let dir=PathBuf::from(dir); std::fs::create_dir_all(&dir).unwrap();
         h.png(size,out,&dir.join("inspector-right-scroll.png"));
     }
@@ -1846,9 +1846,9 @@ fn plugin_store_is_rendered_without_a_window() {
     h.app.catalog_tab=3;
     let size=vec2(1180.0,800.0);
     let output=h.warm(size);
-    assert!(text_position(&output.shapes,"Installés dans DeckForge").is_some());
+    assert!(text_position(&output.shapes,"Installés dans NovyDeck").is_some());
     assert!(text_position(&output.shapes,"Plugins disponibles sur ce PC").is_some());
-    if let Some(dir)=std::env::var_os("DECKFORGE_UI_OUTPUT") {
+    if let Some(dir)=std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
         h.png(size,output,&PathBuf::from(dir).join("plugins-store.png"));
     }
     // Régression : l'onglet scannait les dossiers de plugins (et lançait reg.exe) à chaque image.
@@ -1878,12 +1878,12 @@ fn settings_tabs_fit_a_laptop_screen_and_ai_opens_the_single_assistant_window() 
     h.app.preferences.local_ai.enabled = true;
     h.app.preferences.local_ai.backend = "ollama".into();
     let open = h.warm(size);
-    for text in ["IA locale (sur ce PC)", "IA connectée (Claude, ChatGPT…)", "Utiliser une IA locale", "Ollama", "Intégré à DeckForge", "Tester", "IA : locale"] {
+    for text in ["IA locale (sur ce PC)", "IA connectée (Claude, ChatGPT…)", "Utiliser une IA locale", "Ollama", "Intégré à NovyDeck", "Tester", "IA : locale"] {
         assert!(text_position(&open.shapes, text).is_some(), "{text}");
     }
     assert!(text_position(&open.shapes, "Connecter une IA").is_none(), "plus de bouton IA en double dans l'en-tête");
     assert!(text_position(&open.shapes, "Arrêter les macros en cours").is_none() && text_position(&open.shapes, "Arrêter les macros").is_none(), "Arrêter n'apparaît que pendant une exécution");
-    if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+    if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
         std::fs::create_dir_all(&dir).unwrap();
         h.png(size, open, &PathBuf::from(&dir).join("assistant-ia-locale-ollama.png"));
         h.app.preferences.local_ai.backend = "integre".into();
@@ -1956,11 +1956,11 @@ fn startup_intro_page_fade_and_waiting_dot_animate_without_blocking() {
     let mut h = Harness::new();
     h.app.preferences.reduce_motion = false;
     let first = h.frame(size, vec![]);
-    // Le nom de l'intro est le seul « DeckForge » en 26 pt (l'en-tête est en 18 pt).
+    // Le nom de l'intro est le seul « NovyDeck » en 26 pt (l'en-tête est en 18 pt).
     let intro = |o: &egui::FullOutput| o.shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(t)
-        if t.galley.job.text == "DeckForge" && t.galley.job.sections.first().is_some_and(|f| f.format.font_id.size == 26.0)));
+        if t.galley.job.text == "NovyDeck" && t.galley.job.sections.first().is_some_and(|f| f.format.font_id.size == 26.0)));
     assert!(intro(&first), "intro visible au démarrage");
-    if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+    if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
         std::fs::create_dir_all(&dir).unwrap();
         for _ in 0..8 { h.frame(size, vec![]); }
         let out = h.frame(size, vec![]);
@@ -2038,7 +2038,7 @@ fn svg_chassis_aligns_the_fifteen_live_keys_and_renders_once() {
         // Clic et sélection inchangés.
         h.click(size, rects[12].center());
         assert_eq!(h.app.selected, 12, "{name} : clic sur la touche 13");
-        if let Some(dir) = std::env::var_os("DECKFORGE_UI_OUTPUT") {
+        if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
             std::fs::create_dir_all(&dir).unwrap();
             let out = h.warm(size);
             h.png(size, out, &PathBuf::from(&dir).join(format!("{name}.png")));
@@ -2085,7 +2085,7 @@ fn about_dialog_shows_cargo_version_without_network() {
     let mut h = Harness::new();
     h.app.show_about = true;
     let output = h.warm(size);
-    assert!(text_position(&output.shapes, "À propos de DeckForge").is_some());
+    assert!(text_position(&output.shapes, "À propos de NovyDeck").is_some());
     assert!(text_position(&output.shapes, &format!("Version : {}", env!("CARGO_PKG_VERSION"))).is_some());
     assert!(text_position(&output.shapes, "Vérifier les mises à jour").is_some());
     assert!(h.app.update_rx.is_none());

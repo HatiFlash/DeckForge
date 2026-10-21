@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Monte la vidéo de présentation de DeckForge à partir d'images clés RÉELLES de l'interface.
+# Monte la vidéo de présentation de NovyDeck à partir d'images clés RÉELLES de l'interface.
 #
-# 1. Images clés (Windows, dépôt DeckForge) : rendu hors écran du vrai code d'interface egui,
-#    profil « DeckForge Demo / README », 1920 × 1080 :
+# 1. Images clés (Windows, dépôt NovyDeck) : rendu hors écran du vrai code d'interface egui,
+#    profil « NovyDeck Demo / README », 1920 × 1080 :
 #      $env:DECKFORGE_VIDEO_OUTPUT="C:\chemin\frames"
-#      cargo test --locked --bin deckforge -- demo_video_keyframes --ignored --test-threads=1
+#      cargo test --locked --bin novydeck -- demo_video_keyframes --ignored --test-threads=1
 # 2. Montage (Linux/macOS/WSL, FFmpeg ≥ 6 avec libx264 et drawtext) :
-#      scripts/media/build-demo-video.sh <dossier-frames> docs/media/deckforge-demo.mp4
+#      scripts/media/build-demo-video.sh <dossier-frames> docs/media/novydeck-demo.mp4
 #
 # Aucune musique, aucune image générée par IA : seulement l'interface, le logo du dépôt et du texte.
 set -euo pipefail
 FRAMES=${1:?dossier des images clés}
-OUT=${2:-docs/media/deckforge-demo.mp4}
+OUT=${2:-docs/media/novydeck-demo.mp4}
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-LOGO="$ROOT/res/branding/deckforge-logo.png"
+LOGO="$ROOT/res/branding/novydeck-logo.png"
 FONT_BOLD=${FONT_BOLD:-$(fc-match -f '%{file}' 'Inter:style=SemiBold')}
 FONT=${FONT:-$(fc-match -f '%{file}' 'Inter:style=Regular')}
 VERSION=${VERSION:-$(grep -m1 '^version' "$ROOT/Cargo.toml" | cut -d'"' -f2)}
@@ -48,7 +48,7 @@ drawtext=fontfile=$FONT_BOLD:expansion=none:textfile=$caption:fontsize=40:fontco
     -r $FPS -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p "$WORK/$1.mp4"
 }
 
-card intro 3.5 "DeckForge" "Le centre de contrôle open source du FIFINE D6"
+card intro 3.5 "NovyDeck" "Le centre de contrôle open source du FIFINE D6"
 scene s1 "$FRAMES/01-main.png" "Les 15 touches du D6 · profil de démonstration"
 scene s2 "$FRAMES/02-page-2.png" "Pages et dossiers"
 scene s3 "$FRAMES/03-photo-key.png" "Images, GIF et vidéos sur les touches"
@@ -57,7 +57,7 @@ scene s5 "$FRAMES/05-block-added.png" "Ajouter un bloc…"
 scene s6 "$FRAMES/06-block-edited.png" "…puis le régler"
 scene s7 "$FRAMES/07-assistant.png" "Assistant local : aperçu avant validation"
 scene s8 "$FRAMES/08-media-crop.png" "Recadrage pour l'écran 126 × 126 de la touche"
-card outro 4 "github.com/HatiFlash/DeckForge" "Version $VERSION · Windows 10/11 · MIT"
+card outro 4 "github.com/HatiFlash/NovyDeck" "Version $VERSION · Windows 10/11 · MIT"
 
 # Fondus enchaînés entre tous les segments.
 inputs=(); filter=""; prev="0:v"; offset=0

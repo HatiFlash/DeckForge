@@ -1,5 +1,5 @@
-﻿# Construit l'installateur Windows de DeckForge (Inno Setup) à partir de target\release.
-# Usage : powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.8 [-Build]
+﻿# Construit l'installateur Windows de NovyDeck (Inno Setup) à partir de target\release.
+# Usage : powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.9 [-Build]
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     [switch]$Build,
@@ -12,7 +12,7 @@ if ($Build) {
     cargo build --release --locked
     if ($LASTEXITCODE -ne 0) { throw "Compilation release en échec" }
 }
-foreach ($exe in "deckforge.exe", "deckforge-mcp.exe") {
+foreach ($exe in "novydeck.exe", "novydeck-mcp.exe") {
     if (-not (Test-Path "target\release\$exe")) { throw "target\release\$exe absent : lancer avec -Build" }
 }
 if (-not $Iscc) {
@@ -32,10 +32,10 @@ if (-not $Iscc) { throw "ISCC.exe introuvable : installer Inno Setup (https://jr
 $out = Join-Path $root "target\release-dist"
 New-Item -ItemType Directory -Force $out | Out-Null
 $numeric = ($Version -replace "[^0-9.].*$", "").Trim(".")
-& $Iscc "/DAppVersion=$Version" "/DAppNumVersion=$numeric" "/DSourceDir=$root\target\release" "/DRepoDir=$root" "/DOutputDir=$out" "$root\tools\installer\DeckForge.iss"
+& $Iscc "/DAppVersion=$Version" "/DAppNumVersion=$numeric" "/DSourceDir=$root\target\release" "/DRepoDir=$root" "/DOutputDir=$out" "$root\tools\installer\NovyDeck.iss"
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup a échoué ($LASTEXITCODE)" }
-$setup = Join-Path $out "DeckForge-$Version-Setup.exe"
+$setup = Join-Path $out "NovyDeck-$Version-Setup.exe"
 $hash = (Get-FileHash $setup -Algorithm SHA256).Hash
-"$hash  DeckForge-$Version-Setup.exe" | Set-Content -Encoding ascii "$setup.sha256"
+"$hash  NovyDeck-$Version-Setup.exe" | Set-Content -Encoding ascii "$setup.sha256"
 Write-Host "Installateur prêt : $setup"
 Write-Host "SHA-256 : $hash"

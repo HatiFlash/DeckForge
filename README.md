@@ -1,25 +1,27 @@
-# DeckForge
+# NovyDeck
+
+**Anciennement DeckForge** — même application, nouveaux nom et logo à partir de la version 0.8.9.
 
 <div align="center">
-  <img src="res/branding/deckforge-logo.png" width="112" alt="Logo DeckForge"><br>
+  <img src="res/branding/novydeck-logo.png" width="112" alt="Logo NovyDeck"><br>
   <strong>Logiciel libre pour Windows qui pilote le pavé FIFINE AmpliGame D6 : touches, macros, médias et plugins, sans le logiciel officiel.</strong>
   <br><br>
 
-  [![Release](https://img.shields.io/badge/Release-v0.8.8-3478F6.svg)](https://github.com/HatiFlash/DeckForge/releases/tag/v0.8.8)
+  [![Release](https://img.shields.io/badge/Release-v0.8.9-3478F6.svg)](https://github.com/HatiFlash/NovyDeck/releases/tag/v0.8.9)
   [![Licence MIT](https://img.shields.io/badge/Licence-MIT-22C58B.svg)](LICENSE)
 </div>
 
-![DeckForge : profil de démonstration, les 15 touches du D6 remplies](docs/images/deckforge-main.png)
+![NovyDeck : profil de démonstration, les 15 touches du D6 remplies](docs/images/novydeck-main.png)
 
-<sub>Capture réelle de l'interface (rendu hors écran à 2560 × 1600, profil « DeckForge Demo / README » fourni avec l'application, aucun périphérique connecté).</sub>
+<sub>Capture réelle de l'interface (rendu hors écran à 2560 × 1600, profil « NovyDeck Demo / README » fourni avec l'application, aucun périphérique connecté).</sub>
 
 ## Vidéo de présentation
 
-[![Vidéo de présentation de DeckForge (42 s, son)](docs/media/deckforge-demo-poster.png)](docs/media/deckforge-demo.mp4)
+[![Vidéo de présentation de NovyDeck (43 s, son)](docs/media/novydeck-demo-poster.png)](docs/media/novydeck-demo.mp4)
 
-*Pavé D6 modélisé en 3D (three.js) avec les vrais écrans des 15 touches du profil de démonstration et les vraies captures de l'application ; bande-son procédurale. Sources et procédure : [scripts/media/promo](scripts/media/promo/README.md).*
+*Montage Remotion, pavé D6 modélisé en 3D (three.js) avec les vrais écrans des 15 touches du profil de démonstration et les vraies captures de l'application ; bande-son procédurale. Sources et procédure : [scripts/media/promo](scripts/media/remotion/README.md).*
 
-30 secondes, 1920 × 1080, sans son : profil, pages, atelier de blocs, assistant et recadrage. Les images proviennent de l'interface réelle ([procédure](scripts/media/README.md)).
+Présentation Remotion en 1920 × 1080, avec son : nouveau logo, pavé 3D, profils, atelier de blocs et assistant. Les images proviennent de l'interface réelle ([procédure](scripts/media/README.md)).
 
 ## Points clés
 
@@ -45,9 +47,9 @@ Fermez le logiciel officiel FIFINE Control Deck : il garde l'accès USB exclusif
 
 ## Installation rapide
 
-1. Téléchargez **`DeckForge-0.8.8-Setup.exe`** depuis la [dernière release](https://github.com/HatiFlash/DeckForge/releases/latest) et lancez-le (aucun droit administrateur requis), ou extrayez `DeckForge-0.8.8-Windows.zip`.
-   - Vous utilisiez la version portable ? DeckForge fermé, copiez `config.json`, `preferences.json`, `variables.json` et les dossiers `assets` et `plugins` vers `%LOCALAPPDATA%\Programs\DeckForge`.
-2. Lancez DeckForge depuis le menu Démarrer et branchez le D6.
+1. Téléchargez **`NovyDeck-0.8.9-Setup.exe`** depuis la [dernière release](https://github.com/HatiFlash/NovyDeck/releases/latest) et lancez-le (aucun droit administrateur requis), ou extrayez `NovyDeck-0.8.9-Windows.zip`.
+   - Vous utilisiez DeckForge installé ? L’installateur réutilise son emplacement et conserve les profils. En portable : fermez l’application puis extrayez les nouveaux exécutables dans le même dossier, sans supprimer `config.json`, les préférences, `assets` ni `plugins`. Une nouvelle installation utilise `%LOCALAPPDATA%\Programs\NovyDeck`.
+2. Lancez NovyDeck depuis le menu Démarrer et branchez le D6.
 3. Pour découvrir l'application sans toucher à vos profils : **Profils → ••• → Profil de démonstration (15 touches)**. Ce profil se réinitialise par la même commande et peut être supprimé comme un autre.
 4. Glissez une action de la bibliothèque sur une touche, ou ouvrez l'**Atelier de blocs**.
 
@@ -55,12 +57,12 @@ Fermez le logiciel officiel FIFINE Control Deck : il garde l'accès USB exclusif
 
 | Atelier de blocs | Assistant local |
 |---|---|
-| ![Macro de 5 blocs et propriétés du raccourci sélectionné](docs/images/deckforge-block-editor.png) | ![Phrase convertie en condition Si / Sinon, en aperçu](docs/images/deckforge-assistant.png) |
+| ![Macro de 5 blocs et propriétés du raccourci sélectionné](docs/images/novydeck-block-editor.png) | ![Phrase convertie en condition Si / Sinon, en aperçu](docs/images/novydeck-assistant.png) |
 | Macro de démonstration en cinq blocs ; le panneau de droite règle le bloc choisi. | Réponse réelle des règles locales : condition « Brave ouvert ? », aperçu avant ajout. |
 
 | Recadrage d'image | Coins des touches (0.8.8) |
 |---|---|
-| ![Recadrage du paysage de démonstration pour l'écran 126 × 126](docs/images/deckforge-media-crop.png) | ![Avant](docs/images/key-corners-before.png) ![Après](docs/images/key-corners-after.png) |
+| ![Recadrage du paysage de démonstration pour l'écran 126 × 126](docs/images/novydeck-media-crop.png) | ![Avant](docs/images/key-corners-before.png) ![Après](docs/images/key-corners-after.png) |
 | Aperçu fidèle sur la touche ; le fichier d'origine est conservé. | Avant / après : le fond suit désormais l'arrondi de la touche. |
 
 ## Documentation
@@ -71,10 +73,19 @@ Fermez le logiciel officiel FIFINE Control Deck : il garde l'accès USB exclusif
 
 ## Historique des versions
 
+### Nouveautés 0.8.9 — NovyDeck
+
+- **Nouveau nom et nouveau logo** : NovyDeck dans l'interface, l'icône Windows, les exécutables, l'installateur et GitHub.
+- **Compatibilité DeckForge** : profils et médias existants préservés ; anciens chemins détectés sans écraser vos données. Les identifiants de compatibilité nécessaires aux plugins et intégrations existantes sont conservés.
+- **Nouvelle vidéo Remotion** : animation 3D, captures NovyDeck réelles, nouveau logo et bande-son ; sources reproductibles dans `scripts/media/remotion/`.
+- Rust et egui/eframe restent sur la même génération ; les fonctions d'actions, macros, profils et plugins ne sont pas refondues. [Validation 0.8.9](docs/TEST-0.8.9.md).
+
+*Les notes et captures des anciennes versions ci-dessous constituent des archives ; elles peuvent encore afficher l'ancien nom DeckForge.*
+
 ### Nouveautés 0.8.8
 
 - **Coins des touches corrigés** : fonds, images, GIF et vidéos sont masqués à l'arrondi de l'écran de chaque touche (grille et inspecteur), net jusqu'à 200 %. L'image envoyée au D6 ne change pas.
-- **Profil de démonstration** « DeckForge Demo / README » : 15 touches remplies avec des actions existantes et des médias générés par l'application, ajouté sans modifier vos profils.
+- **Profil de démonstration** « NovyDeck Demo / README » : 15 touches remplies avec des actions existantes et des médias générés par l'application, ajouté sans modifier vos profils.
 - **README et identité visuelle** : captures réelles en 2560 × 1600, vidéo de présentation reproductible, jetons de design documentés ([DESIGN.md](docs/DESIGN.md)).
 - Correction : dans les propriétés d'un raccourci clavier, le bouton « Enregistrer… » n'est plus coupé par un panneau étroit. Détails : [docs/RELEASE-0.8.8.md](docs/RELEASE-0.8.8.md).
 
@@ -120,7 +131,7 @@ Fermez le logiciel officiel FIFINE Control Deck : il garde l'accès USB exclusif
 ### Nouveautés 0.8.4
 
 - **Icônes multi-couleurs IconPark** dans toute l'interface, une couleur par famille d'actions (clavier, applications, web, logique, médias, audio, système, OBS, plugins, IA, images), lisibles en thème sombre comme en clair. Seuls les 66 pictogrammes utilisés sont embarqués ; le rendu des touches du périphérique ne change pas.
-- **Animations** : intro au démarrage, indicateur de chargement DeckForge pendant les attentes, point « En attente » animé pendant la connexion, fondus au changement de page, de profil et d'onglet. Réglage « Réduire les animations » dans Réglages → Général.
+- **Animations** : intro au démarrage, indicateur de chargement NovyDeck pendant les attentes, point « En attente » animé pendant la connexion, fondus au changement de page, de profil et d'onglet. Réglage « Réduire les animations » dans Réglages → Général.
 - Correction : les boutons de l'inspecteur ne recouvrent plus « Appui court » sur petit écran. Détails : [docs/RELEASE-0.8.4.md](docs/RELEASE-0.8.4.md).
 
 | Démarrage | Icônes de l'interface |
@@ -146,7 +157,7 @@ Fermez le logiciel officiel FIFINE Control Deck : il garde l'accès USB exclusif
 
 ### Nouveautés 0.8.1
 
-- **Installateur Windows** (`DeckForge-0.8.1-Setup.exe`) : sans droits administrateur, raccourcis menu Démarrer / Bureau, désinstallation propre ; profils, préférences, icônes et plugins conservés.
+- **Installateur Windows** (`NovyDeck-0.8.1-Setup.exe`) : sans droits administrateur, raccourcis menu Démarrer / Bureau, désinstallation propre ; profils, préférences, icônes et plugins conservés.
 - **Onglet Plugins corrigé** : plus de gel ni de rafale de fenêtres console à l'ouverture.
 - **Exécutable mieux identifié par Windows** : icône, informations de version et manifeste intégrés (moins de faux positifs Defender ; l'exécutable n'est pas encore signé).
 - **Thèmes** : thème clair refait, styles Bleu nuit, Graphite, Clair et Sable, cinq couleurs d'accent (Réglages → Thème de l'interface).
@@ -167,7 +178,7 @@ Fermez le logiciel officiel FIFINE Control Deck : il garde l'accès USB exclusif
 ### ⚡ Atelier de blocs natif (Sans scripts ni dépendance)
 Composez des automatisations puissantes en glissant-déposant des blocs directement dans l'interface, sans avoir besoin d'AutoHotkey :
 
-![Atelier de blocs DeckForge](docs/workflow.png)
+![Atelier de blocs NovyDeck](docs/workflow.png)
 
 - **Gestion audio intelligente** : Ajustez le volume de l'application au premier plan ou d'un exécutable précis sans jamais altérer le volume général de Windows. Basculez d'un clic entre casque et enceintes avec mise à jour immédiate de l'icône et du titre sur la touche.
 - **Intégrations streaming & multimédia** : Contrôle natif d'OBS Studio (changement de scènes, enregistrement, stream, replay buffer, bascule des sources et micro), Discord, soundboard intégrée et commandes multimédias.
@@ -190,13 +201,13 @@ Importez directement vos archives de plugins préférées (`.streamDeckPlugin` /
 | Property Inspector Elgato (sdpi-components) | Réglages VolumeController (BarRaider) |
 | :---: | :---: |
 | ![PI Elgato Product](docs/pi-product.png) | ![PI VolumeController](docs/pi-volume.png) |
-| **SignalRGB (EasyPI + thème DeckForge)** | **Compteur Elgato (Node.js)** |
+| **SignalRGB (EasyPI + thème NovyDeck)** | **Compteur Elgato (Node.js)** |
 | ![PI SignalRGB](docs/pi-signalrgb.png) | ![PI Counter](docs/pi-counter.png) |
 
 </div>
 
 ### 🎨 Éditeur de recadrage interactif intégré & Galerie multimédia
-- **Recadrage non destructif des images et vidéos** : Ajustez visuellement vos photos et vidéos directement dans DeckForge avant envoi aux touches (modes Remplir ou Ajuster/Letterbox, zoom progressif 0.5x–3.0x, recentrage et prévisualisation instantanée du rendu fidèle sur touche D6 112x112 px).
+- **Recadrage non destructif des images et vidéos** : Ajustez visuellement vos photos et vidéos directement dans NovyDeck avant envoi aux touches (modes Remplir ou Ajuster/Letterbox, zoom progressif 0.5x–3.0x, recentrage et prévisualisation instantanée du rendu fidèle sur touche D6 112x112 px).
 - **Décodage vidéo Media Foundation Windows & GIF infinis** : Import direct sans FFmpeg requis pour vos clips courts et animations en boucle.
 - **Galerie multimédia riche** : Prise en charge complète des images PNG, JPEG, WebP, SVG transparents et animations.
 
@@ -206,7 +217,7 @@ Importez directement vos archives de plugins préférées (`.streamDeckPlugin` /
 - **Simulation sécurisée & isolée** : Mode test de macros sans aucun effet système de bord non sollicité.
 
 ### 🤖 Intégration IA Plug-and-Play (Protocole MCP)
-DeckForge embarque un serveur MCP (**Model Context Protocol**) natif pour collaborer avec vos assistants d'IA sans aucune ligne de code ni modification de fichier JSON :
+NovyDeck embarque un serveur MCP (**Model Context Protocol**) natif pour collaborer avec vos assistants d'IA sans aucune ligne de code ni modification de fichier JSON :
 - Connectez d'un clic **Claude Desktop**, **Claude Code**, **Codex CLI** ou **Cursor** via le bouton **IA** dans la barre d'outils.
 - L'IA peut explorer vos profils, vous suggérer des agencements de touches optimisés pour vos jeux ou outils de création, et générer des macros complètes.
 - **Contrôle humain préservé** : chaque proposition d'action formulée par l'IA apparaît en prévisualisation et attend votre validation explicite avant d'être appliquée sur votre profil.
@@ -221,12 +232,12 @@ DeckForge embarque un serveur MCP (**Model Context Protocol**) natif pour collab
 
 ## 🛠️ Compilation & Développement
 
-DeckForge est développé en Rust et se compile en mode verrouillé (`--locked`) :
+NovyDeck est développé en Rust et se compile en mode verrouillé (`--locked`) :
 
 ```bash
 # Cloner le dépôt
-git clone https://github.com/HatiFlash/DeckForge.git
-cd DeckForge
+git clone https://github.com/HatiFlash/NovyDeck.git
+cd NovyDeck
 
 # Compiler en mode Release
 cargo build --release --locked
@@ -244,5 +255,5 @@ powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.
 
 Ce projet est distribué sous [licence MIT](LICENSE). Aucun binaire tiers propriétaire, archive protégée ou pack de ressources fermé n'est inclus dans le dépôt de code source.
 
-Les icônes d'interface proviennent d'[IconPark](https://github.com/bytedance/IconPark) (ByteDance), sous licence Apache 2.0 : seuls les pictogrammes utilisés sont embarqués, recolorés selon la palette de DeckForge (voir [res/iconpark/NOTICE.md](res/iconpark/NOTICE.md) et [res/iconpark/LICENSE](res/iconpark/LICENSE)). La licence est aussi consultable dans « À propos de DeckForge ».
+Les icônes d'interface proviennent d'[IconPark](https://github.com/bytedance/IconPark) (ByteDance), sous licence Apache 2.0 : seuls les pictogrammes utilisés sont embarqués, recolorés selon la palette de NovyDeck (voir [res/iconpark/NOTICE.md](res/iconpark/NOTICE.md) et [res/iconpark/LICENSE](res/iconpark/LICENSE)). La licence est aussi consultable dans « À propos de NovyDeck ».
 Pour les notices relatives aux dépendances open-source et bibliothèques embarquées, consultez [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).

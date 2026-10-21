@@ -39,7 +39,7 @@ impl Session {
         let (path, file) = open(&primary, id).or_else(|_| {
             let local = std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
                 .unwrap_or_else(std::env::temp_dir);
-            open(&local.join("DeckForge").join("diagnostics"), id)
+            open(&crate::assets::user_data_dir(&local).join("diagnostics"), id)
         })?;
         let (sender, receiver) = mpsc::sync_channel::<Value>(QUEUE);
         let active = Arc::new(AtomicBool::new(true));

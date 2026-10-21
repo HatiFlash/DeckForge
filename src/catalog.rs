@@ -27,7 +27,7 @@ pub fn presets() -> Vec<Preset> {
     add("Système", "Clic souris", "Clique sur le bouton gauche de la souris.", [73, 160, 217], vec![Step::MouseClick { button: "left".into(), double: false, x: None, y: None, relative_to: "screen".into() }]);
     add("Système", "Déplacer la souris", "Déplace le curseur relativement à sa position.", [73, 160, 217], vec![Step::MouseMove { x: 10, y: 0, relative: false, relative_to: "cursor".into() }]);
     add("Système", "Défiler", "Fait défiler la fenêtre active d'un cran.", [73, 160, 217], vec![Step::MouseScroll { amount: 1, horizontal: false }]);
-    add("Système", "Fermer la fenêtre", "Demande à Windows de fermer la fenêtre active, sauf DeckForge.", [73, 160, 217], vec![Step::CloseWindow]);
+    add("Système", "Fermer la fenêtre", "Demande à Windows de fermer la fenêtre active, sauf NovyDeck.", [73, 160, 217], vec![Step::CloseWindow]);
     for (label, command) in [
         ("Lecture / pause", "play_pause"),
         ("Piste suivante", "next"),
@@ -48,7 +48,7 @@ pub fn presets() -> Vec<Preset> {
         );
     }
     for (label, op, monitor) in [("Fenêtre sur l'écran 2", "move_to_monitor", 2), ("Toujours au premier plan", "toggle_always_on_top", 2), ("Maximiser", "maximize", 2)] {
-        add("Fenêtres", label, "Opération sur la fenêtre active, sauf DeckForge ; écran 1 = principal.", [73, 160, 217], vec![Step::WindowOp {
+        add("Fenêtres", label, "Opération sur la fenêtre active, sauf NovyDeck ; écran 1 = principal.", [73, 160, 217], vec![Step::WindowOp {
             target: "foreground".into(), value: String::new(), op: op.into(), x: 0, y: 0, w: 800, h: 600, monitor,
         }]);
     }
@@ -277,10 +277,10 @@ pub fn presets() -> Vec<Preset> {
     add("Streaming", "Envoyer en UDP", "Envoie un message à un service local (vMix).", [76, 166, 137], vec![Step::UdpSend { host: "127.0.0.1".into(), port: 8099, text: "message".into() }]);
     add("Streaming", "Requête HTTP", "Appelle une API HTTP locale (sans HTTPS).", [76, 166, 137], vec![Step::HttpRequest { method: "GET".into(), url: "http://127.0.0.1:8088/api".into(), body: String::new(), content_type: "text/plain".into() }]);
     add("Streaming", "Jouer un son", "Lit un fichier WAV ou MP3 sans interrompre la macro (8 sons maximum).", [76, 166, 137], vec![Step::PlaySound { path: "choisir.wav".into(), volume: 100 }]);
-    add("Streaming", "Arrêter les sons", "Arrête les sons lancés par DeckForge.", [76, 166, 137], vec![Step::StopSounds]);
+    add("Streaming", "Arrêter les sons", "Arrête les sons lancés par NovyDeck.", [76, 166, 137], vec![Step::StopSounds]);
     add("Automatisations", "Si… sinon", "Choisit ALORS ou SINON suivant une condition Windows en lecture seule.", [158,116,224], vec![Step::IfCondition { condition: crate::conditions::Condition::default(), then_steps: vec![], else_steps: vec![] }]);
     add("Automatisations", "Attendre que…", "Attend une condition en lecture seule pendant 5 secondes au plus.", [158,116,224], vec![Step::WaitUntil { condition: crate::conditions::Condition::default(), timeout_ms: 5000, poll_ms: 200 }]);
-    add("Automatisations", "Notification", "Affiche un message Windows sans voler le focus.", [158,116,224], vec![Step::Notify { title: "DeckForge".into(), message: "Bonjour {nom}".into() }]);
+    add("Automatisations", "Notification", "Affiche un message Windows sans voler le focus.", [158,116,224], vec![Step::Notify { title: "NovyDeck".into(), message: "Bonjour {nom}".into() }]);
     drop(add);
     for (label, description, condition, true_label, false_label, color) in [
         ("Micro coupé = icône rouge", "Le microphone muet affiche un état rouge, même après un changement externe.", crate::conditions::Condition::DeviceMuted { input: true, device: "default".into() }, "Micro coupé", "Micro actif", [215, 58, 69]),

@@ -30,7 +30,7 @@ pub fn step(kind: usize) -> Step {
         44 => Step::Clipboard { op: "copy_text".into(), value: "Bonjour".into(), name: "texte".into() },
         43 => Step::TextOp { name: "texte".into(), op: "upper".into(), value: String::new(), find: String::new(), persistent: false, },
         42 => Step::Math { name: "compteur".into(), op: "add".into(), value: "1".into(), min: 0.0, max: 100.0, persistent: false, },
-        41 => Step::Notify { title: "DeckForge".into(), message: "Bonjour {nom}".into() },
+        41 => Step::Notify { title: "NovyDeck".into(), message: "Bonjour {nom}".into() },
         40 => Step::WaitUntil { condition: crate::conditions::Condition::default(), timeout_ms: 5000, poll_ms: 200 },
         39 => Step::IfCondition { condition: crate::conditions::Condition::default(), then_steps: vec![], else_steps: vec![] },
         38 => Step::DeviceVolume { input: false, device: "default".into(), action: "up".into(), step: 5, level: 50 },

@@ -1,8 +1,8 @@
-# Contrats Elgato : comparaison OpenDeck / DeckForge (18 octobre 2026)
+# Contrats Elgato : comparaison OpenDeck / NovyDeck (18 octobre 2026)
 
-Références de lecture seule : OpenDeck commit `772189ca74c89a10bad219b67de620ecb07bf1f6` (`src-tauri/src/plugins/mod.rs`, `webserver.rs`, `src-tauri/src/events/{inbound,outbound}/` et `PropertyInspectorView.svelte`) ; OpenAction API docs commit `ffe2564bd42f54b19443cf1dac821adf6a85a848` (`src/api/registration.md`, `src/overview.md`) ; SDK Elgato, rubriques WebSocket Plugin, Property Inspector et Settings. OpenDeck est GPL-3.0 : ses mécanismes sont étudiés, **aucun de ses fichiers ni fragment de code n'est copié** dans DeckForge MIT.
+Références de lecture seule : OpenDeck commit `772189ca74c89a10bad219b67de620ecb07bf1f6` (`src-tauri/src/plugins/mod.rs`, `webserver.rs`, `src-tauri/src/events/{inbound,outbound}/` et `PropertyInspectorView.svelte`) ; OpenAction API docs commit `ffe2564bd42f54b19443cf1dac821adf6a85a848` (`src/api/registration.md`, `src/overview.md`) ; SDK Elgato, rubriques WebSocket Plugin, Property Inspector et Settings. OpenDeck est GPL-3.0 : ses mécanismes sont étudiés, **aucun de ses fichiers ni fragment de code n'est copié** dans NovyDeck MIT.
 
-| Contrat | OpenDeck (référence de mécanisme) | DeckForge `claude/0.5` après `e74798d` | Lacune / preuve à acquérir |
+| Contrat | OpenDeck (référence de mécanisme) | NovyDeck `claude/0.5` après `e74798d` | Lacune / preuve à acquérir |
 | --- | --- | --- | --- |
 | Manifeste et lancement | Résout CodePath selon OS ; démarre exécutable, Node ou interface HTML. | `plugins.rs::parse`, `plugin_host.rs::Host::start` : CodePathWin prioritaire, prérequis OS/Node, Job Object ; HTML refusé par la validation automatique. | Tester un plugin tiers ouvert avec effet inoffensif ; démarrer ne prouve pas une action. |
 | Enregistrement WebSocket | Première trame `registerPlugin` ou `registerPropertyInspector`, sockets et files distincts. | `plugin_host.rs::socket_loop_traced` sépare plugin et PI, borne/expire la file ; trace opt-in des phases et des écritures. | Session locale non authentifiée ; `sent` prouve une écriture WS locale, pas le traitement distant. |

@@ -66,14 +66,14 @@ const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
     ("Texte", &[1, 43, 44]), ("Applications et sites", &[2, 3]),
     ("Médias et audio", &[4, 13, 37, 38]), ("Fenêtres", &[6, 46]), ("Attendre", &[5, 40]), ("Notifications", &[41]),
     ("Logique et répétitions", &[14, 15, 39]), ("Variables", &[16, 17, 42]),
-    ("Navigation DeckForge", &[7, 8, 9, 10, 11]), ("Avancé / AutoHotkey", &[18]),
+    ("Navigation NovyDeck", &[7, 8, 9, 10, 11]), ("Avancé / AutoHotkey", &[18]),
 ];
 fn block_help(kind: usize) -> &'static str {
     match kind {
         27 => "Clique à la position actuelle, ou à des coordonnées écran, zone client ou curseur.",
         28 => "Déplace la souris dans l’écran, depuis le curseur ou dans la zone client capturée au déclenchement.",
         29 => "Défile verticalement ou horizontalement ; simulation sans effet.",
-        46 => "Active, déplace ou redimensionne une fenêtre ; jamais DeckForge sauf ciblage explicite par titre.",
+        46 => "Active, déplace ou redimensionne une fenêtre ; jamais NovyDeck sauf ciblage explicite par titre.",
         45 => "Maintient des touches ; 0 ms jusqu’au bloc Relâcher, fin ou annulation de la macro.",
         0 => "Appuie sur une combinaison de touches.", 1 => "Écrit du texte dans la fenêtre active ; accepte {nom} et les variables spéciales.",
         2 => "Démarre un programme Windows (arguments interpolés).", 3 => "Ouvre une adresse web (gabarit interpolé).",
@@ -651,7 +651,7 @@ impl App {
         let profile = &self.config.profiles[self.config.active].name;
         let destination =
             serde_json::json!({"profile":profile,"page":self.config.page,"key":self.selected+1});
-        format!("Utilise le connecteur MCP DeckForge pour proposer cette automatisation :\n{}\n\nDestination exacte : {destination}\nLis d’abord deckforge_get_state et deckforge_get_profile. Si la demande concerne l’audio, utilise deckforge_get_audio_devices pour récupérer les identifiants réels. Tu peux utiliser deckforge_get_icons ; pour audio_switch, first_icon/second_icon acceptent builtin:headphones, builtin:speakers et builtin:microphone. Crée les étapes avec deckforge_configure_key (conditions, répétitions et variables possibles). Si une information manque, demande-la-moi au lieu d’inventer un périphérique, un programme ou un script. N’exécute aucune macro. Attends la validation de la proposition dans DeckForge ; les blocs resteront ensuite modifiables dans l’Atelier.",self.assistant_request.trim())
+        format!("Utilise le connecteur MCP NovyDeck pour proposer cette automatisation :\n{}\n\nDestination exacte : {destination}\nLis d’abord deckforge_get_state et deckforge_get_profile. Si la demande concerne l’audio, utilise deckforge_get_audio_devices pour récupérer les identifiants réels. Tu peux utiliser deckforge_get_icons ; pour audio_switch, first_icon/second_icon acceptent builtin:headphones, builtin:speakers et builtin:microphone. Crée les étapes avec deckforge_configure_key (conditions, répétitions et variables possibles). Si une information manque, demande-la-moi au lieu d’inventer un périphérique, un programme ou un script. N’exécute aucune macro. Attends la validation de la proposition dans NovyDeck ; les blocs resteront ensuite modifiables dans l’Atelier.",self.assistant_request.trim())
     }
     pub(super) fn presented_key(&self, index: usize) -> Key {
         self.state_key(index, crate::obs_monitor::present_key(&crate::audio::present_key(&self.config.keys()[index], &self.audio), &self.obs_state))
@@ -1083,7 +1083,7 @@ impl App {
         egui::Window::new("Windows et raccourcis").open(&mut open).default_width(510.0).show(ctx,|ui|{
             let mut enabled=self.preferences.start_with_windows;
             if ui.checkbox(&mut enabled,"Démarrer avec Windows en arrière-plan").changed(){startup=Some(enabled);}
-            changed|=ui.checkbox(&mut self.preferences.close_to_tray,"Fermer la fenêtre garde DeckForge près de l’horloge").changed();
+            changed|=ui.checkbox(&mut self.preferences.close_to_tray,"Fermer la fenêtre garde NovyDeck près de l’horloge").changed();
             if ui.add_enabled(self.tray_ready,egui::Button::new("Masquer maintenant")).clicked(){ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));}
             ui.separator();ui.label("OBS Studio (WebSocket local)");
             changed |= ui.text_edit_singleline(&mut self.config.obs.host).changed();

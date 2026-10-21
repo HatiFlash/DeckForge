@@ -707,7 +707,7 @@ impl App {
         ui.label(RichText::new(file.display().to_string()).size(11.0).color(p.muted));
         ui.horizontal_wrapped(|ui| {
             ui.label("Moteur");
-            for (id, label) in [("integre", "Intégré à DeckForge"), ("ollama", "Ollama")] {
+            for (id, label) in [("integre", "Intégré à NovyDeck"), ("ollama", "Ollama")] {
                 if ui.selectable_label(self.preferences.local_ai.backend == id, label).clicked() {
                     self.preferences.local_ai.backend = id.into();
                     self.local_ai.stop();
@@ -804,7 +804,7 @@ impl App {
             }
         }
         if needed {
-            ui.label(RichText::new("Téléchargement unique depuis GitHub (llama.cpp, 37 Mo) et Hugging Face (Qwen2.5 1,5B, 1,1 Go), vérifié par empreinte SHA-256, installé dans %LOCALAPPDATA%\\DeckForge\\ai. Annulable ; reprend là où il s'est arrêté.").size(12.0).color(p.muted));
+            ui.label(RichText::new("Téléchargement unique depuis GitHub (llama.cpp, 37 Mo) et Hugging Face (Qwen2.5 1,5B, 1,1 Go), vérifié par empreinte SHA-256, installé dans %LOCALAPPDATA%\\NovyDeck\\ai. Annulable ; reprend là où il s'est arrêté.").size(12.0).color(p.muted));
             let dir = crate::local_llm::builtin_dir();
             let (need, free) = (crate::local_llm::space_needed(&dir), crate::local_llm::free_space(dir.ancestors().find(|d| d.exists()).unwrap_or(&dir)));
             let enough = free.is_none_or(|f| f >= need);

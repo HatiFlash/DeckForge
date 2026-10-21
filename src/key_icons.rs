@@ -36,7 +36,7 @@ pub fn palette(family: Family) -> ([u8; 3], [[u8; 3]; 4]) {
         Family::Image => ([0xF5, 0x5E, 0x84], [0xFF, 0xC8, 0x66]),
         Family::Warning => ([0xF5, 0xAD, 0x42], [0xFF, 0xE2, 0xA8]),
         Family::Danger => ([0xF2, 0x5F, 0x70], [0xFF, 0xC2, 0xC9]),
-        // Navigation (pages, dossiers, profils) : bleu DeckForge.
+        // Navigation (pages, dossiers, profils) : bleu NovyDeck.
         Family::Accent | Family::Mono => ([0x3C, 0x80, 0xF6], [0x9E, 0xC6, 0xFF]),
     };
     let line = [mix(fill[0], 255, 0.70), mix(fill[1], 255, 0.70), mix(fill[2], 255, 0.70)];

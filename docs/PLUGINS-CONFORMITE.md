@@ -26,4 +26,4 @@ Empreinte SHA256 du corpus (SHA256 des SHA256 des manifestes uniques triés, sé
 
 Deux racines locales fournies en arguments ; seuls les manifest.json des sous-dossiers immédiats sont lus (1 Mio maximum chacun). Aucun fichier de ressource, de code ou de réglages de plugin lu ; aucun plugin exécuté, copié ou modifié. Les chemins symboliques/jonctions sont ignorés. Les manifestes chiffrés, illisibles, illégaux ou aux chemins connus risqués sont rejetés ; déduplication par UUID, version et SHA256 du manifeste brut. Les champs inconnus ne sont pas interprétés.
 
-Les nombres décrivent les déclarations des manifestes, pas la présence des exécutables, des logiciels requis ni le fonctionnement. Aucune conformité runtime ou compatibilité DeckForge/SDK n’est prouvée. Aucun appui, événement willAppear, appel réseau ou lancement d’application.
+Les nombres décrivent les déclarations des manifestes, pas la présence des exécutables, des logiciels requis ni le fonctionnement. Aucune conformité runtime ou compatibilité NovyDeck/SDK n’est prouvée. Aucun appui, événement willAppear, appel réseau ou lancement d’application.

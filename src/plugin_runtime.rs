@@ -85,7 +85,7 @@ impl Manager {
         Self{tx,rx,visible:HashMap::new(),titles:HashMap::new(),catalog}
     }
     pub fn device(&self,device:Device){let _=self.tx.send(Request::Device(device));}
-    /// Plugins importés pendant l'exécution : visibles sans redémarrer DeckForge.
+    /// Plugins importés pendant l'exécution : visibles sans redémarrer NovyDeck.
     pub fn set_catalog(&mut self,plugins:Vec<Plugin>){self.catalog=plugins.clone();let _=self.tx.send(Request::Catalog(plugins));}
     pub fn sync(&mut self, config:&Config) {self.sync_with_origin(config,None);}
     pub fn sync_settings(&mut self,config:&Config,context:&str,from_pi:bool){self.sync_with_origin(config,Some((context.to_owned(),from_pi)));}

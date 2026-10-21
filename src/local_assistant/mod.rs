@@ -207,7 +207,7 @@ fn parse_one(text: &str) -> (Option<Step>, Option<Status>, Vec<String>) {
     }
     if let Some(step) = natural(n) {
         let notes = if matches!(&step, Step::WindowOp { op, .. } if op == "close_others") {
-            vec!["Les applications reçoivent une demande de fermeture et peuvent proposer d'enregistrer ; DeckForge et la fenêtre active restent ouverts.".into()]
+            vec!["Les applications reçoivent une demande de fermeture et peuvent proposer d'enregistrer ; NovyDeck et la fenêtre active restent ouverts.".into()]
         } else { vec![] };
         return (Some(step), None, notes);
     }
@@ -363,7 +363,7 @@ fn parse_one(text: &str) -> (Option<Step>, Option<Status>, Vec<String>) {
             .unwrap_or_default(),
         },
         Some("notify") => Step::Notify {
-            title: "DeckForge".into(),
+            title: "NovyDeck".into(),
             message: parser::quoted_or_after(text, &["message ", "notification ", "notifie "])
                 .unwrap_or_default(),
         },

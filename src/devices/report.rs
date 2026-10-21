@@ -78,7 +78,7 @@ impl Report {
         let file = OpenOptions::new().create(true).append(true).open(dir.join(format!("peripheriques-{}.log", stamp())))?;
         rotate(&dir)?;
         let report = Self { file: Mutex::new(file), started: Instant::now() };
-        report.log(&format!("DeckForge {} git {} | Windows {}", env!("CARGO_PKG_VERSION"), env!("DECKFORGE_GIT_HASH"), windows_version()));
+        report.log(&format!("NovyDeck {} git {} | Windows {}", env!("CARGO_PKG_VERSION"), env!("DECKFORGE_GIT_HASH"), windows_version()));
         Ok(report)
     }
     pub fn log(&self, line: &str) {

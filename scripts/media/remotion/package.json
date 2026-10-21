@@ -1,0 +1,32 @@
+{
+  "name": "novydeck-remotion-promo",
+  "version": "0.8.9",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "assets": "node scripts/check-assets.mjs",
+    "still": "node scripts/still.mjs",
+    "render": "node scripts/render.mjs"
+  },
+  "dependencies": {
+    "@react-three/fiber": "9.1.2",
+    "@remotion/fonts": "4.0.537",
+    "@remotion/media": "4.0.537",
+    "@remotion/three": "4.0.537",
+    "@remotion/transitions": "4.0.537",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "remotion": "4.0.537",
+    "three": "0.175.0"
+  },
+  "devDependencies": {
+    "@remotion/cli": "4.0.537",
+    "@types/node": "22.15.3",
+    "@types/react": "19.1.2",
+    "@types/react-dom": "19.1.2",
+    "@types/three": "0.175.0",
+    "typescript": "5.8.3"
+  }
+}

@@ -1,4 +1,4 @@
-# Validation — DeckForge 0.4.3
+# Validation — NovyDeck 0.4.3
 
 ## Ajouts 0.4.3
 

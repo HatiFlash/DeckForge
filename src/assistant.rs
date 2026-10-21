@@ -92,7 +92,7 @@ fn locate(c: &Config, name: &str, page: &str, key: usize) -> Result<(usize, usiz
 impl Proposals {
     pub fn propose(&mut self, tool: &str, args: &Value, c: &Config) -> Result<Value, String> {
         if self.pending.len() >= 10 {
-            return Err("Dix propositions attendent déjà une validation dans DeckForge".into());
+            return Err("Dix propositions attendent déjà une validation dans NovyDeck".into());
         }
         let (title, details, change) = match tool {
             "deckforge_create_page" => {
@@ -243,7 +243,7 @@ impl Proposals {
             created: Instant::now(),
         });
         Ok(
-            json!({"id":id,"status":"pending","message":"Validation nécessaire dans DeckForge. Aucune modification ni exécution réelle n’a encore eu lieu."}),
+            json!({"id":id,"status":"pending","message":"Validation nécessaire dans NovyDeck. Aucune modification ni exécution réelle n’a encore eu lieu."}),
         )
     }
     pub fn status(&self, args: &Value) -> Result<Value, String> {

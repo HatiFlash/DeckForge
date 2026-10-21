@@ -182,10 +182,9 @@ impl OracleFile {
     }
 }
 pub fn data_root() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
+    crate::assets::user_data_dir(&std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::temp_dir())
-        .join("DeckForge")
+        .unwrap_or_else(|| std::env::temp_dir()))
 }
 pub fn oracle_path(plugin: &Plugin) -> Option<PathBuf> {
     if safe_id(&plugin.uuid) && safe_id(&plugin.version) {

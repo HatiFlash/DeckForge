@@ -291,7 +291,7 @@ impl App {
         theme::install(ctx);
         let path = override_path.unwrap_or_else(|| {
             std::env::current_exe()
-                .unwrap_or_else(|_| PathBuf::from("DeckForge.exe"))
+                .unwrap_or_else(|_| PathBuf::from("NovyDeck.exe"))
                 .with_file_name("config.json")
         });
         let mut load_error = None;
@@ -553,7 +553,7 @@ impl App {
             Command::Update(deployed, revision)
         };
         if self.device.send(command).is_err() {
-            self.fail("Le service USB s’est arrêté. Relance DeckForge.".into());
+            self.fail("Le service USB s’est arrêté. Relance NovyDeck.".into());
             self.gate.disconnect();
         }
     }
@@ -1077,7 +1077,7 @@ impl App {
         self.start_dialog(|| {
             let path = rfd::FileDialog::new()
                 .add_filter(
-                    "Configuration DeckForge ou sauvegarde Stream Deck",
+                    "Configuration NovyDeck ou sauvegarde Stream Deck",
                     &[
                         "json",
                         "bak",
@@ -1087,7 +1087,7 @@ impl App {
                         "streamdeckprofile",
                     ],
                 )
-                .add_filter("Configuration DeckForge (*.json, *.bak)", &["json", "bak"])
+                .add_filter("Configuration NovyDeck (*.json, *.bak)", &["json", "bak"])
                 .add_filter(
                     "Sauvegarde Stream Deck (*.StreamDeckProfilesBackup)",
                     &["StreamDeckProfilesBackup", "streamdeckprofilesbackup"],
@@ -1270,7 +1270,7 @@ impl App {
             | "deckforge_configure_key"
             | "deckforge_request_run" => {
                 if self.gate.invalid {
-                    return Err("Récupère d’abord la configuration dans DeckForge".into());
+                    return Err("Récupère d’abord la configuration dans NovyDeck".into());
                 }
                 let result = self.proposals.propose(name, args, &self.config);
                 if result.is_ok() && self.workshop_chat.awaiting.take().is_some() {
@@ -1303,7 +1303,7 @@ impl App {
         if self.http_child.is_some() {
             return;
         }
-        match std::process::Command::new(self.path.with_file_name("deckforge-mcp.exe"))
+        match std::process::Command::new(self.path.with_file_name("novydeck-mcp.exe"))
             .args(["--http", "127.0.0.1:9846"])
             .creation_flags(0x08000000)
             .stdin(std::process::Stdio::null())
@@ -1328,7 +1328,7 @@ impl App {
         if !self.connect_window { return; }
         let mut open=true;
         egui::Window::new("Connecter une IA").open(&mut open).default_width(530.0).resizable(true).vscroll(true).show(ctx,|ui|{
-            ui.label("Choisis ton application IA. DeckForge n'écrit jamais de clé dans ses réglages.");
+            ui.label("Choisis ton application IA. NovyDeck n'écrit jamais de clé dans ses réglages.");
             let locations=crate::mcp_connect::Locations::system();
             let exe=crate::mcp_connect::connector(&self.path);
             for client in [crate::mcp_connect::Client::Desktop,crate::mcp_connect::Client::Code,crate::mcp_connect::Client::Codex,crate::mcp_connect::Client::Cursor] {
@@ -1351,10 +1351,10 @@ impl App {
                 ui.label(RichText::new("ChatGPT : Secure MCP Tunnel").strong());
                 ui.label("1. Ouvre la documentation du tunnel. 2. Copie le chemin du connecteur stdio à fournir au tunnel. 3. Dans ChatGPT : Plugins, Ajouter un serveur MCP, puis Tunnel. Disponibilité à vérifier selon ton compte. Le port HTTP reste local.");
                 if ui.button("Ouvrir la page du tunnel").clicked(){let _={ui.ctx().open_url(egui::OpenUrl::new_tab("https://developers.openai.com/api/docs/guides/secure-mcp-tunnels"));Ok::<(),String>(())};}
-                if ui.button("Copier la commande stdio").clicked(){ui.ctx().copy_text(self.path.with_file_name("deckforge-mcp.exe").to_string_lossy().into_owned());}
+                if ui.button("Copier la commande stdio").clicked(){ui.ctx().copy_text(self.path.with_file_name("novydeck-mcp.exe").to_string_lossy().into_owned());}
             });
             if ui.button("Autre client : copier le JSON standard").clicked(){
-                let config=serde_json::json!({"mcpServers":{"deckforge":{"command":self.path.with_file_name("deckforge-mcp.exe").to_string_lossy(),"args":[]}}});
+                let config=serde_json::json!({"mcpServers":{"deckforge":{"command":self.path.with_file_name("novydeck-mcp.exe").to_string_lossy(),"args":[]}}});
                 ui.ctx().copy_text(serde_json::to_string_pretty(&config).unwrap());
             }
             if ui.button("Tester la connexion").clicked(){
@@ -1389,13 +1389,13 @@ impl App {
             ui.separator();ui.label(RichText::new("Décris l’automatisation souhaitée").strong());
             ui.add(egui::TextEdit::multiline(&mut self.assistant_request).desired_rows(3).desired_width(f32::INFINITY).hint_text("Ex. : basculer entre mon casque et mes enceintes, avec une icône pour chaque état."));
             ui.label(RichText::new(format!("Destination : {} · touche {:02}",self.config.profiles[self.config.active].name,self.selected+1)).small());
-            if ui.add_enabled(!self.assistant_request.trim().is_empty(),egui::Button::new("Copier la demande pour mon IA")).clicked(){ui.ctx().copy_text(self.automation_prompt());self.log("Demande copiée. Colle-la dans ton IA connectée au MCP DeckForge.".into());}
+            if ui.add_enabled(!self.assistant_request.trim().is_empty(),egui::Button::new("Copier la demande pour mon IA")).clicked(){ui.ctx().copy_text(self.automation_prompt());self.log("Demande copiée. Colle-la dans ton IA connectée au MCP NovyDeck.".into());}
             ui.label(RichText::new("Ton IA doit être connectée au MCP. Elle proposera les blocs ici ; tu pourras les valider puis les modifier dans l’Atelier. Aucun modèle local ni appel d’IA n’est lancé par ce champ.").small().color(p.muted));
             ui.separator();
             if self.assistant.is_none(){ui.colored_label(Color32::DARK_RED,"Le connecteur local n’a pas pu démarrer.");}
-            ui.label(RichText::new("Connexion locale MCP · Claude, Codex et clients compatibles stdio. Aucune clé d’IA à saisir dans DeckForge.").small().color(p.muted));
+            ui.label(RichText::new("Connexion locale MCP · Claude, Codex et clients compatibles stdio. Aucune clé d’IA à saisir dans NovyDeck.").small().color(p.muted));
             if ui.button("Connecter une IA").clicked(){self.connect_window=true;}
-            if ui.button("Copier la configuration MCP").clicked(){let exe=self.path.with_file_name("deckforge-mcp.exe");let config=serde_json::json!({"mcpServers":{"deckforge":{"command":exe.to_string_lossy(),"args":[]}}});ui.ctx().copy_text(serde_json::to_string_pretty(&config).unwrap());self.log("Configuration MCP copiée.".into());}
+            if ui.button("Copier la configuration MCP").clicked(){let exe=self.path.with_file_name("novydeck-mcp.exe");let config=serde_json::json!({"mcpServers":{"deckforge":{"command":exe.to_string_lossy(),"args":[]}}});ui.ctx().copy_text(serde_json::to_string_pretty(&config).unwrap());self.log("Configuration MCP copiée.".into());}
             ui.label(RichText::new("Le guide MCP fourni avec l’application détaille la connexion à ChatGPT et aux autres clients.").small().color(p.muted));
             ui.add_space(14.0);ui.separator();ui.label(RichText::new("ChatGPT web / clients HTTP").strong());
             ui.label(RichText::new("Le mode HTTP reste local au PC. Un tunnel ou un proxy compatible est nécessaire pour un service IA distant.").small().color(p.muted));
@@ -1529,7 +1529,7 @@ impl App {
                                             ui.close_menu();
                                         }
                                         if ui.button("Profil de démonstration (15 touches)")
-                                            .on_hover_text("Ajoute ou réinitialise « DeckForge Demo / README ». Tes autres profils ne sont pas modifiés.")
+                                            .on_hover_text("Ajoute ou réinitialise « NovyDeck Demo / README ». Tes autres profils ne sont pas modifiés.")
                                             .clicked()
                                         {
                                             self.add_demo_profile();
@@ -1763,7 +1763,7 @@ impl App {
                     ui.add(egui::Image::new((logo.id(), Vec2::splat(34.0))));
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing.y = 0.0;
-                        ui.label(RichText::new("DeckForge").size(18.0).strong());
+                        ui.label(RichText::new("NovyDeck").size(18.0).strong());
                         ui.label(RichText::new(self.device_label()).size(10.0).color(p.muted));
                     });
                     ui.add_space(12.0);
@@ -1816,7 +1816,7 @@ impl App {
                                 ui.close_menu();
                             }
                             ui.separator();
-                            if ui.button("Quitter DeckForge").clicked() {
+                            if ui.button("Quitter NovyDeck").clicked() {
                                 self.quitting = true;
                                 ui.close_menu();
                             }
@@ -1840,7 +1840,7 @@ impl App {
                                 self.settings = true;
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Info, "À propos de DeckForge")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Info, "À propos de NovyDeck")).clicked() {
                                 self.show_about = true;
                                 ui.close_menu();
                             }
@@ -1941,7 +1941,7 @@ impl App {
                     ui.add(egui::Image::new((logo.id(), Vec2::splat(34.0))));
                     ui.vertical(|ui| {
                         ui.spacing_mut().item_spacing.y = 0.0;
-                        ui.label(RichText::new("DeckForge").size(18.0).strong());
+                        ui.label(RichText::new("NovyDeck").size(18.0).strong());
                         ui.label(RichText::new(self.device_label()).size(10.0).color(p.muted));
                     });
                     ui.add_space(12.0);
@@ -1971,7 +1971,7 @@ impl App {
                                 ui.close_menu();
                             }
                             ui.separator();
-                            if ui.button("Quitter DeckForge").clicked() {
+                            if ui.button("Quitter NovyDeck").clicked() {
                                 self.quitting = true;
                                 ui.close_menu();
                             }
@@ -1995,7 +1995,7 @@ impl App {
                                 self.settings = true;
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Info, "À propos de DeckForge")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Info, "À propos de NovyDeck")).clicked() {
                                 self.show_about = true;
                                 ui.close_menu();
                             }
@@ -2347,7 +2347,7 @@ impl App {
         self.gate.enabled = false;
         self.engine.stop();
         self.start_dialog(|| {
-            let path = rfd::FileDialog::new().add_filter("Pack DeckForge", &["json"]).pick_file()?;
+            let path = rfd::FileDialog::new().add_filter("Pack NovyDeck", &["json"]).pick_file()?;
             let pack = (|| -> anyhow::Result<Library> {
                 let bytes = std::fs::read(path)?;
                 anyhow::ensure!(bytes.len() <= 8_000_000, "Pack trop volumineux");
@@ -2379,8 +2379,8 @@ impl App {
         self.engine.stop();
         let library = self.preferences.library.clone();
         self.start_dialog(move || {
-            let path = rfd::FileDialog::new().set_file_name("mes-binds-deckforge.json")
-                .add_filter("Pack DeckForge", &["json"]).save_file()?;
+            let path = rfd::FileDialog::new().set_file_name("mes-binds-novydeck.json")
+                .add_filter("Pack NovyDeck", &["json"]).save_file()?;
             let result = serde_json::to_vec_pretty(&library)
                 .map_err(anyhow::Error::from)
                 .and_then(|b| std::fs::write(path, b).map_err(Into::into));
@@ -2963,7 +2963,7 @@ impl App {
                         ui.label(shortcut);
                         if ui.button("Copier").clicked() { ui.ctx().copy_text(shortcut.to_owned()); }
                     });
-                    ui.label("État estimé : DeckForge ne lit pas l'état réel du micro ni du casque dans Discord.");
+                    ui.label("État estimé : NovyDeck ne lit pas l'état réel du micro ni du casque dans Discord.");
                 });
             }
             let preview_key = self.presented_key(self.selected);
@@ -3729,7 +3729,7 @@ impl App {
                 }
                 ui.label(
                     RichText::new(
-                        "Les nouveaux profils seront ajoutés à DeckForge. Les actions non reconnues restent vides. Les touches restent en pause après l’import.",
+                        "Les nouveaux profils seront ajoutés à NovyDeck. Les actions non reconnues restent vides. Les touches restent en pause après l’import.",
                     )
                     .small()
                     .color(p.muted),
@@ -3857,10 +3857,10 @@ impl App {
         }
         if self.show_about {
             let mut open = true;
-            egui::Window::new("À propos de DeckForge")
+            egui::Window::new("À propos de NovyDeck")
                 .open(&mut open).collapsible(false).resizable(false).default_width(370.0)
                 .show(ctx, |ui| {
-                    ui.label(RichText::new("DeckForge").size(20.0).strong());
+                    ui.label(RichText::new("NovyDeck").size(20.0).strong());
                     let legacy_audio = {
                         let mut config = self.config.clone();
                         let mut binds = self.preferences.library.binds.clone();
@@ -3879,7 +3879,7 @@ impl App {
                         ui.ctx().copy_text(about::information());
                     }
                     if ui.button("Ouvrir la page GitHub").clicked() {
-                        ui.ctx().open_url(egui::OpenUrl::new_tab("https://github.com/HatiFlash/DeckForge"));
+                        ui.ctx().open_url(egui::OpenUrl::new_tab("https://github.com/HatiFlash/NovyDeck"));
                     }
                     ui.separator();
                     ui.label("Icônes d'interface : IconPark (ByteDance), licence Apache 2.0.");
@@ -3912,13 +3912,13 @@ impl App {
             egui::Window::new("Importer une vidéo").id(egui::Id::new("ffmpeg_offer"))
                 .open(&mut open).collapsible(false).resizable(false).default_width(380.0)
                 .show(ctx, |ui| {
-                    ui.label("Windows n’a pas réussi à convertir cette vidéo (format ou codec non pris en charge). DeckForge peut télécharger son module vidéo FFmpeg, gratuit, une seule fois.");
+                    ui.label("Windows n’a pas réussi à convertir cette vidéo (format ou codec non pris en charge). NovyDeck peut télécharger son module vidéo FFmpeg, gratuit, une seule fois.");
                     ui.add_space(6.0);
                     if installing {
                         motion::loading(ui, "Téléchargement du module vidéo (≈ 110 Mo) puis conversion…");
                     } else {
                         if ui.add(iconset::button(ui.ctx(), Ico::Video, "Télécharger le module vidéo et importer")).clicked() { install = true; }
-                        ui.label(RichText::new("Source officielle gyan.dev, empreinte vérifiée, rangé dans %LOCALAPPDATA%\\DeckForge\\tools. Sans droits administrateur. Autre solution : copier ffmpeg.exe à côté de DeckForge.exe.").small());
+                        ui.label(RichText::new("Source officielle gyan.dev, empreinte vérifiée, rangé dans les données utilisateur (NovyDeck, ou DeckForge existant)\\tools. Sans droits administrateur. Autre solution : copier ffmpeg.exe à côté de NovyDeck.exe.").small());
                     }
                 });
             if install {
@@ -4007,7 +4007,7 @@ impl App {
                 }
                 let result=self.hardware_test.as_ref().map(|t|t.result()).unwrap_or_else(||"Test non lancé.\n".into());
                 let log=crate::devices::report::latest(&self.path).ok().flatten().and_then(|p|std::fs::read_to_string(p).ok()).unwrap_or_else(||"Journal périphérique indisponible\n".into());
-                let text=format!("Rapport de test DeckForge\nModèle : {}\nStatut : {}\n\nRésultat du test\n{}\nJournal périphérique\n{}",self.device_label(),self.status,result,log);
+                let text=format!("Rapport de test NovyDeck\nModèle : {}\nStatut : {}\n\nRésultat du test\n{}\nJournal périphérique\n{}",self.device_label(),self.status,result,log);
                 ui.horizontal(|ui| {
                     if ui.add(theme::secondary_button("Copier")).clicked() { ui.ctx().copy_text(text.clone()); }
                     if ui.add(theme::secondary_button("Enregistrer")).clicked() {
@@ -4756,7 +4756,7 @@ fn edit_step(
             ui.collapsing("Options avancées", |ui| { changed |= ui.checkbox(horizontal, "Horizontal").changed(); });
         }
         Step::PlaySound { path, volume } => { ui.label("Fichier WAV ou MP3"); changed |= ui.text_edit_singleline(path).changed(); ui.label("Volume"); changed |= ui.add(egui::Slider::new(volume, 0..=100)).changed(); }
-        Step::StopSounds => { ui.label("Arrête tous les sons lancés par DeckForge."); }
+        Step::StopSounds => { ui.label("Arrête tous les sons lancés par NovyDeck."); }
         Step::Toggle { .. } => { ui.label("Alterne les états 1 et 2 à chaque appui. Modifie leurs blocs dans l’Atelier."); }
         Step::UdpSend { host, port, text } => { ui.label("Message : accepte {nom}, {date}, {heure}, {horodatage}, {presse_papiers}."); ui.label("Hôte UDP"); changed |= ui.text_edit_singleline(host).changed(); ui.label("Port"); changed |= ui.add(egui::DragValue::new(port).range(1..=65535)).changed(); ui.label("Message"); changed |= ui.text_edit_multiline(text).changed(); }
         Step::HttpRequest { method, url, body, content_type } => { ui.label("Adresse et corps : {nom}, {date}, {heure}, {horodatage}, {presse_papiers}."); ui.label("Méthode"); egui::ComboBox::from_id_salt("http_method").selected_text(method.as_str()).show_ui(ui, |ui| { for choice in ["GET", "POST", "PUT"] { changed |= ui.selectable_value(method, choice.into(), choice).changed(); } }); ui.label("Adresse HTTP (sans HTTPS)"); changed |= ui.text_edit_singleline(url).changed(); ui.label("Corps"); changed |= ui.text_edit_multiline(body).changed(); ui.label("Type de contenu"); changed |= ui.text_edit_singleline(content_type).changed(); }
@@ -4859,7 +4859,7 @@ fn edit_step(
             });
         }
         Step::D6Sleep => { ui.label("Met le périphérique en veille maintenant. Un appui le réveille sans lancer la macro."); }
-        Step::CloseWindow => { ui.label("Ferme la fenêtre active (jamais DeckForge)."); }
+        Step::CloseWindow => { ui.label("Ferme la fenêtre active (jamais NovyDeck)."); }
         Step::ObsScene { name } => { ui.label("Scène OBS"); changed |= obs_entry(ui, name, &crate::obs_monitor::snapshot().scenes); }
         Step::ObsMute { input, mode } => { ui.label("Entrée audio OBS"); changed |= obs_entry(ui, input, &crate::obs_monitor::snapshot().inputs); obs_choice(ui, mode, &["toggle", "mute", "unmute"], &mut changed); }
         Step::ObsSourceVisibility { scene, source, mode } => { ui.label("Scène puis source OBS"); changed |= obs_entry(ui, scene, &crate::obs_monitor::snapshot().scenes); changed |= obs_entry(ui, source, crate::obs_monitor::snapshot().scene_items.get(scene).map(Vec::as_slice).unwrap_or(&[])); obs_choice(ui, mode, &["toggle", "show", "hide"], &mut changed); }
@@ -5116,7 +5116,7 @@ fn edit_step(
                 *args = text.lines().map(String::from).collect();
                 changed = true;
             }
-            ui.label(RichText::new("Le script agit sur ton PC lors de l’exécution. Arrêter la macro termine le processus AutoHotkey lancé par DeckForge.").small());
+            ui.label(RichText::new("Le script agit sur ton PC lors de l’exécution. Arrêter la macro termine le processus AutoHotkey lancé par NovyDeck.").small());
         }
         Step::Back | Step::PageNext | Step::PagePrevious => {
             ui.label("Navigation dans ce profil, aussi disponible depuis les touches du périphérique.");

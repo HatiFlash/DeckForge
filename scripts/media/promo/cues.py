@@ -1,4 +1,4 @@
-"""Bande-son procédurale de la présentation DeckForge (aucun échantillon externe).
+"""Bande-son procédurale de la présentation NovyDeck (aucun échantillon externe).
 
     python3 -m sfx cues.py
 """

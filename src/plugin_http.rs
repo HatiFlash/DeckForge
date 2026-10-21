@@ -12,7 +12,7 @@ fn percent_decode(s:&str)->Option<String>{
     while i<b.len(){ if b[i]==b'%' { let h=std::str::from_utf8(b.get(i+1..i+3)?).ok()?; out.push(u8::from_str_radix(h,16).ok()?); i+=3; } else { out.push(b[i]); i+=1; } }
     String::from_utf8(out).ok()
 }
-/// Habillage DeckForge des pages de réglages (Property Inspector) : mêmes couleurs que l'application,
+/// Habillage NovyDeck des pages de réglages (Property Inspector) : mêmes couleurs que l'application,
 /// champs plus lisibles. Purement visuel, injecté après les styles du plugin.
 const PI_THEME:&str=r#"<style id="deckforge-pi-theme">
 :root{color-scheme:dark}

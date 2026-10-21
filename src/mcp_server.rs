@@ -108,7 +108,7 @@ fn handle(
         return Err("Accès local refusé".into());
     }
     if !on.load(Ordering::SeqCst) {
-        return Err("Active Assistant IA dans DeckForge pour autoriser ce client MCP".into());
+        return Err("Active Assistant IA dans NovyDeck pour autoriser ce client MCP".into());
     }
     let name = v["name"]
         .as_str()
@@ -126,9 +126,9 @@ fn handle(
         reply,
         id,
     })
-    .map_err(|_| "DeckForge est occupé")?;
+    .map_err(|_| "NovyDeck est occupé")?;
     rx.recv_timeout(Duration::from_secs(3)).map_err(|_| {
-        "DeckForge ne répond pas. Vérifie l’application avant de réessayer.".to_string()
+        "NovyDeck ne répond pas. Vérifie l’application avant de réessayer.".to_string()
     })?
 }
 

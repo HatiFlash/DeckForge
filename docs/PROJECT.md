@@ -1,6 +1,6 @@
-# DeckForge — état du projet au 17 octobre 2026
+# NovyDeck — état du projet au 17 octobre 2026
 
-Version 0.4.3 de test. Dépôt : https://github.com/HatiFlash/DeckForge.
+Version 0.4.3 de test. Dépôt : https://github.com/HatiFlash/NovyDeck.
 
 ## Ajouts 0.4.3
 
@@ -14,7 +14,7 @@ Les 71 tests applicatifs et 3 tests du connecteur passent, avec 18 contrôles de
 
 ## Origine et base
 
-Remplacement Windows du logiciel FIFINE AmpliGame D6, construit en Rust avec eframe/egui, HIDAPI et les interfaces audio Windows. Le protocole USB a été étudié à partir de l’appareil, du logiciel FIFINE installé et de références publiques. Les binaires FIFINE ne sont pas intégrés à DeckForge.
+Remplacement Windows du logiciel FIFINE AmpliGame D6, construit en Rust avec eframe/egui, HIDAPI et les interfaces audio Windows. Le protocole USB a été étudié à partir de l’appareil, du logiciel FIFINE installé et de références publiques. Les binaires FIFINE ne sont pas intégrés à NovyDeck.
 
 Le D6 utilise des rapports HID de 1 024 octets et des images JPEG 126 × 126. Le décodage des appuis et le repérage des lignes ont été vérifiés lors des premiers essais matériels. Les dernières versions conservent des révisions de synchronisation pour empêcher l’exécution d’un ancien profil.
 

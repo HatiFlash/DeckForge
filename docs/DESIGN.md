@@ -1,4 +1,4 @@
-# Identité visuelle de DeckForge
+# Identité visuelle de NovyDeck
 
 Ce document décrit les règles visuelles **déjà appliquées dans le code** (`src/theme.rs`). Il sert de référence pour les nouvelles fenêtres, la documentation et la vidéo. Il ne décrit pas une refonte.
 
@@ -43,5 +43,5 @@ L'interface utilise un sous-ensemble verrouillé d'[IconPark](https://github.com
 
 ## Captures et vidéo
 
-- Les captures `docs/images/*.png` sont produites par `readme_captures_from_the_demo_profile` (`src/ui_tests.rs`). Ce test exécute le vrai code d'interface hors écran, à **2560 × 1600 pixels** (1600 × 1000 points à 160 %), avec le profil « DeckForge Demo / README ». Il ne fait aucun agrandissement après coup, et le filtrage des textures est bilinéaire comme dans le rendu GPU. Le contenu des touches reste l'image réelle de 126 × 126 pixels envoyée au D6.
-- La vidéo `docs/media/deckforge-demo.mp4` est une scène three.js rendue image par image (voir [scripts/media/promo/README.md](../scripts/media/promo/README.md)) : pavé D6 en 3D avec les écrans réels des touches, captures réelles de l'application. Mouvements : courbes `bezier(0.16,1,0.3,1)` en entrée, sorties deux fois plus courtes, un seul moment fort (retour sur le pavé), accent cyan `#22C3EE` réservé aux éléments mis en avant.
+- Les captures `docs/images/*.png` sont produites par `readme_captures_from_the_demo_profile` (`src/ui_tests.rs`). Ce test exécute le vrai code d'interface hors écran, à **2560 × 1600 pixels** (1600 × 1000 points à 160 %), avec le profil « NovyDeck Demo / README ». Il ne fait aucun agrandissement après coup, et le filtrage des textures est bilinéaire comme dans le rendu GPU. Le contenu des touches reste l'image réelle de 126 × 126 pixels envoyée au D6.
+- La vidéo `docs/media/novydeck-demo.mp4` est une composition Remotion avec scène three.js rendue image par image (voir [scripts/media/remotion/README.md](../scripts/media/remotion/README.md)) : pavé D6 en 3D avec les écrans réels des touches, captures réelles de l'application. Mouvements : courbes `bezier(0.16,1,0.3,1)` en entrée, sorties deux fois plus courtes, un seul moment fort (retour sur le pavé), accent cyan `#22C3EE` réservé aux éléments mis en avant.

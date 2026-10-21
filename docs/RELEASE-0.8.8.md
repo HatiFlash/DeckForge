@@ -16,7 +16,7 @@
 - Propriétés d'un raccourci clavier : le bouton « Enregistrer… » n'est plus coupé quand le panneau est étroit.
 - Nouveau README avec une capture principale, des points clés, une compatibilité explicite (disponible ou expérimental), l'installation, une galerie et la documentation.
 - Captures réelles à 2560 × 1600 : le vrai code d'interface est rendu hors écran à 160 %, avec un filtrage bilinéaire, sans agrandissement.
-- Vidéo de présentation `docs/media/deckforge-demo.mp4` : 42 s en 1920 × 1080, H.264 + AAC. Pavé D6 en 3D (three.js, éclairage PBR, bloom), caméra qui traverse les vraies captures de l'application, typographie animée et bande-son procédurale à −14 LUFS. Les 15 écrans de touches sont rendus par le moteur `key_render` de DeckForge. Sources reproductibles dans `scripts/media/promo/` (mise à jour publiée sur `main` après le tag).
+- Vidéo de présentation la vidéo archivée dans le [tag v0.8.8](https://github.com/HatiFlash/NovyDeck/tree/v0.8.8/docs/media) : 42 s en 1920 × 1080, H.264 + AAC. Pavé D6 en 3D (three.js, éclairage PBR, bloom), caméra qui traverse les vraies captures de l'application, typographie animée et bande-son procédurale à −14 LUFS. Les 15 écrans de touches sont rendus par le moteur `key_render` de DeckForge. Sources reproductibles dans `scripts/media/promo/` (mise à jour publiée sur `main` après le tag).
 
 ## Vérifications et limites
 - Vérifié sur la VM Windows : tests automatiques, compilation release et installateur. Captures relues à 100 %.

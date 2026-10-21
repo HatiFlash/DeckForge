@@ -20,7 +20,7 @@ jobs:
       - name: Rust and headless MCP tests
         timeout-minutes: 15
         env:
-          DECKFORGE_MCP_EXE: ${{ github.workspace }}\target\release\deckforge-mcp.exe
+          DECKFORGE_MCP_EXE: ${{ github.workspace }}\target\release\novydeck-mcp.exe
         shell: pwsh
         run: ./tools/ci-test.ps1
       - name: MCP stdio transport
@@ -29,10 +29,10 @@ jobs:
         run: node tests/mcp-http.cjs
       - uses: actions/upload-artifact@v4
         with:
-          name: DeckForge-Windows
+          name: NovyDeck-Windows
           path: |
-            target/release/deckforge.exe
-            target/release/deckforge-mcp.exe
+            target/release/novydeck.exe
+            target/release/novydeck-mcp.exe
             LICENSE
             THIRD-PARTY-NOTICES.txt
             README.md

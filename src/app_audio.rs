@@ -6,6 +6,10 @@ use windows_sys::Win32::{Foundation::CloseHandle, System::Diagnostics::ToolHelp:
 
 #[derive(Clone)]
 struct Process { pid: u32, parent: u32, name: String }
+
+fn is_own_process(name: &str) -> bool {
+    name.eq_ignore_ascii_case("novydeck.exe") || name.eq_ignore_ascii_case("deckforge.exe")
+}
 #[derive(Clone)]
 pub struct Target { pids: HashSet<u32>, label: String }
 
@@ -36,8 +40,8 @@ pub fn capture(target: &str, include_children: bool) -> Result<Target> {
         unsafe { GetWindowThreadProcessId(GetForegroundWindow(), &mut pid); }
         if pid == 0 { bail!("Aucune application au premier plan. Reviens sur l'application cible."); }
         let name = list.iter().find(|p| p.pid == pid).map(|p| p.name.as_str()).context("L'application cible s'est fermée")?;
-        if pid == std::process::id() || name.eq_ignore_ascii_case("deckforge.exe") {
-            bail!("DeckForge est au premier plan. Reviens sur l'application cible.");
+        if pid == std::process::id() || is_own_process(name) {
+            bail!("NovyDeck est au premier plan. Reviens sur l'application cible.");
         }
         HashSet::from([pid])
     } else {
@@ -58,8 +62,8 @@ pub fn capture(target: &str, include_children: bool) -> Result<Target> {
     }
     // Explicit targets must never select DeckForge itself, even as a child.
     pids.remove(&std::process::id());
-    pids.retain(|pid| !list.iter().any(|p| p.pid == *pid && p.name.eq_ignore_ascii_case("deckforge.exe")));
-    if pids.is_empty() { bail!("DeckForge n'est pas une application cible audio"); }
+    pids.retain(|pid| !list.iter().any(|p| p.pid == *pid && is_own_process(&p.name)));
+    if pids.is_empty() { bail!("NovyDeck n'est pas une application cible audio"); }
     Ok(Target { pids, label })
 }
 
@@ -81,7 +85,7 @@ pub fn apply(target: &Target, action: &str, step: u8, level: u8) -> Result<Strin
         impl Drop for Com { fn drop(&mut self) { unsafe { CoUninitialize(); } } }
         let _com = Com;
         let live = processes()?;
-        let pids: HashSet<u32> = live.iter().filter(|p| target.pids.contains(&p.pid) && !p.name.eq_ignore_ascii_case("deckforge.exe")).map(|p| p.pid).collect();
+        let pids: HashSet<u32> = live.iter().filter(|p| target.pids.contains(&p.pid) && !is_own_process(&p.name)).map(|p| p.pid).collect();
         if pids.is_empty() { bail!("L'application cible s'est fermée : {}", target.label); }
         let devices: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).context("Périphériques audio indisponibles")?;
         let outputs = devices.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE).context("Sorties audio indisponibles")?;

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "aide": "Connaissances de l'IA locale de DeckForge. Tu peux modifier ce fichier : ajoute tes applications (noms que tu utilises -> programme .exe), des consignes, et des exemples « demande -> blocs ». DeckForge le relit à chaque demande. Supprime-le pour revenir aux valeurs d'origine. Les blocs proposés restent toujours affichés avant d'être ajoutés.",
+  "aide": "Connaissances de l'IA locale de NovyDeck. Tu peux modifier ce fichier : ajoute tes applications (noms que tu utilises -> programme .exe), des consignes, et des exemples « demande -> blocs ». NovyDeck le relit à chaque demande. Supprime-le pour revenir aux valeurs d'origine. Les blocs proposés restent toujours affichés avant d'être ajoutés.",
   "applications": [
     { "noms": ["brave", "brave browser", "navigateur brave"], "exe": "brave.exe", "fenetre": "Brave" },
     { "noms": ["chrome", "google chrome"], "exe": "chrome.exe", "fenetre": "Google Chrome" },

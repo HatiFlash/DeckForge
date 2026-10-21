@@ -1,4 +1,4 @@
-# Connecter une IA à DeckForge
+# Connecter une IA à NovyDeck
 
 ### Contrôle d’exécution par touche (E2)
 
@@ -14,7 +14,7 @@ Les blocs `text` (texte saisi), `url`, `http_request` (`url` et `body`), `udp_se
 
 ### Opération sur une fenêtre (`window_op`)
 
-`{"type":"window_op","target":"foreground","op":"move_to_monitor","monitor":2}` déplace la fenêtre active sur l’écran 2 (1 = principal, les autres de gauche à droite puis de haut en bas). `target` accepte `foreground`, `title` (fragment du titre dans `value`) et `exe` (nom du programme `.exe` dans `value`). `op` : `activate`, `minimize`, `maximize`, `restore`, `move` (`x`,`y` absolus), `resize` (`w`,`h`), `move_to_monitor`, `toggle_always_on_top`, `always_on_top_on`, `always_on_top_off`. DeckForge est exclu sauf recherche explicite par titre contenant « DeckForge ». La simulation ne modifie aucune fenêtre ; export AutoHotkey refusé.
+`{"type":"window_op","target":"foreground","op":"move_to_monitor","monitor":2}` déplace la fenêtre active sur l’écran 2 (1 = principal, les autres de gauche à droite puis de haut en bas). `target` accepte `foreground`, `title` (fragment du titre dans `value`) et `exe` (nom du programme `.exe` dans `value`). `op` : `activate`, `minimize`, `maximize`, `restore`, `move` (`x`,`y` absolus), `resize` (`w`,`h`), `move_to_monitor`, `toggle_always_on_top`, `always_on_top_on`, `always_on_top_off`. NovyDeck est exclu sauf recherche explicite par titre contenant « NovyDeck ». La simulation ne modifie aucune fenêtre ; export AutoHotkey refusé.
 
 ### Maintenir une touche (`key_hold`)
 
@@ -26,7 +26,7 @@ Les blocs `text` (texte saisi), `url`, `http_request` (`url` et `body`), `udp_se
 
 ### Notification Windows (`notify`)
 
-`{"type":"notify","title":"DeckForge","message":"Bonjour {nom}"}` : titre facultatif, message obligatoire ; `{nom}` utilise la variable de macro, `{{` donne une accolade littérale. Si l’icône de notification manque, message dans le journal et bandeau DeckForge. La simulation n’envoie rien.
+`{"type":"notify","title":"NovyDeck","message":"Bonjour {nom}"}` : titre facultatif, message obligatoire ; `{nom}` utilise la variable de macro, `{{` donne une accolade littérale. Si l’icône de notification manque, message dans le journal et bandeau NovyDeck. La simulation n’envoie rien.
 
 ### Attendre une condition (`wait_until`)
 
@@ -38,21 +38,21 @@ Les blocs `text` (texte saisi), `url`, `http_request` (`url` et `body`), `udp_se
 
 
 Le connecteur propose **11 outils MCP**, via stdio ou Streamable HTTP local.
-DeckForge valide les profils et exécute les actions. Il n’appelle aucun modèle
+NovyDeck valide les profils et exécute les actions. Il n’appelle aucun modèle
 lui-même et ne demande aucune clé OpenAI/Anthropic.
 
 ## Connecter en 1 clic
 
-Dans DeckForge, clique **IA : désactivée** dans la barre, active **Autoriser les IA connectées**, puis **Connecter une IA**. Ce choix est conservé dans `preferences.json` ; par défaut l'assistant reste désactivé. **IA : connectée** permet de le désactiver en un clic. La clé locale change à chaque lancement ; la validation des propositions et l'attente de trois secondes avant une exécution restent obligatoires.
+Dans NovyDeck, clique **IA : désactivée** dans la barre, active **Autoriser les IA connectées**, puis **Connecter une IA**. Ce choix est conservé dans `preferences.json` ; par défaut l'assistant reste désactivé. **IA : connectée** permet de le désactiver en un clic. La clé locale change à chaque lancement ; la validation des propositions et l'attente de trois secondes avant une exécution restent obligatoires.
 
-Choisis une carte : Claude Desktop, Claude Code, Codex CLI ou Cursor. **Configurer automatiquement** ne remplace que l'entrée DeckForge ; les autres réglages sont conservés. Une sauvegarde `.bak-deckforge` est créée avant chaque modification. **Retirer** supprime uniquement l'entrée DeckForge. Redémarre le client après configuration. Pour Claude Code, si la CLI est trouvée, DeckForge lance `claude mcp add --scope user` (et retire l'ancienne entrée si elle existe) ; sinon, il fusionne `%USERPROFILE%\.claude.json`. Aucun jeton ni clé n'est copié vers ces fichiers. Le connecteur lit son descripteur à côté de `deckforge-mcp.exe`, même lancé depuis un autre dossier.
+Choisis une carte : Claude Desktop, Claude Code, Codex CLI ou Cursor. **Configurer automatiquement** ne remplace que l'entrée de compatibilité `deckforge` de NovyDeck ; les autres réglages sont conservés. Une sauvegarde `.bak-deckforge` est créée avant chaque modification. **Retirer** supprime uniquement l'entrée de compatibilité `deckforge` de NovyDeck. Redémarre le client après configuration. Pour Claude Code, si la CLI est trouvée, NovyDeck lance `claude mcp add --scope user` (et retire l'ancienne entrée si elle existe) ; sinon, il fusionne `%USERPROFILE%\.claude.json`. Aucun jeton ni clé n'est copié vers ces fichiers. Le connecteur lit son descripteur à côté de `novydeck-mcp.exe`, même lancé depuis un autre dossier.
 
 **Tester la connexion** interroge le connecteur stdio (`initialize` puis `tools/list`) et attend 11 outils. Ce test n'exécute aucune macro. La carte **Autre client** copie le JSON standard.
 
-Pour ChatGPT, la carte décrit le tunnel sécurisé : ouvrir la documentation, copier le chemin du connecteur stdio, puis ChatGPT → Plugins → Ajouter un serveur MCP → Tunnel. Ce parcours dépend du compte ChatGPT et reste à vérifier ; DeckForge n'expose pas son port HTTP sur le réseau.
+Pour ChatGPT, la carte décrit le tunnel sécurisé : ouvrir la documentation, copier le chemin du connecteur stdio, puis ChatGPT → Plugins → Ajouter un serveur MCP → Tunnel. Ce parcours dépend du compte ChatGPT et reste à vérifier ; NovyDeck n'expose pas son port HTTP sur le réseau.
 ## Client local : Claude, Codex et autres clients stdio
 
-1. Ouvre DeckForge, puis **Réglages → Assistant IA / MCP**, et active l’assistant.
+1. Ouvre NovyDeck, puis **Réglages → Assistant IA / MCP**, et active l’assistant.
 2. Clique **Copier la configuration MCP**.
 3. Ajoute cette entrée à la configuration MCP du client choisi, sans remplacer
    ses autres serveurs, puis reconnecte ce client.
@@ -63,7 +63,7 @@ Exemple ; le bouton de l’app fournit le chemin réel :
 {
   "mcpServers": {
     "deckforge": {
-      "command": "C:\\Applications\\DeckForge\\deckforge-mcp.exe",
+      "command": "C:\\Applications\\NovyDeck\\novydeck-mcp.exe",
       "args": []
     }
   }
@@ -77,13 +77,13 @@ Seule une action explicite sur une carte modifie le fichier du client correspond
 
 Exemple de demande :
 
-> Lis mes profils DeckForge et propose une macro sur la touche 6 du profil Bureau :
+> Lis mes profils NovyDeck et propose une macro sur la touche 6 du profil Bureau :
 > ouvrir mon application, attendre sa fenêtre, puis envoyer Ctrl+Shift+S.
-> Attends ma validation dans DeckForge avant de considérer la proposition appliquée.
+> Attends ma validation dans NovyDeck avant de considérer la proposition appliquée.
 
 ### Demande consentie depuis l'Atelier
 
-En mode IA, ou après une demande inconnue en mode Automatique (ambiguë : bouton « Demander à mon IA »), l'Atelier affiche avant transmission le texte, la destination profil/page/touche et les noms des blocs actuels. Aucun chemin ni paramètre des blocs n'est envoyé. Après « Transmettre à mon IA », `deckforge_get_state` contient temporairement `pending_request: {text, destination: {profile, page, key}, blocks: [types], created: secondes_depuis_accord}` ; ce champ est absent avant accord, après annulation, changement de destination, décision ou expiration de dix minutes. Le bouton copie aussi la demande pour la coller dans un client IA MCP connecté. Aucun appel IA n'est déclenché par DeckForge ; le client doit lire l'état puis proposer avec `deckforge_configure_key`. Les propositions suivent la validation locale existante. La présence effective d'un client MCP n'est pas détectable par DeckForge : vérifier sa connexion dans le client.
+En mode IA, ou après une demande inconnue en mode Automatique (ambiguë : bouton « Demander à mon IA »), l'Atelier affiche avant transmission le texte, la destination profil/page/touche et les noms des blocs actuels. Aucun chemin ni paramètre des blocs n'est envoyé. Après « Transmettre à mon IA », `deckforge_get_state` contient temporairement `pending_request: {text, destination: {profile, page, key}, blocks: [types], created: secondes_depuis_accord}` ; ce champ est absent avant accord, après annulation, changement de destination, décision ou expiration de dix minutes. Le bouton copie aussi la demande pour la coller dans un client IA MCP connecté. Aucun appel IA n'est déclenché par NovyDeck ; le client doit lire l'état puis proposer avec `deckforge_configure_key`. Les propositions suivent la validation locale existante. La présence effective d'un client MCP n'est pas détectable par NovyDeck : vérifier sa connexion dans le client.
 
 ## ChatGPT web ou client HTTP
 
@@ -112,7 +112,7 @@ expire les sessions. Il écoute uniquement localhost. Il peut aussi être lancé
 explicitement pour un client géré séparément :
 
 ```powershell
-.\deckforge-mcp.exe --http 127.0.0.1:9846
+.\novydeck-mcp.exe --http 127.0.0.1:9846
 ```
 
 Ne publie ni `mcp-http-token.txt` ni `mcp-connection.json` dans un dépôt ou une note.
@@ -151,7 +151,7 @@ Exemple de proposition pour `deckforge_configure_key` :
 }
 ```
 
-La proposition s’affiche dans DeckForge avec ses actions. **Valider** applique
+La proposition s’affiche dans NovyDeck avec ses actions. **Valider** applique
 la configuration, ou démarre trois secondes avant une exécution. **Refuser** ne
 change rien. Une proposition devient obsolète si la configuration a changé.
 Expiration : dix minutes ; file limitée à dix propositions.
@@ -174,15 +174,15 @@ que le profil et la page concernés soient déjà ouverts dans l’app.
 
 ## Créer une automatisation avec les blocs (0.4.1)
 
-Dans l’Atelier, clique **Créer avec mon IA**. Le champ prépare une demande avec le profil, la page et la touche actuellement sélectionnés. Copie-la dans ton client IA connecté à DeckForge. Ce champ ne lance pas de modèle local.
+Dans l’Atelier, clique **Créer avec mon IA**. Le champ prépare une demande avec le profil, la page et la touche actuellement sélectionnés. Copie-la dans ton client IA connecté à NovyDeck. Ce champ ne lance pas de modèle local.
 
-L’IA peut appeler `deckforge_get_audio_devices`, `deckforge_get_icons`, puis `deckforge_configure_key` pour proposer une macro avec des conditions, répétitions, variables et actions audio. `deckforge_create_page` propose une page ou un dossier. Les modifications attendent toujours **Valider cette proposition** dans DeckForge ; cette validation ne lance pas la macro.
+L’IA peut appeler `deckforge_get_audio_devices`, `deckforge_get_icons`, puis `deckforge_configure_key` pour proposer une macro avec des conditions, répétitions, variables et actions audio. `deckforge_create_page` propose une page ou un dossier. Les modifications attendent toujours **Valider cette proposition** dans NovyDeck ; cette validation ne lance pas la macro.
 
 Pour chaque état audio, `first_icon` et `second_icon` acceptent un chemin PNG/JPEG/SVG ou `builtin:headphones`, `builtin:speakers`, `builtin:microphone`. Une chaîne vide sélectionne le symbole par défaut. `deckforge_get_icons` retourne au maximum 50 résultats, sans contenu des fichiers.
 
-Exemple de demande : « Crée sur cette touche un bouton qui bascule entre mon casque et mes enceintes, avec une icône et un titre pour chaque état. Utilise les identifiants audio réels retournés par DeckForge. Ne lance pas la macro. »
+Exemple de demande : « Crée sur cette touche un bouton qui bascule entre mon casque et mes enceintes, avec une icône et un titre pour chaque état. Utilise les identifiants audio réels retournés par NovyDeck. Ne lance pas la macro. »
 
-Le guide de connexion ChatGPT est décrit dans [la documentation officielle OpenAI](https://developers.openai.com/plugins/deploy/connect-chatgpt). Pour un serveur privé local, voir [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels). La disponibilité et les autorisations dépendent du compte ; aucun compte ni tunnel n’est configuré automatiquement par DeckForge.
+Le guide de connexion ChatGPT est décrit dans [la documentation officielle OpenAI](https://developers.openai.com/plugins/deploy/connect-chatgpt). Pour un serveur privé local, voir [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels). La disponibilité et les autorisations dépendent du compte ; aucun compte ni tunnel n’est configuré automatiquement par NovyDeck.
 
 
 ## Fond de touche en 0.4.3
@@ -197,7 +197,7 @@ La proposition `deckforge_configure_key` accepte `icon_scale` (entier facultatif
 
 ## Actions natives supplémentaires
 
-Le bloc launch accepte focus_if_running (booléen, défaut false) : si une fenêtre visible du même exécutable est ouverte, elle est activée sans relancer le programme. Un refus Windows de mise au premier plan est signalé ; aucune fenêtre DeckForge n’est ciblée par défaut.
+Le bloc launch accepte focus_if_running (booléen, défaut false) : si une fenêtre visible du même exécutable est ouverte, elle est activée sans relancer le programme. Un refus Windows de mise au premier plan est signalé ; aucune fenêtre NovyDeck n’est ciblée par défaut.
 
 deckforge_configure_key accepte close_window (sans paramètre), mouse_click (button : left/right/middle, double : booléen), mouse_move (x/y : entiers -32768 à 32767, relative_to : screen/window/cursor) et mouse_scroll (amount : crans -100 à 100, horizontal : booléen). Ces étapes sont validées localement, sans exécution lors de la proposition. La simulation n'agit pas sur Windows ; l'export AutoHotkey refuse explicitement ces étapes non prises en charge.
 

@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<title>DeckForge — présentation</title>
+<title>NovyDeck — présentation</title>
 <style>
 @font-face { font-family: Inter; src: url(fonts/Inter-Regular.otf); font-weight: 400; }
 @font-face { font-family: Inter; src: url(fonts/Inter-Medium.otf); font-weight: 500; }
@@ -57,7 +57,7 @@ html, body { margin:0; width:1920px; height:1080px; overflow:hidden; background:
 <div class="layer" id="ui">
   <!-- S1 -->
   <div class="t label" id="s1label" style="left:132px;top:640px">FIFINE AmpliGame D6 · Windows 10/11</div>
-  <div class="mask" id="s1titleM" style="left:122px;top:680px"><span class="t display" id="s1title" style="position:relative;font-size:176px">DeckForge</span></div>
+  <div class="mask" id="s1titleM" style="left:122px;top:680px"><span class="t display" id="s1title" style="position:relative;font-size:176px">NovyDeck</span></div>
   <div class="mask" id="s1tagM" style="left:130px;top:880px"><span class="t display" id="s1tag" style="position:relative;font-size:64px;font-weight:600">Ton pavé. <span class="accent">Tes règles.</span></span></div>
   <!-- S2 -->
   <div class="mask" id="s2c1M" style="left:120px;top:760px"><span class="t caption" id="s2c1" style="position:relative">15 touches LCD.</span></div>
@@ -78,10 +78,10 @@ html, body { margin:0; width:1920px; height:1080px; overflow:hidden; background:
   <div id="chips"></div>
   <!-- S7 -->
   <div id="endrow" style="position:absolute;left:0;width:1920px;top:690px;display:flex;justify-content:center;align-items:center;gap:30px">
-    <img id="logo" src="assets/deckforge-logo.png" style="width:112px;height:112px">
-    <div style="position:relative;overflow:hidden;padding:0 0.1em 0.14em 0"><span class="t display" id="s7t" style="position:relative;display:inline-block;font-size:124px">DeckForge</span></div>
+    <img id="logo" src="assets/novydeck-logo.png" style="width:112px;height:112px">
+    <div style="position:relative;overflow:hidden;padding:0 0.1em 0.14em 0"><span class="t display" id="s7t" style="position:relative;display:inline-block;font-size:124px">NovyDeck</span></div>
   </div>
-  <div class="t" id="s7u" style="left:0;width:1920px;top:860px;text-align:center;font-family:Inter;font-weight:600;font-size:40px">github.com/HatiFlash/<span class="accent">DeckForge</span></div>
+  <div class="t" id="s7u" style="left:0;width:1920px;top:860px;text-align:center;font-family:Inter;font-weight:600;font-size:40px">github.com/HatiFlash/<span class="accent">NovyDeck</span></div>
   <div class="t label" id="s7v" style="left:0;width:1920px;top:930px;text-align:center"></div>
 </div>
 <div class="layer" id="pills"></div>
@@ -317,7 +317,7 @@ const answerMat = new THREE.MeshBasicMaterial({color: '#22C3EE', transparent: tr
 let panels, keyTex = [], gifTex = [];
 async function setup() {
   await document.fonts.ready;
-  const shots = await Promise.all(['main', 'block-editor', 'assistant'].map((n) => loadTex(`assets/shots/deckforge-${n}.png`)));
+  const shots = await Promise.all(['main', 'block-editor', 'assistant'].map((n) => loadTex(`assets/shots/novydeck-${n}.png`)));
   panels = {app: makePanel(shots[0], 14), work: makePanel(shots[1], 28), chat: makePanel(shots[2], 42)};
   keyTex = await Promise.all([...Array(15).keys()].map((i) => loadTex(`assets/keys/key-${String(i).padStart(2, '0')}.png`)));
   gifTex = await Promise.all([...Array(12).keys()].map((f) => loadTex(`assets/keys/key-09-f${String(f).padStart(2, '0')}.png`)));

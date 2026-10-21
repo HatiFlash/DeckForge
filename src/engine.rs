@@ -1083,14 +1083,14 @@ fn window_operation(target: &str, value: &str, op: &str, x: i32, y: i32, w: i32,
         return other_windows(op, cancel);
     }
     let hwnd = if target == "foreground" { unsafe { GetForegroundWindow() } } else {
-        let mut search = WindowSearch { query: value.to_lowercase(), by_title: target == "title", explicit_self: target == "title" && value.to_lowercase().contains("deckforge"), found: None };
+        let mut search = WindowSearch { query: value.to_lowercase(), by_title: target == "title", explicit_self: target == "title" && (value.to_lowercase().contains("deckforge") || value.to_lowercase().contains("novydeck")), found: None };
         unsafe { EnumWindows(Some(find_op_window), &mut search as *mut _ as isize); }
         search.found.unwrap_or(std::ptr::null_mut())
     };
     anyhow::ensure!(!hwnd.is_null() && unsafe { IsWindow(hwnd) } != 0, "Fenêtre introuvable : {target} {value}");
     let mut pid = 0;
     unsafe { GetWindowThreadProcessId(hwnd, &mut pid); }
-    anyhow::ensure!(pid != std::process::id() || target == "title" && value.to_lowercase().contains("deckforge"), "DeckForge ne peut être ciblé que par son titre explicite");
+    anyhow::ensure!(pid != std::process::id() || target == "title" && (value.to_lowercase().contains("deckforge") || value.to_lowercase().contains("novydeck")), "NovyDeck ne peut être ciblé que par son titre explicite");
     check(cancel)?;
     unsafe {
         match op {
@@ -1197,7 +1197,7 @@ fn close_foreground_window() -> Result<()> {
     anyhow::ensure!(!window.is_null(), "Aucune fenêtre active à fermer");
     let mut process_id = 0u32;
     unsafe { GetWindowThreadProcessId(window, &mut process_id) };
-    anyhow::ensure!(process_id != std::process::id(), "DeckForge ne peut pas se fermer lui-même");
+    anyhow::ensure!(process_id != std::process::id(), "NovyDeck ne peut pas se fermer lui-même");
     let posted = unsafe { PostMessageW(window, WM_CLOSE, 0, 0) };
     anyhow::ensure!(posted != 0, "Windows a refusé de fermer la fenêtre");
     Ok(())

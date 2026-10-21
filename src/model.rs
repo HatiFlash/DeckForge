@@ -192,7 +192,7 @@ fn default_math_value() -> String { "1".into() }
 fn default_math_max() -> f64 { 100.0 }
 fn valid_math_name(name: &str) -> bool { !name.is_empty() && name.len() <= 64 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') }
 fn default_set_name() -> String { "mode".into() }
-fn default_notify_title() -> String { "DeckForge".into() }
+fn default_notify_title() -> String { "NovyDeck".into() }
 fn default_wait_timeout() -> u64 { 5000 }
 fn default_wait_poll() -> u64 { 200 }
 fn default_device() -> String { "default".into() }
@@ -1382,7 +1382,7 @@ mod tests {
     #[test]
     fn notify_defaults_roundtrip_and_validation() {
         let s: Step = serde_json::from_str(r#"{"type":"notify","message":"Bonjour {nom}"}"#).unwrap();
-        assert_eq!(s, Step::Notify { title: "DeckForge".into(), message: "Bonjour {nom}".into() });
+        assert_eq!(s, Step::Notify { title: "NovyDeck".into(), message: "Bonjour {nom}".into() });
         assert_eq!(serde_json::from_str::<Step>(&serde_json::to_string(&s).unwrap()).unwrap(), s);
         assert!(serde_json::from_str::<Step>(r#"{"type":"notify","message":"ok","unknown":1}"#).is_err());
         assert!(s.name().contains("Notification"));

@@ -1,4 +1,4 @@
-//! Profil « DeckForge Demo / README » : les 15 touches du D6 remplies avec des actions
+//! Profil « NovyDeck Demo / README » : les 15 touches du D6 remplies avec des actions
 //! existantes, pour la découverte et les captures de documentation. Il est ajouté à côté des
 //! profils de l'utilisateur, sans jamais les modifier, et se réinitialise par son seul nom.
 //! Les médias sont générés localement (aucun fichier tiers) et clairement nommés « demo ».
@@ -7,7 +7,7 @@ use anyhow::Result;
 use image::{Rgba, RgbaImage};
 use std::path::{Path, PathBuf};
 
-pub const NAME: &str = "DeckForge Demo / README";
+pub const NAME: &str = "NovyDeck Demo / README";
 const FOLDER_ID: &str = "demo-dossier";
 const PAGE_ID: &str = "demo-page-2";
 
@@ -34,7 +34,7 @@ pub fn profile(photo: &Path, animation: &Path) -> Profile {
             Step::Hotkey { keys: "CTRL+C".into() },
             Step::Delay { ms: 150 },
             Step::Hotkey { keys: "CTRL+V".into() },
-            Step::Notify { title: "DeckForge".into(), message: "Copier-coller terminé".into() },
+            Step::Notify { title: "NovyDeck".into(), message: "Copier-coller terminé".into() },
         ]),
         key("Lecture", vec![Step::Media { command: "play_pause".into() }]),
         key("Volume +", vec![Step::Media { command: "volume_up".into() }]),
@@ -43,17 +43,17 @@ pub fn profile(photo: &Path, animation: &Path) -> Profile {
         key("Bloc-notes", vec![Step::Launch { program: "notepad.exe".into(), args: vec![], focus_if_running: true }]),
         key("Scène Démo", vec![Step::ObsScene { name: "Démo".into() }]),
         key("Dossier", vec![Step::Folder { id: FOLDER_ID.into() }]),
-        Key { image: photo.to_string_lossy().into_owned(), ..key("Photo", vec![Step::Url { url: "https://github.com/HatiFlash/DeckForge".into() }]) },
+        Key { image: photo.to_string_lossy().into_owned(), ..key("Photo", vec![Step::Url { url: "https://github.com/HatiFlash/NovyDeck".into() }]) },
         Key { image: animation.to_string_lossy().into_owned(), ..key("", vec![Step::Media { command: "next".into() }]) },
         key("Gestionnaire", vec![Step::Hotkey { keys: "CTRL+SHIFT+ESC".into() }]),
-        key("Signature", vec![Step::Text { text: "Cordialement,\nL'équipe DeckForge".into() }]),
-        key("Notifier", vec![Step::Notify { title: "DeckForge".into(), message: "Touche de démonstration".into() }]),
+        key("Signature", vec![Step::Text { text: "Cordialement,\nL'équipe NovyDeck".into() }]),
+        key("Notifier", vec![Step::Notify { title: "NovyDeck".into(), message: "Touche de démonstration".into() }]),
         key("Micro", vec![Step::DeviceVolume { input: true, device: "default".into(), action: "toggle_mute".into(), step: 5, level: 50 }]),
         key("Page 2", vec![Step::PageNext]),
     ];
     let mut folder = Page::new(FOLDER_ID.into(), "Dossier démo".into(), true);
     folder.keys[1] = key("Calculatrice", vec![Step::Launch { program: "calc.exe".into(), args: vec![], focus_if_running: true }]);
-    folder.keys[2] = key("Site DeckForge", vec![Step::Url { url: "https://github.com/HatiFlash/DeckForge".into() }]);
+    folder.keys[2] = key("Site NovyDeck", vec![Step::Url { url: "https://github.com/HatiFlash/NovyDeck".into() }]);
     let mut page = Page::new(PAGE_ID.into(), "Page 2".into(), false);
     page.keys[0] = key("Page 1", vec![Step::PagePrevious]);
     page.keys[1] = key("Précédent", vec![Step::Media { command: "previous".into() }]);

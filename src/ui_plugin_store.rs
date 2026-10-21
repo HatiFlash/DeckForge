@@ -25,7 +25,7 @@ impl App {
   });
   ui.label(RichText::new(&self.notice).small());
   let inventory=self.plugin_inventory();
-   ui.separator();iconset::heading(ui,Ico::Plug,RichText::new("Installés dans DeckForge").strong());
+   ui.separator();iconset::heading(ui,Ico::Plug,RichText::new("Installés dans NovyDeck").strong());
    {for plugin in inventory.installed.iter(){
     if !format!("{} {}",plugin.display_name(),plugin.uuid).to_lowercase().contains(search) && !plugin.actions.iter().any(|a|a.name.to_lowercase().contains(search)){continue;}
     let ty=match plugin.runtime{Runtime::Exe(_)|Runtime::Node(_)=>"programme",Runtime::Html(_)=>"web",Runtime::Protected=>"protégé",Runtime::Unsupported=>"indisponible"};
@@ -67,7 +67,7 @@ impl App {
   if search.is_empty() || "volumecontroller audio volume muet peripherique".contains(&search.to_lowercase()) {
    ui.collapsing("Audio natif · sans plugin",|ui| ui.group(|ui| {
     ui.set_max_width((content_width-24.0).max(120.0));
-    iconset::heading(ui,Ico::Headset,RichText::new("Audio natif DeckForge").strong());
+    iconset::heading(ui,Ico::Headset,RichText::new("Audio natif NovyDeck").strong());
     ui.add(egui::Label::new("Volume + / - et muet contrôlent le volume Windows par touches multimédias. Le basculement utilise les périphériques Core Audio détectés ci-dessous.").wrap());
     ui.horizontal_wrapped(|ui| {
      for (label,command) in [("+ Volume +","volume_up"),("+ Volume -","volume_down"),("+ Muet / rétablir","mute")] {

@@ -1,10 +1,10 @@
-# Présentation animée de DeckForge
+# Présentation animée de NovyDeck
 
 Vidéo de 42 s (1920 × 1080, 30 i/s, son stéréo) construite à partir d'éléments **réels** de l'application :
 
-- les 15 écrans LCD du profil de démonstration, rendus par le moteur `key_render` de DeckForge
+- les 15 écrans LCD du profil de démonstration, rendus par le moteur `key_render` de NovyDeck
   (test `demo_video_keyframes`, dossier `keys/`), y compris les 12 images de l'animation ;
-- les captures `docs/images/deckforge-main.png`, `deckforge-block-editor.png`, `deckforge-assistant.png`
+- les captures `docs/images/novydeck-main.png`, `novydeck-block-editor.png`, `novydeck-assistant.png`
   (réponse réelle de l'assistant local, en aperçu).
 
 Le pavé FIFINE D6 est modélisé en 3D avec three.js (châssis, 15 touches, éclairage PBR, bloom),
@@ -27,15 +27,15 @@ Prérequis : Python 3.11+, `pip install playwright imageio-ffmpeg`, `python -m p
 three.js 0.186.1 décompressé dans `three/` (`npm pack three@0.186.1`), et les ressources dans `assets/` :
 
 ```bash
-cargo test --bin deckforge -- demo_video_keyframes --ignored   # DECKFORGE_VIDEO_OUTPUT=…/video
+cargo test --bin novydeck -- demo_video_keyframes --ignored   # DECKFORGE_VIDEO_OUTPUT=…/video
 cp -r …/video/keys assets/keys
-cp ../../../docs/images/deckforge-{main,block-editor,assistant}.png assets/shots/
-cp ../../../res/branding/deckforge-logo.png assets/
+cp ../../../docs/images/novydeck-{main,block-editor,assistant}.png assets/shots/
+cp ../../../res/branding/novydeck-logo.png assets/
 python -m sfx cues.py                                            # out/sfx.wav
 ANGLE=d3d11 FFMPEG=$(python -c "import imageio_ffmpeg as f;print(f.get_ffmpeg_exe())") \
   python render.py video out/video.mp4                           # ANGLE=swiftshader sans GPU (très lent)
 ffmpeg -i out/video.mp4 -i out/sfx.wav -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -shortest \
-  -movflags +faststart ../../../docs/media/deckforge-demo.mp4
+  -movflags +faststart ../../../docs/media/novydeck-demo.mp4
 ```
 
 `python render.py stills 1,9,15,23,31,38 planche.png` produit une planche de contrôle.

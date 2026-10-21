@@ -30,7 +30,7 @@ impl Default for CropSettings {
             zoom: 1.0,
             pan_x: 0.0,
             pan_y: 0.0,
-            bg_color: [21, 28, 41, 255], // matches DeckForge dark theme
+            bg_color: [21, 28, 41, 255], // matches NovyDeck dark theme
         }
     }
 }

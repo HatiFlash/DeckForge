@@ -7,7 +7,7 @@ pub const CYAN: Color32 = Color32::from_rgb(34, 195, 238);
 pub const WARNING: Color32 = Color32::from_rgb(245, 173, 66);
 pub const DANGER: Color32 = Color32::from_rgb(242, 95, 112);
 
-/// Jetons de mise en page DeckForge (voir docs/DESIGN.md) : espacements et rayons partagés.
+/// Jetons de mise en page NovyDeck (voir docs/DESIGN.md) : espacements et rayons partagés.
 pub const SPACE: [f32; 6] = [4.0, 8.0, 12.0, 16.0, 24.0, 32.0];
 /// Rayons : contrôle (bouton, champ), menu/carte, fenêtre/panneau.
 pub const RADIUS_SM: u8 = 8;
@@ -27,15 +27,15 @@ fn decode_icon(bytes: &[u8]) -> egui::IconData {
     }
 }
 /// 32 × 32 logo (notification-area icon expects exactly this size).
-pub fn app_icon() -> egui::IconData { decode_icon(include_bytes!("../res/branding/deckforge-32.png")) }
+pub fn app_icon() -> egui::IconData { decode_icon(include_bytes!("../res/branding/novydeck-32.png")) }
 /// Larger logo for the window and taskbar.
-pub fn window_icon() -> egui::IconData { decode_icon(include_bytes!("../res/branding/deckforge-64.png")) }
+pub fn window_icon() -> egui::IconData { decode_icon(include_bytes!("../res/branding/novydeck-64.png")) }
 /// Header logo, uploaded once and kept by egui.
 /// Logo net en grand (intro du démarrage), décodé une seule fois.
 pub fn intro_logo_texture(ctx: &egui::Context) -> egui::TextureHandle {
     let id = egui::Id::new("deckforge_intro_logo_texture");
     if let Some(texture) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) { return texture; }
-    let icon = decode_icon(include_bytes!("../res/branding/deckforge-256.png"));
+    let icon = decode_icon(include_bytes!("../res/branding/novydeck-256.png"));
     let image = egui::ColorImage::from_rgba_unmultiplied([icon.width as usize, icon.height as usize], &icon.rgba);
     let texture = ctx.load_texture("deckforge-intro-logo", image, egui::TextureOptions::LINEAR);
     ctx.data_mut(|d| d.insert_temp(id, texture.clone()));

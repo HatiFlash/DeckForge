@@ -33,7 +33,7 @@ pub fn run(address: &str, connection: PathBuf) -> anyhow::Result<()> {
     };
     let listener = TcpListener::bind(address)?;
     eprintln!(
-        "DeckForge MCP HTTP: http://{address}/mcp (Bearer token in {})",
+        "NovyDeck MCP HTTP: http://{address}/mcp (Bearer token in {})",
         token_path.display()
     );
     let sessions = Arc::new(Mutex::new(HashMap::<String, Session>::new()));

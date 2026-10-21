@@ -1,12 +1,12 @@
 //! IA locale facultative pour l'assistant de l'atelier.
 //!
-//! Le modèle ne sert qu'à *traduire* une demande en blocs DeckForge : la réponse est
+//! Le modèle ne sert qu'à *traduire* une demande en blocs NovyDeck : la réponse est
 //! contrainte par un schéma JSON, filtrée par une liste blanche de blocs, puis montrée en
 //! aperçu. Rien n'est exécuté ni inséré sans validation de l'utilisateur.
 //!
 //! Deux moteurs partagent la même API compatible OpenAI (`/v1/chat/completions`) :
 //! - `ollama` : serveur Ollama déjà installé par l'utilisateur (option A) ;
-//! - `integre` : `llama-server.exe` livré dans `ai\` et lancé par DeckForge (option B).
+//! - `integre` : `llama-server.exe` livré dans `ai\` et lancé par NovyDeck (option B).
 //!
 //! Seules les adresses de bouclage (127.0.0.1, localhost, ::1) sont acceptées : la demande
 //! ne quitte jamais le PC.
@@ -35,7 +35,7 @@ const MAX_LIST: usize = 10;
 // serde_json) le respectent, sinon un petit modèle se retrouve enfermé dans un ou deux blocs.
 // Pour la même raison les branches s'appellent steps_if_true / steps_otherwise (« vrai » d'abord)
 // et le texte d'une fenêtre « contains » (avant les branches).
-const SYSTEM: &str = r#"Tu convertis une demande (français ou anglais, souvent avec des fautes) en blocs d'automatisation DeckForge pour Windows. Réponds uniquement avec un objet JSON {"steps":[...]}.
+const SYSTEM: &str = r#"Tu convertis une demande (français ou anglais, souvent avec des fautes) en blocs d'automatisation NovyDeck pour Windows. Réponds uniquement avec un objet JSON {"steps":[...]}.
 Blocs simples :
 - {"action":"delay","ms":1000} attendre.
 - {"action":"hotkey","keys":"CTRL+C"} raccourci clavier, touches en majuscules séparées par +.
@@ -501,13 +501,13 @@ fn complete(endpoint: &str, model: &str, request: &str, knowledge: &Knowledge) -
 // ---------------------------------------------------------------- moteur intégré (option B)
 
 /// Dossier du moteur intégré : `ai\` à côté de l'exécutable s'il y a été copié (version portable),
-/// sinon `%LOCALAPPDATA%\DeckForge\ai` (toujours accessible en écriture, conservé par les mises à jour).
+/// sinon le dossier de données utilisateur (DeckForge existant ou NovyDeck) (toujours accessible en écriture, conservé par les mises à jour).
 pub fn builtin_dir() -> PathBuf {
     let beside = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_default().join("ai");
     if beside.join("llama-server.exe").is_file() {
         return beside;
     }
-    std::env::var_os("LOCALAPPDATA").map(PathBuf::from).map_or(beside, |d| d.join("DeckForge").join("ai"))
+    std::env::var_os("LOCALAPPDATA").map(PathBuf::from).map_or(beside, |d| crate::assets::user_data_dir(&d).join("ai"))
 }
 pub fn builtin_server() -> PathBuf {
     builtin_dir().join("llama-server.exe")
@@ -631,7 +631,7 @@ fn install_into(dir: &Path, set: &dyn Fn(&str, &Path, u64), cancel: &AtomicBool)
     Ok(())
 }
 
-/// Télécharge avec reprise (`curl -C -`), annulable, `curl` rattaché à DeckForge (tué avec lui),
+/// Télécharge avec reprise (`curl -C -`), annulable, `curl` rattaché à NovyDeck (tué avec lui),
 /// puis vérifie l'empreinte. Un fichier partiel est conservé pour la reprise ; un fichier complet
 /// à l'empreinte différente est supprimé.
 fn fetch_verified(url: &str, dest: &Path, sha256: &str, size: u64, seconds: u64, cancel: &AtomicBool) -> Result<(), String> {
@@ -764,7 +764,7 @@ pub const IDLE_UNLOAD: Duration = Duration::from_secs(600);
 const ATTEMPTS: &[(&str, &[&str])] = &[("carte graphique", &["-ngl", "99"]), ("processeur", &["-ngl", "0"])];
 
 /// Moteur intégré partagé : démarré à la première demande, libéré après [`IDLE_UNLOAD`] sans
-/// demande, arrêté avec DeckForge.
+/// demande, arrêté avec NovyDeck.
 #[derive(Clone)]
 pub struct Runtime {
     engine: Arc<Mutex<Option<Engine>>>,
@@ -1305,7 +1305,7 @@ mod tests {
     #[test]
     fn download_resumes_verifies_checksum_and_can_be_cancelled() {
         use sha2::{Digest, Sha256};
-        const BODY: &[u8] = b"DeckForge : contenu de test pour la reprise du telechargement.";
+        const BODY: &[u8] = b"NovyDeck : contenu de test pour la reprise du telechargement.";
         let sha: String = Sha256::digest(BODY).iter().map(|b| format!("{b:02x}")).collect();
         let url = range_server(BODY);
         let dir = std::env::temp_dir().join(format!("deckforge-dl-{}", std::process::id()));
@@ -1373,7 +1373,7 @@ mod tests {
         assert!(builtin_server().is_file() && builtin_model().is_file());
     }
 
-    /// Banc réel option B : moteur et modèle installés dans `builtin_dir()`, démarrés par DeckForge.
+    /// Banc réel option B : moteur et modèle installés dans `builtin_dir()`, démarrés par NovyDeck.
     #[test]
     #[ignore]
     fn lab_builtin_engine_starts_translates_and_stops() {

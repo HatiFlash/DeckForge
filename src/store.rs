@@ -58,7 +58,7 @@ pub fn load(path: &Path) -> Result<Config> {
             let backup_res = load_one(&backup);
             if let Ok(config) = backup_res {
                 let message = format!(
-                    "DeckForge : configuration illisible ({error}); sauvegarde {} restaurée en mémoire (fichier original conservé)\n",
+                    "NovyDeck : configuration illisible ({error}); sauvegarde {} restaurée en mémoire (fichier original conservé)\n",
                     backup.display()
                 );
                 eprintln!("{message}");
@@ -72,7 +72,7 @@ pub fn load(path: &Path) -> Result<Config> {
             for b in list_backups(path).into_iter().rev() {
                 if let Ok(config) = load_one(&b) {
                     let message = format!(
-                        "DeckForge : configuration illisible ({error}); point de restauration {} utilisé en mémoire\n",
+                        "NovyDeck : configuration illisible ({error}); point de restauration {} utilisé en mémoire\n",
                         b.display()
                     );
                     eprintln!("{message}");
