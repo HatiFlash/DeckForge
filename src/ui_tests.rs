@@ -2080,6 +2080,15 @@ fn flicker_ui_start_mouse_transition_stop_writes_real_trace() {
 }
 
 #[test]
+fn visible_chassis_brand_is_novydeck() {
+    let size = vec2(1380.0, 900.0);
+    let mut h = Harness::new();
+    let out = h.warm(size);
+    assert!(text_position(&out.shapes, "NOVYDECK").is_some(), "marque NOVYDECK visible sur le châssis");
+    assert!(text_position(&out.shapes, "DECKFORGE").is_none(), "ancienne marque DECKFORGE absente du châssis");
+}
+
+#[test]
 fn about_dialog_shows_cargo_version_without_network() {
     let size = vec2(1380.0, 900.0);
     let mut h = Harness::new();

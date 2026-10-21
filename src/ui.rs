@@ -3527,7 +3527,7 @@ impl App {
                     ui.painter().text(
                         crate::deck_chassis::svg_point(chassis, egui::pos2(700.0, 783.0)),
                         egui::Align2::CENTER_CENTER,
-                        "DECKFORGE",
+                        "NOVYDECK",
                         egui::FontId::proportional((20.0 * s).clamp(7.0, 12.0)),
                         Color32::from_rgba_unmultiplied(150, 172, 204, 150),
                     );

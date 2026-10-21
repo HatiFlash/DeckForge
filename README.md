@@ -7,7 +7,7 @@
   <strong>Logiciel libre pour Windows qui pilote le pavé FIFINE AmpliGame D6 : touches, macros, médias et plugins, sans le logiciel officiel.</strong>
   <br><br>
 
-  [![Release](https://img.shields.io/badge/Release-v0.8.10-3478F6.svg)](https://github.com/HatiFlash/NovyDeck/releases/tag/v0.8.10)
+  [![Release](https://img.shields.io/badge/Release-v0.8.11-3478F6.svg)](https://github.com/HatiFlash/NovyDeck/releases/tag/v0.8.11)
   [![Licence MIT](https://img.shields.io/badge/Licence-MIT-22C58B.svg)](LICENSE)
 </div>
 
@@ -47,7 +47,7 @@ Fermez le logiciel officiel FIFINE Control Deck : il garde l'accès USB exclusif
 
 ## Installation rapide
 
-1. Téléchargez **`NovyDeck-0.8.10-Setup.exe`** depuis la [dernière release](https://github.com/HatiFlash/NovyDeck/releases/latest) et lancez-le (aucun droit administrateur requis), ou extrayez `NovyDeck-0.8.10-Windows.zip`.
+1. Téléchargez **`NovyDeck-0.8.11-Setup.exe`** depuis la [dernière release](https://github.com/HatiFlash/NovyDeck/releases/latest) et lancez-le (aucun droit administrateur requis), ou extrayez `NovyDeck-0.8.11-Windows.zip`.
    - Vous utilisiez DeckForge installé ? L’installateur réutilise son emplacement et conserve les profils. En portable : fermez l’application puis extrayez les nouveaux exécutables dans le même dossier, sans supprimer `config.json`, les préférences, `assets` ni `plugins`. Une nouvelle installation utilise `%LOCALAPPDATA%\Programs\NovyDeck`.
 2. Lancez NovyDeck depuis le menu Démarrer et branchez le D6.
 3. Pour découvrir l'application sans toucher à vos profils : **Profils → ••• → Profil de démonstration (15 touches)**. Ce profil se réinitialise par la même commande et peut être supprimé comme un autre.
@@ -72,6 +72,11 @@ Fermez le logiciel officiel FIFINE Control Deck : il garde l'accès USB exclusif
 **Confidentialité :** tout fonctionne hors ligne. L'IA locale reste sur le PC ; l'IA connectée et les plugins réseau ne s'activent qu'avec votre accord explicite.
 
 ## Historique des versions
+
+### Nouveautés 0.8.11 — marquage du châssis
+
+- Le libellé peint sur le châssis affiche désormais **NOVYDECK**, et non l’ancien nom.
+- Test UI sur le texte réellement dessiné, captures et vidéo actualisées ; transparence des icônes de la 0.8.10 conservée.
 
 ### Nouveautés 0.8.10 — logo transparent
 

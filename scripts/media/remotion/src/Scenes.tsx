@@ -97,7 +97,7 @@ export const Outro: React.FC = () => {
     <div style={{position: 'absolute', left: 178, top: 136, width: 654, height: 654, opacity: interpolate(f, [10, 32], [0, 1], bound), scale: interpolate(f, [10, 65], [0.76, 1], bound)}}>
       <Img src={staticFile('logo.png')} style={{width: '100%', height: '100%', objectFit: 'contain'}} />
     </div>
-    <div style={{position: 'absolute', left: 920, top: 245}}><Label delay={18}>FIFINE D6 · CRÉEZ À VOTRE RYTHME</Label><Headline delay={37} size={130}><span style={{color: cyan}}>Novy</span>Deck</Headline><Subline delay={65}>Ton pavé. Tes règles.</Subline><div style={{fontSize: 37, letterSpacing: 6, color: '#86d5e9', marginTop: 96, opacity: interpolate(f, [88, 110], [0, 1], bound)}}>VERSION 0.8.10</div><div style={{fontSize:28,color:"#c4dfed",marginTop:30,opacity:interpolate(f,[75,95],[0,1],bound)}}>github.com/HatiFlash/NovyDeck</div></div>
+    <div style={{position: 'absolute', left: 920, top: 245}}><Label delay={18}>FIFINE D6 · CRÉEZ À VOTRE RYTHME</Label><Headline delay={37} size={130}><span style={{color: cyan}}>Novy</span>Deck</Headline><Subline delay={65}>Ton pavé. Tes règles.</Subline><div style={{fontSize: 37, letterSpacing: 6, color: '#86d5e9', marginTop: 96, opacity: interpolate(f, [88, 110], [0, 1], bound)}}>VERSION 0.8.11</div><div style={{fontSize:28,color:"#c4dfed",marginTop:30,opacity:interpolate(f,[75,95],[0,1],bound)}}>github.com/HatiFlash/NovyDeck</div></div>
     <div style={{position: 'absolute', right: 95, bottom: 86, width: 520, height: 2, background: 'linear-gradient(90deg,#5de1f5,transparent)', scale: interpolate(f, [75, 122], [0, 1], bound), transformOrigin: 'left'}} />
   </Stage>;
 };
