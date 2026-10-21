@@ -37,7 +37,7 @@ fn header(request: &Handle, kind: u32) -> Result<Option<String>> {
 
 /// GET HTTPS uniquement ; redirections contrôlées pour éviter tout repli en HTTP.
 pub fn get(raw: &str, max_bytes: usize) -> Result<Vec<u8>> {
-    anyhow::ensure!(max_bytes > 0 && max_bytes <= 50 * 1024 * 1024, "Limite de téléchargement invalide");
+    anyhow::ensure!(max_bytes > 0 && max_bytes <= 200 * 1024 * 1024, "Limite de téléchargement invalide");
     let mut url = checked_url(raw)?;
     let agent = wide(&format!("NovyDeck/{}", env!("CARGO_PKG_VERSION")));
     let session = Handle::new(unsafe { WinHttpOpen(agent.as_ptr(), WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, ptr::null(), ptr::null(), 0) })?;

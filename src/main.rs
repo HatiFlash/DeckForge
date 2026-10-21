@@ -50,6 +50,7 @@ mod plugin_import;
 mod plugin_catalog;
 mod https_get;
 mod community_plugins;
+mod app_update;
 mod hardware_report;
 mod recorder;
 mod soundboard;

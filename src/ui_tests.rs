@@ -2218,6 +2218,30 @@ fn release_0812_review() {
 }
 
 #[test]
+fn update_offer_widgets_follow_installation_mode_without_network() {
+    let size = vec2(1380.0, 900.0);
+    let latest = crate::app_update::Latest {
+        version: "v0.8.14".into(),
+        page: "https://github.com/HatiFlash/NovyDeck/releases/tag/v0.8.14".into(),
+        setup_url: "https://github.com/x/setup.exe".into(),
+        setup_size: 100,
+        sha_url: "https://github.com/x/setup.exe.sha256".into(),
+    };
+    for installed in [true, false] {
+        let mut h = Harness::new();
+        h.app.show_about = true;
+        h.app.update_installed = installed;
+        h.app.update_result = Some(Ok(crate::app_update::Status::New(latest.clone())));
+        let output = h.warm(size);
+        assert!(text_position(&output.shapes, "Nouvelle version v0.8.14 disponible").is_some());
+        assert!(text_position(&output.shapes, "Voir les nouveautés").is_some());
+        assert_eq!(text_position(&output.shapes, "Télécharger et installer").is_some(), installed);
+        assert_eq!(text_position(&output.shapes, "Version portable : téléchargez le ZIP depuis la page des nouveautés").is_some(), !installed);
+        assert!(h.app.update_rx.is_none());
+    }
+}
+
+#[test]
 fn audio_switch_can_be_dropped_before_choosing_its_devices() {
     // Retour utilisateur : « Affectation refusée : Choisis deux périphériques audio différents »
     // en glissant l'action sur une touche, alors que les périphériques se règlent ensuite.

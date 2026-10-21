@@ -1,5 +1,5 @@
 ﻿; Installateur Windows de NovyDeck (Inno Setup 6.x ou 7.x).
-; Compilation : tools\Build-Installer.ps1 -Version 0.8.13   (ou ISCC /DAppVersion=0.8.13 /DSourceDir=...)
+; Compilation : tools\Build-Installer.ps1 -Version 0.8.14   (ou ISCC /DAppVersion=0.8.14 /DSourceDir=...)
 ; Installation par utilisateur, sans droits administrateur, dans %LOCALAPPDATA%\Programs\DeckForge.
 ; Les données de l'utilisateur (config.json, preferences.json, variables.json, assets\, plugins\)
 ; vivent à côté de l'exécutable : elles ne sont ni écrasées à la mise à jour ni supprimées à la
@@ -91,8 +91,15 @@ Name: "{autodesktop}\NovyDeck"; Filename: "{app}\novydeck.exe"; WorkingDir: "{ap
 
 [Run]
 Filename: "{app}\novydeck.exe"; Description: "{cm:LaunchProgram,NovyDeck}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent
+; Mise à jour lancée depuis NovyDeck (/relaunch=1) : relancer l'application même en mode silencieux.
+Filename: "{app}\novydeck.exe"; WorkingDir: "{app}"; Flags: nowait; Check: RelaunchRequested
 
 [Code]
+function RelaunchRequested: Boolean;
+begin
+  Result := ExpandConstant('{param:relaunch|0}') = '1';
+end;
+
 function InstallDirectory(Param: String): String;
 begin
   { Keep the installed location and profiles; only fresh installations choose a new folder. }

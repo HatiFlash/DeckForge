@@ -169,8 +169,11 @@ pub struct App {
     crop_session: Option<crate::ui_media_crop::CropSession>,
     ffmpeg_offer: Option<FfmpegOffer>,
     ffmpeg_installing: bool,
-    update_result: Option<String>,
-    update_rx: Option<Receiver<String>>,
+    update_result: Option<Result<crate::app_update::Status, String>>,
+    update_rx: Option<Receiver<about::UpdateEvent>>,
+    update_phase: Option<&'static str>,
+    update_confirm: Option<crate::app_update::Latest>,
+    update_installed: bool,
     rename: bool,
     notice: String,
     error: bool,
@@ -384,6 +387,9 @@ impl App {
             ffmpeg_installing: false,
             update_result: None,
             update_rx: None,
+            update_phase: None,
+            update_confirm: None,
+            update_installed: crate::app_update::installed(),
             rename: false,
             notice: "Tout est prêt.".into(),
             error: false,
@@ -3873,10 +3879,46 @@ impl App {
             self.save_bind = open;
         }
         if let Some(rx) = &self.update_rx {
-            if let Ok(message) = rx.try_recv() {
-                self.update_result = Some(message);
-                self.update_rx = None;
+            let mut finished = false;
+            while let Ok(event) = rx.try_recv() {
+                match event {
+                    about::UpdateEvent::Checked(result) => {
+                        self.update_result = Some(result);
+                        self.update_phase = None;
+                        finished = true;
+                    }
+                    about::UpdateEvent::Verifying => self.update_phase = Some("Vérification…"),
+                    about::UpdateEvent::Downloaded(result) => {
+                        self.update_phase = None;
+                        finished = true;
+                        match result {
+                            Err(error) => self.update_result = Some(Err(format!("Mise à jour impossible : {error}"))),
+                            Ok(setup) => {
+                                // Failure to persist must never silently discard edits on restart.
+                                if self.gate.invalid || self.config.validate_structure().is_err() {
+                                    self.update_result = Some(Err("Configuration invalide : enregistrez-la avant de mettre à jour".into()));
+                                } else if let Err(error) = store::save(&self.path, &self.config) {
+                                    self.update_result = Some(Err(format!("Sauvegarde impossible : {error}")));
+                                } else {
+                                    self.gate.dirty = false;
+                                    match crate::app_update::launch(&setup) {
+                                        Ok(()) => {
+                                            self.quitting = true; // évite la minimisation dans la barre système
+                                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                                        }
+                                        Err(error) => self.update_result = Some(Err(format!("Démarrage de l'installateur impossible : {error}"))),
+                                    }
+                                }
+                                if self.update_result.as_ref().is_some_and(Result::is_err) {
+                                    let _ = std::fs::remove_file(&setup);
+                                    if let Some(parent) = setup.parent() { let _ = std::fs::remove_dir(parent); }
+                                }
+                            }
+                        }
+                    }
+                }
             }
+            if finished { self.update_rx = None; }
         }
         if self.show_about {
             let mut open = true;
@@ -3913,21 +3955,69 @@ impl App {
                         });
                     });
                     ui.separator();
-                    if ui.add_enabled(self.update_rx.is_none(), egui::Button::new("Vérifier les mises à jour")).clicked() {
-                        self.update_result = Some("Vérification en cours…".into());
+                    if ui.add_enabled(self.update_rx.is_none() && self.update_confirm.is_none(), egui::Button::new("Vérifier les mises à jour")).clicked() {
+                        self.update_result = None;
+                        self.update_phase = Some("Vérification en cours…");
                         let (tx, rx) = mpsc::channel();
                         self.update_rx = Some(rx);
                         let context = ctx.clone();
                         std::thread::spawn(move || {
-                            let _ = tx.send(about::check());
+                            let result = crate::app_update::check().map_err(|e| format!("Vérification impossible : {e}"));
+                            let _ = tx.send(about::UpdateEvent::Checked(result));
                             context.request_repaint();
                         });
                     }
-                    if let Some(message) = &self.update_result {
-                        if self.update_rx.is_some() { motion::loading(ui, message); } else { ui.label(message); }
+                    if let Some(phase) = self.update_phase { motion::loading(ui, phase); }
+                    if let Some(result) = &self.update_result {
+                        match result {
+                            Err(error) => { ui.label(error); }
+                            Ok(crate::app_update::Status::Current) => { ui.label(format!("À jour (version {})", env!("CARGO_PKG_VERSION"))); }
+                            Ok(crate::app_update::Status::Ahead) => { ui.label("Cette version est plus récente que la dernière publiée"); }
+                            Ok(crate::app_update::Status::New(latest)) => {
+                                ui.label(format!("Nouvelle version {} disponible", latest.version));
+                                if self.update_installed {
+                                    if ui.add_enabled(self.update_rx.is_none(), egui::Button::new("Télécharger et installer")).clicked() {
+                                        self.update_confirm = Some(latest.clone());
+                                    }
+                                } else {
+                                    ui.label("Version portable : téléchargez le ZIP depuis la page des nouveautés");
+                                }
+                                if ui.button("Voir les nouveautés").clicked() {
+                                    ui.ctx().open_url(egui::OpenUrl::new_tab(latest.page.clone()));
+                                }
+                            }
+                        }
                     }
                 });
             self.show_about = open;
+        }
+        if let Some(latest) = self.update_confirm.clone() {
+            let mut confirm = true;
+            egui::Window::new("Installer la mise à jour")
+                .open(&mut confirm).collapsible(false).resizable(false).default_width(390.0)
+                .show(ctx, |ui| {
+                    ui.label(format!("NovyDeck va se fermer, installer la version {} puis redémarrer. Vos profils, médias et plugins sont conservés.", latest.version));
+                    ui.horizontal(|ui| {
+                        if ui.button("Installer maintenant").clicked() {
+                            self.update_confirm = None;
+                            self.update_phase = Some("Téléchargement…");
+                            let (tx, rx) = mpsc::channel();
+                            self.update_rx = Some(rx);
+                            let context = ctx.clone();
+                            std::thread::spawn(move || {
+                                let signal = tx.clone();
+                                let result = crate::app_update::download_with_progress(&latest, || {
+                                    let _ = signal.send(about::UpdateEvent::Verifying);
+                                    context.request_repaint();
+                                }).map_err(|e| e.to_string());
+                                let _ = tx.send(about::UpdateEvent::Downloaded(result));
+                                context.request_repaint();
+                            });
+                        }
+                        if ui.button("Annuler").clicked() { self.update_confirm = None; }
+                    });
+                });
+            if !confirm { self.update_confirm = None; }
         }
         if let Some(offer) = self.ffmpeg_offer.clone() {
             let mut open = true;
