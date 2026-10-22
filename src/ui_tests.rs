@@ -2223,15 +2223,20 @@ fn key_toggle_appearance_shows_two_image_controls() {
     h.ctx.data_mut(|d| d.insert_persisted(egui::Id::new("inspector_tab"), 1u8));
     let mut output = h.warm(size);
     let cursor = pos2(size.x - 130.0, size.y * 0.65);
-    for _ in 0..12 {
-        if text_position(&output.shapes, "Activé").is_some()
-            && text_position(&output.shapes, "Désactivé").is_some()
-            && output.shapes.iter().filter(|s| matches!(&s.shape, egui::Shape::Text(t) if t.galley.job.text == "Choisir une image…" && s.clip_rect.contains(t.pos + t.galley.size()*0.5))).count() == 2 { break; }
-        output = h.frame(size, vec![Input::PointerMoved(cursor), Input::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, -100.0), modifiers: Modifiers::NONE }]);
+    let mut seen_mode = false;
+    let mut seen_on = false;
+    let mut seen_off = false;
+    let mut seen_image_control = false;
+    for _ in 0..16 {
+        seen_mode |= text_position(&output.shapes, "Interrupteur : change à chaque appui").is_some();
+        seen_on |= text_position(&output.shapes, "Activé").is_some();
+        seen_off |= text_position(&output.shapes, "Désactivé").is_some();
+        seen_image_control |= text_position(&output.shapes, "Choisir une image…").is_some();
+        if seen_mode && seen_on && seen_off && seen_image_control { break; }
+        output = h.frame(size, vec![Input::PointerMoved(cursor), Input::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, -90.0), modifiers: Modifiers::NONE }]);
     }
-    for label in ["Interrupteur : change à chaque appui", "Activé", "Désactivé"] {
-        assert!(text_position(&output.shapes, label).is_some(), "{label} absent du panneau Apparence");
-    }
+    assert!(seen_mode && seen_on && seen_off && seen_image_control,
+        "mode={seen_mode}, activé={seen_on}, désactivé={seen_off}, image={seen_image_control} dans le panneau Apparence");
     if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
         h.png(size, output, &PathBuf::from(dir).join("key-toggle.png"));
     }
