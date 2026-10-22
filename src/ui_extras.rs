@@ -60,6 +60,59 @@ pub(super) fn step_mut<'a>(steps: &'a mut [Step], path: &[usize]) -> Option<&'a 
     };
     step_mut(children, &path[2..])
 }
+fn plugin_step(plugin: &crate::plugins::Plugin, action: &crate::plugins::Action) -> Step {
+    Step::PluginAction { plugin:plugin.uuid.clone(), action:action.uuid.clone(),
+        settings:serde_json::json!({}), label:action.name.clone() }
+}
+fn plugin_choices(ui:&mut egui::Ui,plugins:&[crate::plugins::Plugin],search:&str) -> Option<Step> {
+    let mut chosen=None;
+    egui::CollapsingHeader::new(crate::i18n::tr("Plugins")).default_open(!search.is_empty()).show(ui,|ui| {
+        for plugin in plugins.iter().filter(|p| p.prerequisite.is_none() && matches!(p.runtime,crate::plugins::Runtime::Exe(_)|crate::plugins::Runtime::Node(_)|crate::plugins::Runtime::Html(_))) {
+            for action in &plugin.actions {
+                let title=format!("{} › {}",plugin.display_name(),if action.name.is_empty(){&action.uuid}else{&action.name});
+                if !search.is_empty() && !title.to_lowercase().contains(&search.to_lowercase()){continue;}
+                ui.horizontal(|ui| {
+                    if let Some(texture)=action.icon.as_ref().or(plugin.icon.as_ref()).and_then(|p|super::icon_ui::texture(ui.ctx(),&p.to_string_lossy())) {
+                        ui.image((texture.id(),egui::vec2(16.0,16.0)));
+                    }
+                    if ui.button(&title).clicked(){chosen=Some(plugin_step(plugin,action));}
+                });
+            }
+        }
+    });
+    chosen
+}
+fn plugin_fields(ui:&mut egui::Ui,step:&mut Step,config:&crate::model::Config,plugins:&[crate::plugins::Plugin],advanced:bool)->bool {
+    let Step::PluginAction {plugin,action,settings,label}=step else{return false};
+    let mut changed=false;
+    if let Some(p)=plugins.iter().find(|p|p.uuid==*plugin) {
+        if let Some(a)=p.actions.iter().find(|a|a.uuid==*action) {
+            ui.label(format!("{} › {}",p.display_name(),if a.name.is_empty(){&a.uuid}else{&a.name}));
+        } else {ui.colored_label(theme::palette(ui.ctx()).warning,crate::i18n::tr("Action de plugin introuvable"));}
+    } else {ui.colored_label(theme::palette(ui.ctx()).warning,crate::i18n::tr("Plugin introuvable"));}
+    ui.menu_button(crate::i18n::tr("Copier les réglages d'une touche…"), |ui| {
+        for (index,key) in config.keys().iter().enumerate() {
+            if let Some(binding)=key.plugin.as_ref().filter(|b|b.plugin==*plugin && b.action==*action) {
+                let title=crate::i18n::trf("Touche {index} : {label}",&[("index",&(index+1)),("label",&key.label)]);
+                if ui.button(title).clicked(){*settings=binding.settings.clone();changed=true;ui.close_menu();}
+            }
+        }
+    });
+    if advanced {
+        ui.label(crate::i18n::tr("Réglages JSON (objet)"));
+        let id=ui.id().with(("plugin-json",plugin.as_str(),action.as_str()));
+        let mut text=ui.data(|d|d.get_temp::<String>(id)).unwrap_or_else(||serde_json::to_string_pretty(settings).unwrap_or_else(|_|"{}".into()));
+        if ui.add(egui::TextEdit::multiline(&mut text).desired_rows(4)).changed(){
+            if let Ok(value)=serde_json::from_str::<serde_json::Value>(&text) {if value.is_object(){*settings=value;changed=true;}}
+            ui.data_mut(|d|d.insert_temp(id,text.clone()));
+        }
+        if !serde_json::from_str::<serde_json::Value>(&text).is_ok_and(|v|v.is_object()) {
+            ui.colored_label(theme::palette(ui.ctx()).warning,crate::i18n::tr("Un objet JSON valide est requis."));
+        }
+    }
+    let _=label;
+    changed
+}
 const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
     ("Clavier", &[0, 45]),
     ("Streaming", &[19, 20, 21, 22, 23, 24, 25, 30, 31, 0, 4]), ("Système", &[0, 2, 4, 26, 27, 28, 29, 32, 33]),
@@ -123,6 +176,7 @@ fn block_name(kind: usize) -> &'static str {
 pub(super) fn step_label(step: &Step) -> &'static str {
     let name = step.name();
     match name {
+        "Action de plugin" => crate::i18n::tr("Action de plugin"),
         "Raccourci" => crate::i18n::tr("Raccourci"),
         "Lancer une application" => crate::i18n::tr("Lancer une application"),
         "Ouvrir un site" => crate::i18n::tr("Ouvrir un site"),
@@ -244,6 +298,7 @@ fn simple_fields_visible(step: &Step, advanced: bool) -> bool {
 }
 pub(super) fn block_summary(step: &Step) -> String {
     match step.active() {
+        Step::PluginAction { plugin, action, label, .. } => crate::i18n::trf("Plugin {plugin} › {action}", &[("plugin",plugin),("action",&if label.is_empty(){action.clone()}else{label.clone()})]),
         Step::MouseClick { .. } | Step::MouseMove { .. } | Step::MouseScroll { .. } => super::step_summary(step),
         Step::Clipboard { .. } => step.clipboard_summary().unwrap_or_default(),
         Step::WindowOp { .. } => step.window_op_summary().unwrap_or_default(),
@@ -381,6 +436,7 @@ pub(super) fn block_editor(
     target: &(usize,String,usize),
     config: &crate::model::Config,
     advanced: bool,
+    plugins: &[crate::plugins::Plugin],
 ) -> bool {
     let p = theme::palette(ui.ctx());
     let mut changed = false;
@@ -401,11 +457,15 @@ pub(super) fn block_editor(
                             for &kind in kinds {
                                 if depth > 0 && (7..=11).contains(&kind) || !advanced && kind == 18 { continue; }
                                 if ui.button(block_name(kind)).on_hover_text(block_help(kind)).clicked() {
-                                    insertion = Some((i, kind));
+                                    insertion = Some((i, new_block(kind, profiles)));
                                     ui.close_menu();
                                 }
                             }
                         });
+                    }
+                    if let Some(plugin_step) = plugin_choices(ui, plugins, "") {
+                        insertion = Some((i, plugin_step));
+                        ui.close_menu();
                     }
                 });
             }
@@ -443,7 +503,14 @@ pub(super) fn block_editor(
                         block_glyph(ui, step, color);
                         let folded_id = egui::Id::new("block_fold").with(&path);
                         let folded = ui.data(|d| d.get_temp::<bool>(folded_id)).unwrap_or(true);
-                        let summary = block_summary(step);
+                        let summary = if let Step::PluginAction { plugin, action, label, .. } = step.active() {
+                            let owner = plugins.iter().find(|p| &p.uuid == plugin);
+                            let plugin_name = owner.map(|p| p.display_name()).unwrap_or(plugin);
+                            let action_name = owner.and_then(|p| p.actions.iter().find(|a| &a.uuid == action))
+                                .map(|a| if a.name.is_empty() { action.as_str() } else { a.name.as_str() })
+                                .unwrap_or_else(|| if label.is_empty() { action.as_str() } else { label.as_str() });
+                            format!("{plugin_name} › {action_name}")
+                        } else { block_summary(step) };
                         if ui.selectable_label(!folded, if summary.starts_with(step_label(step)) { summary.clone() } else { format!("{} · {}", step_label(step), summary) })
                             .on_hover_text(format!("{} — {}", step_label(step), summary)).clicked() {
                             ui.data_mut(|d| d.insert_temp(folded_id, !folded));
@@ -475,7 +542,9 @@ pub(super) fn block_editor(
                     ui.add_space(6.0);
                     let mut capture = false;
                     let mut icon = None;
-                    if simple_fields_visible(step.active(), advanced) {
+                    if matches!(step.active(), Step::PluginAction { .. }) {
+                        changed |= plugin_fields(ui, step.active_mut(), config, plugins, advanced);
+                    } else if simple_fields_visible(step.active(), advanced) {
                         match step.active_mut() {
                             Step::Launch { program, .. } if !advanced => {
                                 ui.label(crate::i18n::tr("Programme"));
@@ -531,6 +600,7 @@ pub(super) fn block_editor(
                                         target,
                                         config,
                                         advanced,
+                                        plugins,
                                     );
                                 });
                             }
@@ -539,7 +609,7 @@ pub(super) fn block_editor(
                             for (branch, label, list) in [(0, "ÉTAT 1", a), (1, "ÉTAT 2", b)] {
                                 ui.label(if branch == 0 { crate::i18n::tr("ÉTAT 1") } else { crate::i18n::tr("ÉTAT 2") });
                                 let mut child = path.clone(); child.push(branch);
-                                ui.indent(branch, |ui| { changed |= block_editor(ui, list, profiles, pages, audio, &child, record, depth + 1, running, pick_audio, tx, target, config, advanced); });
+                                ui.indent(branch, |ui| { changed |= block_editor(ui, list, profiles, pages, audio, &child, record, depth + 1, running, pick_audio, tx, target, config, advanced, plugins); });
                             }
                         }
                         Step::Repeat { steps, .. } => {
@@ -561,6 +631,7 @@ pub(super) fn block_editor(
                                     target,
                                     config,
                                     advanced,
+                                    plugins,
                                 );
                             });
                         }
@@ -580,9 +651,9 @@ pub(super) fn block_editor(
             changed = true;
         }
     }
-    if let Some((i, kind)) = insertion {
+    if let Some((i, new_step)) = insertion {
         if steps.len() < 256 {
-            steps.insert(i, new_block(kind, profiles));
+            steps.insert(i, new_step);
             changed = true;
         }
     }
@@ -813,7 +884,7 @@ impl App {
         });
         self.show_saved_variables = open;
     }
-    fn start_workshop_run(&mut self, dry: bool) {
+    pub(super) fn start_workshop_run(&mut self, dry: bool) {
         if self.engine.running.load(Ordering::SeqCst) { return; }
         let mut key = self.config.keys()[self.selected].clone();
         if key.steps.is_empty() { self.fail(crate::i18n::tr("Ajoute un bloc avant de tester.").into()); return; }
@@ -927,6 +998,8 @@ impl App {
         let search_id = egui::Id::new("workshop_search");
         let mut search = ctx.data(|d| d.get_temp::<String>(search_id)).unwrap_or_default();
         let mut add = None;
+        let mut add_plugin = None;
+        let installed_plugins = self.plugins.as_ref().map(|m|m.catalog.clone()).unwrap_or_default();
         ctx.data_mut(|d| d.insert_temp(palette_id, palette_open));
         if (!compact || palette_open) && !(compact && self.workshop_chat.open) {
         egui::SidePanel::left("workshop_library").resizable(!compact).default_width(if compact { 240.0 } else { 280.0 }).min_width(200.0).max_width(if compact { 260.0 } else { 350.0 }).show(ctx, |ui| {
@@ -948,6 +1021,7 @@ impl App {
             egui::ScrollArea::vertical().id_salt("block_palette").show(ui, |ui| {
                 let clicked = palette(ui, &search, 0, self.preferences.workshop_advanced, response.has_focus().then_some(cursor));
                 if clicked.is_some() { add = clicked; }
+                add_plugin = plugin_choices(ui, &installed_plugins, &search);
             });
         });
         }
@@ -1010,6 +1084,9 @@ impl App {
                                 let mut icon = None;
                                 changed |= edit_step(ui, step, &profiles, &pages, &mut capture, &self.audio, &mut icon,
                                     &dialog_tx, &(target.0, target.1.clone(), target.2, path.clone()));
+                                if matches!(step.active(), Step::PluginAction { .. }) {
+                                    changed |= plugin_fields(ui, step.active_mut(), &validation_config, &installed_plugins, false);
+                                }
                                 if capture { record = Some(path.clone()); }
                                 if let Some(state) = icon { pick_audio = Some((path.clone(), state)); }
                             }
@@ -1039,7 +1116,7 @@ impl App {
             if self.preferences.workshop_advanced {
                 egui::ScrollArea::vertical().id_salt("workflow_advanced_scroll").show(ui, |ui| {
                     changed |= block_editor(ui, &mut self.config.keys_mut()[selected].steps, &profiles, &pages, &self.audio,
-                        &[], &mut record, 0, highlight, &mut pick_audio, &dialog_tx, &target, &validation_config, true);
+                        &[], &mut record, 0, highlight, &mut pick_audio, &dialog_tx, &target, &validation_config, true, &installed_plugins);
                 });
             } else {
                 egui::ScrollArea::vertical().id_salt("workflow_scroll").show(ui, |ui| {
@@ -1066,6 +1143,7 @@ impl App {
                                 }
                             });
                         }
+                        if let Some(step) = plugin_choices(ui, &installed_plugins, "") { add_plugin = Some(step); }
                     });
                 });
             }
@@ -1086,6 +1164,16 @@ impl App {
             });
             if let Some(new_path) = crate::workshop_ops::apply(&mut self.config.keys_mut()[selected].steps,
                 crate::workshop_ops::Edit::Insert(std::mem::take(&mut at), new_block(kind, &profiles))) {
+                selection = Some(new_path); changed = true;
+            }
+        }
+        if let Some(new_step) = add_plugin {
+            let mut at = insert_at.take().unwrap_or_else(|| {
+                let steps = &self.config.keys()[selected].steps;
+                vec![selection.as_ref().and_then(|path| path.first()).map_or(steps.len(), |i| (i + 1).min(steps.len()))]
+            });
+            if let Some(new_path) = crate::workshop_ops::apply(&mut self.config.keys_mut()[selected].steps,
+                crate::workshop_ops::Edit::Insert(std::mem::take(&mut at), new_step)) {
                 selection = Some(new_path); changed = true;
             }
         }

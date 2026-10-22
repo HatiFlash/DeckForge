@@ -5,6 +5,12 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Step {
     Disabled { step: Box<Step> },
+    PluginAction {
+        plugin: String,
+        action: String,
+        #[serde(default = "empty_plugin_settings")] settings: serde_json::Value,
+        #[serde(default)] label: String,
+    },
     Delay {
         ms: u64,
     },
@@ -173,6 +179,11 @@ pub enum Step {
     PageNext,
     PagePrevious,
 }
+fn empty_plugin_settings() -> serde_json::Value { serde_json::json!({}) }
+fn valid_plugin_identifier(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 256 && id.trim() == id
+        && !id.chars().any(char::is_control)
+}
 fn default_mouse_button() -> String { "left".into() }
 fn default_mouse_origin() -> String { "screen".into() }
 fn default_scroll_amount() -> i32 { 1 }
@@ -320,6 +331,7 @@ impl Step {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Disabled { step } => step.name(),
+            Self::PluginAction { .. } => "Action de plugin",
             Self::Delay { .. } => "Attendre",
             Self::Hotkey { .. } => "Raccourci",
             Self::KeyHold { .. } => "Maintenir une touche",
@@ -1006,6 +1018,10 @@ pub fn validate_key(key: &Key, config: &Config) -> Result<()> {
             _ => {}
         }
         match s {
+            Step::PluginAction { plugin, action, settings, label }
+                if !valid_plugin_identifier(plugin) || !valid_plugin_identifier(action)
+                    || !settings.is_object() || label.len() > 256 || label.chars().any(char::is_control) =>
+                bail!("Action de plugin : identifiants, libellé ou réglages JSON invalides"),
             Step::MouseClick { button, x, y, relative_to, .. } if !["left", "right", "middle"].contains(&button.as_str()) || !valid_mouse_origin(relative_to) || x.is_some() != y.is_some() || x.is_some_and(|v| !mouse_coordinate_valid(v)) || y.is_some_and(|v| !mouse_coordinate_valid(v)) => bail!("Bouton, origine ou coordonnées du clic souris invalides"),
             Step::MouseMove { x, y, relative_to, .. } if !mouse_coordinate_valid(*x) || !mouse_coordinate_valid(*y) || !valid_mouse_origin(relative_to) => bail!("Position ou origine souris invalide"),
             Step::MouseScroll { amount, .. } if !(-100..=100).contains(amount) => bail!("Défilement souris hors limites"),

@@ -76,6 +76,14 @@ La trace opt-in distingue désormais `host->plugin attempted` (avant écriture),
 
 Avant l'enregistrement du plugin, le canal de commandes et la file réseau sont bornés à 64 éléments chacun ; une commande sans enregistrement expire après trois secondes dans la file réseau et génère `__hostError`. Si le canal est plein, `Host::send` ne bloque pas l'UI et signale une erreur. Les tests utilisent des sockets WebSocket loopback contrôlés (écriture réussie et socket local fermé avant l'envoi) ; ils n'exécutent aucun plugin tiers ni touche physique. Les traces restent opt-in et limitées en nombre d'entrées : leur absence n'est pas une preuve de livraison.
 
+## Actions de plugins dans l'atelier
+
+La catégorie « Plugins » propose les actions des plugins installés et disponibles ; chaque bloc mémorise les UUID du plugin et de l'action ainsi qu'un objet de réglages JSON. L'assistant local ne propose que les actions reconnues dans le catalogue courant ; les UUID générés par l'IA sont contrôlés avant insertion. Une macro peut mélanger ces blocs avec des attentes et d'autres blocs natifs.
+
+À l'exécution, chaque bloc reçoit un contexte virtuel distinct de celui d'une touche physique, stable pour la touche et le chemin du bloc. Le gestionnaire envoie `willAppear` avant `keyDown` et `keyUp` ; `setSettings` est sauvegardé dans les réglages de ce bloc. Les commandes visuelles (`setTitle`, `setImage`) n'ont pas de face physique à modifier. La simulation décrit les étapes sans lancer le plugin. Un plugin absent est signalé dans le journal et la macro continue.
+
+Limites : les réglages ne sont pas partagés entre deux blocs, même s'ils ciblent la même action ; certains plugins exigent une touche matérielle ou un inspecteur et peuvent ne pas fonctionner dans ce contexte. Un processus de plugin n'est pas sandboxé. Les anciennes versions de NovyDeck ne savent pas relire une configuration qui contient un bloc `PluginAction` ; conserver une sauvegarde avant de revenir en arrière.
+
 ## D9a — composant proxy expérimental, tests uniquement
 
 `plugin_validation_proxy.rs` est compilé uniquement sous `cfg(test)` ; il n’est pas relié au lancement HTML ni aux plugins tiers. Écoute loopback éphémère ; seuls GET/HEAD HTTP et upgrade WebSocket vers les deux ports loopback configurés sont transmis, par adresse/port/méthode exacts, sans CONNECT ni redirection. En-têtes strictement bornés, connexions/durée/flux bornés, délais de lecture et journal limité aux catégories et aux ports autorisés. Les fichiers du serveur de ressources restent soumis à `plugin_http.rs` ; le proxy ne remplace pas son contrôle des chemins (les composants de chemin symboliques y sont refusés). Tests hors ligne avec canaris locaux.

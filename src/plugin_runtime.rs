@@ -75,13 +75,74 @@ pub(crate) fn application_events(watch:&[String],running:&[String],before:&std::
     for app in before.difference(&now){events.push(json!({"event":"applicationDidTerminate","payload":{"application":app}}));}
     (now,events)
 }
-enum Request { Sync(HashMap<String,Visible>,Option<(String,bool)>), Device(Device), Key(String,bool), Title(String,String), Send(String,Value), Open(String), Catalog(Vec<Plugin>), Stop }
+enum Request { Sync(HashMap<String,Visible>,HashMap<String,(String,String,Value)>,Option<(String,bool)>), Virtual(Visible), VirtualSettings(String,Value), Device(Device), Key(String,bool), Title(String,String), Send(String,Value), Open(String), Catalog(Vec<Plugin>), Stop }
+static VIRTUAL_SENDER: std::sync::OnceLock<std::sync::Mutex<Option<Sender<Request>>>> = std::sync::OnceLock::new();
+fn virtual_sender() -> &'static std::sync::Mutex<Option<Sender<Request>>> {
+    VIRTUAL_SENDER.get_or_init(|| std::sync::Mutex::new(None))
+}
+/// Le moteur tourne sur un autre thread ; aucune exécution du plugin dans ce thread.
+pub fn press_virtual(v: Visible) -> Result<(), String> {
+    let tx = virtual_sender().lock().map_err(|e| e.to_string())?.clone().ok_or("Hôte de plugins indisponible")?;
+    tx.send(Request::Virtual(v)).map_err(|_| "Hôte de plugins arrêté".into())
+}
+/// Contexte distinct des touches physiques, stable tant que touche et chemin de bloc ne changent pas.
+pub fn virtual_context(key: &str, path: &[usize]) -> String {
+    let hex = key.as_bytes().iter().map(|b| format!("{b:02x}")).collect::<String>();
+    format!("novydeck-block-{hex}-{}", path.iter().map(usize::to_string).collect::<Vec<_>>().join("."))
+}
+fn virtual_bindings(config: &Config) -> HashMap<String, (String,String,Value)> {
+    fn walk(steps: &[crate::model::Step], key: &str, path: &[usize], out: &mut HashMap<String,(String,String,Value)>) {
+        use crate::model::Step;
+        for (index, step) in steps.iter().enumerate() {
+            if step.is_disabled() { continue; }
+            let mut p = path.to_vec(); p.push(index);
+            match step {
+                Step::PluginAction { plugin, action, settings, .. } => {out.insert(virtual_context(key,&p),(plugin.clone(),action.clone(),settings.clone()));},
+                Step::Repeat { steps, .. } => {p.push(0);walk(steps,key,&p,out);},
+                Step::Toggle { a,b } => {let mut branch=p.clone();branch.push(0);walk(a,key,&branch,out);p.push(1);walk(b,key,&p,out);},
+                Step::IfCondition { then_steps,else_steps,.. } | Step::IfWindow { then_steps,else_steps,.. } | Step::IfVariable { then_steps,else_steps,.. } => {
+                    let mut branch=p.clone();branch.push(0);walk(then_steps,key,&branch,out);p.push(1);walk(else_steps,key,&p,out);
+                },
+                _ => {},
+            }
+        }
+    }
+    let mut out=HashMap::new();
+    let profile=&config.profiles[config.active];
+    for (index,key) in config.keys().iter().enumerate() {
+        walk(&key.steps,&crate::engine::identity(&profile.name,&config.page,index),&[],&mut out);
+    }
+    out
+}
+pub fn virtual_step_path(config:&Config,context:&str) -> Option<(usize,Vec<usize>)> {
+    fn walk(steps:&[crate::model::Step], key:&str, parent:&[usize], context:&str) -> Option<Vec<usize>> {
+        use crate::model::Step;
+        for (i,step) in steps.iter().enumerate() {
+            if step.is_disabled() {continue;}
+            let mut path=parent.to_vec();path.push(i);
+            if matches!(step,Step::PluginAction { .. }) && virtual_context(key,&path)==context {return Some(path);}
+            let branches:Vec<&[Step]>=match step {
+                Step::Repeat {steps,..}=>vec![steps], Step::Toggle {a,b}=>vec![a,b],
+                Step::IfWindow {then_steps,else_steps,..}|Step::IfVariable {then_steps,else_steps,..}|Step::IfCondition {then_steps,else_steps,..}=>vec![then_steps,else_steps],
+                _=>vec![],
+            };
+            for (branch,steps) in branches.into_iter().enumerate() {let mut nested=path.clone();nested.push(branch);if let Some(p)=walk(steps,key,&nested,context){return Some(p);}}
+        }
+        None
+    }
+    for (index,key) in config.keys().iter().enumerate() {
+        let identity=crate::engine::identity(&config.profiles[config.active].name,&config.page,index);
+        if let Some(path)=walk(&key.steps,&identity,&[],context){return Some((index,path));}
+    }
+    None
+}
 pub enum Reply { Message(String,Value), Error(String,String) }
 pub struct Manager { tx:Sender<Request>,pub rx:Receiver<Reply>,visible:HashMap<String,Visible>,titles:HashMap<String,String>,pub catalog:Vec<Plugin> }
 impl Manager {
     pub fn new(plugins:Vec<Plugin>)->Self {
         let (tx,requests)=mpsc::channel();let (reply,rx)=mpsc::channel();
         let catalog=plugins.clone();thread::spawn(move||run(plugins,requests,reply));
+        if let Ok(mut sender) = virtual_sender().lock() { *sender = Some(tx.clone()); }
         Self{tx,rx,visible:HashMap::new(),titles:HashMap::new(),catalog}
     }
     pub fn device(&self,device:Device){let _=self.tx.send(Request::Device(device));}
@@ -91,7 +152,10 @@ impl Manager {
     pub fn sync_settings(&mut self,config:&Config,context:&str,from_pi:bool){self.sync_with_origin(config,Some((context.to_owned(),from_pi)));}
     fn sync_with_origin(&mut self, config:&Config, origin:Option<(String,bool)>) {
         let next=visible(config);
-        if next!=self.visible {self.visible=next.clone();let _=self.tx.send(Request::Sync(next.clone(),origin));}
+        let bindings=virtual_bindings(config);
+        if next!=self.visible || !bindings.is_empty() {
+            self.visible=next.clone();let _=self.tx.send(Request::Sync(next.clone(),bindings,origin));
+        }
         let titles=next.iter().map(|(id,v)|(id.clone(),config.keys()[v.index].label.clone())).collect::<HashMap<_,_>>();
         for (id,title) in &titles {if self.titles.get(id)!=Some(title){let _=self.tx.send(Request::Title(id.clone(),title.clone()));}}
         self.titles=titles;
@@ -102,6 +166,7 @@ impl Manager {
     pub fn inspector_path(&self,index:usize)->Option<String>{let v=self.visible.values().find(|v|v.index==index)?;let p=self.catalog.iter().find(|p|p.uuid==v.plugin)?;p.actions.iter().find(|a|a.uuid==v.action).and_then(|a|a.inspector.clone()).or_else(||p.inspector.clone())}
     pub fn open_inspector(&self,index:usize){if let Some(v)=self.visible.values().find(|v|v.index==index){let _=self.tx.send(Request::Open(v.context.clone()));}}
     pub fn send(&self,plugin:&str,value:Value){let _=self.tx.send(Request::Send(plugin.to_owned(),value));}
+    pub fn virtual_settings(&self,context:&str,settings:Value){let _=self.tx.send(Request::VirtualSettings(context.to_owned(),settings));}
     pub fn visible(&self)->&HashMap<String,Visible>{&self.visible}
 }
 impl Drop for Manager {fn drop(&mut self){let _=self.tx.send(Request::Stop);}}
@@ -117,7 +182,12 @@ fn run(mut plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
             Ok(Request::Stop)|Err(mpsc::RecvTimeoutError::Disconnected)=>break,
             Ok(Request::Title(context,title))=>{if let Some(v)=current.get(&context){if let Some(host)=hosts.get(&v.plugin){let _=host.send(title_event(v,&device,&title));}}}
             Ok(Request::Device(next))=>{if next!=device {for host in hosts.values(){let _=host.send(device.event("deviceDidDisconnect"));let _=host.send(next.event("deviceDidConnect"));}device=next;}}
-            Ok(Request::Sync(next,origin))=>{
+            Ok(Request::Sync(mut next,bindings,origin))=>{
+                for (context,(plugin,action,settings)) in bindings {
+                    if let Some(v)=current.get(&context).filter(|v|v.plugin==plugin && v.action==action) {
+                        let mut v=v.clone();v.settings=settings;next.insert(context,v);
+                    }
+                }
                 let notifications=settings_notifications(&current,&next,&inspectors,&device,origin.as_ref().map(|(id,from_pi)|(id.as_str(),*from_pi)));
                 let (gone,added)=diff(&current,&next);
                 for v in gone {if let Some(host)=hosts.get(&v.plugin){let _=host.send(event("willDisappear",&v,&device));}}
@@ -131,6 +201,32 @@ fn run(mut plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
                 for v in inspectors.values_mut(){if let Some(now)=current.get(&v.context){*v=now.clone();}}
                 for (plugin,message) in notifications {if let Some(host)=hosts.get(&plugin){let _=host.send(message);}}
                 for plugin in hosts.keys(){if current.values().any(|v|&v.plugin==plugin){idle.remove(plugin);}else{idle.entry(plugin.clone()).or_insert_with(Instant::now);}}
+            }
+            Ok(Request::Virtual(mut v))=>{
+                let Some(p)=plugins.iter().find(|p|p.uuid==v.plugin && p.actions.iter().any(|a|a.uuid==v.action)) else {
+                    let _=reply.send(Reply::Error(v.plugin.clone(),format!("Action de plugin introuvable ou désactivée : {}",v.action)));continue;
+                };
+                if !hosts.contains_key(&v.plugin) {
+                    match Host::start(p,&device) {
+                        Ok(h)=>{let _=h.send(device.event("deviceDidConnect"));hosts.insert(v.plugin.clone(),h);},
+                        Err(e)=>{let _=reply.send(Reply::Error(v.plugin.clone(),format!("Action de plugin indisponible : {e}")));continue;}
+                    }
+                }
+                let old=current.get(&v.context).cloned();
+                if let Some(old)=old.as_ref().filter(|old|old.plugin!=v.plugin || old.action!=v.action) {
+                    if let Some(host)=hosts.get(&old.plugin){let _=host.send(event("willDisappear",old,&device));}
+                }
+                if let Some(old)=old.as_ref().filter(|old|old.plugin==v.plugin && old.action==v.action) {v.settings=old.settings.clone();}
+                let host=&hosts[&v.plugin];
+                if !old.as_ref().is_some_and(|old|same_instance(old,&v)) {let _=host.send(event("willAppear",&v,&device));}
+                for name in ["keyDown","keyUp"] {
+                    if let Err(e)=host.send(event(name,&v,&device)) {let _=reply.send(Reply::Error(v.plugin.clone(),format!("Action de plugin non envoyée : {e}")));break;}
+                }
+                idle.remove(&v.plugin);
+                current.insert(v.context.clone(),v);
+            }
+            Ok(Request::VirtualSettings(context,settings))=>{
+                if let Some(v)=current.get_mut(&context) {v.settings=settings;}
             }
             Ok(Request::Open(context))=>{if let Some(v)=current.get(&context){if let (Some(p),Some(host))=(plugins.iter().find(|p|p.uuid==v.plugin),hosts.get(&v.plugin)){
                 let path=p.actions.iter().find(|a|a.uuid==v.action).and_then(|a|a.inspector.as_ref()).or(p.inspector.as_ref());

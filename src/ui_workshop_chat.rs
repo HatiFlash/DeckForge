@@ -199,7 +199,8 @@ impl App {
     /// Connaissances de l'IA locale (`ia-locale.json` à côté de la configuration), relues à chaque demande.
     pub(super) fn local_knowledge(&mut self) -> crate::local_llm::Knowledge {
         let dir = self.path.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
-        let (knowledge, warning) = crate::local_llm::Knowledge::load(&dir);
+        let (mut knowledge, warning) = crate::local_llm::Knowledge::load(&dir);
+        knowledge.plugins = self.plugins.as_ref().map(|m| m.catalog.clone()).unwrap_or_default();
         if let Some(warning) = warning {
             self.workshop_chat.say(warning);
         }
