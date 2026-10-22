@@ -68,35 +68,36 @@ impl Journal {
         self.open = true;
     }
     pub fn summary(&self) -> String {
+        use crate::i18n::{tr, trf};
         let prefix = if self.mode == Some(false) {
-            "EXÉCUTION RÉELLE"
+            tr("EXÉCUTION RÉELLE")
         } else {
-            "Simulation"
+            tr("Simulation")
         };
         if self.mode.is_none() {
-            return "Simulation · Aucun test effectué".into();
+            return tr("Simulation · Aucun test effectué").into();
         }
         if !self.finished {
-            return format!("{prefix} · En cours");
+            return trf("{prefix} · En cours", &[("prefix", &prefix)]);
         }
         if self.error.is_some() {
             let last = self.lines.iter().rev().find_map(|line| line.path.as_ref());
             return match last {
-                Some(path) => format!(
-                    "{prefix} · Échec à l'étape {}",
-                    path.iter()
+                Some(path) => trf(
+                    "{prefix} · Échec à l'étape {step}",
+                    &[("prefix", &prefix), ("step", &path.iter()
                         .step_by(2)
                         .map(|i| (i + 1).to_string())
                         .collect::<Vec<_>>()
-                        .join(".")
+                        .join("."))],
                 ),
-                None => format!("{prefix} · Échec"),
+                None => trf("{prefix} · Échec", &[("prefix", &prefix)]),
             };
         }
         let count = self.lines.iter().filter(|line| line.path.is_some()).count();
-        format!(
-            "{prefix} · {count} étapes · OK · {:.1} s",
-            self.elapsed.as_secs_f64()
+        trf(
+            "{prefix} · {count} étapes · OK · {seconds} s",
+            &[("prefix", &prefix), ("count", &count.to_string()), ("seconds", &format!("{:.1}", self.elapsed.as_secs_f64()))],
         )
     }
 }

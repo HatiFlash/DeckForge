@@ -930,3 +930,11 @@ mod theme_tests {
         }
     }
 }
+
+/// Fenêtre de réglages intégrée : centrée sur l'application, ni déplaçable ni repliable.
+pub fn fixed_window<'a>(title: impl Into<egui::WidgetText>) -> egui::Window<'a> {
+    egui::Window::new(title)
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+        .collapsible(false)
+        .movable(false)
+}

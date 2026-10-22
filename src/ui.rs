@@ -2888,6 +2888,8 @@ impl App {
             trf("Brouillon · {error} · Les autres touches restent disponibles.", &[("error", &e)])
         } else if self.gate.dirty {
             tr("Sauvegarde automatique…").into()
+        } else if self.notice == "Tout est prêt." || self.notice == "All set." {
+            tr("Tout est prêt.").into()
         } else {
             self.notice.clone()
         };

@@ -1249,5 +1249,12 @@
     "• {action}": "• {action}",
     "← Retour": "← Back",
     "← Retour au deck": "← Back to deck"
-  }
+  },
+  "Simulation · Aucun test effectué": "Simulation · No test performed",
+  "{prefix} · En cours": "{prefix} · In progress",
+  "{prefix} · Échec à l'étape {step}": "{prefix} · Failed at step {step}",
+  "{prefix} · Échec": "{prefix} · Failed",
+  "{prefix} · {count} étapes · OK · {seconds} s": "{prefix} · {count} steps · OK · {seconds} s",
+  "Atelier · Touche {key}": "Workshop · Key {key}",
+  "Atelier · Touche {key} · {label}": "Workshop · Key {key} · {label}"
 }

@@ -979,8 +979,10 @@ impl App {
             ui.horizontal_wrapped(|ui| {
                 if ui.button(crate::i18n::tr("← Retour au deck")).clicked() { self.show_workflow = false; selection = None; }
                 let key = &self.config.keys()[self.selected];
-                ui.label(RichText::new(format!("Atelier · Touche {:02}{}", self.selected + 1,
-                    if key.label.is_empty() { String::new() } else { format!(" · {}", key.label) })).strong());
+                let number = format!("{:02}", self.selected + 1);
+                let title = if key.label.is_empty() { crate::i18n::trf("Atelier · Touche {key}", &[("key", &number)]) }
+                    else { crate::i18n::trf("Atelier · Touche {key} · {label}", &[("key", &number), ("label", &key.label)]) };
+                ui.label(RichText::new(title).strong());
                 ui.separator();
                 if ui.selectable_value(&mut self.preferences.workshop_advanced, false, crate::i18n::tr("Simple")).changed() { self.save_preferences(); }
                 if ui.selectable_value(&mut self.preferences.workshop_advanced, true, crate::i18n::tr("Avancé")).changed() { self.save_preferences(); }
@@ -1273,7 +1275,7 @@ impl App {
         let mut startup = None;
         let mut hotkeys = false;
         let mut capture = false;
-        egui::Window::new(crate::i18n::tr("Windows et raccourcis")).open(&mut open).default_width(510.0).show(ctx,|ui|{
+        crate::theme::fixed_window(crate::i18n::tr("Windows et raccourcis")).open(&mut open).default_width(510.0).show(ctx,|ui|{
             let mut enabled=self.preferences.start_with_windows;
             if ui.checkbox(&mut enabled,crate::i18n::tr("Lancer NovyDeck au démarrage de Windows")).changed(){startup=Some(enabled);}
             ui.indent("start_minimized",|ui|{
