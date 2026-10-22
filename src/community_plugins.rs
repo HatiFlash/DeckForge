@@ -123,6 +123,19 @@ pub fn install(entry: &Entry, dest: &Path) -> Result<bool> {
         serde_json::json!({"id":"com.author.myplugin","name":"My Plugin","author":"Author","version":"1.2.0","description":"English", "description_fr":"Français", "homepage":"https://github.com/author/plugin", "download":"https://github.com/author/plugin/releases/download/v1/plugin.streamDeckPlugin", "sha256":"a".repeat(64),"license":"MIT","tested_decks":["FIFINE D6"],"min_novydeck":"0.8.12"})
     }
     fn registry(value: serde_json::Value) -> Vec<u8> { serde_json::to_vec(&serde_json::json!({"schema":1,"plugins":[value]})).unwrap() }
+    /// Contrôle réseau réel du catalogue publié : `cargo test live_registry -- --ignored`.
+    #[test] #[ignore] fn live_registry_images_and_installs() {
+        let entries = fetch().expect("catalogue publié lisible");
+        assert!(!entries.is_empty());
+        for entry in &entries {
+            assert!(entry.compatible, "{} incompatible", entry.id);
+            if let Some(icon) = &entry.icon { image(icon, true).unwrap_or_else(|e| panic!("icône {}: {e}", entry.id)); }
+            for shot in &entry.screenshots { image(shot, false).unwrap_or_else(|e| panic!("capture {}: {e}", entry.id)); }
+            let dest = tempfile::tempdir().unwrap();
+            let installed = install(entry, dest.path()).unwrap_or_else(|e| panic!("installation {}: {e:#}", entry.id));
+            println!("LIVE {} {} installed={installed}", entry.id, entry.version);
+        }
+    }
     #[test] fn registry_valid_and_version_compatibility() {
         let mut value = entry();
         value["min_novydeck"] = "0.8.11".into();
