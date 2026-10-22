@@ -24,8 +24,19 @@ pub struct Entry {
     pub license: String,
     #[serde(default)] pub tested_decks: Vec<String>,
     pub min_novydeck: String,
+    #[serde(default)] pub uuid: Option<String>,
+    #[serde(default)] pub category: Option<String>,
+    #[serde(default)] pub summary: Option<String>,
+    #[serde(default)] pub summary_fr: Option<String>,
+    #[serde(default)] pub icon: Option<String>,
+    #[serde(default)] pub screenshots: Vec<String>,
+    #[serde(default)] pub actions: Vec<Action>,
+    #[serde(default)] pub tags: Vec<String>,
+    #[serde(default)] pub requires: Option<String>,
     #[serde(skip)] pub compatible: bool,
 }
+#[derive(Clone, Debug, Deserialize)]
+pub struct Action { pub name: String, #[serde(default)] pub name_fr: Option<String> }
 #[derive(Deserialize)] struct Registry { schema: u32, plugins: Vec<Entry> }
 
 fn https_url(raw: &str) -> Result<url::Url> {
@@ -63,10 +74,33 @@ pub fn parse(bytes: &[u8]) -> Result<Vec<Entry>> {
         anyhow::ensure!(download.path().ends_with(".streamDeckPlugin") || download.path().ends_with(".zip"), "Archive de plugin non prise en charge");
         anyhow::ensure!(entry.sha256.len() == 64 && entry.sha256.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)), "Empreinte SHA-256 invalide");
         entry.compatible = compatible(&entry.min_novydeck, env!("CARGO_PKG_VERSION"))?;
+        if let Some(uuid) = &entry.uuid { anyhow::ensure!(!uuid.is_empty() && uuid.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c,b'.'|b'-')), "UUID invalide"); }
+        if let Some(category) = &entry.category { anyhow::ensure!(["system","audio","streaming","productivity","smart-home","communication","gaming","utilities"].contains(&category.as_str()), "Catégorie inconnue"); }
+        for text in [&entry.summary, &entry.summary_fr] { if let Some(text) = text { anyhow::ensure!(text.chars().count() <= 140, "Résumé trop long"); } }
+        if let Some(requires) = &entry.requires { anyhow::ensure!(requires.chars().count() <= 200, "Prérequis trop long"); }
+        if let Some(icon) = &entry.icon { https_url(icon)?; }
+        anyhow::ensure!(entry.screenshots.len() <= 6 && entry.tags.len() <= 8 && entry.actions.len() <= 100, "Fiche communautaire trop longue");
+        for screenshot in &entry.screenshots { https_url(screenshot)?; }
+        anyhow::ensure!(entry.tags.iter().all(|tag| !tag.trim().is_empty() && tag.chars().count() <= 40), "Tag invalide");
+        anyhow::ensure!(entry.actions.iter().all(|action| !action.name.trim().is_empty() && action.name.len() <= 120 && action.name_fr.as_ref().is_none_or(|s| s.len() <= 120)), "Action invalide");
     }
     Ok(entries)
 }
 pub fn fetch() -> Result<Vec<Entry>> { parse(&crate::https_get::get(REGISTRY_URL, REGISTRY_LIMIT)?) }
+
+/// Network and image decoding are performed by callers on a worker thread, never on the UI thread.
+pub fn image(url: &str, icon: bool) -> Result<eframe::egui::ColorImage> {
+    https_url(url)?;
+    let limit = if icon { 256 * 1024 } else { 2 * 1024 * 1024 };
+    let bytes = crate::https_get::get(url, limit)?;
+    let format = image::guess_format(&bytes)?;
+    anyhow::ensure!(matches!(format, image::ImageFormat::Png | image::ImageFormat::Jpeg) && (!icon || format == image::ImageFormat::Png), "Format d'image invalide");
+    let reader = image::ImageReader::with_format(std::io::Cursor::new(&bytes), format);
+    let (w,h) = reader.into_dimensions()?;
+    anyhow::ensure!(w > 0 && h > 0 && w <= 4096 && h <= 4096 && (!icon || w == h), "Dimensions d'image invalides");
+    let decoded = image::load_from_memory_with_format(&bytes, format)?.to_rgba8();
+    Ok(eframe::egui::ColorImage::from_rgba_unmultiplied([w as usize,h as usize], decoded.as_raw()))
+}
 
 /// Le fichier temporaire vérifié est passé à l'importeur local existant, puis effacé même en cas d'erreur.
 pub fn install(entry: &Entry, dest: &Path) -> Result<bool> {

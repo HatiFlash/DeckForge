@@ -8,16 +8,16 @@ use crate::community_plugins::{self,Entry};
 use std::sync::{mpsc::{self,Receiver},Mutex,OnceLock};
 
 #[derive(Default)]
-struct CommunityState {
- consent:bool,
- entries:Vec<Entry>,
- loading:bool,
- fetching:Option<Receiver<Result<Vec<Entry>,String>>>,
- installing:Option<Receiver<Result<bool,String>>>,
- confirmation:Option<Entry>,
- message:String,
+pub(super) struct CommunityState {
+ pub(super) consent:bool,
+ pub(super) entries:Vec<Entry>,
+ pub(super) loading:bool,
+ pub(super) fetching:Option<Receiver<Result<Vec<Entry>,String>>>,
+ pub(super) installing:Option<Receiver<Result<bool,String>>>,
+ pub(super) confirmation:Option<Entry>,
+ pub(super) message:String,
 }
-fn community_state()->&'static Mutex<CommunityState>{static STATE:OnceLock<Mutex<CommunityState>>=OnceLock::new();STATE.get_or_init(||Mutex::new(CommunityState::default()))}
+pub(super) fn community_state()->&'static Mutex<CommunityState>{static STATE:OnceLock<Mutex<CommunityState>>=OnceLock::new();STATE.get_or_init(||Mutex::new(CommunityState::default()))}
 impl App {
  pub(super) fn plugin_store(&mut self,ui:&mut egui::Ui,search:&str){
   // Keep the entire tab inside one bounded viewport, including import controls and results.
@@ -26,6 +26,11 @@ impl App {
   egui::ScrollArea::vertical().id_salt("plugin_store").auto_shrink([false,false]).max_height(height).show(ui,|ui|{
    // A ScrollArea may expose an unbounded child width; constrain paragraphs and cards to its viewport.
    ui.set_max_width(content_width);
+   // Premier élément de l'onglet, sur une seule ligne pour garder l'inventaire local visible.
+   let store=ui.add_sized([ui.available_width(),34.0],iconset::button(ui.ctx(),Ico::Store,crate::i18n::tr("Magasin de plugins")))
+    .on_hover_text(crate::i18n::tr("Explorez les plugins communautaires avant de les installer."));
+   if store.clicked(){super::plugin_market_ui::open();}
+   ui.add_space(4.0);
   iconset::heading(ui,Ico::Plugin,RichText::new(crate::i18n::tr("Plugins · importer")).strong());
   ui.add(egui::Label::new(RichText::new(crate::i18n::tr("Catalogue local, hors ligne. Importer ne lance rien.")).small()).wrap());
   let catalog=crate::plugin_catalog::Catalog::offline();
@@ -143,9 +148,9 @@ impl App {
    ui.collapsing(crate::i18n::trf("Protégés ({count})", &[("count", &(protected.len()))] ),|ui|{
     for plugin in &protected{ui.label(plugin.display_name());}
    });
-   // Après les plugins locaux : la section en ligne ne repousse pas l'inventaire hors de vue.
-   self.community_section(ui,search);
+   // Le catalogue communautaire s'ouvre dans une fenêtre dédiée.
   });
+  self.plugin_market(ui.ctx());
   self.community_confirmation(ui);
   self.plugin_confirm_real(ui);
  }
@@ -240,11 +245,11 @@ impl App {
  }
  /// Inventaire de l'onglet Plugins : lu une fois, puis réutilisé à chaque image egui.
  /// Invalidé à l'ouverture de l'onglet, après un import et par « Actualiser la liste ».
- fn plugin_inventory(&mut self)->std::sync::Arc<Inventory>{
+ pub(super) fn plugin_inventory(&mut self)->std::sync::Arc<Inventory>{
   self.plugin_inventory.get_or_insert_with(||std::sync::Arc::new(Inventory::scan())).clone()
  }
  /// Après un import, le gestionnaire connaît le nouveau plugin sans redémarrage de l'application.
- fn refresh_plugin_catalog(&mut self){self.plugin_inventory=None;if let (Some(manager),Ok(root))=(self.plugins.as_mut(),plugin_import::installed_root()){manager.set_catalog(plugin_import::inventory(&root));}}
+ pub(super) fn refresh_plugin_catalog(&mut self){self.plugin_inventory=None;if let (Some(manager),Ok(root))=(self.plugins.as_mut(),plugin_import::installed_root()){manager.set_catalog(plugin_import::inventory(&root));}}
  fn plugin_import_request(&mut self,source:Option<std::path::PathBuf>){
   self.start_dialog(move||{let result=plugin_import::installed_root().and_then(|root|match source{Some(folder)=>plugin_import::import_folder(&folder,&root).map(|copied|if copied{crate::i18n::tr("Plugin : copié").into()}else{crate::i18n::tr("Plugin : déjà présent").into()}),None=>{let report=plugin_import::import_sources(&root);Ok(crate::i18n::trf("Import : {copied} copiés, {existing} déjà présents, {protected} protégés, {built_in} intégrés FIFINE, {skipped} ignorés", &[("copied", &report.copied), ("existing", &report.existing), ("protected", &report.protected), ("built_in", &report.built_in), ("skipped", &report.skipped)]))}});
    Some(Box::new(move |app:&mut App|match result{Ok(text)=>{app.notice=text.clone();app.log(text);app.refresh_plugin_catalog();},Err(e)=>app.fail(crate::i18n::trf("Import plugin impossible : {error}", &[("error", &(e))] ))}))
@@ -306,7 +311,7 @@ fn egui_file_dialog_archive()->Option<std::path::PathBuf>{rfd::FileDialog::new()
  }
  #[test] fn binding_for_imported_action_roundtrips(){let k=Key{plugin:Some(PluginBinding{plugin:"fixture.plugin".into(),action:"fixture.action".into(),settings:serde_json::json!({}),state:0}),..Key::default()};let value=serde_json::to_value(&k).unwrap();assert_eq!(serde_json::from_value::<Key>(value).unwrap().plugin.unwrap().action,"fixture.action");}
  #[test] fn community_search_covers_author_version_license_and_decks(){
-  let entry=Entry{id:"x".into(),name:"Nom".into(),author:"Alice".into(),version:"1.2.0".into(),description:"Audio".into(),description_fr:Some("Son".into()),homepage:"https://example.org".into(),download:"https://example.org/x.zip".into(),sha256:"a".repeat(64),license:"MIT".into(),tested_decks:vec!["FIFINE D6".into()],min_novydeck:"0.8.12".into(),compatible:true};
+  let entry=Entry{id:"x".into(),name:"Nom".into(),author:"Alice".into(),version:"1.2.0".into(),description:"Audio".into(),description_fr:Some("Son".into()),homepage:"https://example.org".into(),download:"https://example.org/x.zip".into(),sha256:"a".repeat(64),license:"MIT".into(),tested_decks:vec!["FIFINE D6".into()],min_novydeck:"0.8.12".into(),uuid:None,category:None,summary:None,summary_fr:None,icon:None,screenshots:vec![],actions:vec![],tags:vec![],requires:None,compatible:true};
   for query in ["nom","alice","1.2","audio","son","mit","fifine"]{assert!(community_matches(&entry,query),"{query}");}
   assert!(!community_matches(&entry,"inconnu"));
  }

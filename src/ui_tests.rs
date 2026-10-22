@@ -1844,7 +1844,8 @@ fn only_the_inspector_properties_scroll_and_its_preview_stays_fixed() {
 fn plugin_store_is_rendered_without_a_window() {
     let mut h=Harness::new();
     h.app.catalog_tab=3;
-    let size=vec2(1180.0,800.0);
+    // 0.9.0 : le bouton « Magasin de plugins » précède l'inventaire ; l'onglet défile en dessous.
+    let size=vec2(1180.0,860.0);
     let output=h.warm(size);
     assert!(text_position(&output.shapes,"Installés dans NovyDeck").is_some());
     assert!(text_position(&output.shapes,"Plugins disponibles sur ce PC").is_some());
@@ -2177,14 +2178,11 @@ fn inspector_recrop_button_stays_visible_under_the_key_preview() {
 fn community_library_waits_for_consent_below_local_plugins() {
     let mut h = Harness::new();
     h.app.catalog_tab = 3;
-    let size = vec2(1180.0, 3200.0);
-    let out = h.warm(size);
+    let out = h.warm(vec2(1180.0, 800.0));
     let installed = text_position(&out.shapes, "Installés dans NovyDeck").expect("inventaire local visible");
-    let community = text_position(&out.shapes, "Communauté").expect("section Communauté présente");
-    assert!(community.y > installed.y, "la section en ligne doit suivre l'inventaire local");
-    // Hors ligne par défaut : seul le bouton de consentement est proposé.
-    assert!(text_position(&out.shapes, "Se connecter à la bibliothèque").is_some());
-    assert!(text_position(&out.shapes, "Actualiser la bibliothèque").is_none());
+    let store = text_position(&out.shapes, "Magasin de plugins").expect("bouton magasin présent");
+    assert!(store.y < installed.y, "le magasin doit précéder l'inventaire local");
+    assert!(text_position(&out.shapes, "Se connecter au magasin").is_none(), "aucune connexion avant ouverture du magasin");
 }
 
 /// Contrôle manuel (réseau + captures) : `cargo test -- --ignored release_0812_review`.
@@ -2346,4 +2344,45 @@ fn startup_offer_shows_notes_and_installation_choice_without_network() {
         assert!(text_position(&shown.shapes, label).is_some(), "{label}");
     }
     assert!(h.app.startup_rx.is_none());
+}
+
+#[test]
+fn market_opens_offline_and_displays_localized_detail() {
+    use super::plugin_store_ui::community_state;
+    let mut h=Harness::new();
+    h.app.catalog_tab=3;
+    let size=vec2(1366.0,768.0);
+    let mut fixture=crate::community_plugins::parse(&serde_json::to_vec(&serde_json::json!({"schema":1,"plugins":[{"id":"com.example.test","uuid":"com.example.test","name":"Plugin témoin","author":"Alice","version":"1.0","description":"English details","description_fr":"Description française","summary":"English summary","summary_fr":"Résumé français","category":"audio","homepage":"https://example.org/","download":"https://example.org/test.zip","sha256":"a".repeat(64),"license":"MIT","tested_decks":[],"min_novydeck":"0.8.12","icon":"https://example.org/icon.png","screenshots":["https://example.org/shot.png"]}]})).unwrap()).unwrap();
+    fixture[0].compatible=true;
+    let first=h.warm(size);
+    let store=text_position(&first.shapes,"Magasin de plugins").unwrap();
+    let installed=text_position(&first.shapes,"Installés dans NovyDeck").unwrap();
+    assert!(store.y<installed.y);
+    h.click(size,store);
+    let waiting=h.warm(size);
+    assert!(text_position(&waiting.shapes,"Se connecter au magasin").is_some());
+    assert!(text_position(&waiting.shapes,"Plugin témoin").is_none());
+    {
+        let mut state=community_state().lock().unwrap();
+        state.consent=true;
+        state.entries=fixture;
+    }
+    super::plugin_market_ui::test_image(&h.ctx,"https://example.org/icon.png");
+    super::plugin_market_ui::test_image(&h.ctx,"https://example.org/shot.png");
+    let grid=h.warm(size);
+    if let Some(dir)=std::env::var_os("NOVYDECK_UI_OUTPUT") { h.png(size,grid.clone(),&PathBuf::from(dir).join("market-grid.png")); }
+    assert!(text_position(&grid.shapes,"Plugin témoin").is_some());
+    let details=text_position(&grid.shapes,"Voir la fiche").unwrap();
+    h.click(size,details);
+    let detail=h.warm(size);
+    if let Some(dir)=std::env::var_os("NOVYDECK_UI_OUTPUT") { h.png(size,detail.clone(),&PathBuf::from(dir).join("market-detail.png")); }
+    for text in ["Description française","Installer","Captures"] {assert!(text_position(&detail.shapes,text).is_some(),"{text}");}
+    crate::i18n::set_language("en");
+    let english=h.warm(size);
+    assert!(text_position(&english.shapes,"English details").is_some());
+    crate::i18n::set_language("fr");
+    {
+        let mut state=community_state().lock().unwrap();
+        state.consent=false;state.entries.clear();
+    }
 }

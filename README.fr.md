@@ -102,7 +102,7 @@ Les exécutables natifs C++/Rust/C#, les scripts Node.js (`@elgato/streamdeck` v
 
 ### Magasin de plugins et bibliothèque communautaire
 
-Ouvrez **Bibliothèque → Plugins**. L'onglet comporte deux parties :
+Ouvrez **Bibliothèque → Plugins**. Le bouton **Magasin de plugins** apparaît en premier, avant les plugins installés. Il ouvre une fenêtre redimensionnable : après votre accord pour la connexion à GitHub, recherchez et filtrez les plugins, consultez leurs descriptions et captures, puis cliquez sur **Installer** dans la fiche détaillée. Les imports locaux restent disponibles hors ligne sous ce bouton.
 
 1. **Installés dans NovyDeck** : les plugins déjà importés depuis un fichier, un dossier ou le catalogue intégré. Glissez leurs actions sur une touche comme n'importe quelle autre action.
 2. **Communauté** : un annuaire public de plugins tiers maintenu dans [HatiFlash/novydeck-plugins](https://github.com/HatiFlash/novydeck-plugins).
