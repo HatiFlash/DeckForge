@@ -7,7 +7,7 @@ English · [Français](#français)
 - **Official NovyDeck plugins**, native and without Node.js: **Clock** (clock, timer, stopwatch), **Counter** (counter, quick note, clipboard), **System Monitor** (CPU, RAM, GPU), **Now Playing** (current track title and cover), **OLED Saver** (black screen on the chosen monitor), **Home Assistant** and **Google Assistant Command** (send a written command such as “turn on the living room light” to your Google Home devices, using your own Google Cloud project). Selected open-source plugins (Elgato CPU, BarRaider Stopwatch) are listed after being tested in NovyDeck.
 - **Plugin actions in the block editor.** A new **Plugins** palette lists the actions of every installed plugin. Combine actions from different plugins in the same macro, together with delays, conditions and any other block; each plugin block keeps its own settings.
 - **Local assistant knows your plugins.** Ask for “the stopwatch from NovyDeck Clock” and the assistant adds the right plugin block. It never invents an action that is not installed.
-- **Start minimized.** Under **Start NovyDeck with Windows**, a new option starts NovyDeck minimized near the clock, without showing the window.
+- **Start minimized.** Under **Start NovyDeck when Windows starts**, a new option starts NovyDeck minimized near the clock, without showing the window.
 
 Your profiles, media and plugins are kept. Updating from 0.8.14 or 0.8.15: **About → Check for updates**, or run the installer.
 
