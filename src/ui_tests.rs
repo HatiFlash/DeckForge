@@ -2420,7 +2420,10 @@ fn market_opens_offline_and_displays_localized_detail() {
     {
         let mut state=community_state().lock().unwrap();
         state.consent=false;state.entries.clear();
+    }
+}
 
+#[test]
 fn plugin_action_two_installed_plugins_run_in_sequence() {
     let mut h = Harness::new();
     let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/counter.sdPlugin");
