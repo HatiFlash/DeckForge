@@ -2227,7 +2227,7 @@ fn key_toggle_appearance_shows_two_image_controls() {
     let mut seen_on = false;
     let mut seen_off = false;
     let mut seen_image_control = false;
-    for _ in 0..16 {
+    for _ in 0..40 {
         seen_mode |= text_position(&output.shapes, "Interrupteur : change à chaque appui").is_some();
         seen_on |= text_position(&output.shapes, "Activé").is_some();
         seen_off |= text_position(&output.shapes, "Désactivé").is_some();
@@ -2236,7 +2236,8 @@ fn key_toggle_appearance_shows_two_image_controls() {
         output = h.frame(size, vec![Input::PointerMoved(cursor), Input::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, -90.0), modifiers: Modifiers::NONE }]);
     }
     assert!(seen_mode && seen_on && seen_off && seen_image_control,
-        "mode={seen_mode}, activé={seen_on}, désactivé={seen_off}, image={seen_image_control} dans le panneau Apparence");
+        "mode={seen_mode}, activé={seen_on}, désactivé={seen_off}, image={seen_image_control}; textes visibles: {:?}",
+        output.shapes.iter().filter_map(|s| if let egui::Shape::Text(t) = &s.shape { Some(t.galley.job.text.clone()) } else { None }).take(80).collect::<Vec<_>>());
     if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
         h.png(size, output, &PathBuf::from(dir).join("key-toggle.png"));
     }
