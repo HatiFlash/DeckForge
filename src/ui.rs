@@ -4980,6 +4980,9 @@ fn edit_step(
     let mut changed = false;
     match step {
         Step::Disabled { .. } => unreachable!("atelier passe une étape active"),
+        Step::PluginAction { .. } => {
+            ui.label(tr("Réglez cette action de plugin dans l’Atelier de blocs."));
+        }
         Step::KeyHold { keys, action, hold_ms } => {
             ui.label(tr("Touches (ex. CTRL+SHIFT+A)"));
             changed |= ui.text_edit_singleline(keys).changed();

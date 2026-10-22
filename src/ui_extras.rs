@@ -1136,7 +1136,7 @@ impl App {
                                 }
                             });
                         }
-                        add_plugin = plugin_choices(ui, &installed_plugins, "").or(add_plugin);
+                        if let Some(step) = plugin_choices(ui, &installed_plugins, "") { add_plugin = Some(step); }
                     });
                 });
             }

@@ -349,6 +349,7 @@ pub fn heading(ui: &mut egui::Ui, ico: Ico, text: impl Into<egui::WidgetText>) {
 pub fn for_step(step: &Step) -> Ico {
     match step.active() {
         Step::Disabled { .. } => Ico::Delay,
+        Step::PluginAction { .. } => Ico::Plugin,
         Step::Delay { .. } => Ico::Delay,
         Step::WaitWindow { .. } | Step::WaitUntil { .. } => Ico::Wait,
         Step::Hotkey { .. } | Step::KeyHold { .. } | Step::AutoHotkey { .. } => Ico::Keyboard,

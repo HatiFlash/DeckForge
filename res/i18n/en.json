@@ -952,6 +952,7 @@
     "Réglages globaux non sauvegardés : {error}": "Global settings not saved: {error}",
     "Réglages — {device}": "Settings — {device}",
     "Régler à": "Set to",
+    "Réglez cette action de plugin dans l’Atelier de blocs.": "Configure this plugin action in the Block editor.",
     "Réinitialiser le zoom et le positionnement au centre": "Reset zoom and position to center",
     "Réponse de l'IA locale ignorée : la touche sélectionnée a changé.": "Local AI response ignored: selected key changed.",
     "Répéter": "Repeat",
