@@ -2494,6 +2494,7 @@ fn readme_captures_plugin_store_workshop_and_startup() {
         crate::i18n::set_language(lang);
         // 1. Magasin : vrai catalogue publié, icônes et captures locales.
         let mut h = Harness::new();
+        crate::i18n::set_language(lang);
         h.app.catalog_tab = 3;
         let mut entries = crate::community_plugins::parse(&std::fs::read(fixtures.join("registry.json")).unwrap()).unwrap();
         for entry in &mut entries { entry.compatible = true; }
@@ -2519,6 +2520,7 @@ fn readme_captures_plugin_store_workshop_and_startup() {
         drop(h);
         // 2. Atelier : deux plugins différents enchaînés dans la même macro.
         let mut h = Harness::new();
+        crate::i18n::set_language(lang);
         let mut plugins = Vec::new();
         for id in ["com.novydeck.clock", "com.novydeck.googleassistant"] {
             let folder = h.dir.path().join(format!("{id}.sdPlugin"));
@@ -2552,6 +2554,7 @@ fn readme_captures_plugin_store_workshop_and_startup() {
         drop(h);
         // 3. Réglages : démarrage avec Windows en mode réduit.
         let mut h = Harness::new();
+        crate::i18n::set_language(lang);
         h.app.preferences.start_with_windows = true;
         h.app.preferences.start_minimized = true;
         h.app.show_desktop_settings = true;
