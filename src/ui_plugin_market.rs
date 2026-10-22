@@ -153,7 +153,10 @@ impl App {
         });});
         ui.add_space(8.0);
         let summary=localized(entry.summary_fr.as_deref(),entry.summary.as_deref().unwrap_or(&entry.description));
-        ui.add_sized([card_width-28.0,42.0],egui::Label::new(RichText::new(excerpt(summary,72)).color(p.text_secondary)).wrap());
+        ui.allocate_ui_with_layout(egui::vec2(card_width-28.0,42.0),egui::Layout::top_down(egui::Align::Min),|ui|{
+         ui.set_min_height(42.0);
+         ui.add(egui::Label::new(RichText::new(excerpt(summary,72)).color(p.text_secondary)).wrap());
+        });
         ui.add_space(8.0);
         ui.horizontal_wrapped(|ui|{
          theme::pill(ui,category_name(entry.category.as_deref().unwrap_or("")),p.accent);
