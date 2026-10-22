@@ -592,6 +592,9 @@ pub struct Preferences {
     pub library: Library,
     pub close_to_tray: bool,
     pub start_with_windows: bool,
+    /// Au démarrage de Windows : rester caché près de l'horloge plutôt qu'ouvrir la fenêtre.
+    #[serde(default = "default_true")]
+    pub start_minimized: bool,
     pub triggers: Vec<crate::desktop::Trigger>,
     #[serde(default)]
     pub workshop_advanced: bool,
@@ -622,6 +625,7 @@ pub struct Preferences {
     pub last_seen_version: String,
 }
 fn default_chat_mode() -> String { "auto".into() }
+fn default_true() -> bool { true }
 
 /// Réglages de l'IA locale : `ollama` (serveur installé à part) ou `integre` (moteur livré).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -649,6 +653,7 @@ impl Default for Preferences {
             library: Library::default(),
             close_to_tray: true,
             start_with_windows: false,
+            start_minimized: true,
             triggers: vec![],
             workshop_advanced: false,
             workshop_chat_mode: default_chat_mode(),

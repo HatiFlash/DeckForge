@@ -390,7 +390,11 @@ pub fn spawn(tx: Sender<Event>, ctx: eframe::egui::Context) -> Desktop {
     });
     Desktop { tx: cmd }
 }
-pub fn startup(enable: bool) -> Result<()> {
+/// Commande enregistrée dans `Run` : `--background` garde NovyDeck caché près de l'horloge.
+pub fn startup_command(exe: &std::path::Path, minimized: bool) -> String {
+    if minimized { format!("\"{}\" --background", exe.display()) } else { format!("\"{}\"", exe.display()) }
+}
+pub fn startup(enable: bool, minimized: bool) -> Result<()> {
     unsafe {
         let mut key = std::ptr::null_mut();
         let code = RegCreateKeyExW(
@@ -409,7 +413,7 @@ pub fn startup(enable: bool) -> Result<()> {
         let name = wide("DeckForge");
         let code = if enable {
             let exe = std::env::current_exe()?;
-            let command = wide(&format!("\"{}\" --background", exe.display()));
+            let command = wide(&startup_command(&exe, minimized));
             RegSetValueExW(
                 key,
                 name.as_ptr(),
@@ -432,6 +436,15 @@ pub fn startup(enable: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn startup_command_hides_only_when_minimized() {
+        let exe = std::path::Path::new(r"C:\Program Files\NovyDeck\novydeck.exe");
+        assert_eq!(startup_command(exe, true), r#""C:\Program Files\NovyDeck\novydeck.exe" --background"#);
+        assert_eq!(startup_command(exe, false), r#""C:\Program Files\NovyDeck\novydeck.exe""#);
+        // Existing preference files have no field: keep the previous hidden start.
+        let preferences: crate::catalog::Preferences = serde_json::from_str("{}").unwrap();
+        assert!(preferences.start_minimized);
+    }
     #[test]
     fn automatic_transitions_and_legacy_preferences() {
         let old = r#"{"profile":"Défaut","page":"","key":2,"keys":"CTRL+ALT+F9"}"#;
