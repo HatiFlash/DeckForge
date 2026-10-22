@@ -2237,11 +2237,23 @@ fn key_toggle_appearance_shows_two_image_controls() {
     let mut seen_on = false;
     let mut seen_off = false;
     let mut seen_image_control = false;
+    let mut captured_on = false;
     for _ in 0..40 {
         seen_mode |= text_position(&output.shapes, mode).is_some();
         seen_on |= text_position(&output.shapes, on).is_some();
         seen_off |= text_position(&output.shapes, off).is_some();
         seen_image_control |= text_position(&output.shapes, image_control).is_some();
+        if !captured_on && text_position(&output.shapes, on).is_some()
+            && text_position(&output.shapes, image_control).is_some() {
+            if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
+                h.app.applied = h.app.config.clone();
+                h.app.toggle_key_face(0);
+                let frame = h.frame(size, vec![]);
+                h.png(size, frame, &PathBuf::from(dir).join(format!("key-toggle-on-{lang}.png")));
+                h.app.toggle_key_face(0);
+            }
+            captured_on = true;
+        }
         if seen_mode && seen_on && seen_off && seen_image_control { break; }
         output = h.frame(size, vec![Input::PointerMoved(cursor), Input::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, -90.0), modifiers: Modifiers::NONE }]);
     }
