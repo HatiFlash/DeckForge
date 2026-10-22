@@ -877,7 +877,7 @@ impl App {
         });
         self.show_saved_variables = open;
     }
-    fn start_workshop_run(&mut self, dry: bool) {
+    pub(super) fn start_workshop_run(&mut self, dry: bool) {
         if self.engine.running.load(Ordering::SeqCst) { return; }
         let mut key = self.config.keys()[self.selected].clone();
         if key.steps.is_empty() { self.fail(crate::i18n::tr("Ajoute un bloc avant de tester.").into()); return; }
