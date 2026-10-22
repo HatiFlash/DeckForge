@@ -5,7 +5,7 @@
   <h1>NovyDeck</h1>
   <p>Logiciel libre pour Windows qui pilote les stream decks : touches, macros, médias et plugins, sans le logiciel officiel. Testé sur le FIFINE AmpliGame D6 et l'Elgato Stream Deck.</p>
   <p>
-    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.9.1"><img src="https://img.shields.io/badge/Release-v0.9.1-3478F6.svg" alt="Version 0.9.1"></a>
+    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.9.2"><img src="https://img.shields.io/badge/Release-v0.9.2-3478F6.svg" alt="Version 0.9.2"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/Licence-MIT-22C58B.svg" alt="Licence MIT"></a>
     <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-555.svg" alt="Windows 10/11">
   </p>
@@ -20,6 +20,18 @@
 [![Voir le film de présentation NovyDeck](docs/media/novydeck-demo-poster.png)](docs/media/novydeck-demo.mp4)
 
 Un film de présentation de 40 s en 1920 × 1080 à 60 i/s, avec son, réalisé avec Remotion et three.js. Il montre le pavé D6 en 3D, de vraies captures de l'interface et une musique synthétisée. Le film publié a été produit hors du dépôt.
+
+## Nouveautés 0.9.2
+
+### Deux images par touche : marche / arrêt
+
+Sélectionne une touche, puis **Apparence → Adapter la touche à deux états → Interrupteur : change à chaque appui**. Choisis séparément les images **Activé** et **Désactivé** avec **Choisir une image…** ou la galerie. Chaque appui court physique alterne les deux images tout en exécutant l’action habituelle ; un appui long configuré ne change pas l’image. L’état revient à **Désactivé** au démarrage ou après un changement de page/profil. Les touches existantes à image unique ne changent pas.
+
+![Panneau Apparence avec images Activé et Désactivé](docs/images/key-toggle-fr.png)
+
+### Autres corrections
+
+La fenêtre **Windows et raccourcis** reste centrée et fixe. La barre d’état, le titre de l’Atelier et le journal de simulation respectent désormais la langue anglaise choisie. Les plugins officiels 1.0.1 retirent les cadres noirs autour du texte des touches ; les captures CPU et RAM utilisent des mesures d’un agent Windows de compilation (les données GPU indisponibles restent indiquées comme telles).
 
 ## Nouveautés 0.9.0
 
@@ -74,7 +86,7 @@ Fermez FIFINE Control Deck avant d'utiliser le D6 : ce logiciel conserve l'accè
 
 ## Démarrage rapide / installation
 
-1. Téléchargez **`NovyDeck-0.9.1-Setup.exe`** depuis la [dernière version](https://github.com/HatiFlash/NovyDeck/releases/latest) et lancez-le sans droits administrateur, ou extrayez `NovyDeck-0.9.1-Windows.zip`. Une nouvelle installation utilise `%LOCALAPPDATA%\Programs\NovyDeck`.
+1. Téléchargez **`NovyDeck-0.9.2-Setup.exe`** depuis la [dernière version](https://github.com/HatiFlash/NovyDeck/releases/latest) et lancez-le sans droits administrateur, ou extrayez `NovyDeck-0.9.2-Windows.zip`. Une nouvelle installation utilise `%LOCALAPPDATA%\Programs\NovyDeck`.
 2. Pour une mise à jour, l'installateur met à jour l'installation existante en conservant profils, médias et plugins. En version portable, fermez l'application et remplacez les exécutables sans supprimer `config.json`, les préférences, `assets` ni `plugins`.
 3. Lancez NovyDeck depuis le menu Démarrer (ou le dossier portable) et branchez le D6. Pour découvrir l'application sans toucher à vos profils, choisissez **Profils → ••• → Profil de démonstration (15 touches)**. Cette commande réinitialise aussi le profil de démonstration ; vous pouvez le supprimer comme tout autre profil.
 4. Glissez une action de la bibliothèque sur une touche, ou ouvrez l'atelier de blocs.
@@ -181,6 +193,7 @@ NovyDeck fonctionne hors ligne. L'IA locale reste sur votre PC ; elle est facult
 
 ## Dernière version
 
+- **0.9.2 :** deux images Activé/Désactivé par touche alternent à l’appui court physique ; textes anglais et panneau Windows fixe ; plugins officiels 1.0.1 sans cadres noirs, aperçus CPU/RAM mesurés.
 - **0.9.1 :** le magasin de plugins devient une page fixe de l'application (plus de fenêtre flottante), avec bouton retour et Échap ; les blocs de plugins de l'Atelier affichent les noms lisibles du plugin et de l'action ; le README présente les nouveautés 0.9.0 avec captures.
 - **0.9.0 :** fenêtre **Magasin de plugins** façon Play Store (recherche, catégories, fiche avec captures, installation en un clic avec contrôle SHA-256) ; sept plugins NovyDeck officiels et des plugins open source testés ; **actions de plugins dans l'Atelier de blocs**, combinables entre plugins et comprises par l'assistant local ; option **démarrer réduit** quand NovyDeck se lance avec Windows.
 - **0.8.15 :** interface en anglais avec choix de la langue (**Réglages → Langue**) et traductions communautaires sous forme de simples fichiers JSON ; vérification facultative des mises à jour au démarrage (demandée une fois) ; notes de version affichées avant d'installer une mise à jour et fenêtre **Quoi de neuf** après.
@@ -201,7 +214,7 @@ git clone https://github.com/HatiFlash/NovyDeck.git
 cd NovyDeck
 cargo build --release --locked
 cargo test --locked
-powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.9.1 -Build
+powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.9.2 -Build
 ```
 
 ## Licence et crédits

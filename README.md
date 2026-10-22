@@ -5,7 +5,7 @@ English · [Français](README.fr.md)
   <h1>NovyDeck</h1>
   <p>Open-source Windows software for stream decks: keys, macros, media and plugins, without the official software. Tested on the FIFINE AmpliGame D6 and the Elgato Stream Deck.</p>
   <p>
-    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.9.1"><img src="https://img.shields.io/badge/Release-v0.9.1-3478F6.svg" alt="Release v0.9.1"></a>
+    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.9.2"><img src="https://img.shields.io/badge/Release-v0.9.2-3478F6.svg" alt="Release v0.9.2"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-22C58B.svg" alt="MIT license"></a>
     <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-555.svg" alt="Windows 10/11">
   </p>
@@ -20,6 +20,18 @@ English · [Français](README.fr.md)
 [![Watch the NovyDeck presentation film](docs/media/novydeck-demo-poster.png)](docs/media/novydeck-demo.mp4)
 
 A 40-second presentation film in 1920 × 1080 at 60 fps with sound, made with Remotion and three.js. It features a 3D D6 deck, actual interface captures and synthesized music. The published film was produced outside this repository.
+
+## What's new in 0.9.2
+
+### Two images for a key: ON / OFF
+
+Choose a key, open **Appearance → Show two key states → Switch: change on each press**, then select an image separately for **On** and **Off** using **Choose an image…** or the gallery. A short physical press alternates the two images while running the key's normal action; a configured long press does not change the image. The key starts **Off** when NovyDeck opens or when you switch pages or profiles. Existing single-image keys are unchanged.
+
+![Appearance panel for ON/OFF key images, English interface](docs/images/key-toggle-en.png)
+
+### Other fixes
+
+The **Windows and shortcuts** dialog stays centered and cannot be dragged. The status bar, block editor title and simulation journal now respect the selected English language. Official plugins 1.0.1 remove dark boxes around key text; CPU and RAM screenshots use measurements from a Windows build runner (unavailable GPU data is still shown as unavailable).
 
 ## What's new in 0.9.0
 
@@ -74,7 +86,7 @@ Close FIFINE Control Deck before using the D6: it holds exclusive USB access to 
 
 ## Quick start / installation
 
-1. Download **`NovyDeck-0.9.1-Setup.exe`** from the [latest release](https://github.com/HatiFlash/NovyDeck/releases/latest) and run it without administrator rights, or extract `NovyDeck-0.9.1-Windows.zip`. A fresh installation uses `%LOCALAPPDATA%\Programs\NovyDeck`.
+1. Download **`NovyDeck-0.9.2-Setup.exe`** from the [latest release](https://github.com/HatiFlash/NovyDeck/releases/latest) and run it without administrator rights, or extract `NovyDeck-0.9.2-Windows.zip`. A fresh installation uses `%LOCALAPPDATA%\Programs\NovyDeck`.
 2. For updates, the installer updates an existing installation while preserving profiles, media and plugins. For a portable installation, close the app and replace the executables without deleting `config.json`, preferences, `assets` or `plugins`.
 3. Launch NovyDeck from the Start menu (or the portable folder) and connect the D6. To explore without changing your profiles, choose **Profiles → ••• → Demo profile (15 keys)**. The same command resets the demo profile; you can also delete it like any other profile.
 4. Drag an action from the library onto a key, or open the block editor.
@@ -181,6 +193,7 @@ NovyDeck works offline. Local AI stays on your PC and is optional and disabled b
 
 ## Latest release
 
+- **0.9.2:** keys can alternate two user-selected ON/OFF images on short physical presses; English text and a fixed Windows and shortcuts dialog; official plugins 1.0.1 improve key text and CPU/RAM previews.
 - **0.9.1:** the plugin store is now a fixed page of the app (no floating window), with a back button and Esc; plugin blocks in the block editor show readable plugin and action names; README presents the 0.9.0 features with screenshots.
 - **0.9.0:** Play Store-style **plugin store** window (search, categories, detail page with screenshots, one-click install with SHA-256 check); seven official NovyDeck plugins plus tested open-source plugins; **plugin actions in the block editor**, combinable across plugins, understood by the local assistant; **start minimized** option when NovyDeck starts with Windows.
 - **0.8.15:** English interface with a language selector (**Settings → Language**) and community translations as simple JSON files; optional update check at startup (asked once); release notes shown before installing an update and a **What's new** window after it.
@@ -201,7 +214,7 @@ git clone https://github.com/HatiFlash/NovyDeck.git
 cd NovyDeck
 cargo build --release --locked
 cargo test --locked
-powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.9.1 -Build
+powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.9.2 -Build
 ```
 
 ## License & credits
