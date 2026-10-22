@@ -648,6 +648,49 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
   println!("MATRIX {} events: {}",plugin.uuid,seen.join(","));
   assert!(seen.iter().any(|e|matches!(e.as_str(),"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"setFeedback")),"no visible reaction: {seen:?}");
  }
+  /// Strict matrix: drain willAppear until idle before pressing the virtual key.
+  #[test] #[ignore="set DECKFORGE_TEST_PLUGIN_DIR and DECKFORGE_TEST_PLUGIN_ACTION; starts third-party code"]
+  fn external_plugin_folder_reacts_after_key_press(){
+   let var=|name:&str|std::env::var(name).unwrap_or_else(|_|panic!("set {name}"));
+   let action=var("DECKFORGE_TEST_PLUGIN_ACTION");let imported=tempfile::tempdir().unwrap();
+   let plugin=if let Ok(archive)=std::env::var("DECKFORGE_TEST_PLUGIN_ARCHIVE"){
+    assert!(crate::plugin_import::import_archive(std::path::Path::new(&archive),imported.path()).unwrap());
+    crate::plugin_import::inventory(imported.path()).into_iter().find(|p|p.actions.iter().any(|a|a.uuid==action)).expect("imported plugin with this action")
+   }else{
+    let folder=std::path::PathBuf::from(var("DECKFORGE_TEST_PLUGIN_DIR"));
+    crate::plugins::parse(&folder,&std::fs::read(folder.join("manifest.json")).unwrap()).unwrap()
+   };
+   let device=crate::plugin_runtime::Device::virtual_device();
+   let host=Host::start(&plugin,&device).expect("plugin start");
+   assert_eq!(host.incoming.recv_timeout(Duration::from_secs(20)).expect("no registerPlugin")["event"],"registerPlugin");
+   let visible=crate::plugin_runtime::Visible{context:"matrix-context".into(),plugin:plugin.uuid.clone(),action,index:0,settings:json!({}),state:0};
+   host.send(json!({"event":"deviceDidConnect","device":device.id,"deviceInfo":device.info()})).unwrap();
+   host.send(crate::plugin_runtime::event("willAppear",&visible,&device)).unwrap();
+   let start=Instant::now();let mut last=start;let mut before=Vec::new();
+   while start.elapsed()<Duration::from_secs(5){
+    let remaining=(start+Duration::from_secs(5)).min(last+Duration::from_millis(1500)).saturating_duration_since(Instant::now());
+    if remaining.is_zero(){break;}
+    match host.incoming.recv_timeout(remaining){
+     Ok(message)=>{
+      let name=message["event"].as_str().unwrap_or("").to_owned();
+      assert_ne!(name,"__hostError","{message}");
+      if message["context"]=="matrix-context" || message.get("context").is_none(){before.push(name);}
+      last=Instant::now();
+     },
+     Err(std::sync::mpsc::RecvTimeoutError::Timeout)=>break,
+     Err(e)=>panic!("plugin channel closed before press: {e}"),
+    }
+   }
+   for name in ["keyDown","keyUp"]{host.send(crate::plugin_runtime::event(name,&visible,&device)).unwrap();}
+   let deadline=Instant::now()+Duration::from_secs(8);let mut after=Vec::new();
+   while let Ok(message)=host.incoming.recv_timeout(deadline.saturating_duration_since(Instant::now())){
+    let name=message["event"].as_str().unwrap_or("").to_owned();
+    assert_ne!(name,"__hostError","{message}");
+    if message["context"]=="matrix-context" || message.get("context").is_none(){after.push(name);}
+   }
+   println!("MATRIX {} before: {} after: {}",plugin.uuid,before.join(","),after.join(","));
+   assert!(after.iter().any(|e|matches!(e.as_str(),"setTitle"|"setImage"|"setSettings"|"showOk")),"no post-press reaction: {after:?}");
+  }
  #[test] fn node_fixture_exchanges_key_messages(){
   let fixture=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sdplugin");
   let p=crate::plugins::parse(&fixture,&std::fs::read(fixture.join("manifest.json")).unwrap()).unwrap();
