@@ -40,6 +40,10 @@ impl Target {
         let base = crate::i18n::trf("Touche {key}", &[("key", &format!("{:02}", self.key + 1))]);
         match &self.destination {
             Destination::Key => base,
+            Destination::State(active) if self.binding(c).ok().and_then(|k| k.state_display.as_ref()).is_some_and(|s| s.toggle) => {
+                let state = if *active { crate::i18n::tr("Activé") } else { crate::i18n::tr("Désactivé") };
+                crate::i18n::trf("{base} · {label}", &[("base", &base), ("label", &state)])
+            }
             Destination::State(true) => crate::i18n::trf("{base} · Quand c'est vrai", &[("base", &base)]),
             Destination::State(false) => crate::i18n::trf("{base} · Sinon", &[("base", &base)]),
             Destination::Audio { path, state } => {

@@ -576,8 +576,15 @@ impl App {
     }
     fn state_key(&self, index: usize, key: Key) -> Key {
         match (key.state_display.clone(), self.state_values.get(index).copied().flatten()) {
+            (Some(display), active) if display.toggle => display.apply(&key, active.unwrap_or(false)),
             (Some(display), Some(active)) => display.apply(&key, active),
             _ => key,
+        }
+    }
+    fn toggle_key_face(&mut self, index: usize) {
+        if self.applied.keys().get(index).and_then(|key| key.state_display.as_ref()).is_some_and(|state| state.toggle) {
+            self.state_values[index] = Some(!self.state_values[index].unwrap_or(false));
+            self.send_state_face(index);
         }
     }
     fn send_state_face(&self, index: usize) {
@@ -718,6 +725,9 @@ impl App {
     fn execute_physical(&mut self, index: usize, long: bool) {
         if self.gate.decision() != Decision::Execute { return; }
         let c = self.applied.clone();
+        // Only the short action toggles: for long-press keys this happens on release,
+        // never at press time or when a long action has been selected.
+        if !long { self.toggle_key_face(index); }
         let mut key = c.keys()[index].clone();
         key.runtime_id = Some(crate::engine::identity(&c.profiles[c.active].name, &c.page, index));
         if long { key.steps = std::mem::take(&mut key.long_steps); }
@@ -870,7 +880,11 @@ impl App {
                         if let Some((r, c)) = self.pending.take() {
                             if r == revision {
                                 self.applied = c;
-                                for index in 0..self.device_keys() { if self.state_values[index].is_some() { self.send_state_face(index); } }
+                                for index in 0..self.device_keys() {
+                                    if self.state_values[index].is_some() || self.applied.keys().get(index).and_then(|k| k.state_display.as_ref()).is_some_and(|s| s.toggle) {
+                                        self.send_state_face(index);
+                                    }
+                                }
                                 if let Some(plugins)=&mut self.plugins { plugins.sync(&self.applied); }
                                 if self.sleep.sleeping {
                                     let _ = self.device.send(Command::Brightness(self.config.sleep_brightness));
@@ -3041,7 +3055,7 @@ impl App {
             let long_editor = self.long_editor;
             let active=self.config.active; let names=self.config.profiles.iter().map(|p|p.name.clone()).collect::<Vec<_>>();
             let pages=self.config.profiles[active].pages.clone();let selected=self.selected;let page_id=self.config.page.clone();let dialog_tx=self.dialog_tx.clone();let image_size=self.config.image_size;let key=&mut self.config.keys_mut()[selected];
-            let mut removed_step=false; let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut recrop=false; let mut state_icon=None; let mut pick_audio=None; let mut open_workflow=false; let mut open_model=false; let mut advanced: Option<u8>=None;
+            let mut removed_step=false; let mut changed=false; let mut add_kind=None; let mut record_step=None; let mut open_icons=false; let mut recrop=false; let mut state_icon=None; let mut state_file=None; let mut pick_audio=None; let mut open_workflow=false; let mut open_model=false; let mut advanced: Option<u8>=None;
             if let Some(binding)=key.plugin.clone(){
                 // Boutons d'abord, à droite : l'identifiant long du plugin est tronqué à gauche.
                 let status=self.plugin_errors.get(&binding.plugin).cloned();
@@ -3139,14 +3153,20 @@ impl App {
                         ui.separator();
                         ui.label(RichText::new(tr("Affichage selon l'état")).strong());
                         let mut enabled = key.state_display.is_some();
-                        if ui.checkbox(&mut enabled, tr("Adapter la touche à une condition réelle")).changed() {
+                        if ui.checkbox(&mut enabled, tr("Adapter la touche à deux états")).changed() {
                             key.state_display = enabled.then(crate::model::StateDisplay::default);
                             changed = true;
                         }
                         if let Some(display) = &mut key.state_display {
                             ui.push_id("state_display", |ui| {
-                                changed |= edit_condition(ui, &mut display.condition, &self.audio, 0);
-                                for (active, title, face) in [(true, tr("Quand c'est vrai"), &mut display.on), (false, tr("Sinon"), &mut display.off)] {
+                                ui.horizontal_wrapped(|ui| {
+                                    changed |= ui.radio_value(&mut display.toggle, false, tr("Selon une condition réelle")).changed();
+                                    changed |= ui.radio_value(&mut display.toggle, true, tr("Interrupteur : change à chaque appui")).changed();
+                                });
+                                if !display.toggle { changed |= edit_condition(ui, &mut display.condition, &self.audio, 0); }
+                                let on_title = if display.toggle { tr("Activé") } else { tr("Quand c'est vrai") };
+                                let off_title = if display.toggle { tr("Désactivé") } else { tr("Sinon") };
+                                for (active, title, face) in [(true, on_title, &mut display.on), (false, off_title, &mut display.off)] {
                                     theme::card_frame(theme::palette(ui.ctx())).show(ui, |ui| {
                                         ui.label(RichText::new(title).strong());
                                         let label = face.label.get_or_insert_with(String::new);
@@ -3156,16 +3176,19 @@ impl App {
                                             if ui.color_edit_button_srgb(&mut color).changed() { face.color = Some(color); changed = true; }
                                             if ui.small_button(tr("Couleur par défaut")).clicked() { face.color = None; changed = true; }
                                         });
-                                        ui.horizontal(|ui| {
+                                        ui.horizontal_wrapped(|ui| {
                                             ui.label(face.image.as_deref().filter(|v| !v.is_empty()).unwrap_or(tr("Icône de la touche")));
                                             if ui.button(tr("Galerie")).clicked() { state_icon = Some(active); }
+                                            if ui.button(tr("Choisir une image…")).clicked() { state_file = Some(active); }
                                             if ui.small_button(tr("Effacer")).clicked() { face.image = None; changed = true; }
                                         });
                                     });
                                 }
-                                ui.collapsing(tr("Options avancées"), |ui| {
-                                    changed |= ui.add(egui::DragValue::new(&mut display.poll_ms).range(250..=600_000).suffix(" ms")).changed();
-                                });
+                                if !display.toggle {
+                                    ui.collapsing(tr("Options avancées"), |ui| {
+                                        changed |= ui.add(egui::DragValue::new(&mut display.poll_ms).range(250..=600_000).suffix(" ms")).changed();
+                                    });
+                                }
                             });
                         }
                         if crate::audio::single_switch(&key.steps).is_some(){if ui.button(tr("Icônes par état →")).on_hover_text(tr("Choisir séparément les icônes des deux états audio")).clicked(){open_icons=true;}}else{
@@ -3270,6 +3293,20 @@ impl App {
                 self.open_crop_editor(active, page, selected, path, self.config.image_size);
             }if let Some(target)=pick_audio{self.open_icon_gallery(Some(target));}
             if let Some(active)=state_icon { self.open_state_icon_gallery(active); }
+            if let Some(active)=state_file {
+                let target = icon_ui::Target { profile: self.config.active, page: self.config.page.clone(), key: selected, destination: icon_ui::Destination::State(active) };
+                let tx = self.dialog_tx.clone();
+                std::thread::spawn(move || {
+                    let path = rfd::FileDialog::new().add_filter(tr("Image"), &["png", "jpg", "jpeg"]).pick_file();
+                    if let Some(path) = path {
+                        let _ = tx.send(Some(Box::new(move |app: &mut App| {
+                            if let Err(error) = app.import_icon_from(&target, &path) {
+                                app.fail(trf("Import impossible : {error}", &[("error", &error)]));
+                            }
+                        }) as DialogEffect));
+                    }
+                });
+            }
             if let Some(i)=add_kind {if i==12{self.create_page(true);}else if long_editor {
                 let action = catalog::action(i,&names[active]);
                 self.config.keys_mut()[selected].long_steps.extend(action.steps);

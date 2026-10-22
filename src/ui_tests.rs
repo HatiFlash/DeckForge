@@ -2185,6 +2185,65 @@ fn community_library_waits_for_consent_below_local_plugins() {
     assert!(text_position(&out.shapes, "Se connecter au magasin").is_none(), "aucune connexion avant ouverture du magasin");
 }
 
+#[test]
+fn key_toggle_alternates_faces_without_touching_actions_or_existing_images() {
+    let mut h = Harness::new();
+    let mut key = crate::model::Key::default();
+    key.image = "original.png".into();
+    key.steps = vec![Step::Delay { ms: 100 }];
+    key.state_display = Some(crate::model::StateDisplay {
+        toggle: true,
+        off: crate::model::StateFace { image: Some("off.png".into()), ..Default::default() },
+        on: crate::model::StateFace { image: Some("on.png".into()), ..Default::default() },
+        ..Default::default()
+    });
+    h.app.config.keys_mut()[0] = key.clone();
+    h.app.applied = h.app.config.clone();
+    assert_eq!(h.app.state_key(0, key.clone()).image, "off.png");
+    h.app.toggle_key_face(0);
+    assert_eq!(h.app.state_key(0, key.clone()).image, "on.png");
+    h.app.toggle_key_face(0);
+    assert_eq!(h.app.state_key(0, key.clone()).image, "off.png");
+    assert_eq!(h.app.config.keys()[0].image, "original.png");
+    assert_eq!(h.app.config.keys()[0].steps, key.steps);
+    h.app.sync_state_display();
+    assert_eq!(h.app.state_key(0, key).image, "off.png");
+}
+
+#[test]
+fn key_toggle_appearance_shows_two_image_controls() {
+    let size = vec2(1600.0, 1000.0);
+    let mut h = Harness::new();
+    h.app.config.keys_mut()[0].state_display = Some(crate::model::StateDisplay {
+        toggle: true,
+        on: crate::model::StateFace { image: Some("builtin:microphone".into()), ..Default::default() },
+        off: crate::model::StateFace { image: Some("builtin:speakers".into()), ..Default::default() },
+        ..Default::default()
+    });
+    h.ctx.data_mut(|d| d.insert_persisted(egui::Id::new("inspector_tab"), 1u8));
+    let mut output = h.warm(size);
+    let origin = text_position(&output.shapes, "Titre sur la touche").expect("onglet Apparence ouvert");
+    let cursor = pos2(origin.x + 85.0, origin.y + 90.0);
+    let mut seen_mode = false;
+    let mut seen_on = false;
+    let mut seen_off = false;
+    let mut seen_image_control = false;
+    for _ in 0..40 {
+        seen_mode |= text_position(&output.shapes, "Interrupteur : change à chaque appui").is_some();
+        seen_on |= text_position(&output.shapes, "Activé").is_some();
+        seen_off |= text_position(&output.shapes, "Désactivé").is_some();
+        seen_image_control |= text_position(&output.shapes, "Choisir une image…").is_some();
+        if seen_mode && seen_on && seen_off && seen_image_control { break; }
+        output = h.frame(size, vec![Input::PointerMoved(cursor), Input::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, -90.0), modifiers: Modifiers::NONE }]);
+    }
+    assert!(seen_mode && seen_on && seen_off && seen_image_control,
+        "mode={seen_mode}, activé={seen_on}, désactivé={seen_off}, image={seen_image_control}; textes visibles: {:?}",
+        output.shapes.iter().filter_map(|s| if let egui::Shape::Text(t) = &s.shape { Some(t.galley.job.text.clone()) } else { None }).take(80).collect::<Vec<_>>());
+    if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
+        h.png(size, output, &PathBuf::from(dir).join("key-toggle.png"));
+    }
+}
+
 /// Contrôle manuel (réseau + captures) : `cargo test -- --ignored release_0812_review`.
 #[test]
 #[ignore]

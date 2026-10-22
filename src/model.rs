@@ -462,6 +462,8 @@ pub struct StateFace {
 #[serde(default, deny_unknown_fields)]
 pub struct StateDisplay {
     pub condition: crate::conditions::Condition,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub toggle: bool,
     pub on: StateFace,
     pub off: StateFace,
     #[serde(default = "default_state_poll_ms")]
@@ -469,12 +471,14 @@ pub struct StateDisplay {
 }
 fn default_state_poll_ms() -> u64 { 1000 }
 impl Default for StateDisplay {
-    fn default() -> Self { Self { condition: Default::default(), on: Default::default(), off: Default::default(), poll_ms: default_state_poll_ms() } }
+    fn default() -> Self { Self { condition: Default::default(), toggle: false, on: Default::default(), off: Default::default(), poll_ms: default_state_poll_ms() } }
 }
 impl StateDisplay {
     pub fn validate(&self) -> Result<()> {
-        self.condition.validate()?;
-        anyhow::ensure!((250..=600_000).contains(&self.poll_ms), "Sondage de l'affichage : 250 à 600000 ms requis");
+        if !self.toggle {
+            self.condition.validate()?;
+            anyhow::ensure!((250..=600_000).contains(&self.poll_ms), "Sondage de l'affichage : 250 à 600000 ms requis");
+        }
         for face in [&self.on, &self.off] {
             if let Some(label) = &face.label { anyhow::ensure!(label.len() <= 128 && !label.chars().any(char::is_control), "Titre d'état invalide"); }
             if let Some(image) = &face.image { anyhow::ensure!(image.len() <= 1024 && !image.chars().any(char::is_control), "Icône d'état invalide"); }
@@ -1271,6 +1275,8 @@ mod state_display_tests {
         assert!(parsed.state_display.is_none());
         let display: StateDisplay = serde_json::from_str(r#"{"condition":{"kind":"device_muted","input":true},"on":{"label":"Muet","color":[255,0,0]},"off":{"image":"builtin:microphone"}}"#).unwrap();
         assert_eq!(display.poll_ms, 1000);
+        assert!(!display.toggle);
+        assert!(serde_json::to_value(&display).unwrap().get("toggle").is_none());
         let key = Key { label: "Défaut".into(), state_display: Some(display.clone()), ..Key::default() };
         assert_eq!(serde_json::to_value(&key).unwrap()["state_display"]["on"]["label"], "Muet");
         let roundtrip: Key = serde_json::from_value(serde_json::to_value(&key).unwrap()).unwrap();
@@ -1284,6 +1290,25 @@ mod state_display_tests {
             assert!(validate_key(&Key { state_display: Some(bad), ..Key::default() }, &Config::default()).is_err());
         }
         assert!(validate_key(&Key { state_display: Some(StateDisplay { condition: crate::conditions::Condition::All { conditions: vec![] }, ..display }), ..Key::default() }, &Config::default()).is_err());
+    }
+    #[test]
+    fn toggle_ignores_condition_and_poll_but_validates_faces() {
+        let toggle = StateDisplay {
+            toggle: true,
+            condition: crate::conditions::Condition::All { conditions: vec![] },
+            poll_ms: 0,
+            on: StateFace { image: Some("on.png".into()), ..Default::default() },
+            off: StateFace { image: Some("off.png".into()), ..Default::default() },
+        };
+        let key = Key { image: "normal.png".into(), state_display: Some(toggle.clone()), ..Key::default() };
+        assert!(validate_key(&key, &Config::default()).is_ok());
+        assert_eq!(toggle.apply(&key, false).image, "off.png");
+        assert_eq!(toggle.apply(&key, true).image, "on.png");
+        let value = serde_json::to_value(&toggle).unwrap();
+        assert_eq!(value["toggle"], true);
+        assert_eq!(serde_json::from_value::<StateDisplay>(value).unwrap(), toggle);
+        let bad = StateDisplay { off: StateFace { label: Some("x".repeat(129)), ..Default::default() }, ..toggle };
+        assert!(bad.validate().is_err());
     }
 }
 #[cfg(test)]
