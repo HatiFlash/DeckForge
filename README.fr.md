@@ -27,7 +27,9 @@ Un film de présentation de 40 s en 1920 × 1080 à 60 i/s, avec son, réalisé 
 
 Sélectionne une touche, puis **Apparence → Adapter la touche à deux états → Interrupteur : change à chaque appui**. Choisis séparément les images **Activé** et **Désactivé** avec **Choisir une image…** ou la galerie. Chaque appui court physique alterne les deux images tout en exécutant l’action habituelle ; un appui long configuré ne change pas l’image. L’état revient à **Désactivé** au démarrage ou après un changement de page/profil. Les touches existantes à image unique ne changent pas.
 
-![Panneau Apparence avec images Activé et Désactivé](docs/images/key-toggle-fr.png)
+| Activé (touche verte) | Désactivé (touche orange) |
+|:--:|:--:|
+| ![Image Activé choisie dans Apparence](docs/images/key-toggle-on-fr.png) | ![Image Désactivé choisie dans Apparence](docs/images/key-toggle-fr.png) |
 
 ### Autres corrections
 

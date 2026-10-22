@@ -27,7 +27,9 @@ A 40-second presentation film in 1920 × 1080 at 60 fps with sound, made with Re
 
 Choose a key, open **Appearance → Show two key states → Switch: change on each press**, then select an image separately for **On** and **Off** using **Choose an image…** or the gallery. A short physical press alternates the two images while running the key's normal action; a configured long press does not change the image. The key starts **Off** when NovyDeck opens or when you switch pages or profiles. Existing single-image keys are unchanged.
 
-![Appearance panel for ON/OFF key images, English interface](docs/images/key-toggle-en.png)
+| On (green key) | Off (orange key) |
+|:--:|:--:|
+| ![On image selected in Appearance, English interface](docs/images/key-toggle-on-en.png) | ![Off image selected in Appearance, English interface](docs/images/key-toggle-en.png) |
 
 ### Other fixes
 
