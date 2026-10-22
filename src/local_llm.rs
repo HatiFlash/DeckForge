@@ -1021,6 +1021,19 @@ impl Job {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn plugin_action_guard_rejects_unknown_uuids() {
+        let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/counter.sdPlugin");
+        let mut plugin = crate::plugins::parse(&folder, &std::fs::read(folder.join("manifest.json")).unwrap()).unwrap();
+        plugin.name = "SoundPad".into();
+        plugin.actions[0].name = "Toggle Mute".into();
+        let installed = Step::PluginAction { plugin: plugin.uuid.clone(), action: plugin.actions[0].uuid.clone(), settings: json!({}), label: "Toggle Mute".into() };
+        let unknown = Step::PluginAction { plugin: "not.installed".into(), action: plugin.actions[0].uuid.clone(), settings: json!({}), label: "Toggle Mute".into() };
+        let unknown_action = Step::PluginAction { plugin: plugin.uuid.clone(), action: "not.installed.action".into(), settings: json!({}), label: "Toggle Mute".into() };
+        let mut knowledge = Knowledge::builtin();
+        knowledge.plugins.push(plugin);
+        assert_eq!(guard("lance Toggle Mute de SoundPad", vec![installed.clone(), unknown, unknown_action], &knowledge), vec![installed]);
+    }
 
     #[test]
     fn only_loopback_endpoints_are_accepted() {

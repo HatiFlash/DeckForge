@@ -606,6 +606,23 @@ mod tests {
     fn first(text: &str) -> Proposal {
         propose(text, &Config::default())
     }
+    #[test]
+    fn plugin_action_named_installed_only() {
+        let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/counter.sdPlugin");
+        let mut plugin = crate::plugins::parse(&folder, &std::fs::read(folder.join("manifest.json")).unwrap()).unwrap();
+        plugin.name = "SoundPad".into();
+        plugin.actions[0].name = "Toggle Mute".into();
+        let action = plugin.actions[0].uuid.clone();
+        let id = plugin.uuid.clone();
+        let mut knowledge = crate::local_llm::Knowledge::builtin();
+        knowledge.plugins = vec![plugin];
+        let proposal = propose_with("lance l'action Toggle Mute de SoundPad", &Config::default(), &knowledge);
+        assert!(matches!(&proposal.steps[..], [Step::PluginAction { plugin, action, .. }] if plugin == &id && action == &knowledge.plugins[0].actions[0].uuid), "{proposal:?}");
+        assert!(!proposal.steps.iter().any(|s| matches!(s, Step::Delay { .. })));
+        let unknown = propose_with("lance l'action Toggle Mute de SonInconnu", &Config::default(), &knowledge);
+        assert!(!unknown.steps.iter().any(|s| matches!(s, Step::PluginAction { .. })), "{unknown:?}");
+        assert!(!action.is_empty());
+    }
     fn recognized(text: &str) -> Step {
         let p = first(text);
         assert_eq!(p.status, Status::Reconnue, "{text}: {:?}", p.notes);

@@ -2328,6 +2328,40 @@ fn whats_new_is_only_for_existing_installations_with_new_notes() {
 }
 
 #[test]
+fn plugin_action_two_virtual_contexts_execute_and_persist() {
+    let mut h = Harness::new();
+    let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/counter.sdPlugin");
+    let plugin = crate::plugins::parse(&folder, &std::fs::read(folder.join("manifest.json")).unwrap()).unwrap();
+    let action = plugin.actions[0].uuid.clone();
+    h.app.config.keys_mut()[0].steps = vec![
+        Step::PluginAction { plugin: plugin.uuid.clone(), action: action.clone(), settings: serde_json::json!({}), label: "Compteur A".into() },
+        Step::Delay { ms: 100 },
+        Step::PluginAction { plugin: plugin.uuid.clone(), action: action.clone(), settings: serde_json::json!({"count":1}), label: "Compteur B".into() },
+    ];
+    h.app.applied = h.app.config.clone();
+    h.app.plugins = Some(crate::plugin_runtime::Manager::new(vec![plugin]));
+    h.app.plugins.as_mut().unwrap().sync(&h.app.applied);
+    h.app.start_workshop_run(false);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        h.app.events();
+        h.app.plugin_events();
+        let steps = &h.app.config.keys()[0].steps;
+        let counts = [0, 2].map(|i| match &steps[i] { Step::PluginAction { settings, .. } => settings["count"].as_i64(), _ => None });
+        if counts == [Some(1), Some(2)] { break; }
+        assert!(Instant::now() < deadline, "PluginAction settings timeout: {counts:?}, errors: {:?}", h.app.plugin_errors);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let saved = crate::store::load(&h.dir.path().join("config.json")).unwrap();
+    for (i, count) in [(0, 1), (2, 2)] {
+        assert!(matches!(&saved.keys()[0].steps[i], Step::PluginAction { settings, .. } if settings["count"] == count));
+    }
+    let id = crate::engine::identity(&h.app.config.profiles[h.app.config.active].name, &h.app.config.page, 0);
+    assert_ne!(crate::plugin_runtime::virtual_context(&id, &[0]), crate::plugin_runtime::virtual_context(&id, &[2]));
+    assert!(h.app.plugin_errors.is_empty(), "{:?}", h.app.plugin_errors);
+}
+
+#[test]
 fn startup_offer_shows_notes_and_installation_choice_without_network() {
     let size = vec2(1380.0, 900.0);
     let mut h = Harness::new();
@@ -2346,4 +2380,59 @@ fn startup_offer_shows_notes_and_installation_choice_without_network() {
         assert!(text_position(&shown.shapes, label).is_some(), "{label}");
     }
     assert!(h.app.startup_rx.is_none());
+}
+
+#[test]
+fn plugin_action_two_installed_plugins_run_in_sequence() {
+    let mut h = Harness::new();
+    let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/counter.sdPlugin");
+    let first = crate::plugins::parse(&folder, &std::fs::read(folder.join("manifest.json")).unwrap()).unwrap();
+    let mut second = first.clone();
+    second.uuid = "org.deckforge.counter.second".into();
+    let action = first.actions[0].uuid.clone();
+    h.app.config.keys_mut()[0].steps = vec![
+        Step::PluginAction { plugin: first.uuid.clone(), action: action.clone(), settings: serde_json::json!({}), label: "Premier".into() },
+        Step::Delay { ms: 150 },
+        Step::PluginAction { plugin: second.uuid.clone(), action, settings: serde_json::json!({}), label: "Second".into() },
+    ];
+    h.app.applied = h.app.config.clone();
+    h.app.plugins = Some(crate::plugin_runtime::Manager::new(vec![first, second]));
+    h.app.plugins.as_mut().unwrap().sync(&h.app.applied);
+    h.app.start_workshop_run(false);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut first_seen = false;
+    loop {
+        h.app.events(); h.app.plugin_events();
+        let counts = [0, 2].map(|i| match &h.app.config.keys()[0].steps[i] { Step::PluginAction { settings, .. } => settings["count"].as_i64(), _ => None });
+        if counts[0] == Some(1) { first_seen = true; }
+        if counts[1] == Some(1) { assert!(first_seen, "second plugin responded before first"); break; }
+        assert!(Instant::now() < deadline, "Two-plugin timeout: {counts:?}, errors: {:?}", h.app.plugin_errors);
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(h.app.plugin_errors.is_empty(), "{:?}", h.app.plugin_errors);
+}
+
+#[test]
+fn workshop_plugin_catalogue_adds_action_card_and_capture() {
+    let mut h = Harness::new();
+    let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/counter.sdPlugin");
+    let mut plugin = crate::plugins::parse(&folder, &std::fs::read(folder.join("manifest.json")).unwrap()).unwrap();
+    plugin.name = "Atelier Témoin".into();
+    plugin.actions[0].name = "Incrémenter".into();
+    let expected = format!("{} › {}", plugin.display_name(), plugin.actions[0].name);
+    h.app.plugins = Some(crate::plugin_runtime::Manager::new(vec![plugin.clone()]));
+    h.app.show_workflow = true;
+    let size = vec2(1600.0, 1000.0);
+    let output = h.warm(size);
+    let category = text_position(&output.shapes, "Plugins").expect("plugin category");
+    h.click(size, category);
+    let output = h.warm(size);
+    let action_pos = text_position(&output.shapes, &expected).expect("installed action in palette");
+    h.click(size, action_pos);
+    let output = h.warm(size);
+    assert!(matches!(&h.app.config.keys()[h.app.selected].steps[..], [Step::PluginAction { plugin: id, action, .. }] if id == &plugin.uuid && action == &plugin.actions[0].uuid));
+    assert!(text_position(&output.shapes, &expected).is_some(), "plugin/action card label");
+    if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT") {
+        h.png(size, output, &PathBuf::from(dir).join("workshop-plugins.png"));
+    }
 }
