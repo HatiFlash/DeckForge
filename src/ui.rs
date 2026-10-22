@@ -581,6 +581,12 @@ impl App {
             _ => key,
         }
     }
+    fn toggle_key_face(&mut self, index: usize) {
+        if self.applied.keys().get(index).and_then(|key| key.state_display.as_ref()).is_some_and(|state| state.toggle) {
+            self.state_values[index] = Some(!self.state_values[index].unwrap_or(false));
+            self.send_state_face(index);
+        }
+    }
     fn send_state_face(&self, index: usize) {
         if !self.wanted || !self.gate.connected || self.gate.dirty || self.pending.is_some()
             || self.sleep.sleeping || index >= self.device_keys() || index >= self.applied.keys().len() { return; }
@@ -721,10 +727,7 @@ impl App {
         let c = self.applied.clone();
         // Only the short action toggles: for long-press keys this happens on release,
         // never at press time or when a long action has been selected.
-        if !long && c.keys()[index].state_display.as_ref().is_some_and(|s| s.toggle) {
-            self.state_values[index] = Some(!self.state_values[index].unwrap_or(false));
-            self.send_state_face(index);
-        }
+        if !long { self.toggle_key_face(index); }
         let mut key = c.keys()[index].clone();
         key.runtime_id = Some(crate::engine::identity(&c.profiles[c.active].name, &c.page, index));
         if long { key.steps = std::mem::take(&mut key.long_steps); }
