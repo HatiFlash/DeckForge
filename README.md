@@ -5,7 +5,7 @@ English · [Français](README.fr.md)
   <h1>NovyDeck</h1>
   <p>Open-source Windows software for stream decks: keys, macros, media and plugins, without the official software. Tested on the FIFINE AmpliGame D6 and the Elgato Stream Deck.</p>
   <p>
-    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.8.15"><img src="https://img.shields.io/badge/Release-v0.8.15-3478F6.svg" alt="Release v0.8.15"></a>
+    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.9.0"><img src="https://img.shields.io/badge/Release-v0.9.0-3478F6.svg" alt="Release v0.9.0"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-22C58B.svg" alt="MIT license"></a>
     <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-555.svg" alt="Windows 10/11">
   </p>
@@ -50,7 +50,7 @@ Close FIFINE Control Deck before using the D6: it holds exclusive USB access to 
 
 ## Quick start / installation
 
-1. Download **`NovyDeck-0.8.15-Setup.exe`** from the [latest release](https://github.com/HatiFlash/NovyDeck/releases/latest) and run it without administrator rights, or extract `NovyDeck-0.8.15-Windows.zip`. A fresh installation uses `%LOCALAPPDATA%\Programs\NovyDeck`.
+1. Download **`NovyDeck-0.9.0-Setup.exe`** from the [latest release](https://github.com/HatiFlash/NovyDeck/releases/latest) and run it without administrator rights, or extract `NovyDeck-0.9.0-Windows.zip`. A fresh installation uses `%LOCALAPPDATA%\Programs\NovyDeck`.
 2. For updates, the installer updates an existing installation while preserving profiles, media and plugins. For a portable installation, close the app and replace the executables without deleting `config.json`, preferences, `assets` or `plugins`.
 3. Launch NovyDeck from the Start menu (or the portable folder) and connect the D6. To explore without changing your profiles, choose **Profiles → ••• → Demo profile (15 keys)**. The same command resets the demo profile; you can also delete it like any other profile.
 4. Drag an action from the library onto a key, or open the block editor.
@@ -90,6 +90,7 @@ Compose automations by dragging blocks in the interface, without AutoHotkey or s
 - **Streaming and media:** control OBS Studio scenes, recording, streaming, replay buffer, sources and microphone; use Discord, the built-in soundboard and media controls.
 - **Logic:** if/then/else blocks draw on 14 real-time conditions, including active window, playing audio, muted microphone, connected headset and global variables; a wait-until block is also available.
 - **System and windows:** move or snap windows, bring them forward, simulate held keys with debounce and move the mouse relatively.
+- **Plugin actions:** the **Plugins** palette lists the actions of every installed plugin; chain actions from different plugins in the same macro, mixed with any other block. Each plugin block keeps its own settings, and the local assistant understands plugin names (“add the stopwatch from NovyDeck Clock”) without ever inventing an action that is not installed.
 - **Variables and triggers:** react to applications opening or closing, scheduled times or audio events; insert dynamic values such as `{heure}`, `{date}` and `{presse_papiers}` into messages and requests.
 
 ### Stream Deck and OpenAction plugins
@@ -105,11 +106,13 @@ Native C++/Rust/C# executables, Node.js scripts (`@elgato/streamdeck` v2) and pl
 Open **Library → Plugins** (**Bibliothèque → Plugins** in the French interface). The **Plugin store** button is first, above installed plugins. It opens a resizable window: after consenting to the GitHub connection, search or filter the community catalog, inspect descriptions and screenshots, then choose **Install** on the detail page. Installed plugins remain available in the tab below the button; local imports work offline.
 
 1. **Installed in NovyDeck** (*Installés dans NovyDeck*): plugins already imported from a file, a folder or the built-in catalog. Drag one of their actions onto a key like any other action.
-2. **Community** (*Communauté*): a public directory of third-party plugins maintained in [HatiFlash/novydeck-plugins](https://github.com/HatiFlash/novydeck-plugins).
+2. **Community** (*Communauté*): a public directory of plugins maintained in [HatiFlash/novydeck-plugins](https://github.com/HatiFlash/novydeck-plugins).
+
+**Official NovyDeck plugins** (native, no Node.js required, also compatible with the Elgato software; source in [first-party/](https://github.com/HatiFlash/novydeck-plugins/tree/main/first-party)): **Clock** (clock, timer, stopwatch), **Counter** (counter, quick note, clipboard), **System Monitor** (CPU, RAM, GPU), **Now Playing** (title and cover of the current track), **OLED Saver** (black screen on the chosen monitor), **Home Assistant** (toggle entities, call services, show sensors) and **Google Assistant Command** (send a written command such as “turn on the living room light” to your Google Home devices, with your own Google Cloud project). Selected open-source plugins (Elgato CPU, BarRaider Stopwatch) are listed after being tested in NovyDeck.
 
 How the community library works:
 
-- NovyDeck stays offline until you click **Connect to the library**; it then downloads only the catalog (`registry.json`) from GitHub.
+- NovyDeck stays offline until you click **Connect to the store**; it then downloads only the catalog (`registry.json`) from GitHub.
 - Each card shows the name, version, author, license, tested decks and minimum NovyDeck version. Entries are labelled **Community — unverified**.
 - **Install…** opens a confirmation with the download address and the expected SHA-256. NovyDeck downloads the archive, checks its fingerprint and only then imports it. A matching fingerprint proves the file is the one listed, not that third-party code is safe: install only plugins you trust.
 
@@ -154,6 +157,7 @@ NovyDeck works offline. Local AI stays on your PC and is optional and disabled b
 
 ## Latest release
 
+- **0.9.0:** Play Store-style **plugin store** window (search, categories, detail page with screenshots, one-click install with SHA-256 check); seven official NovyDeck plugins plus tested open-source plugins; **plugin actions in the block editor**, combinable across plugins, understood by the local assistant; **start minimized** option when NovyDeck starts with Windows.
 - **0.8.15:** English interface with a language selector (**Settings → Language**) and community translations as simple JSON files; optional update check at startup (asked once); release notes shown before installing an update and a **What's new** window after it.
 - **0.8.14:** update from the app: **À propos → Vérifier les mises à jour** (About → Check for updates) checks the latest GitHub release; **Télécharger et installer** (Download and install) verifies the installer's SHA-256, closes NovyDeck, installs over it (profiles, media and plugins kept) and restarts it. Portable copies are pointed to the download page.
 - **0.8.13:** the **Basculer l'audio** (audio switch) action can be dropped onto a key before choosing its two devices, which are then set in the inspector; previously it was rejected with “Choisis deux périphériques audio différents”.
@@ -172,7 +176,7 @@ git clone https://github.com/HatiFlash/NovyDeck.git
 cd NovyDeck
 cargo build --release --locked
 cargo test --locked
-powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.15 -Build
+powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.9.0 -Build
 ```
 
 ## License & credits
