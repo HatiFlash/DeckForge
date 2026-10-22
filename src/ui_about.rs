@@ -50,6 +50,15 @@ pub(super) fn hardware_report_window(ctx: &egui::Context, app: &mut App) {
 }
 
 
+pub(super) fn notes(ui: &mut egui::Ui, markdown: &str) {
+    let text = crate::app_update::release_notes(markdown, crate::i18n::current());
+    if text.is_empty() { return; }
+    ui.label(RichText::new(crate::i18n::tr("Nouveautés")).strong());
+    egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
+        ui.add(egui::Label::new(text).wrap());
+    });
+}
+
 pub(super) const HASH: &str = env!("DECKFORGE_GIT_HASH");
 pub(super) const DATE: &str = env!("DECKFORGE_BUILD_DATE");
 pub(super) fn information() -> String {

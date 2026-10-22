@@ -2226,6 +2226,7 @@ fn update_offer_widgets_follow_installation_mode_without_network() {
         setup_url: "https://github.com/x/setup.exe".into(),
         setup_size: 100,
         sha_url: "https://github.com/x/setup.exe.sha256".into(),
+        notes: "## Français\n- Une nouveauté testée".into(),
     };
     for installed in [true, false] {
         let mut h = Harness::new();
@@ -2283,4 +2284,66 @@ fn language_combo_is_visible_in_general_settings() {
     assert!(text_position(&output.shapes, "Langue").is_some());
     assert!(text_position(&output.shapes, "Langue de Windows").is_some());
     assert!(text_position(&output.shapes, "Aider à traduire NovyDeck").is_some());
+}
+
+#[test]
+fn startup_consent_requires_an_unset_preference() {
+    let size = vec2(1380.0, 900.0);
+    let mut h = Harness::new();
+    h.app.startup_prompts = true;
+    h.app.startup_checked = true; // Never contact GitHub in UI tests.
+    let shown = h.warm(size);
+    assert!(text_position(&shown.shapes, "Mises à jour automatiques").is_some());
+    assert!(text_position(&shown.shapes, "Vérifier au démarrage").is_some());
+    let reject = text_position(&shown.shapes, "Non merci").unwrap();
+    h.click(size, reject);
+    assert_eq!(h.app.preferences.update_check, Some(false));
+    assert!(text_position(&h.warm(size).shapes, "Mises à jour automatiques").is_none());
+    h.app.preferences.update_check = Some(true);
+    assert!(text_position(&h.warm(size).shapes, "Mises à jour automatiques").is_none());
+    assert!(h.app.startup_rx.is_none());
+}
+
+#[test]
+fn whats_new_is_only_for_existing_installations_with_new_notes() {
+    let size = vec2(1380.0, 900.0);
+    let mut h = Harness::new();
+    let notes = "## Français\n- Changement après mise à jour";
+    assert!(!App::needs_whats_new(&h.app.preferences, false, notes));
+    assert!(App::needs_whats_new(&h.app.preferences, true, notes));
+    h.app.preferences.last_seen_version = "0.8.13".into();
+    h.app.preferences.update_check = Some(false);
+    h.app.startup_prompts = true;
+    h.app.whats_new = true;
+    h.app.whats_new_notes = notes.into();
+    let shown = h.warm(size);
+    let title = format!("Quoi de neuf dans NovyDeck {}", env!("CARGO_PKG_VERSION"));
+    assert!(text_position(&shown.shapes, &title).is_some());
+    assert!(text_position(&shown.shapes, "Changement après mise à jour").is_some());
+    let acknowledge = text_position(&shown.shapes, "Compris").unwrap();
+    h.click(size, acknowledge);
+    assert_eq!(h.app.preferences.last_seen_version, env!("CARGO_PKG_VERSION"));
+    assert!(!h.app.whats_new);
+    assert!(text_position(&h.warm(size).shapes, &title).is_none());
+}
+
+#[test]
+fn startup_offer_shows_notes_and_installation_choice_without_network() {
+    let size = vec2(1380.0, 900.0);
+    let mut h = Harness::new();
+    h.app.startup_checked = true;
+    h.app.preferences.update_check = Some(true);
+    h.app.startup_prompts = true;
+    h.app.update_installed = true;
+    h.app.startup_offer = Some(crate::app_update::Latest {
+        version: "v0.8.16".into(), page: "https://github.com/HatiFlash/NovyDeck".into(),
+        setup_url: "https://github.com/x/setup.exe".into(), setup_size: 100,
+        sha_url: "https://github.com/x/setup.sha256".into(),
+        notes: "## Français\n- Fonction nouvelle injectée".into(),
+    });
+    let shown = h.warm(size);
+    for label in ["Mise à jour disponible", "Fonction nouvelle injectée", "Télécharger et installer", "Voir les nouveautés", "Plus tard"] {
+        assert!(text_position(&shown.shapes, label).is_some(), "{label}");
+    }
+    assert!(h.app.startup_rx.is_none());
 }

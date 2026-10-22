@@ -15,14 +15,64 @@ pub struct Latest {
     pub setup_url: String,
     pub setup_size: u64,
     pub sha_url: String,
+    pub notes: String,
 }
 #[derive(Clone, Debug)]
 pub enum Status { Current, New(Latest), Ahead }
 
 #[derive(Deserialize)]
-struct Release { tag_name: String, html_url: String, draft: bool, prerelease: bool, assets: Vec<Asset> }
+struct Release { tag_name: String, html_url: String, draft: bool, prerelease: bool, #[serde(default)] body: Option<String>, assets: Vec<Asset> }
 #[derive(Deserialize)]
 struct Asset { name: String, browser_download_url: String, size: u64 }
+
+/// Turn bilingual GitHub Markdown into bounded, plain-text release notes.
+pub fn release_notes(markdown: &str, lang: &str) -> String {
+    let wanted = if lang == "fr" { "Français" } else { "English" };
+    let lines: Vec<&str> = markdown.lines().collect();
+    let section = lines.iter().position(|line| line.trim() == format!("## {wanted}"));
+    let selected: Vec<&str> = if let Some(start) = section {
+        lines[start + 1..].iter().copied().take_while(|line| !line.trim_start().starts_with("## ")).collect()
+    } else if lines.iter().any(|line| matches!(line.trim(), "## English" | "## Français")) {
+        // A bilingual document with only the other language: show what is available.
+        let start = lines.iter().position(|line| matches!(line.trim(), "## English" | "## Français")).unwrap();
+        lines[start + 1..].iter().copied().take_while(|line| !line.trim_start().starts_with("## ")).collect()
+    } else { lines };
+    let mut clean = Vec::new();
+    for line in selected {
+        let line = line.trim();
+        if line.starts_with("English · [Français](") || line.starts_with("Français · [English](") { continue; }
+        let line = line.trim_start_matches('#').trim_start();
+        let mut out = String::new();
+        let mut rest = line;
+        while let Some(open) = rest.find('[') {
+            out.push_str(&rest[..open]);
+            if let Some(close) = rest[open + 1..].find("](") {
+                let title_end = open + 1 + close;
+                if let Some(end) = rest[title_end + 2..].find(')') {
+                    out.push_str(&rest[open + 1..title_end]);
+                    rest = &rest[title_end + 3 + end..];
+                    continue;
+                }
+            }
+            out.push('[');
+            rest = &rest[open + 1..];
+        }
+        out.push_str(rest);
+        let out = out.replace("**", "").replace('`', "");
+        let out = out.trim();
+        if out.is_empty() {
+            if clean.last().is_some_and(|previous: &String| !previous.is_empty()) { clean.push(String::new()); }
+        } else { clean.push(out.to_owned()); }
+    }
+    let text = clean.join("\n");
+    let text = text.trim();
+    if text.chars().count() <= 4000 { return text.to_owned(); }
+    let mut cut: String = text.chars().take(3999).collect();
+    if let Some(space) = cut.rfind(char::is_whitespace) {
+        if space > 3800 { cut.truncate(space); }
+    }
+    format!("{}…", cut.trim_end())
+}
 
 fn version(s: &str) -> Result<[u64; 3]> {
     let s = s.strip_prefix('v').unwrap_or(s);
@@ -57,7 +107,7 @@ pub fn parse_latest(bytes: &[u8]) -> Result<Latest> {
     let digest = asset(&sha)?;
     anyhow::ensure!(exe.size > 0 && exe.size <= MAX_SETUP as u64, "Taille de l'installateur invalide");
     anyhow::ensure!(digest.size > 0 && digest.size <= 4096, "Taille de l'empreinte invalide");
-    Ok(Latest { version: release.tag_name, page: release.html_url, setup_url: exe.browser_download_url.clone(), setup_size: exe.size, sha_url: digest.browser_download_url.clone() })
+    Ok(Latest { version: release.tag_name, page: release.html_url, setup_url: exe.browser_download_url.clone(), setup_size: exe.size, sha_url: digest.browser_download_url.clone(), notes: release.body.unwrap_or_default() })
 }
 pub fn check() -> Result<Status> {
     let latest = parse_latest(&crate::https_get::get(LATEST_URL, 1024 * 1024)?)?;
@@ -183,5 +233,28 @@ pub fn launch(setup: &Path) -> Result<()> {
         assert_eq!(program, "cmd.exe");
         assert!(args.last().unwrap().contains(r#""C:\Some Folder\setup.exe" /VERYSILENT"#));
         assert!(args.last().unwrap().contains("/relaunch=1"));
+    }
+    #[test] fn release_notes_selects_language_and_strips_markdown() {
+        let markdown = include_str!("../docs/RELEASE-0.8.14.md");
+        let en = release_notes(markdown, "en");
+        let fr = release_notes(markdown, "fr");
+        assert!(en.contains("About → Vérifier les mises à jour"));
+        assert!(fr.contains("À propos → Vérifier les mises à jour"));
+        assert!(fr.contains("- Pour une copie installée"));
+        assert!(fr.contains("Détail des contrôles"));
+        assert!(!fr.contains("https://") && !fr.contains("**") && !fr.contains("##") && !fr.contains("English ·"));
+        assert!(!en.contains("Pour une copie installée"));
+        assert_eq!(release_notes("# Titre\n\n\n- [lien](https://example.org) et `code`", "fr"), "Titre\n\n- lien et code");
+        assert_eq!(release_notes("texte sans sections", "fr"), "texte sans sections");
+        let long = release_notes(&format!("## English\n{}", "é".repeat(5000)), "en");
+        assert!(long.chars().count() <= 4000 && long.ends_with('…'));
+    }
+    #[test] fn missing_or_null_release_body_is_empty() {
+        let mut value = release();
+        assert!(parse_latest(&serde_json::to_vec(&value).unwrap()).unwrap().notes.is_empty());
+        value["body"] = serde_json::Value::Null;
+        assert!(parse_latest(&serde_json::to_vec(&value).unwrap()).unwrap().notes.is_empty());
+        value["body"] = "## Français\n- Bonjour".into();
+        assert!(parse_latest(&serde_json::to_vec(&value).unwrap()).unwrap().notes.contains("Bonjour"));
     }
 }

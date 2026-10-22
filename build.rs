@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 fn main() {
     embed_icon();
     embed_translations();
+    embed_release_notes();
     for path in [".git/HEAD", ".git/refs"] {
         if std::path::Path::new(path).exists() {
             println!("cargo:rerun-if-changed={path}");
@@ -64,6 +65,14 @@ fn embed_icon() {
             println!("cargo:warning=Ressources Windows non intégrées (rc.exe introuvable ?) : {e}");
         }
     }
+}
+
+fn embed_release_notes() {
+    let source = format!("docs/RELEASE-{}.md", env!("CARGO_PKG_VERSION"));
+    println!("cargo:rerun-if-changed={source}");
+    let notes = std::fs::read(&source).unwrap_or_default();
+    let dest = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("release_notes.md");
+    std::fs::write(dest, notes).unwrap();
 }
 
 /// Liste les fichiers `res/i18n/<code>.json` : ajouter une langue = ajouter un fichier, sans code.

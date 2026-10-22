@@ -5,7 +5,7 @@
   <h1>NovyDeck</h1>
   <p>Logiciel libre pour Windows qui pilote les stream decks : touches, macros, médias et plugins, sans le logiciel officiel. Testé sur le FIFINE AmpliGame D6 et l'Elgato Stream Deck.</p>
   <p>
-    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.8.14"><img src="https://img.shields.io/badge/Release-v0.8.14-3478F6.svg" alt="Version 0.8.14"></a>
+    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.8.15"><img src="https://img.shields.io/badge/Release-v0.8.15-3478F6.svg" alt="Version 0.8.15"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/Licence-MIT-22C58B.svg" alt="Licence MIT"></a>
     <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-555.svg" alt="Windows 10/11">
   </p>
@@ -50,7 +50,7 @@ Fermez FIFINE Control Deck avant d'utiliser le D6 : ce logiciel conserve l'accè
 
 ## Démarrage rapide / installation
 
-1. Téléchargez **`NovyDeck-0.8.14-Setup.exe`** depuis la [dernière version](https://github.com/HatiFlash/NovyDeck/releases/latest) et lancez-le sans droits administrateur, ou extrayez `NovyDeck-0.8.14-Windows.zip`. Une nouvelle installation utilise `%LOCALAPPDATA%\Programs\NovyDeck`.
+1. Téléchargez **`NovyDeck-0.8.15-Setup.exe`** depuis la [dernière version](https://github.com/HatiFlash/NovyDeck/releases/latest) et lancez-le sans droits administrateur, ou extrayez `NovyDeck-0.8.15-Windows.zip`. Une nouvelle installation utilise `%LOCALAPPDATA%\Programs\NovyDeck`.
 2. Pour une mise à jour, l'installateur met à jour l'installation existante en conservant profils, médias et plugins. En version portable, fermez l'application et remplacez les exécutables sans supprimer `config.json`, les préférences, `assets` ni `plugins`.
 3. Lancez NovyDeck depuis le menu Démarrer (ou le dossier portable) et branchez le D6. Pour découvrir l'application sans toucher à vos profils, choisissez **Profils → ••• → Profil de démonstration (15 touches)**. Cette commande réinitialise aussi le profil de démonstration ; vous pouvez le supprimer comme tout autre profil.
 4. Glissez une action de la bibliothèque sur une touche, ou ouvrez l'atelier de blocs.
@@ -154,6 +154,7 @@ NovyDeck fonctionne hors ligne. L'IA locale reste sur votre PC ; elle est facult
 
 ## Dernière version
 
+- **0.8.15 :** interface en anglais avec choix de la langue (**Réglages → Langue**) et traductions communautaires sous forme de simples fichiers JSON ; vérification facultative des mises à jour au démarrage (demandée une fois) ; notes de version affichées avant d'installer une mise à jour et fenêtre **Quoi de neuf** après.
 - **0.8.14 :** mise à jour depuis l'application : **À propos → Vérifier les mises à jour** interroge la dernière release GitHub ; **Télécharger et installer** vérifie l'empreinte SHA-256 de l'installateur, ferme NovyDeck, installe par-dessus (profils, médias et plugins conservés) puis le relance. Les copies portables sont renvoyées vers la page de téléchargement.
 - **0.8.13 :** l'action **Basculer l'audio** peut être déposée sur une touche avant de choisir ses deux périphériques, réglés ensuite dans l'inspecteur ; elle était auparavant refusée avec « Choisis deux périphériques audio différents ».
 - **0.8.12 :** bibliothèque communautaire de plugins (Bibliothèque → Plugins → Communauté), rapport matériel anonymisé avec issue GitHub préremplie, et le bouton **Recadrer** sous l'aperçu de la touche n'est plus coupé.
@@ -171,7 +172,7 @@ git clone https://github.com/HatiFlash/NovyDeck.git
 cd NovyDeck
 cargo build --release --locked
 cargo test --locked
-powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.14 -Build
+powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.8.15 -Build
 ```
 
 ## Licence et crédits

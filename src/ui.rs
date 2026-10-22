@@ -175,6 +175,12 @@ pub struct App {
     update_phase: Option<&'static str>,
     update_confirm: Option<crate::app_update::Latest>,
     update_installed: bool,
+    startup_prompts: bool,
+    startup_checked: bool,
+    startup_rx: Option<Receiver<Result<crate::app_update::Status, String>>>,
+    startup_offer: Option<crate::app_update::Latest>,
+    whats_new: bool,
+    whats_new_notes: String,
     rename: bool,
     notice: String,
     error: bool,
@@ -316,9 +322,14 @@ impl App {
             load_error = Some(trf("Variables enregistrées illisibles : {error}", &[("error", &e)]));
         }
         let smoke = !isolated && std::env::args().any(|a| a == "--ui-smoke");
-        let preferences_result = Preferences::load(&path.with_file_name("preferences.json"));
+        let preferences_path = path.with_file_name("preferences.json");
+        let preferences_existed = preferences_path.exists();
+        let preferences_result = Preferences::load(&preferences_path);
         let preferences_valid = preferences_result.is_ok();
         let mut preferences = preferences_result.unwrap_or_default();
+        let whats_new_notes = include_str!(concat!(env!("OUT_DIR"), "/release_notes.md")).to_owned();
+        let startup_prompts = !isolated && !smoke && !cfg!(test);
+        let whats_new = startup_prompts && Self::needs_whats_new(&preferences, preferences_existed, &whats_new_notes);
         crate::i18n::set_language(crate::i18n::resolve(&preferences.language));
         #[cfg(test)]
         if isolated && preferences.language.is_empty() { crate::i18n::set_language("fr"); }
@@ -395,6 +406,12 @@ impl App {
             update_phase: None,
             update_confirm: None,
             update_installed: crate::app_update::installed(),
+            startup_prompts,
+            startup_checked: false,
+            startup_rx: None,
+            startup_offer: None,
+            whats_new,
+            whats_new_notes,
             rename: false,
             notice: tr("Tout est prêt.").into(),
             error: false,
@@ -489,9 +506,43 @@ impl App {
         if !preferences_valid {
             app.fail(tr("Préférences illisibles : le fichier est conservé. Restaure preferences.json.bak avant d’enregistrer Mes binds.").into());
         }
+        if app.startup_prompts && !app.whats_new && app.preferences.last_seen_version != env!("CARGO_PKG_VERSION") {
+            app.preferences.last_seen_version = env!("CARGO_PKG_VERSION").into();
+            app.save_preferences();
+        }
         app.refresh_hotkeys();
         app.sync_state_display();
         app
+    }
+    fn needs_whats_new(preferences: &Preferences, existed: bool, notes: &str) -> bool {
+        preferences.last_seen_version != env!("CARGO_PKG_VERSION")
+            && !(preferences.last_seen_version.is_empty() && !existed)
+            && !crate::app_update::release_notes(notes, crate::i18n::resolve(&preferences.language)).is_empty()
+    }
+    fn start_update_check(&mut self, ctx: &egui::Context, startup: bool) {
+        if startup {
+            if self.startup_checked { return; }
+            self.startup_checked = true;
+            let (tx, rx) = mpsc::channel();
+            self.startup_rx = Some(rx);
+            let context = ctx.clone();
+            std::thread::spawn(move || {
+                let result = crate::app_update::check().map_err(|e| e.to_string());
+                let _ = tx.send(result);
+                context.request_repaint();
+            });
+        } else {
+            self.update_result = None;
+            self.update_phase = Some(tr("Vérification en cours…"));
+            let (tx, rx) = mpsc::channel();
+            self.update_rx = Some(rx);
+            let context = ctx.clone();
+            std::thread::spawn(move || {
+                let result = crate::app_update::check().map_err(|e| trf("Vérification impossible : {error}", &[("error", &e)]));
+                let _ = tx.send(about::UpdateEvent::Checked(result));
+                context.request_repaint();
+            });
+        }
     }
     fn open_hardware_report(&mut self) {
         self.hardware_report = Some(crate::hardware_report::collect(
@@ -3901,6 +3952,76 @@ impl App {
             }
             if finished { self.update_rx = None; }
         }
+        if self.startup_prompts && !self.whats_new && self.preferences.update_check == Some(true) && !self.startup_checked {
+            self.start_update_check(ctx, true);
+        }
+        let startup_result = self.startup_rx.as_ref().and_then(|rx| rx.try_recv().ok());
+        if let Some(result) = startup_result {
+            self.startup_rx = None;
+            match result {
+                Ok(crate::app_update::Status::New(latest)) => self.startup_offer = Some(latest),
+                Err(error) => self.log(trf("Vérification au démarrage impossible : {error}", &[("error", &error)])),
+                _ => {}
+            }
+        }
+        if self.startup_prompts && self.whats_new {
+            let mut open = true;
+            let mut understood = false;
+            egui::Window::new(trf("Quoi de neuf dans NovyDeck {version}", &[("version", &env!("CARGO_PKG_VERSION"))]))
+                .open(&mut open).collapsible(false).resizable(true).default_width(450.0)
+                .show(ctx, |ui| {
+                    about::notes(ui, &self.whats_new_notes);
+                    if ui.button(tr("Compris")).clicked() { understood = true; }
+                });
+            if understood || !open {
+                self.whats_new = false;
+                self.preferences.last_seen_version = env!("CARGO_PKG_VERSION").into();
+                self.save_preferences();
+            }
+        } else if self.startup_prompts && self.preferences.update_check.is_none() {
+            let mut open = true;
+            let mut choice = None;
+            egui::Window::new(tr("Mises à jour automatiques"))
+                .open(&mut open).collapsible(false).resizable(false).default_width(420.0)
+                .show(ctx, |ui| {
+                    ui.label(tr("NovyDeck peut vérifier au démarrage si une nouvelle version est disponible. Il contacte seulement GitHub pour lire le numéro de la dernière version ; rien n'est installé sans votre accord."));
+                    ui.horizontal(|ui| {
+                        if ui.button(tr("Vérifier au démarrage")).clicked() { choice = Some(true); }
+                        if ui.button(tr("Non merci")).clicked() { choice = Some(false); }
+                    });
+                });
+            if let Some(enabled) = choice {
+                self.preferences.update_check = Some(enabled);
+                self.save_preferences();
+                if enabled { self.start_update_check(ctx, true); }
+            } else if !open {
+                self.preferences.update_check = Some(false);
+                self.save_preferences();
+            }
+        }
+        if let Some(latest) = self.startup_offer.clone() {
+            let mut open = true;
+            let mut later = false;
+            egui::Window::new(tr("Mise à jour disponible"))
+                .open(&mut open).collapsible(false).resizable(true).default_width(450.0)
+                .show(ctx, |ui| {
+                    ui.label(trf("NovyDeck {version} est disponible (vous avez {current}).", &[("version", &latest.version), ("current", &env!("CARGO_PKG_VERSION"))]));
+                    about::notes(ui, &latest.notes);
+                    if self.update_installed {
+                        if ui.button(tr("Télécharger et installer")).clicked() {
+                            self.update_confirm = Some(latest.clone());
+                            later = true;
+                        }
+                    } else {
+                        ui.label(tr("Version portable : téléchargez le ZIP depuis la page des nouveautés"));
+                    }
+                    if ui.button(tr("Voir les nouveautés")).clicked() {
+                        ui.ctx().open_url(egui::OpenUrl::new_tab(latest.page.clone()));
+                    }
+                    if ui.button(tr("Plus tard")).clicked() { later = true; }
+                });
+            if later || !open { self.startup_offer = None; }
+        }
         if self.show_about {
             let mut open = true;
             egui::Window::new(tr("À propos de NovyDeck"))
@@ -3937,16 +4058,7 @@ impl App {
                     });
                     ui.separator();
                     if ui.add_enabled(self.update_rx.is_none() && self.update_confirm.is_none(), egui::Button::new(tr("Vérifier les mises à jour"))).clicked() {
-                        self.update_result = None;
-                        self.update_phase = Some(tr("Vérification en cours…"));
-                        let (tx, rx) = mpsc::channel();
-                        self.update_rx = Some(rx);
-                        let context = ctx.clone();
-                        std::thread::spawn(move || {
-                            let result = crate::app_update::check().map_err(|e| trf("Vérification impossible : {error}", &[("error", &e)]));
-                            let _ = tx.send(about::UpdateEvent::Checked(result));
-                            context.request_repaint();
-                        });
+                        self.start_update_check(ctx, false);
                     }
                     if let Some(phase) = self.update_phase { motion::loading(ui, phase); }
                     if let Some(result) = &self.update_result {
@@ -3956,6 +4068,7 @@ impl App {
                             Ok(crate::app_update::Status::Ahead) => { ui.label(tr("Cette version est plus récente que la dernière publiée")); }
                             Ok(crate::app_update::Status::New(latest)) => {
                                 ui.label(trf("Nouvelle version {version} disponible", &[("version", &latest.version)]));
+                                about::notes(ui, &latest.notes);
                                 if self.update_installed {
                                     if ui.add_enabled(self.update_rx.is_none(), egui::Button::new(tr("Télécharger et installer"))).clicked() {
                                         self.update_confirm = Some(latest.clone());
@@ -3977,6 +4090,8 @@ impl App {
             egui::Window::new(tr("Installer la mise à jour"))
                 .open(&mut confirm).collapsible(false).resizable(false).default_width(390.0)
                 .show(ctx, |ui| {
+                    ui.label(trf("Nouvelle version {version} disponible", &[("version", &latest.version)]));
+                    about::notes(ui, &latest.notes);
                     ui.label(trf("NovyDeck va se fermer, installer la version {version} puis redémarrer. Vos profils, médias et plugins sont conservés.", &[("version", &latest.version)]));
                     ui.horizontal(|ui| {
                         if ui.button(tr("Installer maintenant")).clicked() {
@@ -4246,6 +4361,12 @@ impl App {
                             });
                             if ui.link(tr("Aider à traduire NovyDeck")).clicked() {
                                 ui.ctx().open_url(egui::OpenUrl::new_tab("https://github.com/HatiFlash/NovyDeck/blob/main/docs/TRANSLATING.md"));
+                            }
+                            ui.separator();
+                            let mut check = self.preferences.update_check.unwrap_or(false);
+                            if ui.checkbox(&mut check, tr("Vérifier les mises à jour au démarrage")).changed() {
+                                self.preferences.update_check = Some(check);
+                                self.save_preferences();
                             }
                         }
                         1 => {
