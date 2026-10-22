@@ -2248,7 +2248,8 @@ fn key_toggle_appearance_shows_two_image_controls() {
             if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
                 h.app.applied = h.app.config.clone();
                 h.app.toggle_key_face(0);
-                let frame = h.frame(size, vec![]);
+                let frame = h.frame(size, vec![Input::PointerMoved(cursor), Input::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, 90.0), modifiers: Modifiers::NONE }]);
+                assert!(text_position(&frame.shapes, on).is_some(), "état ON coupé dans la capture {lang}");
                 h.png(size, frame, &PathBuf::from(dir).join(format!("key-toggle-on-{lang}.png")));
                 h.app.toggle_key_face(0);
             }
