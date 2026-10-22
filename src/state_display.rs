@@ -22,7 +22,7 @@ fn monitor(rx: Receiver<Command>, events: Sender<Event>) {
             Ok(Command::Page(id, page)) => {
                 generation = id;
                 keys = page.into_iter().enumerate().filter_map(|(index,key)| {
-                    key.state_display.map(|display| (index, display.condition,
+                    key.state_display.filter(|display| !display.toggle).map(|display| (index, display.condition,
                         Duration::from_millis(display.poll_ms.max(250)), Instant::now(), None))
                 }).collect();
             }
