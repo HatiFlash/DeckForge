@@ -67,7 +67,7 @@ impl App {
   let mut open=view.open;
   let screen=ctx.screen_rect();
   let size=egui::vec2((screen.width()*0.88).max(900.0).min(screen.width()),(screen.height()*0.86).max(600.0).min(screen.height()));
-  egui::Window::new(tr("Magasin de plugins")).open(&mut open).resizable(true)
+  egui::Window::new(tr("Magasin de plugins")).open(&mut open).resizable(true).collapsible(false)
    .pivot(egui::Align2::CENTER_CENTER).default_pos(screen.center())
    .default_size(size).min_size(egui::vec2(900.0_f32.min(screen.width()),600.0_f32.min(screen.height())))
    .max_size(screen.size()).show(ctx,|ui|{
@@ -81,9 +81,19 @@ impl App {
     }
     let p=theme::palette(ctx);
     ui.horizontal(|ui|{
-     if let Some(image)=iconset::image(ctx,Ico::Store,20.0){ui.add(image);}
      let width=(ui.available_width()-130.0).max(160.0);
-     ui.add_sized([width,34.0],egui::TextEdit::singleline(&mut view.search).hint_text(tr("Rechercher un plugin…")));
+     egui::Frame::new().fill(p.surface).stroke(egui::Stroke::new(1.0,p.border)).corner_radius(8)
+      .inner_margin(egui::Margin::symmetric(10,7)).show(ui,|ui|{
+       ui.set_width(width-20.0);
+       ui.horizontal(|ui|{
+        // Loupe dessinée comme la recherche de la bibliothèque d'actions.
+        let (icon_r,_)=ui.allocate_exact_size(egui::Vec2::splat(16.0),egui::Sense::hover());
+        let c=icon_r.center()-egui::Vec2::new(1.5,1.5);
+        ui.painter().circle_stroke(c,4.5,egui::Stroke::new(1.5_f32,p.muted));
+        ui.painter().line_segment([c+egui::Vec2::new(3.2,3.2),c+egui::Vec2::new(6.5,6.5)],egui::Stroke::new(1.5_f32,p.muted));
+        ui.add(egui::TextEdit::singleline(&mut view.search).frame(false).desired_width(f32::INFINITY).hint_text(tr("Rechercher un plugin…")));
+       });
+      });
      if ui.add_enabled(!state.loading,iconset::secondary_button(ctx,Ico::Redo,tr("Actualiser"))).clicked(){let(tx,rx)=mpsc::channel();state.fetching=Some(rx);state.loading=true;let ctx=ctx.clone();std::thread::spawn(move||{let _=tx.send(community_plugins::fetch().map_err(|e|e.to_string()));ctx.request_repaint();});}
     });
     if state.loading{ui.label(tr("Chargement de la bibliothèque…"));}
