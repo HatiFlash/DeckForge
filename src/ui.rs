@@ -235,6 +235,8 @@ pub struct App {
     running_block: Vec<usize>,
     workshop_journal: crate::workshop_journal::Journal,
     open_requested: bool,
+    /// Images restantes pendant lesquelles la fenêtre est recachée (eframe l'affiche après la première image).
+    hide_frames: u8,
     tray_ready: bool,
     quitting: bool,
     show_workflow: bool,
@@ -465,6 +467,7 @@ impl App {
             running_block: vec![],
             workshop_journal: Default::default(),
             open_requested: false,
+            hide_frames: if !cfg!(test) && std::env::args().any(|a| a == "--background") { 3 } else { 0 },
             tray_ready: false,
             quitting: false,
             show_workflow: false,
@@ -753,11 +756,12 @@ impl App {
                     if self.wanted && self.gate.connected { let _ = self.device.send(Command::Brightness(self.config.sleep_brightness)); }
                 }
                 Event::Foreground(exe) => { self.foreground = exe; self.update_auto_profile(); }
-                Event::Open => self.open_requested = true,
+                Event::Open => { self.open_requested = true; self.hide_frames = 0; }
                 Event::TrayReady(ready) => {
                     self.tray_ready = ready;
                     if !ready {
                         self.open_requested = true;
+                        self.hide_frames = 0;
                     }
                 }
                 Event::Quit => {
@@ -4603,6 +4607,11 @@ impl eframe::App for App {
             && !self.quitting
         {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
+        if self.hide_frames > 0 && !self.open_requested {
+            // eframe 0.31 rend la fenêtre visible après la première image, même avec `with_visible(false)`.
+            self.hide_frames -= 1;
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
         let start=Instant::now();

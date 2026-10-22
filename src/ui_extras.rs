@@ -1181,7 +1181,14 @@ impl App {
         let mut capture = false;
         egui::Window::new(crate::i18n::tr("Windows et raccourcis")).open(&mut open).default_width(510.0).show(ctx,|ui|{
             let mut enabled=self.preferences.start_with_windows;
-            if ui.checkbox(&mut enabled,crate::i18n::tr("Démarrer avec Windows en arrière-plan")).changed(){startup=Some(enabled);}
+            if ui.checkbox(&mut enabled,crate::i18n::tr("Lancer NovyDeck au démarrage de Windows")).changed(){startup=Some(enabled);}
+            ui.indent("start_minimized",|ui|{
+                let mut minimized=self.preferences.start_minimized;
+                if ui.add_enabled(self.preferences.start_with_windows,egui::Checkbox::new(&mut minimized,crate::i18n::tr("Démarrer réduit près de l’horloge, sans afficher la fenêtre"))).changed(){
+                    self.preferences.start_minimized=minimized;
+                    startup=Some(true);
+                }
+            });
             changed|=ui.checkbox(&mut self.preferences.close_to_tray,crate::i18n::tr("Fermer la fenêtre garde NovyDeck près de l’horloge")).changed();
             if ui.add_enabled(self.tray_ready,egui::Button::new(crate::i18n::tr("Masquer maintenant"))).clicked(){ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));}
             ui.separator();ui.label(crate::i18n::tr("OBS Studio (WebSocket local)"));
@@ -1257,7 +1264,7 @@ impl App {
             self.refresh_hotkeys();
         }
         if let Some(enable) = startup {
-            match crate::desktop::startup(enable) {
+            match crate::desktop::startup(enable, self.preferences.start_minimized) {
                 Ok(()) => {
                     self.preferences.start_with_windows = enable;
                     changed = true;
