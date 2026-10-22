@@ -4695,7 +4695,8 @@ impl App {
             let Some((index,path))=crate::plugin_runtime::virtual_step_path(&self.applied,context) else {return};
             let Some(crate::model::Step::PluginAction { plugin: owner, action, settings, .. })=
                 extras::step_mut(&mut self.applied.keys_mut()[index].steps,&path) else {return};
-            if owner!=plugin || action!=message["action"].as_str().unwrap_or("") {return;}
+            // setSettings/getSettings du SDK ne portent pas le champ `action` : le contexte virtuel suffit.
+            if owner!=plugin || message["action"].as_str().is_some_and(|a|a!=action.as_str()) {return;}
             if name=="getSettings" {
                 let v=crate::plugin_runtime::Visible {context:context.into(),plugin:owner.clone(),action:action.clone(),index:0,settings:settings.clone(),state:0};
                 if let Some(manager)=&self.plugins {manager.send(plugin,app_settings_event(&v,&crate::plugin_runtime::Device::virtual_device(),settings,None));}

@@ -2341,6 +2341,8 @@ fn plugin_action_two_virtual_contexts_execute_and_persist() {
     h.app.applied = h.app.config.clone();
     h.app.plugins = Some(crate::plugin_runtime::Manager::new(vec![plugin]));
     h.app.plugins.as_mut().unwrap().sync(&h.app.applied);
+    let identity = crate::engine::identity(&h.app.config.profiles[h.app.config.active].name, &h.app.config.page, 0);
+    assert_eq!(crate::plugin_runtime::virtual_step_path(&h.app.applied, &crate::plugin_runtime::virtual_context(&identity, &[0])), Some((0, vec![0])));
     h.app.start_workshop_run(false);
     let deadline = Instant::now() + Duration::from_secs(20);
     loop {
@@ -2398,6 +2400,8 @@ fn plugin_action_two_installed_plugins_run_in_sequence() {
     h.app.applied = h.app.config.clone();
     h.app.plugins = Some(crate::plugin_runtime::Manager::new(vec![first, second]));
     h.app.plugins.as_mut().unwrap().sync(&h.app.applied);
+    let identity = crate::engine::identity(&h.app.config.profiles[h.app.config.active].name, &h.app.config.page, 0);
+    assert_eq!(crate::plugin_runtime::virtual_step_path(&h.app.applied, &crate::plugin_runtime::virtual_context(&identity, &[0])), Some((0, vec![0])));
     h.app.start_workshop_run(false);
     let deadline = Instant::now() + Duration::from_secs(20);
     let mut first_seen = false;
