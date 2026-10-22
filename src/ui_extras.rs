@@ -296,6 +296,17 @@ fn palette(ui: &mut egui::Ui, search: &str, depth: usize, advanced: bool, keyboa
 fn simple_fields_visible(step: &Step, advanced: bool) -> bool {
     advanced || !matches!(step.active(), Step::AutoHotkey { .. })
 }
+/// Résumé avec les noms lisibles des plugins installés (« NovyDeck Clock › Stopwatch »).
+fn named_summary(step: &Step, plugins: &[crate::plugins::Plugin]) -> String {
+    if let Step::PluginAction { plugin, action, label, .. } = step.active() {
+        let owner = plugins.iter().find(|p| &p.uuid == plugin);
+        let plugin_name = owner.map(|p| p.display_name()).unwrap_or(plugin);
+        let action_name = owner.and_then(|p| p.actions.iter().find(|a| &a.uuid == action))
+            .map(|a| if a.name.is_empty() { action.as_str() } else { a.name.as_str() })
+            .unwrap_or_else(|| if label.is_empty() { action.as_str() } else { label.as_str() });
+        format!("{plugin_name} › {action_name}")
+    } else { block_summary(step) }
+}
 pub(super) fn block_summary(step: &Step) -> String {
     match step.active() {
         Step::PluginAction { plugin, action, label, .. } => crate::i18n::trf("Plugin {plugin} › {action}", &[("plugin",plugin),("action",&if label.is_empty(){action.clone()}else{label.clone()})]),
@@ -503,14 +514,7 @@ pub(super) fn block_editor(
                         block_glyph(ui, step, color);
                         let folded_id = egui::Id::new("block_fold").with(&path);
                         let folded = ui.data(|d| d.get_temp::<bool>(folded_id)).unwrap_or(true);
-                        let summary = if let Step::PluginAction { plugin, action, label, .. } = step.active() {
-                            let owner = plugins.iter().find(|p| &p.uuid == plugin);
-                            let plugin_name = owner.map(|p| p.display_name()).unwrap_or(plugin);
-                            let action_name = owner.and_then(|p| p.actions.iter().find(|a| &a.uuid == action))
-                                .map(|a| if a.name.is_empty() { action.as_str() } else { a.name.as_str() })
-                                .unwrap_or_else(|| if label.is_empty() { action.as_str() } else { label.as_str() });
-                            format!("{plugin_name} › {action_name}")
-                        } else { block_summary(step) };
+                        let summary = named_summary(step, plugins);
                         if ui.selectable_label(!folded, if summary.starts_with(step_label(step)) { summary.clone() } else { format!("{} · {}", step_label(step), summary) })
                             .on_hover_text(format!("{} — {}", step_label(step), summary)).clicked() {
                             ui.data_mut(|d| d.insert_temp(folded_id, !folded));
@@ -728,6 +732,7 @@ fn block_glyph(ui: &mut egui::Ui, step: &Step, color: Color32) {
 // A compact card tree; structural edits are applied only after the immutable render pass.
 fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection: &mut Option<Vec<usize>>,
     action: &mut Option<WorkshopAction>, insert_at: &mut Option<Vec<usize>>, config: &crate::model::Config,
+    plugins: &[crate::plugins::Plugin],
     ) {
     let p = theme::palette(ui.ctx());
     for (i, step) in steps.iter().enumerate() {
@@ -756,8 +761,9 @@ fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection
                     ui.horizontal(|ui| {
                         block_glyph(ui, step, color);
                         ui.colored_label(color, path.iter().step_by(2).map(|n| (n + 1).to_string()).collect::<Vec<_>>().join("."));
-                        let summary = block_summary(step);
-                        let title = if summary.starts_with(step_label(step)) { summary.clone() } else { format!("{} · {}", step_label(step), summary) };
+                        let summary = named_summary(step, plugins);
+                        // Le glyphe identifie déjà un bloc de plugin : « Plugin › action » suffit.
+                        let title = if summary.starts_with(step_label(step)) || matches!(step.active(), Step::PluginAction { .. }) { summary.clone() } else { format!("{} · {}", step_label(step), summary) };
                         let label = ui.add(egui::Button::new(egui::RichText::new(title)).selected(chosen)
                             .truncate().sense(egui::Sense::click_and_drag()))
                             .on_hover_text(crate::i18n::trf("{name} : {summary}. Cliquer pour afficher les propriétés ; glisser pour déplacer.", &[("name", &step_label(step)), ("summary", &summary)]));
@@ -794,7 +800,7 @@ fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection
                         ui.indent(branch, |ui| {
                             ui.label(RichText::new(match label { "RÉPÉTER" => crate::i18n::tr("RÉPÉTER"), "ÉTAT 1" => crate::i18n::tr("ÉTAT 1"), "ÉTAT 2" => crate::i18n::tr("ÉTAT 2"), "ALORS" => crate::i18n::tr("ALORS"), "SINON" => crate::i18n::tr("SINON"), _ => label }).small().color(p.muted));
                             let mut nested = path.clone(); nested.push(branch);
-                            sequence_cards(ui, children, &nested, selection, action, insert_at, config);
+                            sequence_cards(ui, children, &nested, selection, action, insert_at, config, plugins);
                         });
                     }
                 });
@@ -1074,7 +1080,7 @@ impl App {
                             if let Some(step) = step_mut(&mut self.config.keys_mut()[selected].steps, &path) {
                                 ui.label(RichText::new(crate::i18n::tr("Propriétés du bloc")).strong());
                                 ui.label(RichText::new(step_label(step)).strong());
-                                ui.label(block_summary(step));
+                                ui.label(named_summary(step, &installed_plugins));
                                  if !step.is_disabled() {
                                      if let Err(e) = validate_key(&Key { steps: vec![step.clone()], ..Key::default() }, &validation_config) {
                                          ui.colored_label(Color32::LIGHT_RED, crate::i18n::trf("À corriger : {e}", &[("e", &(e))] ));
@@ -1132,7 +1138,7 @@ impl App {
                         });
                         if ui.button(crate::i18n::tr("Demander à l'assistant")).clicked() { self.workshop_chat.open = true; }
                     } else {
-                        sequence_cards(ui, steps, &[], &mut selection, &mut action, &mut insert_at, &validation_config);
+                        sequence_cards(ui, steps, &[], &mut selection, &mut action, &mut insert_at, &validation_config, &installed_plugins);
                     }
                     ui.menu_button(crate::i18n::tr("+ Ajouter un bloc"), |ui| {
                         for &(category, kinds) in BLOCK_CATEGORIES {

@@ -2509,7 +2509,7 @@ fn readme_captures_plugin_store_workshop_and_startup() {
         super::plugin_market_ui::test_view(None);
         let grid = h.warm(size);
         h.png(size, grid, &out.join(format!("readme-store-{lang}.png")));
-        super::plugin_market_ui::test_view(Some("com.novydeck.googleassistant"));
+        super::plugin_market_ui::test_view(Some("com.novydeck.clock"));
         let detail = h.warm(size);
         h.png(size, detail, &out.join(format!("readme-store-detail-{lang}.png")));
         super::plugin_market_ui::test_view(None);
@@ -2541,15 +2541,19 @@ fn readme_captures_plugin_store_workshop_and_startup() {
         h.app.show_workflow = true;
         let first = h.warm(size);
         if let Some(category) = text_position(&first.shapes, "Plugins") { h.click(size, category); }
+        let cards = h.warm(size);
+        let google_card = format!("{} › {}", google.display_name(), google.actions[0].name);
+        let card = text_position(&cards.shapes, &google_card).expect("carte nommée du plugin Google");
+        h.click(size, card);
         let workshop = h.warm(size);
+        assert!(text_position(&workshop.shapes, &format!("{} › {}", clock.display_name(), "Stopwatch")).is_some(), "carte nommée du plugin Horloge");
         h.png(size, workshop, &out.join(format!("readme-workshop-plugins-{lang}.png")));
         drop(h);
         // 3. Réglages : démarrage avec Windows en mode réduit.
         let mut h = Harness::new();
         h.app.preferences.start_with_windows = true;
         h.app.preferences.start_minimized = true;
-        h.app.settings = true;
-        h.app.settings_tab = 0;
+        h.app.show_desktop_settings = true;
         let settings = h.warm(vec2(1366.0, 768.0));
         h.png(vec2(1366.0, 768.0), settings, &out.join(format!("readme-start-minimized-{lang}.png")));
     }
