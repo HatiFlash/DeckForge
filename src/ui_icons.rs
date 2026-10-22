@@ -19,7 +19,7 @@ impl Target {
             .get(self.profile)
             .and_then(|p| p.keys_at(&self.page))
             .and_then(|keys| keys.get(self.key))
-            .ok_or_else(|| "La touche n’existe plus. Rouvre la galerie.".into())
+            .ok_or_else(|| crate::i18n::tr("La touche n’existe plus. Rouvre la galerie.").into())
     }
     pub(super) fn image<'a>(&self, c: &'a Config) -> Result<&'a str, String> {
         let key = self.binding(c)?;
@@ -32,16 +32,16 @@ impl Target {
                     second_icon,
                     ..
                 }) => Ok(if *state == 0 { first_icon } else { second_icon }),
-                _ => Err("Le bloc audio a changé. Rouvre la galerie depuis ce bloc.".into()),
+                _ => Err(crate::i18n::tr("Le bloc audio a changé. Rouvre la galerie depuis ce bloc.").into()),
             },
         }
     }
     pub(super) fn label(&self, c: &Config) -> String {
-        let base = format!("Touche {:02}", self.key + 1);
+        let base = crate::i18n::trf("Touche {key}", &[("key", &format!("{:02}", self.key + 1))]);
         match &self.destination {
             Destination::Key => base,
-            Destination::State(true) => format!("{base} · Quand c'est vrai"),
-            Destination::State(false) => format!("{base} · Sinon"),
+            Destination::State(true) => crate::i18n::trf("{base} · Quand c'est vrai", &[("base", &base)]),
+            Destination::State(false) => crate::i18n::trf("{base} · Sinon", &[("base", &base)]),
             Destination::Audio { path, state } => {
                 let label = self
                     .binding(c)
@@ -64,18 +64,10 @@ impl Target {
                         }
                     })
                     .unwrap_or("");
-                format!(
-                    "{base} · {}",
-                    if label.is_empty() {
-                        if *state == 0 {
-                            "État 1"
-                        } else {
-                            "État 2"
-                        }
-                    } else {
-                        label
-                    }
-                )
+                let state_label = if label.is_empty() {
+                    if *state == 0 { crate::i18n::tr("État 1") } else { crate::i18n::tr("État 2") }
+                } else { label };
+                crate::i18n::trf("{base} · {label}", &[("base", &base), ("label", &state_label)])
             }
         }
     }
@@ -85,11 +77,11 @@ impl Target {
             .get_mut(self.profile)
             .and_then(|p| p.keys_at_mut(&self.page))
             .and_then(|keys| keys.get_mut(self.key))
-            .ok_or("La touche n’existe plus. Rouvre la galerie.")?;
+            .ok_or(crate::i18n::tr("La touche n’existe plus. Rouvre la galerie."))?;
         match &self.destination {
             Destination::Key => key.image = image,
             Destination::State(active) => {
-                let display = key.state_display.as_mut().ok_or("Affichage selon l'état désactivé")?;
+                let display = key.state_display.as_mut().ok_or(crate::i18n::tr("Affichage selon l'état désactivé"))?;
                 (if *active { &mut display.on } else { &mut display.off }).image = Some(image);
             },
             Destination::Audio { path, state } => match extras::step_mut(&mut key.steps, path) {
@@ -100,7 +92,7 @@ impl Target {
                 }) => {
                     *if *state == 0 { first_icon } else { second_icon } = image;
                 }
-                _ => return Err("Le bloc audio a changé. Rouvre la galerie depuis ce bloc.".into()),
+                _ => return Err(crate::i18n::tr("Le bloc audio a changé. Rouvre la galerie depuis ce bloc.").into()),
             },
         }
         Ok(())
@@ -261,23 +253,23 @@ impl App {
         let mut rescan = false;
         let mut marketplace = false;
         let mut switch_target = None;
-        egui::Window::new("Icônes et extensions").open(&mut open).default_width(780.0).default_height(610.0).show(ctx,|ui|{
-            ui.horizontal(|ui|{if iconset::tab(ui,self.asset_tab==0,Ico::Picture,"Icônes").clicked(){self.asset_tab=0;}if iconset::tab(ui,self.asset_tab==1,Ico::Plugin,"Plugins installés").clicked(){self.asset_tab=1;}ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{if ui.button("Terminé").clicked(){done=true;}if ui.button("Marketplace Elgato ↗").clicked(){marketplace=true;}});});
+        egui::Window::new(crate::i18n::tr("Icônes et extensions")).open(&mut open).default_width(780.0).default_height(610.0).show(ctx,|ui|{
+            ui.horizontal(|ui|{if iconset::tab(ui,self.asset_tab==0,Ico::Picture,crate::i18n::tr("Icônes")).clicked(){self.asset_tab=0;}if iconset::tab(ui,self.asset_tab==1,Ico::Plugin,crate::i18n::tr("Plugins installés")).clicked(){self.asset_tab=1;}ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{if ui.button(crate::i18n::tr("Terminé")).clicked(){done=true;}if ui.button(crate::i18n::tr("Marketplace Elgato ↗")).clicked(){marketplace=true;}});});
             if self.asset_tab==0{
-                ui.label(RichText::new(format!("Choisir une icône · {title}")).strong());
+                ui.label(RichText::new(crate::i18n::trf("Choisir une icône · {title}", &[("title", &title)])).strong());
                 if let Destination::Audio{path,state}=&target.destination{
                     if let Ok(key)=target.binding(&self.config){if let Some(Step::AudioSwitch{first_label,second_label,..})=step_at(&key.steps,path){
-                        ui.horizontal(|ui|{for(i,label)in [first_label,second_label].into_iter().enumerate(){if ui.selectable_label(*state==i,format!("État {} · {label}",i+1)).clicked(){let mut next=target.clone();next.destination=Destination::Audio{path:path.clone(),state:i};switch_target=Some(next);}}});
+                        ui.horizontal(|ui|{for(i,label)in [first_label,second_label].into_iter().enumerate(){if ui.selectable_label(*state==i,crate::i18n::trf("État {state} · {label}", &[("state", &(i+1)), ("label", &label)])).clicked(){let mut next=target.clone();next.destination=Destination::Audio{path:path.clone(),state:i};switch_target=Some(next);}}});
                     }}
                     ui.horizontal(|ui|{for(id,label,kind)in crate::audio::BUILTIN_ICONS{
                         let(r,response)=ui.allocate_exact_size(Vec2::new(96.0,65.0),egui::Sense::click());theme::symbol(ui.painter(),r.center_top()+Vec2::new(0.0,24.0),27.0,*kind,accent());ui.painter().text(r.center_bottom()-Vec2::new(0.0,3.0),egui::Align2::CENTER_BOTTOM,*label,egui::FontId::proportional(11.0),theme::palette(ctx).ink);
                         selection_border(ui,r,selected.as_deref()==Some(std::path::Path::new(id)),response.hovered());if response.clicked(){choose=Some((id.to_string(),label.to_string()));}
                     }});
                 }
-                ui.horizontal_wrapped(|ui|{if ui.add(theme::primary(RichText::new("Importer une icône…").color(Color32::WHITE))).on_hover_text("Image, GIF ou vidéo depuis ton PC, appliquée à cette touche").clicked(){import_icon=true;}if ui.button("Importer un pack…").clicked(){import=true;}if ui.button("Parcourir un dossier…").clicked(){folder=true;}if ui.button("Actualiser").clicked(){rescan=true;}ui.label(format!("{} icônes",self.available_icons.len()));});
-                ui.add(egui::TextEdit::singleline(&mut self.icon_search).hint_text("Rechercher un nom ou un pack…").desired_width(f32::INFINITY));
+                ui.horizontal_wrapped(|ui|{if ui.add(theme::primary(RichText::new(crate::i18n::tr("Importer une icône…")).color(Color32::WHITE))).on_hover_text(crate::i18n::tr("Image, GIF ou vidéo depuis ton PC, appliquée à cette touche")).clicked(){import_icon=true;}if ui.button(crate::i18n::tr("Importer un pack…")).clicked(){import=true;}if ui.button(crate::i18n::tr("Parcourir un dossier…")).clicked(){folder=true;}if ui.button(crate::i18n::tr("Actualiser")).clicked(){rescan=true;}ui.label(crate::i18n::trf("{count} icônes", &[("count", &self.available_icons.len())]));});
+                ui.add(egui::TextEdit::singleline(&mut self.icon_search).hint_text(crate::i18n::tr("Rechercher un nom ou un pack…")).desired_width(f32::INFINITY));
                 let mut packs=self.available_icons.iter().map(|i|i.pack.clone()).collect::<Vec<_>>();packs.sort();packs.dedup();
-                egui::ComboBox::from_id_salt("icon_pack").selected_text(if self.icon_pack.is_empty(){"Tous les packs"}else{&self.icon_pack}).show_ui(ui,|ui|{ui.selectable_value(&mut self.icon_pack,String::new(),"Tous les packs");for name in packs{ui.selectable_value(&mut self.icon_pack,name.clone(),name);}});
+                egui::ComboBox::from_id_salt("icon_pack").selected_text(if self.icon_pack.is_empty(){crate::i18n::tr("Tous les packs")}else{&self.icon_pack}).show_ui(ui,|ui|{ui.selectable_value(&mut self.icon_pack,String::new(),crate::i18n::tr("Tous les packs"));for name in packs{ui.selectable_value(&mut self.icon_pack,name.clone(),name);}});
                 let query=self.icon_search.to_lowercase();let items=self.available_icons.iter().filter(|i|(self.icon_pack.is_empty()||self.icon_pack==i.pack)&&format!("{} {}",i.pack,i.name).to_lowercase().contains(&query)).cloned().collect::<Vec<_>>();
                 let columns=((ui.available_width()/92.0)as usize).max(1);let rows=items.len().div_ceil(columns);
                 egui::ScrollArea::vertical().id_salt("icons04").max_height(310.0).show_rows(ui,94.0,rows,|ui,range|{for row in range{ui.horizontal(|ui|{for icon in items.iter().skip(row*columns).take(columns){
@@ -292,11 +284,11 @@ impl App {
                     selection_border(ui,r,selected.as_deref()==Some(icon.path.as_path()),response.hovered());
                     if response.clicked(){choose=Some((path,icon.name.clone()));}response.on_hover_text(format!("{}\n{}",icon.name,icon.pack));
                 }});}});
-                if self.icon_notice.is_empty(){ui.label(RichText::new("Un clic applique l’icône immédiatement. Le contour bleu et la coche indiquent la sélection.").small());}else{ui.colored_label(GREEN,&self.icon_notice);}
-                ui.label(RichText::new("Packs locaux FIFINE et Elgato · PNG, JPEG et SVG. Pour de nouveaux packs, utilise le Marketplace puis actualise ou importe le fichier.").small());
+                if self.icon_notice.is_empty(){ui.label(RichText::new(crate::i18n::tr("Un clic applique l’icône immédiatement. Le contour bleu et la coche indiquent la sélection.")).small());}else{ui.colored_label(GREEN,&self.icon_notice);}
+                ui.label(RichText::new(crate::i18n::tr("Packs locaux FIFINE et Elgato · PNG, JPEG et SVG. Pour de nouveaux packs, utilise le Marketplace puis actualise ou importe le fichier.")).small());
             }else{
-                ui.label("Inventaire local des plugins FIFINE et Elgato. Aucun plugin n’est lancé pendant l’analyse.");ui.colored_label(Color32::from_rgb(228,165,82),"Les plugins tiers ne sont pas encore exécutables. L’import de profils convertit les actions prises en charge.");
-                egui::ScrollArea::vertical().max_height(440.0).show(ui,|ui|{for p in &self.available_plugins{ui.group(|ui|{ui.label(RichText::new(&p.name).strong());ui.label(format!("{} actions · {}",p.actions,p.id));ui.label(RichText::new(p.path.to_string_lossy()).small());});}});
+                ui.label(crate::i18n::tr("Inventaire local des plugins FIFINE et Elgato. Aucun plugin n’est lancé pendant l’analyse."));ui.colored_label(Color32::from_rgb(228,165,82),crate::i18n::tr("Les plugins tiers ne sont pas encore exécutables. L’import de profils convertit les actions prises en charge."));
+                egui::ScrollArea::vertical().max_height(440.0).show(ui,|ui|{for p in &self.available_plugins{ui.group(|ui|{ui.label(RichText::new(&p.name).strong());ui.label(crate::i18n::trf("{count} actions · {id}", &[("count", &p.actions), ("id", &p.id)]));ui.label(RichText::new(p.path.to_string_lossy()).small());});}});
             }
         });
         self.show_assets = open && !done;
@@ -339,7 +331,7 @@ impl App {
             let target=target.clone();
             std::thread::spawn(move || {
                 let Some(path)=rfd::FileDialog::new()
-                    .add_filter("Images et vidéos", &["png","jpg","jpeg","webp","bmp","ico","svg","gif","mp4","webm","mov","mkv","avi"])
+                    .add_filter(crate::i18n::tr("Images et vidéos"), &["png","jpg","jpeg","webp","bmp","ico","svg","gif","mp4","webm","mov","mkv","avi"])
                     .pick_file() else {return};
                 let svg=path.extension().is_some_and(|e|e.eq_ignore_ascii_case("svg"));
                 if matches!(target.destination, Destination::Key) && !svg {
@@ -357,7 +349,7 @@ impl App {
                 };
                 let _=tx.send(Some(Box::new(move |app: &mut App| {
                     let result=imported.and_then(|p|app.import_icon_from(&target,&p));
-                    if let Err(e)=result {app.fail(format!("Import impossible : {e}"));}
+                    if let Err(e)=result {app.fail(crate::i18n::trf("Import impossible : {error}", &[("error", &e)]));}
                 }) as DialogEffect));
             });
         }
@@ -366,23 +358,23 @@ impl App {
             let size=self.config.image_size;
             std::thread::spawn(move || {
                 let Some(path)=rfd::FileDialog::new()
-                    .add_filter("Images, vidéos et packs", &["png","jpg","jpeg","svg","gif","mp4","webm","mov","mkv","avi","zip","streamDeckIconPack","sdIconPack"])
+                    .add_filter(crate::i18n::tr("Images, vidéos et packs"), &["png","jpg","jpeg","svg","gif","mp4","webm","mov","mkv","avi","zip","streamDeckIconPack","sdIconPack"])
                     .pick_file() else {return};
                 let video=crate::assets::is_video(&path);
-                if video { let _=tx.send(Some(Box::new(|app: &mut App| app.log("Conversion de la vidéo…".into())) as DialogEffect)); }
+                if video { let _=tx.send(Some(Box::new(|app: &mut App| app.log(crate::i18n::tr("Conversion de la vidéo…").into())) as DialogEffect)); }
                 let result: Result<String, String> = if video {
-                    crate::assets::import_video(&path,&assets,size).map(|_| "Vidéo convertie en GIF animé.".into()).map_err(|e|e.to_string())
+                    crate::assets::import_video(&path,&assets,size).map(|_| crate::i18n::tr("Vidéo convertie en GIF animé.").into()).map_err(|e|e.to_string())
                 } else if path.extension().is_some_and(|e| ["zip","streamDeckIconPack","sdIconPack"].iter().any(|x| e.eq_ignore_ascii_case(x))) {
-                    crate::assets::import_pack(&path,&assets).map(|(count,skipped)|format!("{count} icônes importées - {skipped} images non prises en charge.")).map_err(|e|e.to_string())
+                    crate::assets::import_pack(&path,&assets).map(|(count,skipped)|crate::i18n::trf("{count} icônes importées - {skipped} images non prises en charge.", &[("count", &count), ("skipped", &skipped)])).map_err(|e|e.to_string())
                 } else {
                     std::fs::read(&path).map_err(|e|e.to_string()).and_then(|bytes|
                         crate::assets::import_image(&bytes,&assets,path.file_stem().and_then(|s|s.to_str()).unwrap_or("icone"))
-                            .map(|_| "Icône importée.".into()).map_err(|e|e.to_string()))
+                            .map(|_| crate::i18n::tr("Icône importée.").into()).map_err(|e|e.to_string()))
                 };
                 let icons=if result.is_ok(){Some(crate::assets::scan(&[assets]))}else{None};
                 let _=tx.send(Some(Box::new(move |app: &mut App| match result {
                     Ok(message)=>{if let Some(icons)=icons {app.available_icons=icons;} app.log(message);}
-                    Err(e)=>app.fail(format!("Import impossible : {e}")),
+                    Err(e)=>app.fail(crate::i18n::trf("Import impossible : {error}", &[("error", &e)])),
                 }) as DialogEffect));
             });
         }
@@ -403,7 +395,7 @@ impl App {
         self.icon_selected = Some(stored.clone());
         self.edited();
         self.reload_icons();
-        self.icon_notice = format!("Icône « {name} » importée et appliquée · {}", target.label(&self.config));
+        self.icon_notice = crate::i18n::trf("Icône « {name} » importée et appliquée · {target}", &[("name", &name), ("target", &target.label(&self.config))]);
         self.log(self.icon_notice.clone());
         Ok(stored)
     }
@@ -411,12 +403,12 @@ impl App {
         let target = self
             .icon_target
             .clone()
-            .ok_or("Sélectionne d’abord une touche.")?;
+            .ok_or(crate::i18n::tr("Sélectionne d’abord une touche."))?;
         // Check the destination before copying. No assignment can silently target another key.
         target.image(&self.config)?;
         let assigned = if crate::audio::builtin_kind(path).is_some() {
             if matches!(target.destination, Destination::Key) {
-                return Err("Les icônes d’état se choisissent depuis le bloc audio.".into());
+                return Err(crate::i18n::tr("Les icônes d’état se choisissent depuis le bloc audio.").into());
             }
             path.into()
         } else {
@@ -433,9 +425,9 @@ impl App {
         target.assign(&mut self.config, assigned)?;
         self.icon_selected = Some(PathBuf::from(path));
         self.edited();
-        self.icon_notice = format!(
-            "Icône « {name} » appliquée · {}",
-            target.label(&self.config)
+        self.icon_notice = crate::i18n::trf(
+            "Icône « {name} » appliquée · {target}",
+            &[("name", &name), ("target", &target.label(&self.config))]
         );
         self.log(self.icon_notice.clone());
         Ok(())
@@ -509,8 +501,8 @@ pub(super) fn audio_options(
         let palette = theme::palette(ui.ctx());
         ui.horizontal(|ui| {
             ui.label("Audio");
-            changed |= ui.selectable_value(input, false, "Sortie").changed();
-            changed |= ui.selectable_value(input, true, "Micro / entrée").changed();
+            changed |= ui.selectable_value(input, false, crate::i18n::tr("Sortie")).changed();
+            changed |= ui.selectable_value(input, true, crate::i18n::tr("Micro / entrée")).changed();
         });
         let active = if *input { &audio.input } else { &audio.output };
         ui.columns(2, |columns| {
@@ -554,17 +546,12 @@ pub(super) fn audio_options(
                                 if response.clicked() {
                                     *pick = Some(state);
                                 }
-                                response.on_hover_text("Choisir l’icône de cet état");
+                                response.on_hover_text(crate::i18n::tr("Choisir l’icône de cet état"));
                                 ui.vertical(|ui| {
                                     ui.label(
-                                        RichText::new(format!(
-                                            "État {}{}",
-                                            state + 1,
-                                            if !id.is_empty() && active == id {
-                                                " · Actif"
-                                            } else {
-                                                ""
-                                            }
+                                        RichText::new(crate::i18n::trf(
+                                            "État {state}{active}",
+                                            &[("state", &(state + 1)), ("active", &(if !id.is_empty() && active == id { crate::i18n::tr(" · Actif") } else { "" }))]
                                         ))
                                         .small()
                                         .strong(),
@@ -586,7 +573,7 @@ pub(super) fn audio_options(
                                         .iter()
                                         .find(|d| d.id == *id)
                                         .map(|d| d.name.as_str())
-                                        .unwrap_or("Choisir le périphérique…"),
+                                        .unwrap_or(crate::i18n::tr("Choisir le périphérique…")),
                                 )
                                 .show_ui(ui, |ui| {
                                     for d in audio.devices.iter().filter(|d| d.input == *input) {
@@ -596,13 +583,13 @@ pub(super) fn audio_options(
                                     }
                                 });
                             ui.horizontal_wrapped(|ui| {
-                                if ui.small_button("Galerie").clicked() {
+                                if ui.small_button(crate::i18n::tr("Galerie")).clicked() {
                                     *pick = Some(state);
                                 }
-                                if ui.small_button("Fichier…").clicked() {
+                                if ui.small_button(crate::i18n::tr("Fichier…")).clicked() {
                                     let tx=tx.clone();let target=target.clone();
                                     std::thread::spawn(move || {
-                                        let path=rfd::FileDialog::new().add_filter("Image", &["png","jpg","jpeg"]).pick_file();
+                                        let path=rfd::FileDialog::new().add_filter(crate::i18n::tr("Image"), &["png","jpg","jpeg"]).pick_file();
                                         let _=tx.send(path.map(|path| Box::new(move |app: &mut App| {
                                             let (profile,page,key,step_path)=target;
                                             if let Some(Step::AudioSwitch {first_icon,second_icon,..})=
@@ -614,7 +601,7 @@ pub(super) fn audio_options(
                                         }) as DialogEffect));
                                     });
                                 }
-                                if ui.small_button("Par défaut").clicked() {
+                                if ui.small_button(crate::i18n::tr("Par défaut")).clicked() {
                                     icon.clear();
                                     changed = true;
                                 }

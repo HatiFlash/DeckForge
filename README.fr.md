@@ -100,6 +100,30 @@ Importez les archives `.streamDeckPlugin` et `.sdPlugin` depuis le magasin inté
 
 Les exécutables natifs C++/Rust/C#, les scripts Node.js (`@elgato/streamdeck` v2) et les plugins avec moteur HTML (`Runtime::Html`) sont pris en charge. Les inspecteurs de propriétés HTML s'exécutent dans un sous-processus WebView2 isolé (`--isolated-inspector`) derrière un proxy loopback restreint. Les composants `sdpi-components` v3/v4 et BarRaider EasyPI sont embarqués hors ligne, avec intégration du thème sombre. Les réglages se synchronisent dans les deux sens (`setSettings`, `setGlobalSettings`) entre l'interface et le matériel. Les plugins Elgato chiffrés ne sont pas pris en charge.
 
+### Magasin de plugins et bibliothèque communautaire
+
+Ouvrez **Bibliothèque → Plugins**. L'onglet comporte deux parties :
+
+1. **Installés dans NovyDeck** : les plugins déjà importés depuis un fichier, un dossier ou le catalogue intégré. Glissez leurs actions sur une touche comme n'importe quelle autre action.
+2. **Communauté** : un annuaire public de plugins tiers maintenu dans [HatiFlash/novydeck-plugins](https://github.com/HatiFlash/novydeck-plugins).
+
+Fonctionnement de la bibliothèque communautaire :
+
+- NovyDeck reste hors ligne tant que vous n'avez pas cliqué sur **Se connecter à la bibliothèque** ; il télécharge alors uniquement le catalogue (`registry.json`) depuis GitHub.
+- Chaque carte indique le nom, la version, l'auteur, la licence, les decks testés et la version minimale de NovyDeck. Les entrées portent la mention **Communauté — non vérifié**.
+- **Installer…** ouvre une confirmation avec l'adresse de téléchargement et l'empreinte SHA-256 attendue. NovyDeck télécharge l'archive, vérifie son empreinte et l'importe seulement ensuite. Une empreinte identique prouve que le fichier est bien celui référencé, pas que le code tiers est sûr : n'installez que des plugins de confiance.
+
+```mermaid
+flowchart LR
+  A[Auteur du plugin] -->|pull request| B[Registre novydeck-plugins]
+  B -->|CI : schéma, téléchargement, SHA-256, contrôle ZIP| C[Relecture et fusion par le mainteneur]
+  C --> D[registry.json]
+  D -->|après votre accord| E[NovyDeck : Bibliothèque → Plugins → Communauté]
+  E -->|confirmation + SHA-256 vérifié| F[Plugin importé]
+```
+
+**Partager votre plugin :** publiez un `.streamDeckPlugin` (ou un `.zip` contenant un dossier `.sdPlugin`) à une adresse HTTPS stable, calculez son SHA-256 (`certutil -hashfile fichier SHA256` sous Windows), ajoutez une entrée à `registry.json` selon le [schéma](https://github.com/HatiFlash/novydeck-plugins/blob/main/schema/registry.schema.json) et ouvrez une pull request. La CI vérifie l'entrée automatiquement et le mainteneur décide de la publication. Guide complet : [CONTRIBUTING.fr.md](https://github.com/HatiFlash/novydeck-plugins/blob/main/CONTRIBUTING.fr.md). Le bouton **Proposer un plugin** de l'application ouvre la même page.
+
 ### Médias et recadrage
 
 Recadrez images et vidéos sans modifier les originaux avant de les envoyer sur une touche : modes Remplir ou Ajuster/letterbox, zoom 0,5×–3,0×, recentrage et aperçu instantané sur la touche. Media Foundation sous Windows décode les vidéos courtes sans FFmpeg ; les GIF en boucle sont pris en charge. La galerie accepte les images PNG, JPEG, WebP et SVG transparents ainsi que les animations.
@@ -115,6 +139,10 @@ Le serveur Model Context Protocol intégré se connecte à Claude Desktop, Claud
 ### Interface et rendu
 
 L'interface utilise le rendu matériel wgpu (DirectX 12 / Vulkan, avec repli OpenGL). La grille des touches s'adapte à la taille de la fenêtre et à la résolution de l'écran. Les touches LCD peuvent afficher des images, des GIF animés et de courtes vidéos en boucle. Les profils sont organisables en dossiers et peuvent changer automatiquement au lancement d'une application.
+
+## Langues
+
+L'interface est disponible en **français** et en **anglais**. Au premier démarrage, NovyDeck suit la langue de Windows ; changez-la dans **Réglages → Langue**. Chaque langue est un simple fichier JSON dans [`res/i18n/`](res/i18n) : pour ajouter la vôtre, copiez `en.json`, traduisez les valeurs et ouvrez une pull request. Voir le [guide de traduction](docs/TRANSLATING.md).
 
 ## Confidentialité
 

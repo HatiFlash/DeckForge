@@ -68,29 +68,128 @@ const BLOCK_CATEGORIES: &[(&str, &[usize])] = &[
     ("Logique et répétitions", &[14, 15, 39]), ("Variables", &[16, 17, 42]),
     ("Navigation NovyDeck", &[7, 8, 9, 10, 11]), ("Avancé / AutoHotkey", &[18]),
 ];
+fn block_name(kind: usize) -> &'static str {
+    match kind {
+        0 => crate::i18n::tr("Raccourci clavier"),
+        1 => crate::i18n::tr("Saisir du texte"),
+        2 => crate::i18n::tr("Application"),
+        3 => crate::i18n::tr("Site web"),
+        4 => crate::i18n::tr("Média / volume"),
+        5 => crate::i18n::tr("Attendre"),
+        6 => crate::i18n::tr("Attendre une fenêtre"),
+        7 => crate::i18n::tr("Changer de profil"),
+        8 => crate::i18n::tr("Page suivante"),
+        9 => crate::i18n::tr("Page précédente"),
+        10 => crate::i18n::tr("Retour au dossier"),
+        11 => crate::i18n::tr("Page 1"),
+        12 => crate::i18n::tr("Créer un dossier"),
+        13 => crate::i18n::tr("Basculer l’audio"),
+        14 => crate::i18n::tr("Si une fenêtre est ouverte"),
+        15 => crate::i18n::tr("Répéter des blocs"),
+        16 => crate::i18n::tr("Définir une variable"),
+        17 => crate::i18n::tr("Si une variable correspond"),
+        18 => crate::i18n::tr("Script AutoHotkey"),
+        19 => crate::i18n::tr("OBS : scène"),
+        20 => crate::i18n::tr("OBS : enregistrement"),
+        21 => crate::i18n::tr("OBS : diffusion"),
+        22 => crate::i18n::tr("OBS : caméra"),
+        23 => crate::i18n::tr("OBS : replay"),
+        24 => crate::i18n::tr("OBS : micro"),
+        25 => crate::i18n::tr("OBS : source"),
+        26 => crate::i18n::tr("Fermer la fenêtre active"),
+        27 => crate::i18n::tr("Clic souris"),
+        28 => crate::i18n::tr("Déplacer la souris"),
+        29 => crate::i18n::tr("Défilement souris"),
+        30 => crate::i18n::tr("Jouer un son"),
+        31 => crate::i18n::tr("Arrêter les sons"),
+        32 => crate::i18n::tr("Luminosité du périphérique"),
+        33 => crate::i18n::tr("Veille du périphérique"),
+        34 => crate::i18n::tr("Envoyer en UDP"),
+        35 => crate::i18n::tr("Requête HTTP"),
+        36 => crate::i18n::tr("Touche à deux états"),
+        37 => crate::i18n::tr("Volume d’une application"),
+        38 => crate::i18n::tr("Volume d’un périphérique"),
+        39 => crate::i18n::tr("Si… sinon"),
+        40 => crate::i18n::tr("Attendre que…"),
+        41 => crate::i18n::tr("Notification"),
+        42 => crate::i18n::tr("Calculer"),
+        43 => crate::i18n::tr("Texte"),
+        44 => crate::i18n::tr("Presse-papiers"),
+        45 => crate::i18n::tr("Maintenir une touche"),
+        46 => crate::i18n::tr("Opération sur une fenêtre"),
+        _ => crate::automation::NAMES[kind],
+    }
+}
+pub(super) fn step_label(step: &Step) -> &'static str {
+    let name = step.name();
+    match name {
+        "Raccourci" => crate::i18n::tr("Raccourci"),
+        "Lancer une application" => crate::i18n::tr("Lancer une application"),
+        "Ouvrir un site" => crate::i18n::tr("Ouvrir un site"),
+        "Aller à une page" => crate::i18n::tr("Aller à une page"),
+        "Ouvrir un dossier" => crate::i18n::tr("Ouvrir un dossier"),
+        "Basculer le périphérique audio" => crate::i18n::tr("Basculer le périphérique audio"),
+        "Basculer entre deux actions" => crate::i18n::tr("Basculer entre deux actions"),
+        "Mettre le périphérique en veille" => crate::i18n::tr("Mettre le périphérique en veille"),
+        "OBS : caméra virtuelle" => crate::i18n::tr("OBS : caméra virtuelle"),
+        "OBS : couper une entrée" => crate::i18n::tr("OBS : couper une entrée"),
+        "OBS : visibilité de source" => crate::i18n::tr("OBS : visibilité de source"),
+        "Retour au dossier précédent" => crate::i18n::tr("Retour au dossier précédent"),
+        _ => crate::automation::NAMES.iter().position(|n| *n == name).map_or(name, block_name),
+    }
+}
+fn category_name(category: &str) -> &'static str {
+    match category {
+        "Clavier" => crate::i18n::tr("Clavier"),
+        "Streaming" => crate::i18n::tr("Streaming"),
+        "Système" => crate::i18n::tr("Système"),
+        "Texte" => crate::i18n::tr("Texte"),
+        "Applications et sites" => crate::i18n::tr("Applications et sites"),
+        "Médias et audio" => crate::i18n::tr("Médias et audio"),
+        "Fenêtres" => crate::i18n::tr("Fenêtres"),
+        "Attendre" => crate::i18n::tr("Attendre"),
+        "Notifications" => crate::i18n::tr("Notifications"),
+        "Logique et répétitions" => crate::i18n::tr("Logique et répétitions"),
+        "Variables" => crate::i18n::tr("Variables"),
+        "Navigation NovyDeck" => crate::i18n::tr("Navigation NovyDeck"),
+        "Avancé / AutoHotkey" => crate::i18n::tr("Avancé / AutoHotkey"),
+        _ => "",
+    }
+}
+fn template_name(index: usize) -> &'static str {
+    match index {
+        0 => crate::i18n::tr("Ouvrir une application puis un site"),
+        1 => crate::i18n::tr("Copier puis coller ailleurs"),
+        2 => crate::i18n::tr("Taper une signature"),
+        3 => crate::i18n::tr("Basculer casque / enceintes"),
+        4 => crate::i18n::tr("Mode travail"),
+        5 => crate::i18n::tr("Répéter une touche N fois"),
+        _ => "",
+    }
+}
 fn block_help(kind: usize) -> &'static str {
     match kind {
-        27 => "Clique à la position actuelle, ou à des coordonnées écran, zone client ou curseur.",
-        28 => "Déplace la souris dans l’écran, depuis le curseur ou dans la zone client capturée au déclenchement.",
-        29 => "Défile verticalement ou horizontalement ; simulation sans effet.",
-        46 => "Active, déplace ou redimensionne une fenêtre ; jamais NovyDeck sauf ciblage explicite par titre.",
-        45 => "Maintient des touches ; 0 ms jusqu’au bloc Relâcher, fin ou annulation de la macro.",
-        0 => "Appuie sur une combinaison de touches.", 1 => "Écrit du texte dans la fenêtre active ; accepte {nom} et les variables spéciales.",
-        2 => "Démarre un programme Windows (arguments interpolés).", 3 => "Ouvre une adresse web (gabarit interpolé).",
-        4 => "Commande la lecture et le volume.", 5 => "Attend avant le bloc suivant.",
-        6 => "Attend et peut activer une fenêtre.", 13 => "Bascule entre deux appareils audio.", 37 => "Règle uniquement les sessions audio de l’application ciblée.", 38 => "Règle le volume du périphérique (sortie ou microphone), et non celui d’une application.",
-        39 => "Évalue une condition en lecture seule ; exécute ALORS ou SINON.",
-        40 => "Attend une condition Windows en lecture seule, avec délai et bouton Arrêter.",
-        41 => "Affiche un message Windows sans voler le focus ; accepte les variables de macro." ,
-        14 => "Exécute des blocs si une fenêtre est ouverte.", 15 => "Rejoue plusieurs fois les blocs imbriqués.",
-        42 => "Calcule une valeur numérique dans une variable de la macro.",
-        43 => "Transforme une variable texte pendant cette macro, sans saisir au clavier.",
-        44 => "Copie, lit, vide, sauvegarde ou restaure le texte Unicode du presse-papiers.",
-        16 => "Enregistre une valeur pour cette exécution.", 17 => "Choisit des blocs selon une valeur.",
-        19..=25 => "Commande OBS Studio par WebSocket local (OBS 28 ou plus).",
-        32 => "Règle ou ajuste la luminosité du périphérique (0 à 100 %).",
-        33 => "Met le périphérique en veille ; le prochain appui le réveille.",
-        18 => "Exécute un script AutoHotkey v2.", _ => "Change la page, le dossier ou le profil affiché.",
+        27 => crate::i18n::tr("Clique à la position actuelle, ou à des coordonnées écran, zone client ou curseur."),
+        28 => crate::i18n::tr("Déplace la souris dans l’écran, depuis le curseur ou dans la zone client capturée au déclenchement."),
+        29 => crate::i18n::tr("Défile verticalement ou horizontalement ; simulation sans effet."),
+        46 => crate::i18n::tr("Active, déplace ou redimensionne une fenêtre ; jamais NovyDeck sauf ciblage explicite par titre."),
+        45 => crate::i18n::tr("Maintient des touches ; 0 ms jusqu’au bloc Relâcher, fin ou annulation de la macro."),
+        0 => crate::i18n::tr("Appuie sur une combinaison de touches."), 1 => crate::i18n::tr("Écrit du texte dans la fenêtre active ; accepte {nom} et les variables spéciales."),
+        2 => crate::i18n::tr("Démarre un programme Windows (arguments interpolés)."), 3 => crate::i18n::tr("Ouvre une adresse web (gabarit interpolé)."),
+        4 => crate::i18n::tr("Commande la lecture et le volume."), 5 => crate::i18n::tr("Attend avant le bloc suivant."),
+        6 => crate::i18n::tr("Attend et peut activer une fenêtre."), 13 => crate::i18n::tr("Bascule entre deux appareils audio."), 37 => crate::i18n::tr("Règle uniquement les sessions audio de l’application ciblée."), 38 => crate::i18n::tr("Règle le volume du périphérique (sortie ou microphone), et non celui d’une application."),
+        39 => crate::i18n::tr("Évalue une condition en lecture seule ; exécute ALORS ou SINON."),
+        40 => crate::i18n::tr("Attend une condition Windows en lecture seule, avec délai et bouton Arrêter."),
+        41 => crate::i18n::tr("Affiche un message Windows sans voler le focus ; accepte les variables de macro.") ,
+        14 => crate::i18n::tr("Exécute des blocs si une fenêtre est ouverte."), 15 => crate::i18n::tr("Rejoue plusieurs fois les blocs imbriqués."),
+        42 => crate::i18n::tr("Calcule une valeur numérique dans une variable de la macro."),
+        43 => crate::i18n::tr("Transforme une variable texte pendant cette macro, sans saisir au clavier."),
+        44 => crate::i18n::tr("Copie, lit, vide, sauvegarde ou restaure le texte Unicode du presse-papiers."),
+        16 => crate::i18n::tr("Enregistre une valeur pour cette exécution."), 17 => crate::i18n::tr("Choisit des blocs selon une valeur."),
+        19..=25 => crate::i18n::tr("Commande OBS Studio par WebSocket local (OBS 28 ou plus)."),
+        32 => crate::i18n::tr("Règle ou ajuste la luminosité du périphérique (0 à 100 %)."),
+        33 => crate::i18n::tr("Met le périphérique en veille ; le prochain appui le réveille."),
+        18 => crate::i18n::tr("Exécute un script AutoHotkey v2."), _ => crate::i18n::tr("Change la page, le dossier ou le profil affiché."),
     }
 }
 fn matches_palette(kind: usize, category: &str, search: &str) -> bool {
@@ -105,7 +204,7 @@ fn matches_palette(kind: usize, category: &str, search: &str) -> bool {
         15 => "multi action",
         _ => "",
     };
-    search.is_empty() || format!("{} {} {}", category, crate::automation::NAMES[kind], aliases).to_lowercase().contains(&search.to_lowercase())
+    search.is_empty() || format!("{} {} {}", category, block_name(kind), aliases).to_lowercase().contains(&search.to_lowercase())
 }
 fn palette(ui: &mut egui::Ui, search: &str, depth: usize, advanced: bool, keyboard: Option<usize>) -> Option<usize> {
     let mut selected = None;
@@ -118,7 +217,7 @@ fn palette(ui: &mut egui::Ui, search: &str, depth: usize, advanced: bool, keyboa
         }).collect();
         if matches.is_empty() { continue; }
         found = true;
-        egui::CollapsingHeader::new(category).default_open(search.is_empty() && category == "Clavier" || !search.is_empty())
+        egui::CollapsingHeader::new(category_name(category)).default_open(search.is_empty() && category == "Clavier" || !search.is_empty())
             .show(ui, |ui| {
                 for kind in matches {
                     ui.horizontal(|ui| {
@@ -128,8 +227,8 @@ fn palette(ui: &mut egui::Ui, search: &str, depth: usize, advanced: bool, keyboa
                             ui.add(image);
                         }
                         let _ = category;
-                        let label = if keyboard == Some(index) { format!("> {}", crate::automation::NAMES[kind]) }
-                            else { crate::automation::NAMES[kind].to_owned() };
+                        let label = if keyboard == Some(index) { format!("> {}", block_name(kind)) }
+                            else { block_name(kind).to_owned() };
                         if ui.add(egui::Button::new(label).frame(false))
                             .on_hover_text(block_help(kind)).clicked() { selected = Some(kind); }
                         index += 1;
@@ -137,7 +236,7 @@ fn palette(ui: &mut egui::Ui, search: &str, depth: usize, advanced: bool, keyboa
                 }
             });
     }
-    if !found { ui.label("Aucun bloc trouvé. Essaie un autre mot-clé."); }
+    if !found { ui.label(crate::i18n::tr("Aucun bloc trouvé. Essaie un autre mot-clé.")); }
     selected
 }
 fn simple_fields_visible(step: &Step, advanced: bool) -> bool {
@@ -150,30 +249,30 @@ pub(super) fn block_summary(step: &Step) -> String {
         Step::WindowOp { .. } => step.window_op_summary().unwrap_or_default(),
         Step::AppVolume { .. } => step.app_volume_summary().unwrap_or_default(),
         Step::DeviceVolume { .. } => step.device_volume_summary().unwrap_or_default(),
-        Step::ObsScene { name } => format!("OBS : scène {name}"),
+        Step::ObsScene { name } => crate::i18n::trf("OBS : scène {name}", &[("name", &(name))] ),
         Step::ObsRecord { mode } | Step::ObsStream { mode } | Step::ObsVirtualCam { mode } | Step::ObsReplay { mode } => format!("{} : {mode}", step.name()),
-        Step::ObsMute { input, mode } => format!("OBS : {input} ({mode})"),
-        Step::ObsSourceVisibility { scene, source, mode } => format!("OBS : {scene} / {source} ({mode})"),
-        Step::Hotkey { keys } => format!("Appuyer sur {keys}"),
+        Step::ObsMute { input, mode } => crate::i18n::trf("OBS : {input} ({mode})", &[("input", &(input)), ("mode", &(mode))] ),
+        Step::ObsSourceVisibility { scene, source, mode } => crate::i18n::trf("OBS : {scene} / {source} ({mode})", &[("scene", &(scene)), ("source", &(source)), ("mode", &(mode))] ),
+        Step::Hotkey { keys } => crate::i18n::trf("Appuyer sur {keys}", &[("keys", &(keys))] ),
         Step::KeyHold { .. } => step.key_hold_summary().unwrap_or_default(),
-        Step::Delay { ms } => format!("Attendre {ms} ms"),
-        Step::Url { url } => format!("Ouvrir {url}"),
-        Step::Text { text } => format!("Écrire {}", text.chars().take(50).collect::<String>()),
-        Step::Launch { program, .. } => format!("Lancer {program}"),
-        Step::Toggle { a, b } => format!("Basculer : {} / {} blocs", a.len(), b.len()),
-        Step::Repeat { count, steps } => format!("Répéter {count} fois ({} blocs)", steps.len()),
-        Step::UdpSend { host, port, .. } => format!("UDP : {host}:{port}"),
-        Step::HttpRequest { method, url, .. } => format!("HTTP {method} : {url}"),
-        Step::D6Brightness { mode, value } => format!("Luminosité : {mode} {value} %"),
-        Step::IfCondition { condition, .. } => format!("Si {}", condition.summary()),
-        Step::WaitUntil { condition, timeout_ms, .. } => format!("Attendre que {} ({} ms max)", condition.summary(), timeout_ms),
-        Step::Notify { title, message } => format!("Notification « {title} » : {}", message.chars().take(50).collect::<String>()),
-        Step::IfWindow { title, .. } => format!("Si la fenêtre {title} est ouverte"),
-        Step::IfVariable { name, value, .. } => format!("Si {name} vaut {value}"),
+        Step::Delay { ms } => crate::i18n::trf("Attendre {ms} ms", &[("ms", &(ms))] ),
+        Step::Url { url } => crate::i18n::trf("Ouvrir {url}", &[("url", &(url))] ),
+        Step::Text { text } => crate::i18n::trf("Écrire {text}", &[("text", &(text.chars().take(50).collect::<String>()))] ),
+        Step::Launch { program, .. } => crate::i18n::trf("Lancer {program}", &[("program", &(program))] ),
+        Step::Toggle { a, b } => crate::i18n::trf("Basculer : {a} / {b} blocs", &[("a", &(a.len())), ("b", &(b.len()))] ),
+        Step::Repeat { count, steps } => crate::i18n::trf("Répéter {count} fois ({blocks} blocs)", &[("count", &(count)), ("blocks", &(steps.len()))] ),
+        Step::UdpSend { host, port, .. } => crate::i18n::trf("UDP : {host}:{port}", &[("host", &(host)), ("port", &(port))] ),
+        Step::HttpRequest { method, url, .. } => crate::i18n::trf("HTTP {method} : {url}", &[("method", &(method)), ("url", &(url))] ),
+        Step::D6Brightness { mode, value } => crate::i18n::trf("Luminosité : {mode} {value} %", &[("mode", &(mode)), ("value", &(value))] ),
+        Step::IfCondition { condition, .. } => crate::i18n::trf("Si {condition}", &[("condition", &(condition.summary()))] ),
+        Step::WaitUntil { condition, timeout_ms, .. } => crate::i18n::trf("Attendre que {condition} ({timeout} ms max)", &[("condition", &(condition.summary())), ("timeout", &(timeout_ms))] ),
+        Step::Notify { title, message } => crate::i18n::trf("Notification « {title} » : {message}", &[("title", &(title)), ("message", &(message.chars().take(50).collect::<String>()))] ),
+        Step::IfWindow { title, .. } => crate::i18n::trf("Si la fenêtre {title} est ouverte", &[("title", &(title))] ),
+        Step::IfVariable { name, value, .. } => crate::i18n::trf("Si {name} vaut {value}", &[("name", &(name)), ("value", &(value))] ),
         Step::Math { .. } => step.math_summary().unwrap_or_default(),
         Step::TextOp { .. } => step.text_op_summary().unwrap_or_default(),
-        Step::SetVariable { name, value, persistent } => format!("Mémoriser {name} = {value}{}", if *persistent { " (enregistrée)" } else { "" }),
-        Step::WaitWindow { title, .. } => format!("Attendre la fenêtre {title}"),
+        Step::SetVariable { name, value, persistent } => crate::i18n::trf("Mémoriser {name} = {value}{persistent}", &[("name", &(name)), ("value", &(value)), ("persistent", &(if *persistent { crate::i18n::tr(" (enregistrée)") } else { "" }))] ),
+        Step::WaitWindow { title, .. } => crate::i18n::trf("Attendre la fenêtre {title}", &[("title", &(title))] ),
         _ => step.name().to_owned(),
     }
 }
@@ -214,9 +313,9 @@ fn template(index: usize) -> Vec<Step> {
     }
 }
 fn template_menu(ui: &mut egui::Ui, choice: &mut Option<usize>) {
-    iconset::menu(ui, Ico::Template, "Modèles", |ui| {
+    iconset::menu(ui, Ico::Template, crate::i18n::tr("Modèles"), |ui| {
         for (i, name) in TEMPLATE_NAMES.iter().enumerate() {
-            if ui.button(*name).clicked() { *choice = Some(i); ui.close_menu(); }
+            if ui.button(template_name(i)).clicked() { *choice = Some(i); ui.close_menu(); }
         }
     });
 }
@@ -233,21 +332,21 @@ fn simulation_trace(steps: &[Step]) -> Vec<TraceLine> {
             let mut path = parent.to_vec(); path.push(i);
             let prefix = path.iter().step_by(2).map(|n| (n + 1).to_string()).collect::<Vec<_>>().join(".");
             if step.is_disabled() {
-                out.push(TraceLine { path, text: format!("{prefix} · {} — désactivé, sauté", block_summary(step)) });
+                out.push(TraceLine { path, text: crate::i18n::trf("{prefix} · {block} — désactivé, sauté", &[("prefix", &(prefix)), ("block", &(block_summary(step)))] ) });
                 continue;
             }
             let detail = match step {
-                Step::Delay { ms } => format!("{ms} ms simulées"),
-                Step::WaitWindow { timeout_ms, .. } => format!("jusqu'à {timeout_ms} ms (sans attendre)"),
-                Step::WaitUntil { .. } => "condition lue une fois ; sans attendre".into(),
-                Step::IfCondition { .. } => "ALORS et SINON explorés ; condition lue sans effet".into(),
-                Step::IfWindow { .. } => "ALORS et SINON explorés (fenêtre non évaluée)".into(),
-                Step::IfVariable { .. } => "ALORS et SINON explorés (valeur non évaluée)".into(),
-                Step::Repeat { count, .. } => format!("1 itération simulée sur {count} prévues"),
-                Step::Toggle { .. } => "États 1 et 2 explorés sans effet".into(),
-                _ => "0 ms (action non exécutée)".into(),
+                Step::Delay { ms } => crate::i18n::trf("{ms} ms simulées", &[("ms", &(ms))] ),
+                Step::WaitWindow { timeout_ms, .. } => crate::i18n::trf("jusqu'à {timeout_ms} ms (sans attendre)", &[("timeout_ms", &(timeout_ms))] ),
+                Step::WaitUntil { .. } => crate::i18n::tr("condition lue une fois ; sans attendre").into(),
+                Step::IfCondition { .. } => crate::i18n::tr("ALORS et SINON explorés ; condition lue sans effet").into(),
+                Step::IfWindow { .. } => crate::i18n::tr("ALORS et SINON explorés (fenêtre non évaluée)").into(),
+                Step::IfVariable { .. } => crate::i18n::tr("ALORS et SINON explorés (valeur non évaluée)").into(),
+                Step::Repeat { count, .. } => crate::i18n::trf("1 itération simulée sur {count} prévues", &[("count", &(count))] ),
+                Step::Toggle { .. } => crate::i18n::tr("États 1 et 2 explorés sans effet").into(),
+                _ => crate::i18n::tr("0 ms (action non exécutée)").into(),
             };
-            out.push(TraceLine { path: path.clone(), text: format!("{prefix} · {} — {detail}", block_summary(step)) });
+            out.push(TraceLine { path: path.clone(), text: crate::i18n::trf("{prefix} · {block} — {detail}", &[("prefix", &(prefix)), ("block", &(block_summary(step))), ("detail", &(detail))] ) });
             match step {
                 Step::IfCondition { then_steps, else_steps, .. } | Step::IfWindow { then_steps, else_steps, .. } | Step::IfVariable { then_steps, else_steps, .. } => {
                     let mut p = path.clone(); p.push(0); walk(then_steps, &p, out, limit);
@@ -296,12 +395,12 @@ pub(super) fn block_editor(
         path.push(i);
         ui.push_id(i, |ui| {
             if i > 0 {
-                ui.menu_button("+ Insérer ici", |ui| {
+                ui.menu_button(crate::i18n::tr("+ Insérer ici"), |ui| {
                     for &(category, kinds) in BLOCK_CATEGORIES {
-                        ui.menu_button(category, |ui| {
+                        ui.menu_button(category_name(category), |ui| {
                             for &kind in kinds {
                                 if depth > 0 && (7..=11).contains(&kind) || !advanced && kind == 18 { continue; }
-                                if ui.button(crate::automation::NAMES[kind]).on_hover_text(block_help(kind)).clicked() {
+                                if ui.button(block_name(kind)).on_hover_text(block_help(kind)).clicked() {
                                     insertion = Some((i, kind));
                                     ui.close_menu();
                                 }
@@ -345,22 +444,22 @@ pub(super) fn block_editor(
                         let folded_id = egui::Id::new("block_fold").with(&path);
                         let folded = ui.data(|d| d.get_temp::<bool>(folded_id)).unwrap_or(true);
                         let summary = block_summary(step);
-                        if ui.selectable_label(!folded, if summary.starts_with(step.name()) { summary.clone() } else { format!("{} · {}", step.name(), summary) })
-                            .on_hover_text(format!("{} — {}", step.name(), summary)).clicked() {
+                        if ui.selectable_label(!folded, if summary.starts_with(step_label(step)) { summary.clone() } else { format!("{} · {}", step_label(step), summary) })
+                            .on_hover_text(format!("{} — {}", step_label(step), summary)).clicked() {
                             ui.data_mut(|d| d.insert_temp(folded_id, !folded));
                             if parent.is_empty() {
                                 ui.data_mut(|d| d.insert_temp(egui::Id::new("workshop_selected"), i));
                             }
                         }
                         ui.menu_button("...", |ui| {
-                            if ui.button("Dupliquer").clicked() { duplicate = Some(i); ui.close_menu(); }
-                            if ui.button("Retirer").clicked() { remove = Some(i); ui.close_menu(); }
-                            if ui.button(if disabled { "Activer" } else { "Désactiver" }).clicked() { toggle = Some(i); ui.close_menu(); }
-                            if ui.add_enabled(i > 0, egui::Button::new("Monter")).clicked() { movement = Some((i, i - 1)); ui.close_menu(); }
-                            if ui.add_enabled(i + 1 < step_count, egui::Button::new("Descendre")).clicked() { movement = Some((i, i + 1)); ui.close_menu(); }
+                            if ui.button(crate::i18n::tr("Dupliquer")).clicked() { duplicate = Some(i); ui.close_menu(); }
+                            if ui.button(crate::i18n::tr("Retirer")).clicked() { remove = Some(i); ui.close_menu(); }
+                            if ui.button(if disabled { crate::i18n::tr("Activer") } else { crate::i18n::tr("Désactiver") }).clicked() { toggle = Some(i); ui.close_menu(); }
+                            if ui.add_enabled(i > 0, egui::Button::new(crate::i18n::tr("Monter"))).clicked() { movement = Some((i, i - 1)); ui.close_menu(); }
+                            if ui.add_enabled(i + 1 < step_count, egui::Button::new(crate::i18n::tr("Descendre"))).clicked() { movement = Some((i, i + 1)); ui.close_menu(); }
                         });
                     });
-                    if let Some(e) = &error { if !disabled { ui.colored_label(Color32::from_rgb(255, 170, 70), format!("À compléter : {e}")); } }
+                    if let Some(e) = &error { if !disabled { ui.colored_label(Color32::from_rgb(255, 170, 70), crate::i18n::trf("À compléter : {e}", &[("e", &(e))] )); } }
                     if !advanced { ui.label(RichText::new(block_help(match step.active() {
                         Step::Hotkey { .. } => 0, Step::Text { .. } => 1, Step::Launch { .. } => 2,
                         Step::Url { .. } => 3, Step::Media { .. } => 4, Step::Delay { .. } => 5,
@@ -379,18 +478,18 @@ pub(super) fn block_editor(
                     if simple_fields_visible(step.active(), advanced) {
                         match step.active_mut() {
                             Step::Launch { program, .. } if !advanced => {
-                                ui.label("Programme");
+                                ui.label(crate::i18n::tr("Programme"));
                                 changed |= ui.text_edit_singleline(program).changed();
                             }
                             Step::WaitWindow { title, .. } if !advanced => {
-                                ui.label("Titre de la fenêtre");
+                                ui.label(crate::i18n::tr("Titre de la fenêtre"));
                                 changed |= ui.text_edit_singleline(title).changed();
                             }
                             _ => {
                                 changed |= edit_step(ui, step.active_mut(), profiles, pages, &mut capture, audio, &mut icon, tx, &(target.0,target.1.clone(),target.2,path.clone()));
                             }
                         }
-                    } else { ui.label("Paramètres AutoHotkey disponibles en mode Avancé."); }
+                    } else { ui.label(crate::i18n::tr("Paramètres AutoHotkey disponibles en mode Avancé.")); }
                     if let Some(state) = icon {
                         *pick_audio = Some((path.clone(), state));
                     }
@@ -413,7 +512,7 @@ pub(super) fn block_editor(
                                 [(0, "ALORS", then_steps), (1, "SINON", else_steps)]
                             {
                                 ui.add_space(8.0);
-                                ui.label(RichText::new(label).small().strong().color(color));
+                                ui.label(RichText::new(if branch == 0 { crate::i18n::tr("ALORS") } else { crate::i18n::tr("SINON") }).small().strong().color(color));
                                 let mut child = path.clone();
                                 child.push(branch);
                                 ui.indent(branch, |ui| {
@@ -438,7 +537,7 @@ pub(super) fn block_editor(
                         }
                         Step::Toggle { a, b } => {
                             for (branch, label, list) in [(0, "ÉTAT 1", a), (1, "ÉTAT 2", b)] {
-                                ui.label(label);
+                                ui.label(if branch == 0 { crate::i18n::tr("ÉTAT 1") } else { crate::i18n::tr("ÉTAT 2") });
                                 let mut child = path.clone(); child.push(branch);
                                 ui.indent(branch, |ui| { changed |= block_editor(ui, list, profiles, pages, audio, &child, record, depth + 1, running, pick_audio, tx, target, config, advanced); });
                             }
@@ -498,12 +597,12 @@ pub(super) fn block_editor(
         }
     }
     if depth <= 8 && steps.len() < 256 {
-        ui.menu_button("+ Ajouter un bloc", |ui| {
+        ui.menu_button(crate::i18n::tr("+ Ajouter un bloc"), |ui| {
             for (i, label) in crate::automation::NAMES.iter().enumerate() {
                 if i == 12 || depth > 0 && (7..=11).contains(&i) || !advanced && i == 18 {
                     continue;
                 }
-                if ui.button(*label).clicked() {
+                if ui.button(block_name(i)).clicked() {
                     steps.push(
                         catalog::action(
                             i,
@@ -587,26 +686,26 @@ fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection
                         block_glyph(ui, step, color);
                         ui.colored_label(color, path.iter().step_by(2).map(|n| (n + 1).to_string()).collect::<Vec<_>>().join("."));
                         let summary = block_summary(step);
-                        let title = if summary.starts_with(step.name()) { summary.clone() } else { format!("{} · {}", step.name(), summary) };
+                        let title = if summary.starts_with(step_label(step)) { summary.clone() } else { format!("{} · {}", step_label(step), summary) };
                         let label = ui.add(egui::Button::new(egui::RichText::new(title)).selected(chosen)
                             .truncate().sense(egui::Sense::click_and_drag()))
-                            .on_hover_text(format!("{} : {}. Cliquer pour afficher les propriétés ; glisser pour déplacer.", step.name(), summary));
+                            .on_hover_text(crate::i18n::trf("{name} : {summary}. Cliquer pour afficher les propriétés ; glisser pour déplacer.", &[("name", &step_label(step)), ("summary", &summary)]));
                         if label.clicked() { *selection = if chosen { None } else { Some(path.clone()) }; }
                         if label.drag_started() { ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("workshop_drag"), path.clone())); }
-                        if let Some(e) = &error { ui.colored_label(Color32::LIGHT_RED, "Erreur").on_hover_text(e.to_string()); }
+                        if let Some(e) = &error { ui.colored_label(Color32::LIGHT_RED, crate::i18n::tr("Erreur")).on_hover_text(e.to_string()); }
                         ui.menu_button("...", |ui| {
-                            if ui.button("Dupliquer").clicked() { *action = Some(WorkshopAction::Edit(crate::workshop_ops::Edit::Duplicate(path.clone()))); ui.close_menu(); }
-                            if ui.button("Supprimer").clicked() { *action = Some(WorkshopAction::Remove(path.clone())); ui.close_menu(); }
-                            if ui.add_enabled(i > 0, egui::Button::new("Monter")).clicked() {
+                            if ui.button(crate::i18n::tr("Dupliquer")).clicked() { *action = Some(WorkshopAction::Edit(crate::workshop_ops::Edit::Duplicate(path.clone()))); ui.close_menu(); }
+                            if ui.button(crate::i18n::tr("Supprimer")).clicked() { *action = Some(WorkshopAction::Remove(path.clone())); ui.close_menu(); }
+                            if ui.add_enabled(i > 0, egui::Button::new(crate::i18n::tr("Monter"))).clicked() {
                                 *action = Some(WorkshopAction::Edit(crate::workshop_ops::Edit::Move(path.clone(), i - 1))); ui.close_menu();
                             }
-                            if ui.add_enabled(i + 1 < steps.len(), egui::Button::new("Descendre")).clicked() {
+                            if ui.add_enabled(i + 1 < steps.len(), egui::Button::new(crate::i18n::tr("Descendre"))).clicked() {
                                 *action = Some(WorkshopAction::Edit(crate::workshop_ops::Edit::Move(path.clone(), i + 1))); ui.close_menu();
                             }
-                            if ui.button(if step.is_disabled() { "Réactiver" } else { "Désactiver" }).clicked() {
+                            if ui.button(if step.is_disabled() { crate::i18n::tr("Réactiver") } else { crate::i18n::tr("Désactiver") }).clicked() {
                                 *action = Some(WorkshopAction::Edit(crate::workshop_ops::Edit::Toggle(path.clone()))); ui.close_menu();
                             }
-                            if ui.button("Insérer un bloc après").clicked() {
+                            if ui.button(crate::i18n::tr("Insérer un bloc après")).clicked() {
                                 let mut dest = path.clone(); *dest.last_mut().unwrap() += 1;
                                 *insert_at = Some(dest); ui.close_menu();
                             }
@@ -622,7 +721,7 @@ fn sequence_cards(ui: &mut egui::Ui, steps: &[Step], parent: &[usize], selection
                     };
                     for (branch, (label, children)) in branches.into_iter().enumerate() {
                         ui.indent(branch, |ui| {
-                            ui.label(RichText::new(label).small().color(p.muted));
+                            ui.label(RichText::new(match label { "RÉPÉTER" => crate::i18n::tr("RÉPÉTER"), "ÉTAT 1" => crate::i18n::tr("ÉTAT 1"), "ÉTAT 2" => crate::i18n::tr("ÉTAT 2"), "ALORS" => crate::i18n::tr("ALORS"), "SINON" => crate::i18n::tr("SINON"), _ => label }).small().color(p.muted));
                             let mut nested = path.clone(); nested.push(branch);
                             sequence_cards(ui, children, &nested, selection, action, insert_at, config);
                         });
@@ -691,8 +790,8 @@ impl App {
     fn saved_variables_window(&mut self, ctx: &egui::Context) {
         if !self.show_saved_variables { return; }
         let mut open = self.show_saved_variables;
-        egui::Window::new("Variables enregistrées").open(&mut open).resizable(true).show(ctx, |ui| {
-            ui.label("Conservées dans variables.json ; {nom} les utilise dans les macros suivantes.");
+        egui::Window::new(crate::i18n::tr("Variables enregistrées")).open(&mut open).resizable(true).show(ctx, |ui| {
+            ui.label(crate::i18n::tr("Conservées dans variables.json ; {nom} les utilise dans les macros suivantes."));
             let mut remove = None;
             for (name, original) in crate::persistent_variables::snapshot() {
                 ui.horizontal(|ui| {
@@ -700,15 +799,15 @@ impl App {
                     let mut value = original.clone();
                     if ui.text_edit_singleline(&mut value).changed() && value != original {
                         if let Err(e) = crate::persistent_variables::set(&name, &value) {
-                            self.fail(format!("Variable non enregistrée : {e}"));
+                            self.fail(crate::i18n::trf("Variable non enregistrée : {e}", &[("e", &(e))] ));
                         }
                     }
-                    if ui.add(theme::danger_button("Supprimer")).clicked() { remove = Some(name); }
+                    if ui.add(theme::danger_button(crate::i18n::tr("Supprimer"))).clicked() { remove = Some(name); }
                 });
             }
             if let Some(name) = remove {
                 if let Err(e) = crate::persistent_variables::remove(&name) {
-                    self.fail(format!("Variable non supprimée : {e}"));
+                    self.fail(crate::i18n::trf("Variable non supprimée : {e}", &[("e", &(e))] ));
                 }
             }
         });
@@ -717,8 +816,8 @@ impl App {
     fn start_workshop_run(&mut self, dry: bool) {
         if self.engine.running.load(Ordering::SeqCst) { return; }
         let mut key = self.config.keys()[self.selected].clone();
-        if key.steps.is_empty() { self.fail("Ajoute un bloc avant de tester.".into()); return; }
-        if let Err(e) = validate_key(&key, &self.config) { self.fail(format!("Action à corriger : {e}")); return; }
+        if key.steps.is_empty() { self.fail(crate::i18n::tr("Ajoute un bloc avant de tester.").into()); return; }
+        if let Err(e) = validate_key(&key, &self.config) { self.fail(crate::i18n::trf("Action à corriger : {e}", &[("e", &(e))] )); return; }
         key.runtime_id = Some(crate::engine::identity(&self.config.profiles[self.config.active].name, &self.config.page, self.selected));
         // A workshop run never queues behind another macro; no real side effect on dry mode.
         key.run_mode = Some(crate::model::RunMode::Ignore);
@@ -801,26 +900,26 @@ impl App {
         if compact && self.workshop_chat.open { palette_open = false; }
         egui::TopBottomPanel::top("workshop_header").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
-                if ui.button("← Retour au deck").clicked() { self.show_workflow = false; selection = None; }
+                if ui.button(crate::i18n::tr("← Retour au deck")).clicked() { self.show_workflow = false; selection = None; }
                 let key = &self.config.keys()[self.selected];
                 ui.label(RichText::new(format!("Atelier · Touche {:02}{}", self.selected + 1,
                     if key.label.is_empty() { String::new() } else { format!(" · {}", key.label) })).strong());
                 ui.separator();
-                if ui.selectable_value(&mut self.preferences.workshop_advanced, false, "Simple").changed() { self.save_preferences(); }
-                if ui.selectable_value(&mut self.preferences.workshop_advanced, true, "Avancé").changed() { self.save_preferences(); }
-                if compact && ui.button(if palette_open { "Masquer les blocs" } else { "Blocs" }).clicked() { palette_open = !palette_open; }
+                if ui.selectable_value(&mut self.preferences.workshop_advanced, false, crate::i18n::tr("Simple")).changed() { self.save_preferences(); }
+                if ui.selectable_value(&mut self.preferences.workshop_advanced, true, crate::i18n::tr("Avancé")).changed() { self.save_preferences(); }
+                if compact && ui.button(if palette_open { crate::i18n::tr("Masquer les blocs") } else { crate::i18n::tr("Blocs") }).clicked() { palette_open = !palette_open; }
                 template_menu(ui, &mut template_choice);
-                if self.preferences.workshop_advanced && ui.button("Exporter AHK").clicked() { export = true; }
-                if ui.add(egui::Button::new("Enregistrer").fill(accent())).clicked() { self.save(); }
+                if self.preferences.workshop_advanced && ui.button(crate::i18n::tr("Exporter AHK")).clicked() { export = true; }
+                if ui.add(egui::Button::new(crate::i18n::tr("Enregistrer")).fill(accent())).clicked() { self.save(); }
             });
             if let Some(index) = template_choice {
                 let existing = self.config.keys()[self.selected].steps.len();
                 if existing == 0 { template_action = Some((index, false)); }
                 else {
-                    ui.label("Cette touche contient déjà des blocs. Choisis comment utiliser le modèle :");
+                    ui.label(crate::i18n::tr("Cette touche contient déjà des blocs. Choisis comment utiliser le modèle :"));
                     ui.horizontal(|ui| {
-                        if ui.button("Ajouter à la fin").clicked() { template_action = Some((index, false)); }
-                        if ui.button("Remplacer les blocs").clicked() { template_action = Some((index, true)); }
+                        if ui.button(crate::i18n::tr("Ajouter à la fin")).clicked() { template_action = Some((index, false)); }
+                        if ui.button(crate::i18n::tr("Remplacer les blocs")).clicked() { template_action = Some((index, true)); }
                     });
                 }
             }
@@ -831,8 +930,8 @@ impl App {
         ctx.data_mut(|d| d.insert_temp(palette_id, palette_open));
         if (!compact || palette_open) && !(compact && self.workshop_chat.open) {
         egui::SidePanel::left("workshop_library").resizable(!compact).default_width(if compact { 240.0 } else { 280.0 }).min_width(200.0).max_width(if compact { 260.0 } else { 350.0 }).show(ctx, |ui| {
-            ui.label(RichText::new("BIBLIOTHÈQUE DE BLOCS").strong());
-            let response = ui.add(egui::TextEdit::singleline(&mut search).hint_text("Rechercher un bloc"));
+            ui.label(RichText::new(crate::i18n::tr("BIBLIOTHÈQUE DE BLOCS")).strong());
+            let response = ui.add(egui::TextEdit::singleline(&mut search).hint_text(crate::i18n::tr("Rechercher un bloc")));
             let kinds: Vec<_> = BLOCK_CATEGORIES.iter().flat_map(|(category, kinds)| kinds.iter().copied()
                 .filter(|&kind| (self.preferences.workshop_advanced || kind != 18) && matches_palette(kind, category, &search))).collect();
             let cursor_id = egui::Id::new("workshop_palette_cursor");
@@ -863,18 +962,18 @@ impl App {
         let can_run = !self.engine.running.load(Ordering::SeqCst) && !self.workshop_journal.confirm_real;
         egui::TopBottomPanel::bottom("workshop_journal_bar").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
-                let arrow = if self.workshop_journal.open { "Masquer" } else { "Journal" };
+                let arrow = if self.workshop_journal.open { crate::i18n::tr("Masquer") } else { crate::i18n::tr("Journal") };
                 if ui.add(iconset::button(ui.ctx(), Ico::Log, arrow)).clicked() { self.workshop_journal.open = !self.workshop_journal.open; }
                 ui.add(egui::Label::new(self.workshop_journal.summary()).truncate());
-                if ui.add_enabled(can_run, iconset::button(ui.ctx(), Ico::Play, "Simuler")).on_hover_text("Déroule les actions dans le journal, sans aucun effet sur le PC").clicked() { self.start_workshop_run(true); }
-                if ui.add_enabled(can_run, iconset::button(ui.ctx(), Ico::Actions, "Tester pour de vrai")).on_hover_text("Exécute réellement les actions, après confirmation").clicked() {
+                if ui.add_enabled(can_run, iconset::button(ui.ctx(), Ico::Play, crate::i18n::tr("Simuler"))).on_hover_text(crate::i18n::tr("Déroule les actions dans le journal, sans aucun effet sur le PC")).clicked() { self.start_workshop_run(true); }
+                if ui.add_enabled(can_run, iconset::button(ui.ctx(), Ico::Actions, crate::i18n::tr("Tester pour de vrai"))).on_hover_text(crate::i18n::tr("Exécute réellement les actions, après confirmation")).clicked() {
                     self.workshop_journal.confirm_real = true;
                 }
-                if ui.add(iconset::button(ui.ctx(), Ico::Robot, if self.workshop_chat.open { "Fermer l’assistant" } else { "Assistant" })).clicked() { self.workshop_chat.open = !self.workshop_chat.open; }
+                if ui.add(iconset::button(ui.ctx(), Ico::Robot, if self.workshop_chat.open { crate::i18n::tr("Fermer l’assistant") } else { crate::i18n::tr("Assistant") })).clicked() { self.workshop_chat.open = !self.workshop_chat.open; }
             });
             if self.workshop_journal.open {
                 ui.separator();
-                ui.label(if self.workshop_journal.mode == Some(false) { "EXÉCUTION RÉELLE" } else { "SIMULATION" });
+                ui.label(if self.workshop_journal.mode == Some(false) { crate::i18n::tr("EXÉCUTION RÉELLE") } else { crate::i18n::tr("SIMULATION") });
                 egui::ScrollArea::vertical().id_salt("workshop_journal_lines").max_height(145.0).show(ui, |ui| {
                     for line in &self.workshop_journal.lines {
                         let title = if let Some(path) = &line.path {
@@ -896,15 +995,15 @@ impl App {
                 egui::SidePanel::right("workshop_properties_panel")
                     .resizable(!compact).default_width(if compact { 300.0 } else { 340.0 })
                     .min_width(260.0).max_width(360.0).show(ctx, |ui| {
-                        if ui.small_button("× Fermer les propriétés").clicked() { close = true; }
+                        if ui.small_button(crate::i18n::tr("× Fermer les propriétés")).clicked() { close = true; }
                         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                             if let Some(step) = step_mut(&mut self.config.keys_mut()[selected].steps, &path) {
-                                ui.label(RichText::new("Propriétés du bloc").strong());
-                                ui.label(RichText::new(step.name()).strong());
+                                ui.label(RichText::new(crate::i18n::tr("Propriétés du bloc")).strong());
+                                ui.label(RichText::new(step_label(step)).strong());
                                 ui.label(block_summary(step));
                                  if !step.is_disabled() {
                                      if let Err(e) = validate_key(&Key { steps: vec![step.clone()], ..Key::default() }, &validation_config) {
-                                         ui.colored_label(Color32::LIGHT_RED, format!("À corriger : {e}"));
+                                         ui.colored_label(Color32::LIGHT_RED, crate::i18n::trf("À corriger : {e}", &[("e", &(e))] ));
                                      }
                                  }
                                 let mut capture = false;
@@ -920,13 +1019,13 @@ impl App {
             }
         }
         if self.workshop_journal.confirm_real {
-            egui::Window::new("Confirmer l'exécution réelle").collapsible(false).resizable(false)
+            egui::Window::new(crate::i18n::tr("Confirmer l'exécution réelle")).collapsible(false).resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
-                    ui.label(format!("Ceci va réellement exécuter {} blocs sur ce PC.", self.config.keys()[selected].steps.len()));
-                    ui.label("Les actions peuvent modifier les applications, le son et les périphériques.");
+                    ui.label(crate::i18n::trf("Ceci va réellement exécuter {count} blocs sur ce PC.", &[("count", &(self.config.keys()[selected].steps.len()))] ));
+                    ui.label(crate::i18n::tr("Les actions peuvent modifier les applications, le son et les périphériques."));
                     ui.horizontal(|ui| {
-                        if ui.button("Annuler").clicked() { self.workshop_journal.confirm_real = false; }
-                        if ui.add(theme::danger_button("Confirmer l'exécution réelle")).clicked() {
+                        if ui.button(crate::i18n::tr("Annuler")).clicked() { self.workshop_journal.confirm_real = false; }
+                        if ui.add(theme::danger_button(crate::i18n::tr("Confirmer l'exécution réelle"))).clicked() {
                             self.workshop_journal.confirm_real = false;
                             self.start_workshop_run(false);
                         }
@@ -936,7 +1035,7 @@ impl App {
         self.workshop_chat(ctx, selection.as_deref());
         let highlight = if selected_trace.is_empty() { &self.running_block } else { &selected_trace };
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.label(RichText::new("Construis ton automatisation").size(21.0).strong());
+            ui.label(RichText::new(crate::i18n::tr("Construis ton automatisation")).size(21.0).strong());
             if self.preferences.workshop_advanced {
                 egui::ScrollArea::vertical().id_salt("workflow_advanced_scroll").show(ui, |ui| {
                     changed |= block_editor(ui, &mut self.config.keys_mut()[selected].steps, &profiles, &pages, &self.audio,
@@ -947,23 +1046,23 @@ impl App {
                     let steps = &self.config.keys()[selected].steps;
                     if steps.is_empty() {
                         ui.add_space(24.0);
-                        ui.label(RichText::new("Ajoute ton premier bloc").size(20.0).strong());
-                        ui.label("Commence par une action, puis compose ta séquence.");
+                        ui.label(RichText::new(crate::i18n::tr("Ajoute ton premier bloc")).size(20.0).strong());
+                        ui.label(crate::i18n::tr("Commence par une action, puis compose ta séquence."));
                         ui.horizontal_wrapped(|ui| {
                             for kind in [0, 2, 5, 39] {
-                                if ui.button(crate::automation::NAMES[kind]).clicked() { add = Some(kind); }
+                                if ui.button(block_name(kind)).clicked() { add = Some(kind); }
                             }
                         });
-                        if ui.button("Demander à l'assistant").clicked() { self.workshop_chat.open = true; }
+                        if ui.button(crate::i18n::tr("Demander à l'assistant")).clicked() { self.workshop_chat.open = true; }
                     } else {
                         sequence_cards(ui, steps, &[], &mut selection, &mut action, &mut insert_at, &validation_config);
                     }
-                    ui.menu_button("+ Ajouter un bloc", |ui| {
+                    ui.menu_button(crate::i18n::tr("+ Ajouter un bloc"), |ui| {
                         for &(category, kinds) in BLOCK_CATEGORIES {
-                            ui.menu_button(category, |ui| {
+                            ui.menu_button(category_name(category), |ui| {
                                 for &kind in kinds {
                                     if !self.preferences.workshop_advanced && kind == 18 { continue; }
-                                    if ui.button(crate::automation::NAMES[kind]).clicked() { add = Some(kind); ui.close_menu(); }
+                                    if ui.button(block_name(kind)).clicked() { add = Some(kind); ui.close_menu(); }
                                 }
                             });
                         }
@@ -971,7 +1070,7 @@ impl App {
                 });
             }
             if let Err(e) = validate_key(&self.config.keys()[selected], &self.config) {
-                ui.colored_label(Color32::LIGHT_RED, format!("Brouillon : {e}"));
+                ui.colored_label(Color32::LIGHT_RED, crate::i18n::trf("Brouillon : {e}", &[("e", &(e))] ));
             }
         });
         // Un clic sur un bloc doit afficher ses propriétés : en fenêtre compacte, la
@@ -1055,10 +1154,10 @@ impl App {
                     let tx=self.dialog_tx.clone();
                     std::thread::spawn(move || {
                         let Some(path)=rfd::FileDialog::new().set_file_name("automatisation.ahk")
-                            .add_filter("Script AutoHotkey v2", &["ahk"]).save_file() else {return};
+                            .add_filter(crate::i18n::tr("Script AutoHotkey v2"), &["ahk"]).save_file() else {return};
                         let result=std::fs::write(path,text);
                         let _=tx.send(Some(Box::new(move |app: &mut App| match result {
-                            Ok(())=>app.log("Script AutoHotkey exporté.".into()),
+                            Ok(())=>app.log(crate::i18n::tr("Script AutoHotkey exporté.").into()),
                             Err(e)=>app.fail(e.to_string()),
                         }) as DialogEffect));
                     });
@@ -1080,72 +1179,72 @@ impl App {
         let mut startup = None;
         let mut hotkeys = false;
         let mut capture = false;
-        egui::Window::new("Windows et raccourcis").open(&mut open).default_width(510.0).show(ctx,|ui|{
+        egui::Window::new(crate::i18n::tr("Windows et raccourcis")).open(&mut open).default_width(510.0).show(ctx,|ui|{
             let mut enabled=self.preferences.start_with_windows;
-            if ui.checkbox(&mut enabled,"Démarrer avec Windows en arrière-plan").changed(){startup=Some(enabled);}
-            changed|=ui.checkbox(&mut self.preferences.close_to_tray,"Fermer la fenêtre garde NovyDeck près de l’horloge").changed();
-            if ui.add_enabled(self.tray_ready,egui::Button::new("Masquer maintenant")).clicked(){ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));}
-            ui.separator();ui.label("OBS Studio (WebSocket local)");
+            if ui.checkbox(&mut enabled,crate::i18n::tr("Démarrer avec Windows en arrière-plan")).changed(){startup=Some(enabled);}
+            changed|=ui.checkbox(&mut self.preferences.close_to_tray,crate::i18n::tr("Fermer la fenêtre garde NovyDeck près de l’horloge")).changed();
+            if ui.add_enabled(self.tray_ready,egui::Button::new(crate::i18n::tr("Masquer maintenant"))).clicked(){ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));}
+            ui.separator();ui.label(crate::i18n::tr("OBS Studio (WebSocket local)"));
             changed |= ui.text_edit_singleline(&mut self.config.obs.host).changed();
             changed |= ui.add(egui::DragValue::new(&mut self.config.obs.port).range(1..=65535)).changed();
-            changed |= ui.add(egui::TextEdit::singleline(&mut self.config.obs.password).password(true).hint_text("Mot de passe OBS")).changed();
+            changed |= ui.add(egui::TextEdit::singleline(&mut self.config.obs.password).password(true).hint_text(crate::i18n::tr("Mot de passe OBS"))).changed();
             ui.label(crate::obs_monitor::snapshot().status);
-            if ui.button("Tester la connexion").clicked() { crate::obs_monitor::update(&self.config.obs, true); }
-            ui.separator();ui.label(RichText::new(format!("Raccourci global · touche {:02}",self.selected+1)).strong());
-            ui.label("Actif sur la page actuellement ouverte. Les raccourcis restent disponibles sans périphérique branché.");
+            if ui.button(crate::i18n::tr("Tester la connexion")).clicked() { crate::obs_monitor::update(&self.config.obs, true); }
+            ui.separator();ui.label(RichText::new(crate::i18n::trf("Raccourci global · touche {key}", &[("key", &(format!("{:02}",self.selected+1)))] )).strong());
+            ui.label(crate::i18n::tr("Actif sur la page actuellement ouverte. Les raccourcis restent disponibles sans périphérique branché."));
             let name=self.config.profiles[self.config.active].name.clone();let page=self.config.page.clone();let key=self.selected;
             let index=self.preferences.triggers.iter().position(|t|t.kind=="hotkey"&&t.profile==name&&t.page==page&&t.key==key);
             let mut text=index.map(|i|self.preferences.triggers[i].keys.clone()).unwrap_or_default();
-            ui.horizontal(|ui|{if ui.text_edit_singleline(&mut text).changed(){hotkeys=true;}if ui.button("Enregistrer…").clicked(){capture=true;}});
+            ui.horizontal(|ui|{if ui.text_edit_singleline(&mut text).changed(){hotkeys=true;}if ui.button(crate::i18n::tr("Enregistrer…")).clicked(){capture=true;}});
             if !text.is_empty() { match crate::desktop::chord(&text) { Ok(_) => {}, Err(e) => { ui.colored_label(Color32::LIGHT_RED,e.to_string()); } } }
-            ui.label(RichText::new("Exemple : CTRL+ALT+F9. Vide le champ pour désactiver. Windows signale les combinaisons déjà utilisées dans le journal.").small());
+            ui.label(RichText::new(crate::i18n::tr("Exemple : CTRL+ALT+F9. Vide le champ pour désactiver. Windows signale les combinaisons déjà utilisées dans le journal.")).small());
             if hotkeys {if let Some(i)=index {if text.is_empty(){self.preferences.triggers.remove(i);}else{self.preferences.triggers[i].keys=text;}}else if !text.is_empty()&&self.preferences.triggers.len()<256{self.preferences.triggers.push(crate::desktop::Trigger::hotkey(name.clone(),page.clone(),key,text));}changed=true;}
             ui.separator();
-            ui.label(RichText::new("Déclencheurs automatiques").strong());
-            ui.label("Surveillance toutes les secondes, sans action au démarrage. La pause globale bloque également ces déclencheurs.");
+            ui.label(RichText::new(crate::i18n::tr("Déclencheurs automatiques")).strong());
+            ui.label(crate::i18n::tr("Surveillance toutes les secondes, sans action au démarrage. La pause globale bloque également ces déclencheurs."));
             egui::ComboBox::from_id_salt("automatic_trigger_kind").selected_text(match self.trigger_kind.as_str() {
-                "app_open" => "Ouverture d’application", "app_close" => "Fermeture d’application",
-                "clock" => "Heure fixe", "timer" => "Minuteur",
-                "audio_connect" => "Branchement audio", _ => "Débranchement audio",
+                "app_open" => crate::i18n::tr("Ouverture d’application"), "app_close" => crate::i18n::tr("Fermeture d’application"),
+                "clock" => crate::i18n::tr("Heure fixe"), "timer" => crate::i18n::tr("Minuteur"),
+                "audio_connect" => crate::i18n::tr("Branchement audio"), _ => crate::i18n::tr("Débranchement audio"),
             }).show_ui(ui, |ui| {
                 for (kind, label) in [("app_open", "Ouverture d’application"), ("app_close", "Fermeture d’application"), ("clock", "Heure fixe"), ("timer", "Minuteur"), ("audio_connect", "Branchement audio"), ("audio_disconnect", "Débranchement audio")] {
-                    ui.selectable_value(&mut self.trigger_kind, kind.into(), label);
+                    ui.selectable_value(&mut self.trigger_kind, kind.into(), match kind { "app_open" => crate::i18n::tr("Ouverture d’application"), "app_close" => crate::i18n::tr("Fermeture d’application"), "clock" => crate::i18n::tr("Heure fixe"), "timer" => crate::i18n::tr("Minuteur"), "audio_connect" => crate::i18n::tr("Branchement audio"), _ => crate::i18n::tr("Débranchement audio") });
                 }
             });
             match self.trigger_kind.as_str() {
-                "timer" => { ui.horizontal(|ui| { ui.label("Toutes les (minutes)"); ui.add(egui::DragValue::new(&mut self.trigger_minutes).range(1..=1440)); }); },
+                "timer" => { ui.horizontal(|ui| { ui.label(crate::i18n::tr("Toutes les (minutes)")); ui.add(egui::DragValue::new(&mut self.trigger_minutes).range(1..=1440)); }); },
                 "clock" => {
-                    ui.horizontal(|ui| { ui.label("Heure HH:MM"); ui.text_edit_singleline(&mut self.trigger_value); });
+                    ui.horizontal(|ui| { ui.label(crate::i18n::tr("Heure HH:MM")); ui.text_edit_singleline(&mut self.trigger_value); });
                     ui.horizontal_wrapped(|ui| {
-                        ui.label("Jours (aucun = tous) :");
+                        ui.label(crate::i18n::tr("Jours (aucun = tous) :"));
                         for (d, label) in ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"].iter().enumerate() {
                             let mut selected = self.trigger_days.contains(&(d as u8));
-                            if ui.checkbox(&mut selected, *label).changed() {
+                            if ui.checkbox(&mut selected, match d { 0 => crate::i18n::tr("Dim"), 1 => crate::i18n::tr("Lun"), 2 => crate::i18n::tr("Mar"), 3 => crate::i18n::tr("Mer"), 4 => crate::i18n::tr("Jeu"), 5 => crate::i18n::tr("Ven"), _ => crate::i18n::tr("Sam") }).changed() {
                                 if selected { self.trigger_days.push(d as u8); } else { self.trigger_days.retain(|&n| n != d as u8); }
                             }
                         }
                     });
                 },
                 _ => {
-                    ui.horizontal(|ui| { ui.label(if self.trigger_kind.starts_with("app_") { "Nom .exe" } else { "Nom contient" }); ui.text_edit_singleline(&mut self.trigger_value); });
-                    if self.trigger_kind.starts_with("audio_") { ui.checkbox(&mut self.trigger_input, "Périphérique d’entrée (microphone)"); }
+                    ui.horizontal(|ui| { ui.label(if self.trigger_kind.starts_with("app_") { crate::i18n::tr("Nom .exe") } else { crate::i18n::tr("Nom contient") }); ui.text_edit_singleline(&mut self.trigger_value); });
+                    if self.trigger_kind.starts_with("audio_") { ui.checkbox(&mut self.trigger_input, crate::i18n::tr("Périphérique d’entrée (microphone)")); }
                 }
             }
-            if ui.add(crate::theme::secondary_button(format!("Ajouter → touche {:02} (profil et page actuels)", key + 1))).clicked() {
+            if ui.add(crate::theme::secondary_button(crate::i18n::trf("Ajouter → touche {key} (profil et page actuels)", &[("key", &(format!("{:02}",key+1)))] ))).clicked() {
                 let trigger = crate::desktop::Trigger { profile: name.clone(), page: page.clone(), key, keys: String::new(), kind: self.trigger_kind.clone(), value: self.trigger_value.clone(), days: self.trigger_days.clone(), minutes: self.trigger_minutes, input: self.trigger_input };
-                if let Err(e) = trigger.validate() { self.fail(format!("Déclencheur : {e}")); }
-                else if self.preferences.triggers.len() >= 256 { self.fail("256 déclencheurs maximum".into()); }
+                if let Err(e) = trigger.validate() { self.fail(crate::i18n::trf("Déclencheur : {e}", &[("e", &(e))] )); }
+                else if self.preferences.triggers.len() >= 256 { self.fail(crate::i18n::tr("256 déclencheurs maximum").into()); }
                 else { self.preferences.triggers.push(trigger); changed = true; }
             }
             let mut remove = None;
             for (i, trigger) in self.preferences.triggers.iter().enumerate().filter(|(_, t)| t.kind != "hotkey") {
                 ui.horizontal(|ui| {
-                    ui.label(format!("{} → {} / {} / touche {:02}", trigger.description(), trigger.profile, if trigger.page.is_empty() { "Accueil" } else { &trigger.page }, trigger.key + 1));
-                    if ui.add(crate::theme::danger_button("Supprimer")).clicked() { remove = Some(i); }
+                    ui.label(format!("{} → {} / {} / touche {:02}", trigger.description(), trigger.profile, if trigger.page.is_empty() { crate::i18n::tr("Accueil") } else { &trigger.page }, trigger.key + 1));
+                    if ui.add(crate::theme::danger_button(crate::i18n::tr("Supprimer"))).clicked() { remove = Some(i); }
                 });
             }
             if let Some(i) = remove { self.preferences.triggers.remove(i); changed = true; }
-            if self.trigger_recording{ui.colored_label(accent(),"Appuie sur la combinaison souhaitée…");if ui.button("Annuler").clicked(){self.trigger_recording=false;self.refresh_hotkeys();}}
+            if self.trigger_recording{ui.colored_label(accent(),crate::i18n::tr("Appuie sur la combinaison souhaitée…"));if ui.button(crate::i18n::tr("Annuler")).clicked(){self.trigger_recording=false;self.refresh_hotkeys();}}
         });
         self.show_desktop_settings = open;
         if !open && self.trigger_recording {
@@ -1162,7 +1261,7 @@ impl App {
                 Ok(()) => {
                     self.preferences.start_with_windows = enable;
                     changed = true;
-                    self.log("Démarrage Windows mis à jour.".into());
+                    self.log(crate::i18n::tr("Démarrage Windows mis à jour.").into());
                 }
                 Err(e) => self.fail(e.to_string()),
             }

@@ -51,6 +51,7 @@ mod plugin_catalog;
 mod https_get;
 mod community_plugins;
 mod app_update;
+mod i18n;
 mod hardware_report;
 mod recorder;
 mod soundboard;

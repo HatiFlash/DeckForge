@@ -3,6 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
     embed_icon();
+    embed_translations();
     for path in [".git/HEAD", ".git/refs"] {
         if std::path::Path::new(path).exists() {
             println!("cargo:rerun-if-changed={path}");
@@ -63,4 +64,22 @@ fn embed_icon() {
             println!("cargo:warning=Ressources Windows non intégrées (rc.exe introuvable ?) : {e}");
         }
     }
+}
+
+/// Liste les fichiers `res/i18n/<code>.json` : ajouter une langue = ajouter un fichier, sans code.
+fn embed_translations() {
+    println!("cargo:rerun-if-changed=res/i18n");
+    let mut files: Vec<_> = std::fs::read_dir("res/i18n")
+        .map(|dir| dir.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).collect())
+        .unwrap_or_default();
+    files.sort();
+    let mut out = String::from("pub static FILES: &[(&str, &str)] = &[\n");
+    for path in files {
+        println!("cargo:rerun-if-changed={}", path.display());
+        let code = path.file_stem().unwrap().to_string_lossy().to_string();
+        out += &format!("    ({code:?}, include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/res/i18n/{code}.json\"))),\n");
+    }
+    out += "];\n";
+    let dest = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("i18n_files.rs");
+    std::fs::write(dest, out).unwrap();
 }

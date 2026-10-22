@@ -44,16 +44,16 @@ impl CropSession {
         size: u32,
         assets_dir: PathBuf,
     ) -> Result<Self> {
-        ensure!(path.is_file(), "Fichier introuvable");
+        ensure!(path.is_file(), "{}", crate::i18n::tr("Fichier introuvable"));
         let is_video = crate::assets::is_video(&path);
         let mut original_frames = Vec::new();
 
         if is_video {
             original_frames = crate::video_mf::decode_raw(&path, 12, 10)
-                .map_err(|e| anyhow!("Impossible de lire la vidéo ({e})"))?;
+                .map_err(|e| anyhow!("{}", crate::i18n::trf("Impossible de lire la vidéo ({error})", &[("error", &e)])))?;
         } else {
             let bytes = std::fs::read(&path)?;
-            ensure!(bytes.len() <= 25_000_000, "Image de plus de 25 Mo");
+            ensure!(bytes.len() <= 25_000_000, "{}", crate::i18n::tr("Image de plus de 25 Mo"));
             let is_gif = bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a");
             if is_gif {
                 if let Ok(decoder) = image::codecs::gif::GifDecoder::new(Cursor::new(&bytes)) {
@@ -66,12 +66,12 @@ impl CropSession {
             }
             if original_frames.is_empty() {
                 let img = image::load_from_memory(&bytes)
-                    .map_err(|e| anyhow!("Format d'image non reconnu ({e})"))?;
+                    .map_err(|e| anyhow!("{}", crate::i18n::trf("Format d'image non reconnu ({error})", &[("error", &e)])))?;
                 original_frames.push(img.into_rgba8());
             }
         }
 
-        ensure!(!original_frames.is_empty(), "Aucune image exploitable");
+        ensure!(!original_frames.is_empty(), "{}", crate::i18n::tr("Aucune image exploitable"));
 
         // Pre-downscale display frames if source is oversized, ensuring smooth egui render
         let mut display_frames = Vec::new();
@@ -184,9 +184,9 @@ impl CropSession {
         let mut apply_action = false;
         let mut close_action = false;
         let title = if self.is_video {
-            "Recadrage vidéo pour touche FIFINE D6"
+            crate::i18n::tr("Recadrage vidéo pour touche FIFINE D6")
         } else {
-            "Recadrage image pour touche FIFINE D6"
+            crate::i18n::tr("Recadrage image pour touche FIFINE D6")
         };
 
         egui::Window::new(title)
@@ -198,12 +198,12 @@ impl CropSession {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(
-                        self.source_path.file_name().and_then(|n| n.to_str()).unwrap_or("Média"),
+                        self.source_path.file_name().and_then(|n| n.to_str()).unwrap_or(crate::i18n::tr("Média")),
                     ).strong());
                     let (orig_w, orig_h) = self.original_frames[0].dimensions();
                     ui.label(format!("({orig_w}x{orig_h} px)"));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(RichText::new("Fichier original préservé").small().color(Color32::from_rgb(148, 163, 184)));
+                        ui.label(RichText::new(crate::i18n::tr("Fichier original préservé")).small().color(Color32::from_rgb(148, 163, 184)));
                     });
                 });
 
@@ -211,13 +211,13 @@ impl CropSession {
 
                 // Mode and zoom control bar
                 ui.horizontal(|ui| {
-                    ui.label("Mode :");
-                    ui.selectable_value(&mut self.settings.mode, CropMode::Fill, "Remplir (recadrer)");
-                    ui.selectable_value(&mut self.settings.mode, CropMode::Fit, "Ajuster (bandes)");
+                    ui.label(crate::i18n::tr("Mode :"));
+                    ui.selectable_value(&mut self.settings.mode, CropMode::Fill, crate::i18n::tr("Remplir (recadrer)"));
+                    ui.selectable_value(&mut self.settings.mode, CropMode::Fit, crate::i18n::tr("Ajuster (bandes)"));
                     ui.separator();
-                    ui.label("Zoom :");
+                    ui.label(crate::i18n::tr("Zoom :"));
                     ui.add(egui::Slider::new(&mut self.settings.zoom, 0.5..=3.0).step_by(0.05));
-                    if ui.button("Recentrer").on_hover_text("Réinitialiser le zoom et le positionnement au centre").clicked() {
+                    if ui.button(crate::i18n::tr("Recentrer")).on_hover_text(crate::i18n::tr("Réinitialiser le zoom et le positionnement au centre")).clicked() {
                         self.settings.pan_x = 0.0;
                         self.settings.pan_y = 0.0;
                         self.settings.zoom = 1.0;
@@ -230,7 +230,7 @@ impl CropSession {
                 ui.columns(2, |cols| {
                     // Left column: Interactive canvas
                     cols[0].vertical(|ui| {
-                        ui.label(RichText::new("Cadrage interactif (glisser pour déplacer)").strong().small());
+                        ui.label(RichText::new(crate::i18n::tr("Cadrage interactif (glisser pour déplacer)")).strong().small());
                         let (w, h) = current_display.dimensions();
                         let aspect = w as f32 / h.max(1) as f32;
                         let canvas_w = ui.available_width().min(380.0);
@@ -267,7 +267,7 @@ impl CropSession {
                         if self.original_frames.len() > 1 {
                             ui.add_space(8.0);
                             ui.horizontal(|ui| {
-                                let (ico, label) = if self.playing { (crate::iconset::Ico::Pause, "Pause") } else { (crate::iconset::Ico::Play, "Lecture") };
+                                let (ico, label) = if self.playing { (crate::iconset::Ico::Pause, crate::i18n::tr("Pause")) } else { (crate::iconset::Ico::Play, crate::i18n::tr("Lecture")) };
                                 if ui.add(crate::iconset::button(ui.ctx(), ico, label)).clicked() {
                                     self.playing = !self.playing;
                                 }
@@ -279,8 +279,8 @@ impl CropSession {
 
                     // Right column: Final D6 Key rendering
                     cols[1].vertical(|ui| {
-                        ui.label(RichText::new("Aperçu fidèle sur touche D6").strong().small());
-                        ui.label(RichText::new(format!("Format final : {}x{} px", self.size, self.size)).small().color(Color32::from_rgb(148, 163, 184)));
+                        ui.label(RichText::new(crate::i18n::tr("Aperçu fidèle sur touche D6")).strong().small());
+                        ui.label(RichText::new(crate::i18n::trf("Format final : {size}x{size} px", &[("size", &self.size)])).small().color(Color32::from_rgb(148, 163, 184)));
                         
                         ui.add_space(10.0);
                         let key_preview_size = 140.0;
@@ -302,14 +302,14 @@ impl CropSession {
 
                 // Action buttons
                 ui.horizontal(|ui| {
-                    if ui.button("Annuler").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    if ui.button(crate::i18n::tr("Annuler")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                         close_action = true;
                     }
                     if self.processing {
                         crate::motion::loader(ui, 16.0);
-                        ui.label("Conversion et optimisation en cours...");
+                        ui.label(crate::i18n::tr("Conversion et optimisation en cours..."));
                     } else {
-                        let btn = egui::Button::new(RichText::new("Appliquer à la touche").color(Color32::WHITE))
+                        let btn = egui::Button::new(RichText::new(crate::i18n::tr("Appliquer à la touche")).color(Color32::WHITE))
                             .fill(Color32::from_rgb(59, 130, 246));
                         if ui.add(btn).clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                             apply_action = true;

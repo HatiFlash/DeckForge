@@ -41,12 +41,11 @@ impl ConsentRequest {
     pub fn destination_label(&self) -> String {
         let d = &self.destination;
         let page = d["page"].as_str().filter(|p| !p.is_empty()).unwrap_or("principale");
-        format!(
-            "Touche {} · page {} · profil {}",
-            d["key"].as_u64().unwrap_or(0),
-            page,
-            d["profile"].as_str().unwrap_or("?")
-        )
+        crate::i18n::trf("Touche {key} · page {page} · profil {profile}", &[
+            ("key", &d["key"].as_u64().unwrap_or(0)),
+            ("page", &page),
+            ("profile", &d["profile"].as_str().unwrap_or("?")),
+        ])
     }
     pub fn public(&self) -> serde_json::Value {
         serde_json::json!({"text":self.text,"destination":self.destination,"blocks":self.blocks,"created":self.created.elapsed().as_secs()})
@@ -104,7 +103,7 @@ impl App {
             return;
         }
         let request = text.chars().take(400).collect::<String>();
-        self.workshop_chat.say(format!("Vous : {request}"));
+        self.workshop_chat.say(crate::i18n::trf("Vous : {request}", &[("request", &(request))] ));
         self.workshop_chat.pending = None;
         self.workshop_chat.consent = None;
         self.workshop_chat.awaiting = None;
@@ -130,7 +129,7 @@ impl App {
                     self.workshop_chat.say(field.reason);
                 }
             } else {
-                self.workshop_chat.say("Sélectionne un bloc à expliquer.");
+                self.workshop_chat.say(crate::i18n::tr("Sélectionne un bloc à expliquer."));
             }
             return;
         }
@@ -153,14 +152,14 @@ impl App {
                 });
             } else {
                 self.workshop_chat.say(
-                    "Aucune correction locale sûre à proposer. Décris la modification souhaitée.",
+                    crate::i18n::tr("Aucune correction locale sûre à proposer. Décris la modification souhaitée."),
                 );
             }
             return;
         }
         if normalized == "créer une macro" {
             self.workshop_chat.say(
-                "Décris les actions souhaitées. Exemple : attends 2 s, puis passe sur Gaming.",
+                crate::i18n::tr("Décris les actions souhaitées. Exemple : attends 2 s, puis passe sur Gaming."),
             );
             return;
         }
@@ -177,9 +176,9 @@ impl App {
             return;
         }
         match &proposal.status {
-            Status::Inconnue => self.workshop_chat.say("Demande inconnue en local. Exemples : attends 2 s ; ouvre https://exemple.fr ; tape bonjour."),
+            Status::Inconnue => self.workshop_chat.say(crate::i18n::tr("Demande inconnue en local. Exemples : attends 2 s ; ouvre https://exemple.fr ; tape bonjour.")),
             Status::Ambigue { question, .. } => self.workshop_chat.say(question.clone()),
-            Status::Reconnue => self.workshop_chat.say(format!("Aperçu de {} bloc(s), sans exécution.", proposal.steps.len())),
+            Status::Reconnue => self.workshop_chat.say(crate::i18n::trf("Aperçu de {count} bloc(s), sans exécution.", &[("count", &proposal.steps.len())])),
         }
         if matches!(proposal.status, Status::Inconnue) && mode == "auto" {
             self.workshop_chat.consent = Some(ConsentRequest::new(
@@ -210,7 +209,7 @@ impl App {
     /// Envoie la demande à l'IA locale en arrière-plan (jamais d'insertion sans validation).
     fn ask_local_ai(&mut self, request: String, scope: (usize, String, usize), offer_connected: bool) {
         self.workshop_chat.pending = None;
-        self.workshop_chat.say("Je demande à l'IA locale…");
+        self.workshop_chat.say(crate::i18n::tr("Je demande à l'IA locale…"));
         let knowledge = self.local_knowledge();
         let job = self.local_ai.spawn(&self.preferences.local_ai, request.clone(), knowledge);
         self.workshop_chat.thinking = Some((job, request, scope, offer_connected));
@@ -236,7 +235,7 @@ impl App {
         if self.proposals.pending.front().is_some() && self.workshop_chat.awaiting.is_some() {
             self.workshop_chat.awaiting = None;
             self.workshop_chat
-                .say("Proposition de ton IA reçue. Vérifie-la dans la fenêtre de validation.");
+                .say(crate::i18n::tr("Proposition de ton IA reçue. Vérifie-la dans la fenêtre de validation."));
         }
         if !self.workshop_chat.open {
             return;
@@ -253,34 +252,34 @@ impl App {
             // débordaient du panneau (messages, destination, boutons coupés).
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
             ui.horizontal_wrapped(|ui| {
-                iconset::heading(ui, Ico::Robot, RichText::new("Assistant · Atelier").strong());
-                if ui.button("Retour à la séquence").clicked() {
+                iconset::heading(ui, Ico::Robot, RichText::new(crate::i18n::tr("Assistant · Atelier")).strong());
+                if ui.button(crate::i18n::tr("Retour à la séquence")).clicked() {
                     open = false;
                 }
             });
             ui.horizontal(|ui| {
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut self.workshop_chat.input)
-                        .hint_text("Décris une action...")
+                        .hint_text(crate::i18n::tr("Décris une action..."))
                         .desired_width((ui.available_width() - 84.0).max(60.0)),
                 );
                 if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                    || ui.button("Envoyer").clicked()
+                    || ui.button(crate::i18n::tr("Envoyer")).clicked()
                 {
                     send = Some(std::mem::take(&mut self.workshop_chat.input));
                 }
             });
             // Raccourcis toujours visibles sous la saisie (avant : en bas du défilement, hors écran).
             ui.horizontal_wrapped(|ui| {
-                for label in [
-                    "Créer une macro",
-                    "Expliquer ce bloc",
-                    "Corriger cette macro",
-                    "Optimiser",
-                    "Ajouter une temporisation",
+                for (label, request) in [
+                    (crate::i18n::tr("Créer une macro"), "Créer une macro"),
+                    (crate::i18n::tr("Expliquer ce bloc"), "Expliquer ce bloc"),
+                    (crate::i18n::tr("Corriger cette macro"), "Corriger cette macro"),
+                    (crate::i18n::tr("Optimiser"), "Optimiser"),
+                    (crate::i18n::tr("Ajouter une temporisation"), "Ajouter une temporisation"),
                 ] {
                     if ui.small_button(label).clicked() {
-                        send = Some(label.to_owned());
+                        send = Some(request.to_owned());
                     }
                 }
             });
@@ -305,7 +304,7 @@ impl App {
                             })
                             .show_ui(ui, |ui| {
                                 for (value, label) in
-                                    [("local", "Local"), ("auto", "Automatique"), ("ia", "IA")]
+                                    [("local", crate::i18n::tr("Local")), ("auto", crate::i18n::tr("Automatique")), ("ia", "IA")]
                                 {
                                     save_mode |= ui
                                         .selectable_value(
@@ -319,31 +318,31 @@ impl App {
                     });
                     if let Some(request) = &self.workshop_chat.consent {
                         ui.separator();
-                        ui.label(RichText::new("Demande inconnue en local : la transmettre à ton IA ?").strong());
+                        ui.label(RichText::new(crate::i18n::tr("Demande inconnue en local : la transmettre à ton IA ?")).strong());
                         // Choix en premier : visible sans défiler, même sur petit écran.
                         ui.horizontal_wrapped(|ui| {
-                            if ui.button("Transmettre à mon IA").clicked() {
+                            if ui.button(crate::i18n::tr("Transmettre à mon IA")).clicked() {
                                 consent_action = Some(true);
                             }
-                            if ui.button("Non merci").clicked() {
+                            if ui.button(crate::i18n::tr("Non merci")).clicked() {
                                 consent_action = Some(false);
                             }
                         });
                         let muted = theme::palette(ctx).muted;
-                        ui.label(RichText::new("Contexte transmis uniquement après ton accord :").small().color(muted));
-                        ui.label(RichText::new(format!("Demande : {}", request.text)).small());
-                        ui.label(RichText::new(format!("Destination : {}", request.destination_label())).small());
-                        ui.label(RichText::new(format!(
-                            "Blocs actuels (types uniquement) : {}",
-                            request.blocks.join(", ")
+                        ui.label(RichText::new(crate::i18n::tr("Contexte transmis uniquement après ton accord :")).small().color(muted));
+                        ui.label(RichText::new(crate::i18n::trf("Demande : {request}", &[("request", &(request.text))] )).small());
+                        ui.label(RichText::new(crate::i18n::trf("Destination : {destination}", &[("destination", &(request.destination_label()))] )).small());
+                        ui.label(RichText::new(crate::i18n::trf(
+                            "Blocs actuels (types uniquement) : {blocks}",
+                            &[("blocks", &request.blocks.join(", "))]
                         )).small());
-                        ui.label(RichText::new("Aucun chemin personnel ni secret des blocs n'est transmis.").small().color(muted));
+                        ui.label(RichText::new(crate::i18n::tr("Aucun chemin personnel ni secret des blocs n'est transmis.")).small().color(muted));
                     }
                     if self.workshop_chat.consent.is_some() || self.workshop_chat.awaiting.is_some()
                     {
                         if !self.assistant.as_ref().is_some_and(|s| s.enabled()) {
-                            ui.label("Indisponible");
-                            if ui.button("Connecter une IA").clicked() {
+                            ui.label(crate::i18n::tr("Indisponible"));
+                            if ui.button(crate::i18n::tr("Connecter une IA")).clicked() {
                                 self.connect_window = true;
                             }
                         }
@@ -351,15 +350,15 @@ impl App {
                     if let Some((job, _, _, _)) = &self.workshop_chat.thinking {
                         ui.horizontal_wrapped(|ui| {
                             crate::motion::loader(ui, 16.0);
-                            ui.label(format!("L'IA locale réfléchit… {} s", job.started.elapsed().as_secs()));
-                            if ui.button("Annuler").clicked() {
+                            ui.label(crate::i18n::trf("L'IA locale réfléchit… {seconds} s", &[("seconds", &(job.started.elapsed().as_secs()))] ));
+                            if ui.button(crate::i18n::tr("Annuler")).clicked() {
                                 consent_action = Some(false);
                             }
                         });
                     }
                     if self.workshop_chat.awaiting.is_some() {
-                        ui.label("En attente de ton IA…");
-                        if ui.button("Annuler la demande IA").clicked() {
+                        ui.label(crate::i18n::tr("En attente de ton IA…"));
+                        if ui.button(crate::i18n::tr("Annuler la demande IA")).clicked() {
                             consent_action = Some(false);
                         }
                     }
@@ -369,11 +368,11 @@ impl App {
                             .corner_radius(8)
                             .inner_margin(8)
                             .show(ui, |ui| {
-                                ui.label(RichText::new("Proposition de ton IA reçue").strong());
+                                ui.label(RichText::new(crate::i18n::tr("Proposition de ton IA reçue")).strong());
                                 ui.label(&p.title);
                                 ui.label(p.details.chars().take(180).collect::<String>());
                             });
-                        if ui.button("Voir et valider la proposition").clicked() {
+                        if ui.button(crate::i18n::tr("Voir et valider la proposition")).clicked() {
                             self.workshop_chat.open = false;
                         }
                     }
@@ -383,7 +382,7 @@ impl App {
                         if stale {
                             ui.colored_label(
                                 theme::palette(ctx).muted,
-                                "Proposition périmée : touche, page ou profil changé.",
+                                crate::i18n::tr("Proposition périmée : touche, page ou profil changé."),
                             );
                         }
                         if self.preferences.local_ai.enabled
@@ -392,8 +391,8 @@ impl App {
                             && !stale
                             && self.workshop_chat.thinking.is_none()
                             && ui
-                                .small_button("Pas ça ? Demander plutôt à l'IA locale")
-                                .on_hover_text("Les règles intégrées ont répondu ; l'IA locale peut mieux comprendre une demande libre. Rien ne quitte le PC.")
+                                .small_button(crate::i18n::tr("Pas ça ? Demander plutôt à l'IA locale"))
+                                .on_hover_text(crate::i18n::tr("Les règles intégrées ont répondu ; l'IA locale peut mieux comprendre une demande libre. Rien ne quitte le PC."))
                                 .clicked()
                         {
                             action = Some(3);
@@ -403,7 +402,7 @@ impl App {
                                 ui.label(question);
                                 if self.preferences.workshop_chat_mode == "auto"
                                     && !stale
-                                    && ui.button("Demander à mon IA").clicked()
+                                    && ui.button(crate::i18n::tr("Demander à mon IA")).clicked()
                                 {
                                     consent_action = Some(true);
                                     self.workshop_chat.consent = Some(ConsentRequest::new(
@@ -424,16 +423,16 @@ impl App {
                                     .max_height((screen.height() * 0.24).min(175.0))
                                     .show(ui, |ui| {
                                         if let Some(before) = &pending.original {
-                                            ui.label(format!("Avant : {} bloc(s)", before.len()));
+                                            ui.label(crate::i18n::trf("Avant : {count} bloc(s)", &[("count", &(before.len()))] ));
                                             for step in before {
                                                 ui.label(format!(
                                                     "- {}",
                                                     super::extras::block_summary(step)
                                                 ));
                                             }
-                                            ui.label(format!(
-                                                "Après : {} bloc(s)",
-                                                pending.proposal.steps.len()
+                                            ui.label(crate::i18n::trf(
+                                                "Après : {count} bloc(s)",
+                                                &[("count", &pending.proposal.steps.len())]
                                             ));
                                         }
                                         for (i, step) in pending.proposal.steps.iter().enumerate() {
@@ -453,13 +452,13 @@ impl App {
                                             {
                                                 ui.colored_label(
                                                     Color32::LIGHT_RED,
-                                                    format!("À compléter : {}", missing.field),
+                                                    crate::i18n::trf("À compléter : {field}", &[("field", &(missing.field))] ),
                                                 );
                                             }
                                             if sensitive(step) {
                                                 ui.colored_label(
                                                     Color32::LIGHT_RED,
-                                                    "Action sensible : vérifier avant insertion.",
+                                                    crate::i18n::tr("Action sensible : vérifier avant insertion."),
                                                 );
                                             }
                                         }
@@ -478,25 +477,25 @@ impl App {
                                         .add_enabled(
                                             valid,
                                             egui::Button::new(if pending.original.is_some() {
-                                                "Appliquer"
+                                                crate::i18n::tr("Appliquer")
                                             } else {
-                                                "Ajouter"
+                                                crate::i18n::tr("Ajouter")
                                             }),
                                         )
                                         .clicked()
                                     {
                                         action = Some(0);
                                     }
-                                    if ui.button("Ajuster").clicked() {
+                                    if ui.button(crate::i18n::tr("Ajuster")).clicked() {
                                         action = Some(1);
                                     }
-                                    if ui.button("Annuler").clicked() {
+                                    if ui.button(crate::i18n::tr("Annuler")).clicked() {
                                         action = Some(2);
                                     }
                                 });
                             }
                             Status::Inconnue => {
-                                if ui.button("Annuler").clicked() {
+                                if ui.button(crate::i18n::tr("Annuler")).clicked() {
                                     action = Some(2);
                                 }
                             }
@@ -557,10 +556,10 @@ impl App {
                         self.workshop_chat.pending = None;
                         self.workshop_chat.awaiting = Some(request);
                         self.workshop_chat
-                            .say("Demande copiée. Colle-la dans ton client IA MCP.");
+                            .say(crate::i18n::tr("Demande copiée. Colle-la dans ton client IA MCP."));
                     } else {
                         self.workshop_chat
-                            .say("Indisponible : active et connecte ton IA MCP.");
+                            .say(crate::i18n::tr("Indisponible : active et connecte ton IA MCP."));
                         self.connect_window = true;
                     }
                 }
@@ -568,7 +567,7 @@ impl App {
                 self.workshop_chat.consent = None;
                 self.workshop_chat.awaiting = None;
                 if self.workshop_chat.thinking.take().is_some() {
-                    self.workshop_chat.say("Demande à l'IA locale annulée.");
+                    self.workshop_chat.say(crate::i18n::tr("Demande à l'IA locale annulée."));
                 }
             }
         }
@@ -628,9 +627,9 @@ impl App {
                         let todo: Vec<String> =
                             p_missing.iter().map(|m| m.reason.clone()).collect();
                         if todo.is_empty() {
-                            self.workshop_chat.say("Modification ajoutée au brouillon ; Ctrl+Z pour annuler. Aucun lancement.");
+                            self.workshop_chat.say(crate::i18n::tr("Modification ajoutée au brouillon ; Ctrl+Z pour annuler. Aucun lancement."));
                         } else {
-                            self.workshop_chat.say(format!("Ajouté en brouillon. À compléter dans les propriétés : {}. Ctrl+Z pour annuler.", todo.join(", ")));
+                            self.workshop_chat.say(crate::i18n::trf("Ajouté en brouillon. À compléter dans les propriétés : {fields}. Ctrl+Z pour annuler.", &[("fields", &(todo.join(", ")))] ));
                         }
                     }
                 }
@@ -651,23 +650,23 @@ impl App {
         let (_, request, scope, offer_ai) = self.workshop_chat.thinking.take().unwrap();
         let current = (self.config.active, self.config.page.clone(), self.selected);
         if scope != current {
-            self.workshop_chat.say("Réponse de l'IA locale ignorée : la touche sélectionnée a changé.");
+            self.workshop_chat.say(crate::i18n::tr("Réponse de l'IA locale ignorée : la touche sélectionnée a changé."));
             return;
         }
         let proposal = match result {
             Ok(steps) => local_assistant::from_model(steps, &self.config),
             Err(error) => {
-                self.workshop_chat.say(format!("IA locale indisponible : {error}"));
+                self.workshop_chat.say(crate::i18n::trf("IA locale indisponible : {error}", &[("error", &(error))] ));
                 local_assistant::from_model(vec![], &self.config)
             }
         };
         match &proposal.status {
-            Status::Reconnue => self.workshop_chat.say(format!(
-                "Aperçu de {} bloc(s) proposé par l'IA locale, sans exécution.",
-                proposal.steps.len()
+            Status::Reconnue => self.workshop_chat.say(crate::i18n::trf(
+                "Aperçu de {count} bloc(s) proposé par l'IA locale, sans exécution.",
+                &[("count", &proposal.steps.len())]
             )),
             _ => {
-                self.workshop_chat.say("L'IA locale n'a pas trouvé de blocs pour cette demande. Reformule ou ajoute les blocs à la main.");
+                self.workshop_chat.say(crate::i18n::tr("L'IA locale n'a pas trouvé de blocs pour cette demande. Reformule ou ajoute les blocs à la main."));
                 if offer_ai {
                     self.workshop_chat.consent = Some(ConsentRequest::new(request.clone(), &self.config, self.selected));
                 }
@@ -679,35 +678,35 @@ impl App {
     /// Réglages → IA locale : moteur, modèle et test de connexion. Aucun téléchargement implicite.
     pub(super) fn local_ai_settings(&mut self, ui: &mut egui::Ui, p: &theme::Palette) {
         ui.label(
-            RichText::new("Comprend les demandes libres en français et en anglais quand les règles intégrées ne suffisent pas. Tout reste sur ce PC ; chaque proposition est montrée avant ajout. Environ 1,2 Go de mémoire vidéo (ou de RAM).")
+            RichText::new(crate::i18n::tr("Comprend les demandes libres en français et en anglais quand les règles intégrées ne suffisent pas. Tout reste sur ce PC ; chaque proposition est montrée avant ajout. Environ 1,2 Go de mémoire vidéo (ou de RAM)."))
                 .small()
                 .color(p.muted),
         );
-        let mut changed = ui.checkbox(&mut self.preferences.local_ai.enabled, "Utiliser une IA locale").changed();
+        let mut changed = ui.checkbox(&mut self.preferences.local_ai.enabled, crate::i18n::tr("Utiliser une IA locale")).changed();
         // Fichier de connaissances : applications, consignes et exemples, modifiables par l'utilisateur.
         let dir = self.path.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
         let file = crate::local_llm::Knowledge::path(&dir);
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("Connaissances").strong());
-            if ui.add(crate::iconset::button(ui.ctx(), crate::iconset::Ico::Edit, "Modifier ia-locale.json"))
-                .on_hover_text("Applications (nom → programme .exe), consignes et exemples « demande → blocs ». Relu à chaque demande.")
+            ui.label(RichText::new(crate::i18n::tr("Connaissances")).strong());
+            if ui.add(crate::iconset::button(ui.ctx(), crate::iconset::Ico::Edit, crate::i18n::tr("Modifier ia-locale.json")))
+                .on_hover_text(crate::i18n::tr("Applications (nom → programme .exe), consignes et exemples « demande → blocs ». Relu à chaque demande."))
                 .clicked()
             {
                 let _ = crate::local_llm::Knowledge::load(&dir);
                 if let Err(e) = std::process::Command::new("notepad.exe").arg(&file).spawn() {
-                    self.local_ai_status = format!("Impossible d'ouvrir le fichier : {e}");
+                    self.local_ai_status = crate::i18n::trf("Impossible d'ouvrir le fichier : {e}", &[("e", &(e))] );
                 }
             }
-            if ui.small_button("Revenir aux valeurs d'origine").clicked() {
+            if ui.small_button(crate::i18n::tr("Revenir aux valeurs d'origine")).clicked() {
                 let _ = std::fs::remove_file(&file);
                 let _ = crate::local_llm::Knowledge::load(&dir);
-                self.local_ai_status = "Connaissances d'origine rétablies.".into();
+                self.local_ai_status = crate::i18n::tr("Connaissances d'origine rétablies.").into();
             }
         });
         ui.label(RichText::new(file.display().to_string()).size(11.0).color(p.muted));
         ui.horizontal_wrapped(|ui| {
-            ui.label("Moteur");
-            for (id, label) in [("integre", "Intégré à NovyDeck"), ("ollama", "Ollama")] {
+            ui.label(crate::i18n::tr("Moteur"));
+            for (id, label) in [("integre", crate::i18n::tr("Intégré à NovyDeck")), ("ollama", "Ollama")] {
                 if ui.selectable_label(self.preferences.local_ai.backend == id, label).clicked() {
                     self.preferences.local_ai.backend = id.into();
                     self.local_ai.stop();
@@ -717,29 +716,29 @@ impl App {
         });
         if self.preferences.local_ai.backend == "ollama" {
             ui.horizontal_wrapped(|ui| {
-                ui.label("Adresse");
+                ui.label(crate::i18n::tr("Adresse"));
                 changed |= ui.add(egui::TextEdit::singleline(&mut self.preferences.local_ai.endpoint).desired_width(190.0)).lost_focus();
-                ui.label("Modèle");
+                ui.label(crate::i18n::tr("Modèle"));
                 changed |= ui.add(egui::TextEdit::singleline(&mut self.preferences.local_ai.model).desired_width(120.0)).lost_focus();
             });
-            ui.label(RichText::new(format!("Installer Ollama (ollama.com), puis dans un terminal : ollama pull {}", crate::local_llm::OLLAMA_MODEL)).small().color(p.muted));
+            ui.label(RichText::new(crate::i18n::trf("Installer Ollama (ollama.com), puis dans un terminal : ollama pull {model}", &[("model", &(crate::local_llm::OLLAMA_MODEL))] )).small().color(p.muted));
         } else {
             let server = crate::local_llm::builtin_server().exists();
             let model = crate::local_llm::builtin_model().exists();
             ui.label(RichText::new(match (server, model) {
-                (false, _) => "Moteur intégré pas encore installé.",
-                (true, false) => "Moteur présent ; modèle Qwen2.5 1,5B à télécharger.",
-                (true, true) => "Moteur et modèle prêts.",
+                (false, _) => crate::i18n::tr("Moteur intégré pas encore installé."),
+                (true, false) => crate::i18n::tr("Moteur présent ; modèle Qwen2.5 1,5B à télécharger."),
+                (true, true) => crate::i18n::tr("Moteur et modèle prêts."),
             }).size(12.0).color(p.muted));
             if server && model {
                 let state = if self.local_ai.loaded() {
-                    format!("En mémoire ({}) ; libéré automatiquement après 10 min sans demande.", self.local_ai.mode.lock().map(|m| m.clone()).unwrap_or_default())
+                    crate::i18n::trf("En mémoire ({mode}) ; libéré automatiquement après 10 min sans demande.", &[("mode", &(self.local_ai.mode.lock().map(|m| m.clone()).unwrap_or_default()))] )
                 } else {
-                    "Pas en mémoire : démarre à la première demande (quelques secondes).".into()
+                    crate::i18n::tr("Pas en mémoire : démarre à la première demande (quelques secondes).").into()
                 };
                 ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new(state).size(12.0).color(p.muted));
-                    if self.local_ai.loaded() && ui.small_button("Libérer maintenant").clicked() {
+                    if self.local_ai.loaded() && ui.small_button(crate::i18n::tr("Libérer maintenant")).clicked() {
                         self.local_ai.stop();
                     }
                 });
@@ -748,8 +747,8 @@ impl App {
         }
         ui.horizontal_wrapped(|ui| {
             let busy = self.local_ai_check.is_some();
-            if ui.add_enabled(!busy && self.local_ai_install.is_none(), egui::Button::new("Tester")).clicked() {
-                self.local_ai_status = "Test en cours…".into();
+            if ui.add_enabled(!busy && self.local_ai_install.is_none(), egui::Button::new(crate::i18n::tr("Tester"))).clicked() {
+                self.local_ai_status = crate::i18n::tr("Test en cours…").into();
                 self.local_ai_check = Some(self.local_ai.check(&self.preferences.local_ai));
             }
             if busy {
@@ -758,9 +757,9 @@ impl App {
             if let Some(result) = self.local_ai_check.as_ref().and_then(|j| j.poll()) {
                 self.local_ai_check = None;
                 self.local_ai_status = match result {
-                    Ok(steps) if !steps.is_empty() => "IA locale opérationnelle.".into(),
-                    Ok(_) => "Connexion établie, mais réponse vide du modèle.".into(),
-                    Err(e) => format!("Échec : {e}"),
+                    Ok(steps) if !steps.is_empty() => crate::i18n::tr("IA locale opérationnelle.").into(),
+                    Ok(_) => crate::i18n::tr("Connexion établie, mais réponse vide du modèle.").into(),
+                    Err(e) => crate::i18n::trf("Échec : {e}", &[("e", &(e))] ),
                 };
             } else if busy {
                 ui.ctx().request_repaint_after(Duration::from_millis(250));
@@ -781,9 +780,9 @@ impl App {
                 Some(result) => {
                     self.local_ai_install = None;
                     self.local_ai_status = match result {
-                        Ok(()) => "Moteur et modèle installés. Clique sur Tester.".into(),
-                        Err(e) if e == crate::local_llm::CANCELLED => "Installation annulée ; elle reprendra là où elle s'est arrêtée.".into(),
-                        Err(e) => format!("Installation impossible : {e}"),
+                        Ok(()) => crate::i18n::tr("Moteur et modèle installés. Clique sur Tester.").into(),
+                        Err(e) if e == crate::local_llm::CANCELLED => crate::i18n::tr("Installation annulée ; elle reprendra là où elle s'est arrêtée.").into(),
+                        Err(e) => crate::i18n::trf("Installation impossible : {e}", &[("e", &(e))] ),
                     };
                 }
                 None => {
@@ -793,7 +792,7 @@ impl App {
                         crate::motion::loader(ui, 16.0);
                         let fraction = if total > 0 { (received as f32 / total as f32).min(1.0) } else { 0.0 };
                         ui.add(egui::ProgressBar::new(fraction).desired_width(180.0).text(format!("{stage} : {} / {} Mo", received / 1_000_000, total / 1_000_000)));
-                        cancel = ui.button("Annuler").on_hover_text("Le téléchargement reprendra là où il s'est arrêté.").clicked();
+                        cancel = ui.button(crate::i18n::tr("Annuler")).on_hover_text(crate::i18n::tr("Le téléchargement reprendra là où il s'est arrêté.")).clicked();
                     });
                     if cancel {
                         install.cancel();
@@ -804,14 +803,14 @@ impl App {
             }
         }
         if needed {
-            ui.label(RichText::new("Téléchargement unique depuis GitHub (llama.cpp, 37 Mo) et Hugging Face (Qwen2.5 1,5B, 1,1 Go), vérifié par empreinte SHA-256, installé dans %LOCALAPPDATA%\\NovyDeck\\ai. Annulable ; reprend là où il s'est arrêté.").size(12.0).color(p.muted));
+            ui.label(RichText::new(crate::i18n::tr("Téléchargement unique depuis GitHub (llama.cpp, 37 Mo) et Hugging Face (Qwen2.5 1,5B, 1,1 Go), vérifié par empreinte SHA-256, installé dans %LOCALAPPDATA%\\NovyDeck\\ai. Annulable ; reprend là où il s'est arrêté.")).size(12.0).color(p.muted));
             let dir = crate::local_llm::builtin_dir();
             let (need, free) = (crate::local_llm::space_needed(&dir), crate::local_llm::free_space(dir.ancestors().find(|d| d.exists()).unwrap_or(&dir)));
             let enough = free.is_none_or(|f| f >= need);
             if !enough {
-                ui.colored_label(theme::WARNING, format!("Espace disque insuffisant : {} Mo nécessaires, {} Mo libres.", need / 1_000_000, free.unwrap_or(0) / 1_000_000));
+                ui.colored_label(theme::WARNING, crate::i18n::trf("Espace disque insuffisant : {needed} Mo nécessaires, {free} Mo libres.", &[("needed", &(need / 1_000_000)), ("free", &(free.unwrap_or(0) / 1_000_000))] ));
             }
-            if ui.add_enabled(enough, egui::Button::new("Installer le moteur et le modèle (≈1,2 Go)")).clicked() {
+            if ui.add_enabled(enough, egui::Button::new(crate::i18n::tr("Installer le moteur et le modèle (≈1,2 Go)"))).clicked() {
                 self.local_ai.stop();
                 self.local_ai_status.clear();
                 self.local_ai_install = Some(crate::local_llm::install_builtin());

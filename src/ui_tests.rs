@@ -2258,3 +2258,29 @@ fn audio_switch_can_be_dropped_before_choosing_its_devices() {
     assert_eq!(h.app.config.keys()[7].steps, before.steps);
     assert!(h.app.notice.contains("deux périphériques audio différents"), "{}", h.app.notice);
 }
+
+#[test]
+fn english_main_window_uses_translated_labels() {
+    let mut h = Harness::new();
+    crate::i18n::set_language("en");
+    let output = h.warm(vec2(1380.0, 900.0));
+    for (english, french) in [
+        ("Action library", "Bibliothèque d'actions"),
+        ("Search for an action…", "Rechercher une action…"),
+        ("Settings", "Réglages"),
+    ] {
+        assert!(text_position(&output.shapes, english).is_some(), "missing {english}");
+        assert!(text_position(&output.shapes, french).is_none(), "still French: {french}");
+    }
+}
+
+#[test]
+fn language_combo_is_visible_in_general_settings() {
+    let mut h = Harness::new();
+    h.app.settings = true;
+    h.app.settings_tab = 0;
+    let output = h.warm(vec2(1380.0, 900.0));
+    assert!(text_position(&output.shapes, "Langue").is_some());
+    assert!(text_position(&output.shapes, "Langue de Windows").is_some());
+    assert!(text_position(&output.shapes, "Aider à traduire NovyDeck").is_some());
+}

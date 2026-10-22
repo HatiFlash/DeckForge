@@ -26,44 +26,44 @@ impl App {
   egui::ScrollArea::vertical().id_salt("plugin_store").auto_shrink([false,false]).max_height(height).show(ui,|ui|{
    // A ScrollArea may expose an unbounded child width; constrain paragraphs and cards to its viewport.
    ui.set_max_width(content_width);
-  iconset::heading(ui,Ico::Plugin,RichText::new("Plugins · importer").strong());
-  ui.add(egui::Label::new(RichText::new("Catalogue local, hors ligne. Importer ne lance rien.").small()).wrap());
+  iconset::heading(ui,Ico::Plugin,RichText::new(crate::i18n::tr("Plugins · importer")).strong());
+  ui.add(egui::Label::new(RichText::new(crate::i18n::tr("Catalogue local, hors ligne. Importer ne lance rien.")).small()).wrap());
   let catalog=crate::plugin_catalog::Catalog::offline();
-  ui.label(format!("Découvrir · {} entrée(s) locales publiables",catalog.entries.len()));
-  ui.separator();iconset::heading(ui,Ico::Install,RichText::new("Importer").strong());
+  ui.label(crate::i18n::trf("Découvrir · {count} entrée(s) locales publiables", &[("count", &(catalog.entries.len()))] ));
+  ui.separator();iconset::heading(ui,Ico::Install,RichText::new(crate::i18n::tr("Importer")).strong());
   ui.horizontal_wrapped(|ui|{
-   if ui.button("Importer depuis FIFINE / StreamDock / Elgato").clicked(){self.plugin_import_request(None);}
-   if ui.button("Importer un fichier .streamDeckPlugin").clicked(){self.plugin_import_dialog(true);}
-   if ui.button("Importer un dossier .sdPlugin").clicked(){self.plugin_import_dialog(false);}
-   if ui.button("Actualiser la liste").on_hover_text("Relire les dossiers de plugins").clicked(){self.plugin_inventory=None;}
+   if ui.button(crate::i18n::tr("Importer depuis FIFINE / StreamDock / Elgato")).clicked(){self.plugin_import_request(None);}
+   if ui.button(crate::i18n::tr("Importer un fichier .streamDeckPlugin")).clicked(){self.plugin_import_dialog(true);}
+   if ui.button(crate::i18n::tr("Importer un dossier .sdPlugin")).clicked(){self.plugin_import_dialog(false);}
+   if ui.button(crate::i18n::tr("Actualiser la liste")).on_hover_text(crate::i18n::tr("Relire les dossiers de plugins")).clicked(){self.plugin_inventory=None;}
   });
   ui.label(RichText::new(&self.notice).small());
   let inventory=self.plugin_inventory();
-   ui.separator();iconset::heading(ui,Ico::Plug,RichText::new("Installés dans NovyDeck").strong());
+   ui.separator();iconset::heading(ui,Ico::Plug,RichText::new(crate::i18n::tr("Installés dans NovyDeck")).strong());
    {for plugin in inventory.installed.iter(){
     if !format!("{} {}",plugin.display_name(),plugin.uuid).to_lowercase().contains(search) && !plugin.actions.iter().any(|a|a.name.to_lowercase().contains(search)){continue;}
-    let ty=match plugin.runtime{Runtime::Exe(_)|Runtime::Node(_)=>"programme",Runtime::Html(_)=>"web",Runtime::Protected=>"protégé",Runtime::Unsupported=>"indisponible"};
+    let ty=match plugin.runtime{Runtime::Exe(_)|Runtime::Node(_)=>crate::i18n::tr("programme"),Runtime::Html(_)=>crate::i18n::tr("web"),Runtime::Protected=>crate::i18n::tr("protégé"),Runtime::Unsupported=>crate::i18n::tr("indisponible")};
     ui.group(|ui|{ui.label(RichText::new(format!("{} · v{}",plugin.display_name(),plugin.version)).strong());
-     ui.label(format!("Auteur : {} · Origine : import local",if plugin.author.trim().is_empty(){"inconnu"}else{&plugin.author}));
-     ui.label(format!("Runtime : {ty} · Windows · Compatibilité : non vérifiée · Installé / inactif si aucune touche liée"));
-     if let Some(reason)=&plugin.prerequisite {ui.colored_label(egui::Color32::YELLOW,format!("Prérequis manquant : {reason}"));}
-     if let Some(version)=&plugin.node_version {ui.label(format!("Node.js demandé : {version}"));}
-     ui.label("Droits de redistribution : non évalués ; processus tiers = droits utilisateur, aucune sandbox.");
-     ui.label(format!("{} actions · {}",plugin.actions.len(),self.plugin_errors.get(&plugin.uuid).map(String::as_str).unwrap_or("arrêté")));
+     ui.label(crate::i18n::trf("Auteur : {author} · Origine : import local", &[("author", &(if plugin.author.trim().is_empty(){crate::i18n::tr("inconnu")}else{&plugin.author}))] ));
+     ui.label(crate::i18n::trf("Runtime : {ty} · Windows · Compatibilité : non vérifiée · Installé / inactif si aucune touche liée", &[("ty", &(ty))] ));
+     if let Some(reason)=&plugin.prerequisite {ui.colored_label(egui::Color32::YELLOW,crate::i18n::trf("Prérequis manquant : {reason}", &[("reason", &(reason))] ));}
+     if let Some(version)=&plugin.node_version {ui.label(crate::i18n::trf("Node.js demandé : {version}", &[("version", &(version))] ));}
+     ui.label(crate::i18n::tr("Droits de redistribution : non évalués ; processus tiers = droits utilisateur, aucune sandbox."));
+     ui.label(crate::i18n::trf("{count} actions · {status}", &[("count", &(plugin.actions.len())), ("status", &(self.plugin_errors.get(&plugin.uuid).map(String::as_str).unwrap_or(crate::i18n::tr("arrêté"))))] ));
      let unsupported=crate::plugin_host::unsupported_events(&plugin.uuid);
-     ui.label(format!("Événements non pris en charge : {}",if unsupported.is_empty(){"aucun observé (ou trace désactivée)".into()}else{unsupported.join(", " )}));
+     ui.label(crate::i18n::trf("Événements non pris en charge : {events}", &[("events", &(if unsupported.is_empty(){crate::i18n::tr("aucun observé (ou trace désactivée)").into()}else{unsupported.join(", " )}))] ));
      let cache_key=format!("{}-{}",plugin.uuid,plugin.version);
      let report=self.plugin_report_cache.entry(cache_key).or_insert_with(||plugin_validation::report_path(&plugin).and_then(|p|std::fs::read(p).ok()).and_then(|bytes|serde_json::from_slice::<plugin_validation::Report>(&bytes).ok()).filter(|r|r.plugin==plugin.uuid && r.version==plugin.version));
      if let Some(report)=report {
       for result in &report.actions {
-       let verdict=match result.verdict {crate::plugin_validation::Verdict::Passed=>"Réussi",crate::plugin_validation::Verdict::Failed=>"Échoué",crate::plugin_validation::Verdict::Unverified=>"Non vérifié"};
+       let verdict=match result.verdict {crate::plugin_validation::Verdict::Passed=>crate::i18n::tr("Réussi"),crate::plugin_validation::Verdict::Failed=>crate::i18n::tr("Échoué"),crate::plugin_validation::Verdict::Unverified=>crate::i18n::tr("Non vérifié")};
        ui.label(format!("{} : {verdict} · {} · {} · {} UTC",result.action,result.reason,result.mode,report_date(result.tested_at_unix)));
       }
-     } else { ui.label("Validation : non vérifiée (aucun rapport pour cette version)."); }
-     if ui.add(iconset::button(ui.ctx(),Ico::Play,"Tester le plugin (simulation uniquement)")).clicked(){self.plugin_test_request(plugin.clone(),false);}
+     } else { ui.label(crate::i18n::tr("Validation : non vérifiée (aucun rapport pour cette version).")); }
+     if ui.add(iconset::button(ui.ctx(),Ico::Play,crate::i18n::tr("Tester le plugin (simulation uniquement)"))).clicked(){self.plugin_test_request(plugin.clone(),false);}
      let oracle=self.plugin_oracle_cache.entry(format!("{}-{}",plugin.uuid,plugin.version)).or_insert_with(||plugin_validation::load_oracle(&plugin).ok().flatten());
-     if oracle.as_ref().is_some_and(|o|o.actions.iter().any(|a|a.real_effects)) && ui.button("Essai réel…").clicked(){self.plugin_real_confirmation=Some(plugin.clone());}
-     ui.label("Actions disponibles (placer sur une touche peut lancer le plugin) :");
+     if oracle.as_ref().is_some_and(|o|o.actions.iter().any(|a|a.real_effects)) && ui.button(crate::i18n::tr("Essai réel…")).clicked(){self.plugin_real_confirmation=Some(plugin.clone());}
+     ui.label(crate::i18n::tr("Actions disponibles (placer sur une touche peut lancer le plugin) :"));
      for action in &plugin.actions{
       let name=plugin_import::action_name(&plugin,action);
       let mut key=Key{label:name.clone(),..Key::default()};
@@ -72,37 +72,38 @@ impl App {
       let response=ui.button(format!("+ {name}"));
       self.drag_sources.push((response.rect.intersect(ui.clip_rect()),DragItem::Bind(key.clone())));
       if response.clicked(){self.assign(DragItem::Bind(key),self.selected);}
-      response.on_hover_text("Placer sur la touche sélectionnée, ou glisser sur une touche");
+      response.on_hover_text(crate::i18n::tr("Placer sur la touche sélectionnée, ou glisser sur une touche"));
      }
     });
    }}
    ui.separator();
-   iconset::heading(ui,Ico::Store,RichText::new("Plugins disponibles sur ce PC").strong());
+   iconset::heading(ui,Ico::Store,RichText::new(crate::i18n::tr("Plugins disponibles sur ce PC")).strong());
   if search.is_empty() || "volumecontroller audio volume muet peripherique".contains(&search.to_lowercase()) {
-   ui.collapsing("Audio natif · sans plugin",|ui| ui.group(|ui| {
+   ui.collapsing(crate::i18n::tr("Audio natif · sans plugin"),|ui| ui.group(|ui| {
     ui.set_max_width((content_width-24.0).max(120.0));
-    iconset::heading(ui,Ico::Headset,RichText::new("Audio natif NovyDeck").strong());
-    ui.add(egui::Label::new("Volume + / - et muet contrôlent le volume Windows par touches multimédias. Le basculement utilise les périphériques Core Audio détectés ci-dessous.").wrap());
+    iconset::heading(ui,Ico::Headset,RichText::new(crate::i18n::tr("Audio natif NovyDeck")).strong());
+    ui.add(egui::Label::new(crate::i18n::tr("Volume + / - et muet contrôlent le volume Windows par touches multimédias. Le basculement utilise les périphériques Core Audio détectés ci-dessous.")).wrap());
     ui.horizontal_wrapped(|ui| {
      for (label,command) in [("+ Volume +","volume_up"),("+ Volume -","volume_down"),("+ Muet / rétablir","mute")] {
       let key=Key{label:label.trim_start_matches("+ ").into(),steps:vec![Step::Media{command:command.into()}],..Key::default()};
-      let response=ui.button(label);
+      let response=ui.button(match command {"volume_up"=>crate::i18n::tr("+ Volume +"),"volume_down"=>crate::i18n::tr("+ Volume -"),_=>crate::i18n::tr("+ Muet / rétablir")});
       self.drag_sources.push((response.rect.intersect(ui.clip_rect()),DragItem::Bind(key.clone())));
       if response.clicked(){self.assign(DragItem::Bind(key),self.selected);}
      }
     });
-    if !self.audio.error.is_empty(){ui.label(format!("Audio : {}",self.audio.error));}
-    for (input,label) in [(false,"Sorties"),(true,"Entrées / micros")] {
+    if !self.audio.error.is_empty(){ui.label(crate::i18n::trf("Audio : {error}", &[("error", &(self.audio.error))] ));}
+    for (input,label) in [(false,crate::i18n::tr("Sorties")),(true,crate::i18n::tr("Entrées / micros"))] {
      let endpoints:Vec<_>=self.audio.devices.iter().filter(|d|d.input==input).collect();
-     ui.label(format!("{} : {}",label,if endpoints.is_empty(){"aucun périphérique actif".into()}else{endpoints.iter().map(|d|d.name.as_str()).collect::<Vec<_>>().join(" ; ")}));
+     ui.label(format!("{} : {}",label,if endpoints.is_empty(){crate::i18n::tr("aucun périphérique actif").into()}else{endpoints.iter().map(|d|d.name.as_str()).collect::<Vec<_>>().join(" ; ")}));
      let key=native_audio_switch(&self.audio,input);
-     let response=ui.add_enabled(key.is_some(),egui::Button::new(format!("+ Basculer deux {}",label.to_lowercase())));
+     let button = if input { crate::i18n::tr("+ Basculer deux entrées / micros") } else { crate::i18n::tr("+ Basculer deux sorties") };
+     let response=ui.add_enabled(key.is_some(),egui::Button::new(button));
      if let Some(key)=key {
       self.drag_sources.push((response.rect.intersect(ui.clip_rect()),DragItem::Bind(key.clone())));
       if response.clicked(){self.assign(DragItem::Bind(key),self.selected);}
      }
     }
-    ui.add(egui::Label::new(RichText::new("La liste est actualisée automatiquement par Core Audio. Choisis ensuite les deux périphériques dans l’inspecteur ; aucune configuration de plugin existante n’est convertie.").small()).wrap());
+    ui.add(egui::Label::new(RichText::new(crate::i18n::tr("La liste est actualisée automatiquement par Core Audio. Choisis ensuite les deux périphériques dans l’inspecteur ; aucune configuration de plugin existante n’est convertie.")).small()).wrap());
    }));
   }
    let matches=|p:&&Plugin|format!("{} {}",p.display_name(),p.uuid).to_lowercase().contains(search);
@@ -111,8 +112,8 @@ impl App {
    let protected:Vec<&Plugin>=inventory.protected.iter().filter(matches).collect();
    let unavailable:Vec<&Plugin>=inventory.unavailable.iter().filter(matches).collect();
    if !available.is_empty(){ui.horizontal(|ui|{
-    ui.heading(format!("Disponibles ({})",available.len()));
-    if ui.button(format!("Importer tout ({})",available.len())).clicked(){self.plugin_import_request(None);}
+    ui.heading(crate::i18n::trf("Disponibles ({count})", &[("count", &(available.len()))] ));
+    if ui.button(crate::i18n::trf("Importer tout ({count})", &[("count", &(available.len()))] )).clicked(){self.plugin_import_request(None);}
    });}
    for plugin in &available {ui.push_id(&plugin.uuid,|ui|ui.group(|ui|{
     ui.set_min_width((content_width-18.0).max(140.0));
@@ -123,23 +124,23 @@ impl App {
      ui.vertical(|ui|{
       ui.set_max_width(name_width);
       ui.add(egui::Label::new(RichText::new(plugin.display_name()).strong()).wrap());
-      ui.add(egui::Label::new(format!("{} · v{}",if plugin.author.trim().is_empty(){"Auteur inconnu"}else{&plugin.author},plugin.version)).wrap());
+      ui.add(egui::Label::new(format!("{} · v{}",if plugin.author.trim().is_empty(){crate::i18n::tr("Auteur inconnu")}else{&plugin.author},plugin.version)).wrap());
      });
     });
-    ui.label(format!("{} action(s) · {} · Windows",plugin.actions.len(),plugin_type(&plugin.runtime)));
-    if ui.add(iconset::button(ui.ctx(),Ico::Install,"Importer ce plugin")).clicked(){self.plugin_import_request(Some(plugin.folder.clone()));}
-    ui.collapsing(format!("Détails et actions ({})",plugin.actions.len()),|ui|{
-     ui.add(egui::Label::new(format!("Origine locale · Analyse : {:?} · Compatibilité non vérifiée · Redistribution non évaluée",plugin_import::compatibility(plugin))).wrap());
-     for action in &plugin.actions {ui.add(egui::Label::new(format!("Action : {}",plugin_import::action_name(plugin,action))).wrap());}
+    ui.label(crate::i18n::trf("{count} action(s) · {type} · Windows", &[("count", &plugin.actions.len()), ("type", &plugin_type(&plugin.runtime))]));
+    if ui.add(iconset::button(ui.ctx(),Ico::Install,crate::i18n::tr("Importer ce plugin"))).clicked(){self.plugin_import_request(Some(plugin.folder.clone()));}
+    ui.collapsing(crate::i18n::trf("Détails et actions ({count})", &[("count", &(plugin.actions.len()))] ),|ui|{
+     ui.add(egui::Label::new(crate::i18n::trf("Origine locale · Analyse : {analysis} · Compatibilité non vérifiée · Redistribution non évaluée", &[("analysis", &format!("{:?}", plugin_import::compatibility(plugin)))] )).wrap());
+     for action in &plugin.actions {ui.add(egui::Label::new(crate::i18n::trf("Action : {action}", &[("action", &(plugin_import::action_name(plugin,action)))] )).wrap());}
     });
    }));}
-   ui.collapsing(format!("Intégrés à FIFINE, à recréer nativement ({})",built_in.len()),|ui|{
+   ui.collapsing(crate::i18n::trf("Intégrés à FIFINE, à recréer nativement ({count})", &[("count", &(built_in.len()))] ),|ui|{
     for plugin in &built_in{ui.label(plugin.display_name());}
    });
-   ui.collapsing(format!("Non exécutables ({})",unavailable.len()),|ui|{
+   ui.collapsing(crate::i18n::trf("Non exécutables ({count})", &[("count", &(unavailable.len()))] ),|ui|{
     for plugin in &unavailable{ui.label(plugin.display_name());}
    });
-   ui.collapsing(format!("Protégés ({})",protected.len()),|ui|{
+   ui.collapsing(crate::i18n::trf("Protégés ({count})", &[("count", &(protected.len()))] ),|ui|{
     for plugin in &protected{ui.label(plugin.display_name());}
    });
    // Après les plugins locaux : la section en ligne ne repousse pas l'inventaire hors de vue.
@@ -152,38 +153,38 @@ impl App {
   let mut state=community_state().lock().unwrap_or_else(|e|e.into_inner());
   if let Some(rx)=state.fetching.as_ref(){if let Ok(result)=rx.try_recv(){
    state.loading=false;state.fetching=None;
-   match result{Ok(entries)=>{state.entries=entries;state.message="Bibliothèque actualisée.".into();},Err(error)=>state.message=format!("Bibliothèque indisponible : {error}")}
+   match result{Ok(entries)=>{state.entries=entries;state.message=crate::i18n::tr("Bibliothèque actualisée.").into();},Err(error)=>state.message=crate::i18n::trf("Bibliothèque indisponible : {error}", &[("error", &(error))] )}
   }}
   if let Some(rx)=state.installing.as_ref(){if let Ok(result)=rx.try_recv(){
    state.installing=None;
-   match result{Ok(installed)=>{state.message=if installed{"Plugin communautaire importé."}else{"Plugin déjà présent."}.into();self.refresh_plugin_catalog();},Err(error)=>state.message=format!("Installation impossible : {error}")}
+   match result{Ok(installed)=>{state.message=if installed{crate::i18n::tr("Plugin communautaire importé.")}else{crate::i18n::tr("Plugin déjà présent.")}.into();self.refresh_plugin_catalog();},Err(error)=>state.message=crate::i18n::trf("Installation impossible : {error}", &[("error", &(error))] )}
   }}
-  ui.separator();iconset::heading(ui,Ico::Store,RichText::new("Communauté").strong());
+  ui.separator();iconset::heading(ui,Ico::Store,RichText::new(crate::i18n::tr("Communauté")).strong());
   if !state.consent{
-   ui.add(egui::Label::new("La bibliothèque communautaire nécessite une connexion à GitHub.").wrap());
-   if ui.button("Se connecter à la bibliothèque").clicked(){state.consent=true;start_community_fetch(&mut state,ui.ctx());}
+   ui.add(egui::Label::new(crate::i18n::tr("La bibliothèque communautaire nécessite une connexion à GitHub.")).wrap());
+   if ui.button(crate::i18n::tr("Se connecter à la bibliothèque")).clicked(){state.consent=true;start_community_fetch(&mut state,ui.ctx());}
    return;
   }
-  if ui.add_enabled(!state.loading,egui::Button::new("Actualiser la bibliothèque")).clicked(){start_community_fetch(&mut state,ui.ctx());}
-  if state.loading{ui.label("Chargement de la bibliothèque…");}
+  if ui.add_enabled(!state.loading,egui::Button::new(crate::i18n::tr("Actualiser la bibliothèque"))).clicked(){start_community_fetch(&mut state,ui.ctx());}
+  if state.loading{ui.label(crate::i18n::tr("Chargement de la bibliothèque…"));}
   if !state.message.is_empty(){ui.add(egui::Label::new(&state.message).wrap());}
   if !state.loading && state.entries.is_empty(){
-   ui.label("Aucun plugin communautaire pour l'instant.");
-   if ui.button("Proposer un plugin").clicked(){ui.ctx().open_url(egui::OpenUrl::new_tab(community_plugins::CONTRIBUTE_URL));}
+   ui.label(crate::i18n::tr("Aucun plugin communautaire pour l'instant."));
+   if ui.button(crate::i18n::tr("Proposer un plugin")).clicked(){ui.ctx().open_url(egui::OpenUrl::new_tab(community_plugins::CONTRIBUTE_URL));}
   }
   for entry in state.entries.clone(){
    if !community_matches(&entry,search){continue;}
    ui.push_id(&entry.id,|ui|ui.group(|ui|{
     ui.set_max_width(ui.available_width());
     ui.add(egui::Label::new(RichText::new(format!("{} · {}",entry.name,entry.version)).strong()).wrap());
-    ui.label("Communauté — non vérifié");
+    ui.label(crate::i18n::tr("Communauté — non vérifié"));
     ui.add(egui::Label::new(format!("{} · {}",entry.author,entry.license)).wrap());
-    ui.add(egui::Label::new(entry.description_fr.as_deref().unwrap_or(&entry.description)).wrap());
-    if !entry.tested_decks.is_empty(){ui.add(egui::Label::new(format!("Decks testés : {}",entry.tested_decks.join(", "))).wrap());}
-    if !entry.compatible{ui.label(format!("Incompatible : nécessite NovyDeck {} ou plus récent",entry.min_novydeck));}
+    ui.add(egui::Label::new(if crate::i18n::current() == "fr" { entry.description_fr.as_deref().unwrap_or(&entry.description) } else { &entry.description }).wrap());
+    if !entry.tested_decks.is_empty(){ui.add(egui::Label::new(crate::i18n::trf("Decks testés : {decks}", &[("decks", &(entry.tested_decks.join(", ")))] )).wrap());}
+    if !entry.compatible{ui.label(crate::i18n::trf("Incompatible : nécessite NovyDeck {version} ou plus récent", &[("version", &(entry.min_novydeck))] ));}
     ui.horizontal_wrapped(|ui|{
-     if ui.button("Voir la page").clicked(){ui.ctx().open_url(egui::OpenUrl::new_tab(&entry.homepage));}
-     if ui.add_enabled(entry.compatible && state.installing.is_none(),egui::Button::new("Installer…")).clicked(){state.confirmation=Some(entry.clone());}
+     if ui.button(crate::i18n::tr("Voir la page")).clicked(){ui.ctx().open_url(egui::OpenUrl::new_tab(&entry.homepage));}
+     if ui.add_enabled(entry.compatible && state.installing.is_none(),egui::Button::new(crate::i18n::tr("Installer…"))).clicked(){state.confirmation=Some(entry.clone());}
     });
    }));
   }
@@ -192,13 +193,13 @@ impl App {
   let mut state=community_state().lock().unwrap_or_else(|e|e.into_inner());
   let Some(entry)=state.confirmation.clone() else{return;};
   let mut open=true;
-  egui::Window::new("Confirmer l'installation communautaire").open(&mut open).collapsible(false).show(ui.ctx(),|ui|{
-   ui.label(format!("Plugin : {} · Auteur : {}",entry.name,entry.author));
-   ui.add(egui::Label::new(format!("Téléchargement : {}",entry.download)).wrap());
-   ui.add(egui::Label::new(format!("SHA-256 attendu : {}",entry.sha256)).wrap());
-   ui.label("Ce plugin exécute du code tiers avec vos droits utilisateur.");
+  egui::Window::new(crate::i18n::tr("Confirmer l'installation communautaire")).open(&mut open).collapsible(false).show(ui.ctx(),|ui|{
+   ui.label(crate::i18n::trf("Plugin : {name} · Auteur : {author}", &[("name", &(entry.name)), ("author", &(entry.author))] ));
+   ui.add(egui::Label::new(crate::i18n::trf("Téléchargement : {url}", &[("url", &(entry.download))] )).wrap());
+   ui.add(egui::Label::new(crate::i18n::trf("SHA-256 attendu : {hash}", &[("hash", &(entry.sha256))] )).wrap());
+   ui.label(crate::i18n::tr("Ce plugin exécute du code tiers avec vos droits utilisateur."));
    ui.horizontal(|ui|{
-    if ui.add_enabled(state.installing.is_none(),egui::Button::new("Confirmer et installer")).clicked(){
+    if ui.add_enabled(state.installing.is_none(),egui::Button::new(crate::i18n::tr("Confirmer et installer"))).clicked(){
      let (tx,rx)=mpsc::channel();state.installing=Some(rx);state.confirmation=None;
      let ctx=ui.ctx().clone();
      std::thread::spawn(move||{
@@ -206,7 +207,7 @@ impl App {
       let _=tx.send(result);ctx.request_repaint();
      });
     }
-    if ui.button("Annuler").clicked(){state.confirmation=None;}
+    if ui.button(crate::i18n::tr("Annuler")).clicked(){state.confirmation=None;}
    });
   });
   if !open{state.confirmation=None;}
@@ -215,13 +216,13 @@ impl App {
  fn plugin_confirm_real(&mut self,ui:&egui::Ui){
   if let Some(plugin)=self.plugin_real_confirmation.clone(){
    let mut open=true;
-   egui::Window::new("Confirmer l’essai réel du plugin").open(&mut open).show(ui.ctx(),|ui|{
-    ui.label("Un plugin tiers agit avec vos droits. Vérifiez les effets avant de confirmer :");
+   egui::Window::new(crate::i18n::tr("Confirmer l’essai réel du plugin")).open(&mut open).show(ui.ctx(),|ui|{
+    ui.label(crate::i18n::tr("Un plugin tiers agit avec vos droits. Vérifiez les effets avant de confirmer :"));
     if let Some(oracle)=self.plugin_oracle_cache.get(&format!("{}-{}",plugin.uuid,plugin.version)).and_then(Option::as_ref){for action in oracle.actions.iter().filter(|a|a.real_effects){
-     ui.label(format!("Action : {}",action.action));ui.label(format!("Effet attendu : {}",action.expected_effect));ui.label(format!("Observation : {:?} · délai {} ms",action.observation,action.timeout_ms));
+     ui.label(crate::i18n::trf("Action : {action}", &[("action", &(action.action))] ));ui.label(crate::i18n::trf("Effet attendu : {effect}", &[("effect", &(action.expected_effect))] ));ui.label(crate::i18n::trf("Observation : {observation} · délai {timeout} ms", &[("observation", &(format!("{:?}",action.observation))), ("timeout", &(action.timeout_ms))] ));
     }}
-    ui.horizontal(|ui|{if ui.button("Confirmer et lancer l’essai réel").clicked(){self.plugin_test_request(plugin.clone(),true);self.plugin_real_confirmation=None;}
-     if ui.button("Annuler").clicked(){self.plugin_real_confirmation=None;}});
+    ui.horizontal(|ui|{if ui.button(crate::i18n::tr("Confirmer et lancer l’essai réel")).clicked(){self.plugin_test_request(plugin.clone(),true);self.plugin_real_confirmation=None;}
+     if ui.button(crate::i18n::tr("Annuler")).clicked(){self.plugin_real_confirmation=None;}});
    });
    if !open{self.plugin_real_confirmation=None;}
   }
@@ -232,8 +233,8 @@ impl App {
    let report=plugin_validation::run(&plugin,oracle.as_ref().ok().and_then(Option::as_ref),confirmed_real);
    let result=oracle.map_err(anyhow::Error::msg).and_then(|_|plugin_validation::save_report(&plugin,&report).map_err(anyhow::Error::msg));
    Some(Box::new(move |app:&mut App|match result{
-    Ok(())=>{app.plugin_report_cache.insert(format!("{}-{}",plugin.uuid,plugin.version),Some(report));app.notice="Rapport de validation enregistré hors du plugin.".into();},
-    Err(e)=>app.fail(format!("Rapport de plugin non enregistré : {e}")),
+    Ok(())=>{app.plugin_report_cache.insert(format!("{}-{}",plugin.uuid,plugin.version),Some(report));app.notice=crate::i18n::tr("Rapport de validation enregistré hors du plugin.").into();},
+    Err(e)=>app.fail(crate::i18n::trf("Rapport de plugin non enregistré : {error}", &[("error", &(e))] )),
    }))
   });
  }
@@ -245,14 +246,14 @@ impl App {
  /// Après un import, le gestionnaire connaît le nouveau plugin sans redémarrage de l'application.
  fn refresh_plugin_catalog(&mut self){self.plugin_inventory=None;if let (Some(manager),Ok(root))=(self.plugins.as_mut(),plugin_import::installed_root()){manager.set_catalog(plugin_import::inventory(&root));}}
  fn plugin_import_request(&mut self,source:Option<std::path::PathBuf>){
-  self.start_dialog(move||{let result=plugin_import::installed_root().and_then(|root|match source{Some(folder)=>plugin_import::import_folder(&folder,&root).map(|copied|format!("Plugin : {}",if copied{"copié"}else{"déjà présent"})),None=>{let report=plugin_import::import_sources(&root);Ok(format!("Import : {} copiés, {} déjà présents, {} protégés, {} intégrés FIFINE, {} ignorés",report.copied,report.existing,report.protected,report.built_in,report.skipped))}});
-   Some(Box::new(move |app:&mut App|match result{Ok(text)=>{app.notice=text.clone();app.log(text);app.refresh_plugin_catalog();},Err(e)=>app.fail(format!("Import plugin impossible : {e}"))}))
+  self.start_dialog(move||{let result=plugin_import::installed_root().and_then(|root|match source{Some(folder)=>plugin_import::import_folder(&folder,&root).map(|copied|if copied{crate::i18n::tr("Plugin : copié").into()}else{crate::i18n::tr("Plugin : déjà présent").into()}),None=>{let report=plugin_import::import_sources(&root);Ok(crate::i18n::trf("Import : {copied} copiés, {existing} déjà présents, {protected} protégés, {built_in} intégrés FIFINE, {skipped} ignorés", &[("copied", &report.copied), ("existing", &report.existing), ("protected", &report.protected), ("built_in", &report.built_in), ("skipped", &report.skipped)]))}});
+   Some(Box::new(move |app:&mut App|match result{Ok(text)=>{app.notice=text.clone();app.log(text);app.refresh_plugin_catalog();},Err(e)=>app.fail(crate::i18n::trf("Import plugin impossible : {error}", &[("error", &(e))] ))}))
   });
  }
  fn plugin_import_dialog(&mut self,archive:bool){self.start_dialog(move||{
   let path=if archive{egui_file_dialog_archive()}else{rfd::FileDialog::new().pick_folder()}?;
   let result=plugin_import::installed_root().and_then(|root|if archive{plugin_import::import_archive(&path,&root)}else{plugin_import::import_folder(&path,&root)});
-  Some(Box::new(move |app:&mut App|match result{Ok(copied)=>{app.refresh_plugin_catalog();app.notice=if copied{"Plugin importé"}else{"Plugin déjà présent"}.into();},Err(e)=>app.fail(format!("Import plugin impossible : {e}"))}))
+  Some(Box::new(move |app:&mut App|match result{Ok(copied)=>{app.refresh_plugin_catalog();app.notice=if copied{crate::i18n::tr("Plugin importé")}else{crate::i18n::tr("Plugin déjà présent")}.into();},Err(e)=>app.fail(crate::i18n::trf("Import plugin impossible : {error}", &[("error", &(e))] ))}))
  });}
 }
 fn start_community_fetch(state:&mut CommunityState,ctx:&egui::Context){
@@ -282,13 +283,13 @@ impl Inventory{
   inventory
  }
 }
-fn plugin_type(runtime:&Runtime)->&'static str{match runtime{Runtime::Exe(_)|Runtime::Node(_)=>"Programme",Runtime::Html(_)=>"Web",_=>"Non exécutable"}}
+fn plugin_type(runtime:&Runtime)->&'static str{match runtime{Runtime::Exe(_)|Runtime::Node(_)=>crate::i18n::tr("Programme"),Runtime::Html(_)=>crate::i18n::tr("Web"),_=>crate::i18n::tr("Non exécutable")}}
 fn plugin_icon(ui:&mut egui::Ui,plugin:&Plugin){
  if let Some(texture)=plugin.icon.as_ref().and_then(|p|super::icon_ui::texture(ui.ctx(),&p.to_string_lossy())){
   ui.image((texture.id(),egui::vec2(42.0,42.0)));
  }
 }
-fn egui_file_dialog_archive()->Option<std::path::PathBuf>{rfd::FileDialog::new().add_filter("Plugin Stream Deck", &["streamDeckPlugin","zip"]).pick_file()}
+fn egui_file_dialog_archive()->Option<std::path::PathBuf>{rfd::FileDialog::new().add_filter(crate::i18n::tr("Plugin Stream Deck"), &["streamDeckPlugin","zip"]).pick_file()}
 #[cfg(test)] mod tests {use super::*;
  #[test] fn native_audio_requires_two_real_endpoints_per_direction(){
   let mut audio=crate::audio::Snapshot::default();

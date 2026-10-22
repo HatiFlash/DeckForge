@@ -282,6 +282,21 @@ pub const ACCENTS: [(&str, &str, Color32); 5] = [
     ("orange", "Orange", Color32::from_rgb(232, 110, 34)),
     ("rose", "Rose", Color32::from_rgb(219, 39, 119)),
 ];
+/// Translate only the display label; stored scheme and accent identifiers stay stable.
+pub fn display_color_name(name: &str) -> &str {
+    match name {
+        "Bleu nuit" => crate::i18n::tr("Bleu nuit"),
+        "Graphite" => crate::i18n::tr("Graphite"),
+        "Clair" => crate::i18n::tr("Clair"),
+        "Sable" => crate::i18n::tr("Sable"),
+        "Bleu" => crate::i18n::tr("Bleu"),
+        "Violet" => crate::i18n::tr("Violet"),
+        "Émeraude" => crate::i18n::tr("Émeraude"),
+        "Orange" => crate::i18n::tr("Orange"),
+        "Rose" => crate::i18n::tr("Rose"),
+        _ => name,
+    }
+}
 static DARK_SCHEME: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 static LIGHT_SCHEME: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(2);
 static ACCENT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);

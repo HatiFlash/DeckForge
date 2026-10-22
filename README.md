@@ -100,6 +100,30 @@ Import `.streamDeckPlugin` and `.sdPlugin` packages from the built-in store, a f
 
 Native C++/Rust/C# executables, Node.js scripts (`@elgato/streamdeck` v2) and plugins with an HTML backend (`Runtime::Html`) are supported. HTML property inspectors run in an isolated WebView2 subprocess (`--isolated-inspector`) behind a restricted loopback proxy. Offline `sdpi-components` v3/v4 and BarRaider EasyPI are included, with dark-theme integration. Settings synchronize both ways (`setSettings`, `setGlobalSettings`) between the UI and hardware. Encrypted Elgato plugins are not supported.
 
+### Plugin store and community library
+
+Open **Library → Plugins** (**Bibliothèque → Plugins** in the French interface). The tab has two parts:
+
+1. **Installed in NovyDeck** (*Installés dans NovyDeck*): plugins already imported from a file, a folder or the built-in catalog. Drag one of their actions onto a key like any other action.
+2. **Community** (*Communauté*): a public directory of third-party plugins maintained in [HatiFlash/novydeck-plugins](https://github.com/HatiFlash/novydeck-plugins).
+
+How the community library works:
+
+- NovyDeck stays offline until you click **Connect to the library**; it then downloads only the catalog (`registry.json`) from GitHub.
+- Each card shows the name, version, author, license, tested decks and minimum NovyDeck version. Entries are labelled **Community — unverified**.
+- **Install…** opens a confirmation with the download address and the expected SHA-256. NovyDeck downloads the archive, checks its fingerprint and only then imports it. A matching fingerprint proves the file is the one listed, not that third-party code is safe: install only plugins you trust.
+
+```mermaid
+flowchart LR
+  A[Plugin author] -->|pull request| B[novydeck-plugins registry]
+  B -->|CI: schema, download, SHA-256, ZIP check| C[Maintainer review and merge]
+  C --> D[registry.json]
+  D -->|after your consent| E[NovyDeck: Library → Plugins → Community]
+  E -->|confirm + SHA-256 verified| F[Plugin imported]
+```
+
+**Share your plugin:** publish a `.streamDeckPlugin` (or a `.zip` containing an `.sdPlugin` folder) at a stable HTTPS address, compute its SHA-256 (`certutil -hashfile file SHA256` on Windows), add an entry to `registry.json` following the [schema](https://github.com/HatiFlash/novydeck-plugins/blob/main/schema/registry.schema.json) and open a pull request. CI checks the entry automatically and the maintainer decides on publication. Full guide: [CONTRIBUTING.md](https://github.com/HatiFlash/novydeck-plugins/blob/main/CONTRIBUTING.md). The **Propose a plugin** button in the app opens the same page.
+
 ### Media and cropping
 
 Crop images and videos non-destructively before sending them to a key: Fill or Fit/letterbox, 0.5×–3.0× zoom, repositioning and an immediate key preview. Windows Media Foundation decodes short videos without requiring FFmpeg; looping GIFs are supported. The gallery accepts PNG, JPEG, WebP and transparent SVG images as well as animations.
@@ -115,6 +139,10 @@ The built-in Model Context Protocol server connects to Claude Desktop, Claude Co
 ### Interface and rendering
 
 The interface uses hardware-accelerated wgpu rendering (DirectX 12 / Vulkan, with OpenGL fallback). Its key grid adapts to window size and display resolution. LCD keys can display images, looping GIFs and short videos. Profiles can be organized into folders and switched automatically when an application starts.
+
+## Languages
+
+The interface is available in **English** and **French**. NovyDeck follows the Windows language on first start; change it in **Settings → Language**. Each language is a single JSON file in [`res/i18n/`](res/i18n): to add yours, copy `en.json`, translate the values and open a pull request. See the [translation guide](docs/TRANSLATING.md).
 
 ## Privacy
 

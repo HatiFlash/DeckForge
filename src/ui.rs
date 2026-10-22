@@ -10,6 +10,7 @@ use crate::{
 };
 use crate::iconset::{self, Family, Ico};
 use crate::motion;
+use crate::i18n::{tr, trf};
 use eframe::egui::{self, Color32, RichText, Vec2};
 use std::{
     collections::{HashMap, VecDeque},
@@ -301,8 +302,9 @@ impl App {
         let mut load_error = None;
         let config = if path.exists() {
             store::load(&path).unwrap_or_else(|e| {
-                load_error = Some(format!(
-                    "Configuration illisible : {e}. Importe une sauvegarde pour la récupérer."
+                load_error = Some(trf(
+                    "Configuration illisible : {error}. Importe une sauvegarde pour la récupérer.",
+                    &[("error", &e)]
                 ));
                 Config::default()
             })
@@ -311,12 +313,15 @@ impl App {
         };
         if !configure_variables {
         } else if let Err(e) = crate::persistent_variables::configure(&path.with_file_name("variables.json")) {
-            load_error = Some(format!("Variables enregistrées illisibles : {e}"));
+            load_error = Some(trf("Variables enregistrées illisibles : {error}", &[("error", &e)]));
         }
         let smoke = !isolated && std::env::args().any(|a| a == "--ui-smoke");
         let preferences_result = Preferences::load(&path.with_file_name("preferences.json"));
         let preferences_valid = preferences_result.is_ok();
         let mut preferences = preferences_result.unwrap_or_default();
+        crate::i18n::set_language(crate::i18n::resolve(&preferences.language));
+        #[cfg(test)]
+        if isolated && preferences.language.is_empty() { crate::i18n::set_language("fr"); }
         if std::env::args().any(|a| a == "--light") {
             preferences.dark = false;
         }
@@ -370,7 +375,7 @@ impl App {
             long_press: LongPress::default(),
             long_editor: false,
             wanted: false,
-            status: "Aucun périphérique".into(),
+            status: tr("Aucun périphérique").into(),
             logs: VecDeque::new(),
             started: Instant::now(),
             last_edit: Instant::now(),
@@ -391,7 +396,7 @@ impl App {
             update_confirm: None,
             update_installed: crate::app_update::installed(),
             rename: false,
-            notice: "Tout est prêt.".into(),
+            notice: tr("Tout est prêt.").into(),
             error: false,
             smoke,
             frames: 0,
@@ -482,7 +487,7 @@ impl App {
             app.connect();
         }
         if !preferences_valid {
-            app.fail("Préférences illisibles : le fichier est conservé. Restaure preferences.json.bak avant d’enregistrer Mes binds.".into());
+            app.fail(tr("Préférences illisibles : le fichier est conservé. Restaure preferences.json.bak avant d’enregistrer Mes binds.").into());
         }
         app.refresh_hotkeys();
         app.sync_state_display();
@@ -565,7 +570,7 @@ impl App {
             Command::Update(deployed, revision)
         };
         if self.device.send(command).is_err() {
-            self.fail("Le service USB s’est arrêté. Relance NovyDeck.".into());
+            self.fail(tr("Le service USB s’est arrêté. Relance NovyDeck.").into());
             self.gate.disconnect();
         }
     }
@@ -574,22 +579,22 @@ impl App {
             return;
         }
         if let Err(e) = self.config.validate_structure() {
-            self.fail(format!("Configuration à corriger : {e}"));
+            self.fail(trf("Configuration à corriger : {error}", &[("error", &e)]));
             return;
         }
         if self.gate.dirty {
             if let Err(e) = store::save(&self.path, &self.config) {
-                self.fail(format!("Sauvegarde impossible : {e}"));
+                self.fail(trf("Sauvegarde impossible : {error}", &[("error", &e)]));
                 return;
             }
         }
         self.wanted = true;
         self.upload(true);
-        self.log("Connexion au périphérique…".into());
+        self.log(tr("Connexion au périphérique…").into());
     }
     fn save(&mut self) {
         if self.gate.invalid {
-            self.fail("Importe une configuration valide avant d’enregistrer.".into());
+            self.fail(tr("Importe une configuration valide avant d’enregistrer.").into());
             return;
         }
         match store::save(&self.path, &self.config) {
@@ -600,24 +605,21 @@ impl App {
                     self.upload(false);
                 }
                 self.log(if self.config.binding_errors().is_empty() {
-                    format!("Modifications enregistrées, envoi au {}…", self.device_name())
+                    trf("Modifications enregistrées, envoi au {device}…", &[("device", &self.device_name())])
                 } else {
-                    "Brouillons enregistrés. Synchronisation des touches valides…".into()
+                    tr("Brouillons enregistrés. Synchronisation des touches valides…").into()
                 });
             }
-            Err(e) => self.fail(format!("Sauvegarde impossible : {e}")),
+            Err(e) => self.fail(trf("Sauvegarde impossible : {error}", &[("error", &e)])),
         }
     }
     fn execute_key(&mut self, key: Key, dry: bool, delayed: bool, config: &Config) {
         if let Err(e) = validate_key(&key, config) {
-            self.fail(format!("Action à corriger : {e}"));
+            self.fail(trf("Action à corriger : {error}", &[("error", &e)]));
             return;
         }
         if key.steps.is_empty() {
-            self.log(
-                "Cette touche n’a pas encore d’action. Ajoute une action depuis la bibliothèque."
-                    .into(),
-            );
+            self.log(tr("Cette touche n’a pas encore d’action. Ajoute une action depuis la bibliothèque.").into());
             return;
         }
         self.engine.start(key, dry, if delayed { 3000 } else { 0 }, config.obs.clone());
@@ -628,7 +630,7 @@ impl App {
     fn device_keys(&self) -> usize { self.grid().keys }
     /// Name of the connected model, or a neutral word when nothing is plugged in.
     fn device_name(&self) -> String {
-        self.device_model.as_ref().map_or_else(|| "périphérique".into(), |d| d.name.clone())
+        self.device_model.as_ref().map_or_else(|| tr("périphérique").into(), |d| d.name.clone())
     }
     fn is_d6(&self) -> bool { self.device_model.as_ref().is_none_or(|d| d.name.contains("D6")) }
     /// Animations d'interface actives (réglage « Réduire les animations »).
@@ -639,16 +641,16 @@ impl App {
     fn ai_status_label(&self) -> &'static str {
         let connected = self.assistant.as_ref().is_some_and(|s| s.enabled());
         match (self.preferences.local_ai.enabled, connected) {
-            (true, true) => "IA : locale + connectée",
-            (true, false) => "IA : locale",
-            (false, true) => "IA : connectée",
-            (false, false) if self.preferences.allow_connected_ai => "IA : en attente",
-            _ => "IA : désactivée",
+            (true, true) => tr("IA : locale + connectée"),
+            (true, false) => tr("IA : locale"),
+            (false, true) => tr("IA : connectée"),
+            (false, false) if self.preferences.allow_connected_ai => tr("IA : en attente"),
+            _ => tr("IA : désactivée"),
         }
     }
     fn device_label(&self) -> String {
-        self.device_model.as_ref().map_or_else(|| "Aucun périphérique".into(), |d| {
-            format!("{} · {} touches{}", d.name, d.keys, if d.experimental { " · expérimental" } else { "" })
+        self.device_model.as_ref().map_or_else(|| tr("Aucun périphérique").into(), |d| {
+            trf("{name} · {keys} touches{experimental}", &[("name", &d.name), ("keys", &d.keys), ("experimental", &if d.experimental { tr(" · expérimental") } else { "" })])
         })
     }
     fn preview(&mut self, dry: bool) {
@@ -733,7 +735,7 @@ impl App {
                             if let Some(key) = profile.keys_at(&trigger.page).and_then(|keys| keys.get(trigger.key)) {
                                 let mut key = key.clone();
                                 key.runtime_id = Some(crate::engine::identity(&trigger.profile, &trigger.page, trigger.key));
-                                self.log(format!("Déclencheur : {} → touche {}", trigger.description(), trigger.key + 1));
+                                self.log(trf("Déclencheur : {trigger} → touche {key}", &[("trigger", &trigger.description()), ("key", &(trigger.key + 1))]));
                                 let config = self.config.clone();
                                 self.execute_key(key, false, false, &config);
                             }
@@ -762,7 +764,7 @@ impl App {
                         test.press(&raw,index);
                         let next=test.next;
                         let finished=test.next == test.keys;
-                        self.log(format!("Test : brut [{raw}] ; décodé {} ; attendu {}",index+1,next));
+                        self.log(trf("Test : brut [{raw}] ; décodé {decoded} ; attendu {expected}", &[("raw", &raw), ("decoded", &(index+1)), ("expected", &next)]));
                         if finished { let _=self.device.send(Command::TestBrightness); }
                     }
                 }
@@ -772,7 +774,7 @@ impl App {
                         if message.starts_with("Luminosité") || message.starts_with("ÉCHEC luminosité") { test.brightness=message.clone(); }
                         if message.starts_with("ÉCHEC") || message.starts_with("Images numérotées : ÉCHEC") || message.starts_with("Test arrêté") { test.active=false; }
                     }
-                    self.log(format!("Assistant périphérique : {message}"));
+                    self.log(trf("Assistant périphérique : {message}", &[("message", &message)]));
                 }
                 Event::DeviceModel { name, keys, rows, cols, experimental } => {
                     if let Some(grid) = DeviceGrid::new(name.clone(), keys, rows, cols, experimental) {
@@ -783,10 +785,10 @@ impl App {
                         self.device_model = Some(grid);
                         self.sync_state_display();
                     } else {
-                        self.fail(format!("Grille HID invalide : {name}, {keys} touches ({rows} × {cols})"));
+                        self.fail(trf("Grille HID invalide : {name}, {keys} touches ({rows} × {cols})", &[("name", &name), ("keys", &keys), ("rows", &rows), ("cols", &cols)]));
                     }
-                    self.log(format!("Modèle HID détecté : {name} · {keys} touches ({rows} × {cols}){}",
-                        if experimental { " · EXPÉRIMENTAL, non vérifié sur matériel" } else { " · vérifié" }));
+                    self.log(trf("Modèle HID détecté : {name} · {keys} touches ({rows} × {cols}){verification}",
+                        &[("name", &name), ("keys", &keys), ("rows", &rows), ("cols", &cols), ("verification", &if experimental { tr(" · EXPÉRIMENTAL, non vérifié sur matériel") } else { tr(" · vérifié") })]));
                 }
                 Event::Device(connected, message) => {
                     if self.status != message {
@@ -794,7 +796,7 @@ impl App {
                     }
                     self.status = message;
                     if !connected {
-                        if let Some(test)=&mut self.hardware_test { test.active=false; test.brightness="ÉCHEC : périphérique déconnecté".into(); }
+                        if let Some(test)=&mut self.hardware_test { test.active=false; test.brightness=tr("ÉCHEC : périphérique déconnecté").into(); }
                         if let Some(plugins)=&self.plugins {plugins.device(crate::plugin_runtime::Device::virtual_device());}
                         self.device_model = None;
                         self.selected = self.selected.min(14);
@@ -819,7 +821,7 @@ impl App {
                             }
                         }
                         self.log(
-                            format!("{} synchronisé. Les touches suivent le mode affiché en haut.", self.device_name()),
+                            trf("{device} synchronisé. Les touches suivent le mode affiché en haut.", &[("device", &self.device_name())]),
                         );
                     }
                 }
@@ -829,19 +831,16 @@ impl App {
                     if wake { self.wake_display(); self.long_press.clear(); continue; }
                     self.last_key = Some((index, Instant::now()));
                     match if self.trigger_recording {
-                        Decision::Blocked("Enregistrement du raccourci en cours")
+                        Decision::Blocked(tr("Enregistrement du raccourci en cours"))
                     } else {
                         self.gate.decision_for_age(at.elapsed())
                     } {
                         Decision::Inspect => {
                             self.selected = index;
-                            self.log(format!(
-                                "Diagnostic : touche {:02} reçue, aucune action exécutée.",
-                                index + 1
-                            ));
+                            self.log(trf("Diagnostic : touche {key} reçue, aucune action exécutée.", &[("key", &format!("{:02}", index + 1))]));
                         }
                         Decision::Blocked(reason) => {
-                            self.log(format!("Touche {:02} : {reason}", index + 1))
+                            self.log(trf("Touche {key} : {reason}", &[("key", &format!("{:02}", index + 1)), ("reason", &reason)]))
                         }
                         Decision::Execute => {
                             if index < self.device_keys() && index < self.applied.keys().len() && self.applied.keys()[index].plugin.is_some() { if let Some(plugins)=&self.plugins { plugins.key(index,true); } }
@@ -877,12 +876,12 @@ impl App {
                 self.selected = 0;
                 self.save();
             }
-            Err(e) => self.fail(format!("Navigation impossible : {e}")),
+            Err(e) => self.fail(trf("Navigation impossible : {error}", &[("error", &e)])),
         }
     }
     fn create_page(&mut self, folder: bool) {
         if self.config.profiles[self.config.active].pages.len() >= 128 {
-            self.fail("128 pages et dossiers maximum par profil.".into());
+            self.fail(tr("128 pages et dossiers maximum par profil.").into());
             return;
         }
         let id = format!(
@@ -959,7 +958,7 @@ impl App {
             self.config.trail.retain(|p| p != id);
         }
         self.edited();
-        self.log("Page supprimée et touches de navigation correspondantes retirées.".into());
+        self.log(tr("Page supprimée et touches de navigation correspondantes retirées.").into());
     }
     fn record_events(&mut self, ctx: &egui::Context) {
         let Some((profile, page, key, step, enabled)) = self.recording.clone() else {
@@ -983,7 +982,7 @@ impl App {
                     {
                         *keys = text.clone();
                         self.edited();
-                        self.log(format!("Raccourci enregistré : {text}"));
+                        self.log(trf("Raccourci enregistré : {text}", &[("text", &text)]));
                     }
                     self.recording = None;
                     self.gate.enabled = enabled;
@@ -1057,12 +1056,12 @@ impl App {
         let dir = self.path.parent().unwrap().join("assets").join("demo");
         let profile = match crate::demo_profile::write_media(&dir) {
             Ok((photo, animation)) => crate::demo_profile::profile(&photo, &animation),
-            Err(e) => { self.fail(format!("Profil de démonstration non créé : {e}")); return; }
+            Err(e) => { self.fail(trf("Profil de démonstration non créé : {error}", &[("error", &e)])); return; }
         };
         let index = match self.config.profiles.iter().position(|p| p.name == crate::demo_profile::NAME) {
             Some(i) => { self.config.profiles[i] = profile; i }
             None if self.config.profiles.len() < 64 => { self.config.profiles.push(profile); self.config.profiles.len() - 1 }
-            None => { self.fail("64 profils au maximum : supprime un profil pour ajouter la démonstration.".into()); return; }
+            None => { self.fail(tr("64 profils au maximum : supprime un profil pour ajouter la démonstration.").into()); return; }
         };
         self.config.active = index;
         self.base_profile = index;
@@ -1089,7 +1088,7 @@ impl App {
         self.start_dialog(|| {
             let path = rfd::FileDialog::new()
                 .add_filter(
-                    "Configuration NovyDeck ou sauvegarde Stream Deck",
+                    tr("Configuration NovyDeck ou sauvegarde Stream Deck"),
                     &[
                         "json",
                         "bak",
@@ -1099,13 +1098,13 @@ impl App {
                         "streamdeckprofile",
                     ],
                 )
-                .add_filter("Configuration NovyDeck (*.json, *.bak)", &["json", "bak"])
+                .add_filter(tr("Configuration NovyDeck (*.json, *.bak)"), &["json", "bak"])
                 .add_filter(
-                    "Sauvegarde Stream Deck (*.StreamDeckProfilesBackup)",
+                    tr("Sauvegarde Stream Deck (*.StreamDeckProfilesBackup)"),
                     &["StreamDeckProfilesBackup", "streamdeckprofilesbackup"],
                 )
                 .add_filter(
-                    "Profil Stream Deck (*.streamDeckProfile)",
+                    tr("Profil Stream Deck (*.streamDeckProfile)"),
                     &["streamDeckProfile", "streamdeckprofile"],
                 )
                 .pick_file()?;
@@ -1120,7 +1119,7 @@ impl App {
                 let result = crate::elgato::load_all(&path);
                 return Some(Box::new(move |app| match result {
                     Ok(reports) => app.import_reports = reports,
-                    Err(e) => app.fail(format!("Import Stream Deck impossible : {e}")),
+                    Err(e) => app.fail(trf("Import Stream Deck impossible : {error}", &[("error", &e)])),
                 }));
             }
             let loaded = store::load(&path);
@@ -1132,13 +1131,13 @@ impl App {
                     app.selected = 0;
                     app.gate.invalid = false;
                     app.edited();
-                    app.log("Profils importés. Les touches restent en pause jusqu'à leur réactivation.".into());
+                    app.log(tr("Profils importés. Les touches restent en pause jusqu'à leur réactivation.").into());
                 }
                 Err(e) => {
                     if let Ok(reports) = crate::elgato::load_all(&path) {
                         app.import_reports = reports;
                     } else {
-                        app.fail(format!("Import impossible : {e}"));
+                        app.fail(trf("Import impossible : {error}", &[("error", &e)]));
                     }
                 }
             }))
@@ -1152,8 +1151,8 @@ impl App {
                 .add_filter("JSON", &["json"]).save_file()?;
             let result = store::save(&path, &config);
             Some(Box::new(move |app| match result {
-                Ok(()) => app.log("Profils exportés. Réactive les touches quand tu es prêt.".into()),
-                Err(e) => app.fail(format!("Export impossible : {e}")),
+                Ok(()) => app.log(tr("Profils exportés. Réactive les touches quand tu es prêt.").into()),
+                Err(e) => app.fail(trf("Export impossible : {error}", &[("error", &e)])),
             }))
         });
     }
@@ -1164,7 +1163,7 @@ impl App {
             .is_some_and(|child| child.try_wait().ok().flatten().is_some())
         {
             self.http_child = None;
-            self.fail("Mode HTTP arrêté. Vérifie que le port local 9846 est disponible.".into());
+            self.fail(tr("Mode HTTP arrêté. Vérifie que le port local 9846 est disponible.").into());
         }
         loop {
             let call = match self
@@ -1224,7 +1223,7 @@ impl App {
                 return Err("Argument requis manquant".into());
             }
         }
-        self.log(format!("Assistant IA : {name}"));
+        self.log(trf("Assistant IA : {name}", &[("name", &name)]));
         match name {
             "deckforge_get_icons" => {
                 let query = args
@@ -1286,7 +1285,7 @@ impl App {
                 }
                 let result = self.proposals.propose(name, args, &self.config);
                 if result.is_ok() && self.workshop_chat.awaiting.take().is_some() {
-                    self.workshop_chat.say("Proposition de ton IA reçue. Vérifie-la dans la fenêtre de validation.");
+                    self.workshop_chat.say(tr("Proposition de ton IA reçue. Vérifie-la dans la fenêtre de validation."));
                 }
                 result
             }
@@ -1309,7 +1308,7 @@ impl App {
     fn start_http(&mut self) {
         use std::os::windows::process::CommandExt;
         if !self.assistant.as_ref().is_some_and(|s| s.enabled()) {
-            self.fail("Active d’abord Assistant IA.".into());
+            self.fail(tr("Active d’abord Assistant IA.").into());
             return;
         }
         if self.http_child.is_some() {
@@ -1325,9 +1324,9 @@ impl App {
         {
             Ok(child) => {
                 self.http_child = Some(child);
-                self.log("Mode MCP HTTP local activé sur le port 9846.".into());
+                self.log(tr("Mode MCP HTTP local activé sur le port 9846.").into());
             }
-            Err(e) => self.fail(format!("Mode HTTP indisponible : {e}")),
+            Err(e) => self.fail(trf("Mode HTTP indisponible : {error}", &[("error", &e)])),
         }
     }
     fn stop_http(&mut self) {
@@ -1339,20 +1338,20 @@ impl App {
     fn connect_ai_window(&mut self, ctx: &egui::Context) {
         if !self.connect_window { return; }
         let mut open=true;
-        egui::Window::new("Connecter une IA").open(&mut open).default_width(530.0).resizable(true).vscroll(true).show(ctx,|ui|{
-            ui.label("Choisis ton application IA. NovyDeck n'écrit jamais de clé dans ses réglages.");
+        egui::Window::new(tr("Connecter une IA")).open(&mut open).default_width(530.0).resizable(true).vscroll(true).show(ctx,|ui|{
+            ui.label(tr("Choisis ton application IA. NovyDeck n'écrit jamais de clé dans ses réglages."));
             let locations=crate::mcp_connect::Locations::system();
             let exe=crate::mcp_connect::connector(&self.path);
             for client in [crate::mcp_connect::Client::Desktop,crate::mcp_connect::Client::Code,crate::mcp_connect::Client::Codex,crate::mcp_connect::Client::Cursor] {
                 egui::Frame::group(ui.style()).show(ui,|ui|{
                     ui.label(RichText::new(client.name()).strong().size(17.0));
                     let configured=locations.as_ref().is_ok_and(|loc|crate::mcp_connect::configured(client,loc));
-                    ui.label(if configured {"Configuré sur ce PC"} else {"Pas encore configuré"});
+                    ui.label(if configured {tr("Configuré sur ce PC")} else {tr("Pas encore configuré")});
                     ui.horizontal(|ui|{
-                        if ui.add_enabled(exe.is_ok() && locations.is_ok(),egui::Button::new("Configurer automatiquement")).clicked() {
+                        if ui.add_enabled(exe.is_ok() && locations.is_ok(),egui::Button::new(tr("Configurer automatiquement"))).clicked() {
                             match if client==crate::mcp_connect::Client::Code {crate::mcp_connect::configure_code(locations.as_ref().unwrap(),exe.as_ref().unwrap(),false)} else {crate::mcp_connect::configure(client,locations.as_ref().unwrap(),exe.as_ref().unwrap(),false)}{Ok(msg)=>self.log(msg),Err(err)=>self.fail(err)}
                         }
-                        if ui.add_enabled(configured,egui::Button::new("Retirer")).clicked() {
+                        if ui.add_enabled(configured,egui::Button::new(tr("Retirer"))).clicked() {
                             match if client==crate::mcp_connect::Client::Code {crate::mcp_connect::configure_code(locations.as_ref().unwrap(),&self.path,true)} else {crate::mcp_connect::configure(client,locations.as_ref().unwrap(),&self.path,true)}{Ok(msg)=>self.log(msg),Err(err)=>self.fail(err)}
                         }
                     });
@@ -1360,17 +1359,17 @@ impl App {
             }
             if let Err(e)=&exe { ui.colored_label(Color32::DARK_RED,e); }
             egui::Frame::group(ui.style()).show(ui,|ui|{
-                ui.label(RichText::new("ChatGPT : Secure MCP Tunnel").strong());
-                ui.label("1. Ouvre la documentation du tunnel. 2. Copie le chemin du connecteur stdio à fournir au tunnel. 3. Dans ChatGPT : Plugins, Ajouter un serveur MCP, puis Tunnel. Disponibilité à vérifier selon ton compte. Le port HTTP reste local.");
-                if ui.button("Ouvrir la page du tunnel").clicked(){let _={ui.ctx().open_url(egui::OpenUrl::new_tab("https://developers.openai.com/api/docs/guides/secure-mcp-tunnels"));Ok::<(),String>(())};}
-                if ui.button("Copier la commande stdio").clicked(){ui.ctx().copy_text(self.path.with_file_name("novydeck-mcp.exe").to_string_lossy().into_owned());}
+                ui.label(RichText::new(tr("ChatGPT : Secure MCP Tunnel")).strong());
+                ui.label(tr("1. Ouvre la documentation du tunnel. 2. Copie le chemin du connecteur stdio à fournir au tunnel. 3. Dans ChatGPT : Plugins, Ajouter un serveur MCP, puis Tunnel. Disponibilité à vérifier selon ton compte. Le port HTTP reste local."));
+                if ui.button(tr("Ouvrir la page du tunnel")).clicked(){let _={ui.ctx().open_url(egui::OpenUrl::new_tab("https://developers.openai.com/api/docs/guides/secure-mcp-tunnels"));Ok::<(),String>(())};}
+                if ui.button(tr("Copier la commande stdio")).clicked(){ui.ctx().copy_text(self.path.with_file_name("novydeck-mcp.exe").to_string_lossy().into_owned());}
             });
-            if ui.button("Autre client : copier le JSON standard").clicked(){
+            if ui.button(tr("Autre client : copier le JSON standard")).clicked(){
                 let config=serde_json::json!({"mcpServers":{"deckforge":{"command":self.path.with_file_name("novydeck-mcp.exe").to_string_lossy(),"args":[]}}});
                 ui.ctx().copy_text(serde_json::to_string_pretty(&config).unwrap());
             }
-            if ui.button("Tester la connexion").clicked(){
-                let result=if !self.assistant.as_ref().is_some_and(|s|s.enabled()) {Err("Assistant désactivé : active d'abord Autoriser les IA connectées".into())} else {crate::mcp_connect::test_connection(&self.path)};
+            if ui.button(tr("Tester la connexion")).clicked(){
+                let result=if !self.assistant.as_ref().is_some_and(|s|s.enabled()) {Err(tr("Assistant désactivé : active d'abord Autoriser les IA connectées").into())} else {crate::mcp_connect::test_connection(&self.path)};
                 match result {Ok(msg)=>self.log(msg),Err(e)=>self.fail(e)}
             }
             ui.label(&self.notice);
@@ -1381,49 +1380,49 @@ impl App {
         let p = theme::palette(ctx);
         if self.assistant_settings {
             let mut open = true;
-            egui::Window::new("Assistant IA").open(&mut open).collapsible(false).resizable(true).default_width(510.0).vscroll(true).max_height((ctx.screen_rect().height()-100.0).max(400.0)).show(ctx,|ui|{
+            egui::Window::new(tr("Assistant IA")).open(&mut open).collapsible(false).resizable(true).default_width(510.0).vscroll(true).max_height((ctx.screen_rect().height()-100.0).max(400.0)).show(ctx,|ui|{
             ui.horizontal(|ui| {
-                for (i, (ico, label)) in [(Ico::Brain, "IA locale (sur ce PC)"), (Ico::Connection, "IA connectée (Claude, ChatGPT…)")].into_iter().enumerate() {
+                for (i, (ico, label)) in [(Ico::Brain, tr("IA locale (sur ce PC)")), (Ico::Connection, tr("IA connectée (Claude, ChatGPT…)"))].into_iter().enumerate() {
                     if iconset::tab(ui, self.assistant_tab == i as u8, ico, RichText::new(label).size(15.0)).clicked() { self.assistant_tab = i as u8; }
                 }
             });
             ui.separator();
             motion::fade(ui, "assistant_tab", self.assistant_tab, 0.15, self.animations());
             if self.assistant_tab == 0 {
-                ui.label(RichText::new("IA locale de l'assistant (facultative)").size(18.0).strong());
+                ui.label(RichText::new(tr("IA locale de l'assistant (facultative)")).size(18.0).strong());
                 self.local_ai_settings(ui, &p);
                 return;
             }
-            ui.label(RichText::new("Prépare tes macros avec ton IA connectée.").size(18.0).strong());ui.add_space(6.0);
+            ui.label(RichText::new(tr("Prépare tes macros avec ton IA connectée.")).size(18.0).strong());ui.add_space(6.0);
             let mut enabled=self.assistant.as_ref().is_some_and(|s|s.enabled());
-            ui.horizontal(|ui|{if theme::toggle(ui,&mut enabled).changed(){if let Some(server)=&self.assistant{server.set_enabled(enabled);}if !enabled{self.stop_http();self.proposals.reject_all();self.assistant_cache.clear();self.workshop_chat.awaiting=None;}self.preferences.allow_connected_ai=enabled;self.save_preferences();self.log(if enabled{"Connecteur MCP activé."}else{"Connecteur MCP désactivé."}.into());}ui.label(RichText::new(if enabled{"IA connectée activée"}else{"IA connectée désactivée"}).strong());});
-            ui.add_space(10.0);ui.label("Ton assistant peut lire les profils et proposer des actions. Les changements et les exécutions réelles attendent toujours ta validation ici.");ui.add_space(8.0);
-            ui.separator();ui.label(RichText::new("Décris l’automatisation souhaitée").strong());
-            ui.add(egui::TextEdit::multiline(&mut self.assistant_request).desired_rows(3).desired_width(f32::INFINITY).hint_text("Ex. : basculer entre mon casque et mes enceintes, avec une icône pour chaque état."));
-            ui.label(RichText::new(format!("Destination : {} · touche {:02}",self.config.profiles[self.config.active].name,self.selected+1)).small());
-            if ui.add_enabled(!self.assistant_request.trim().is_empty(),egui::Button::new("Copier la demande pour mon IA")).clicked(){ui.ctx().copy_text(self.automation_prompt());self.log("Demande copiée. Colle-la dans ton IA connectée au MCP NovyDeck.".into());}
-            ui.label(RichText::new("Ton IA doit être connectée au MCP. Elle proposera les blocs ici ; tu pourras les valider puis les modifier dans l’Atelier. Aucun modèle local ni appel d’IA n’est lancé par ce champ.").small().color(p.muted));
+            ui.horizontal(|ui|{if theme::toggle(ui,&mut enabled).changed(){if let Some(server)=&self.assistant{server.set_enabled(enabled);}if !enabled{self.stop_http();self.proposals.reject_all();self.assistant_cache.clear();self.workshop_chat.awaiting=None;}self.preferences.allow_connected_ai=enabled;self.save_preferences();self.log(if enabled{tr("Connecteur MCP activé.")}else{tr("Connecteur MCP désactivé.")}.into());}ui.label(RichText::new(if enabled{tr("IA connectée activée")}else{tr("IA connectée désactivée")}).strong());});
+            ui.add_space(10.0);ui.label(tr("Ton assistant peut lire les profils et proposer des actions. Les changements et les exécutions réelles attendent toujours ta validation ici."));ui.add_space(8.0);
+            ui.separator();ui.label(RichText::new(tr("Décris l’automatisation souhaitée")).strong());
+            ui.add(egui::TextEdit::multiline(&mut self.assistant_request).desired_rows(3).desired_width(f32::INFINITY).hint_text(tr("Ex. : basculer entre mon casque et mes enceintes, avec une icône pour chaque état.")));
+            ui.label(RichText::new(trf("Destination : {profile} · touche {key}", &[("profile", &self.config.profiles[self.config.active].name), ("key", &format!("{:02}", self.selected+1))])).small());
+            if ui.add_enabled(!self.assistant_request.trim().is_empty(),egui::Button::new(tr("Copier la demande pour mon IA"))).clicked(){ui.ctx().copy_text(self.automation_prompt());self.log(tr("Demande copiée. Colle-la dans ton IA connectée au MCP NovyDeck.").into());}
+            ui.label(RichText::new(tr("Ton IA doit être connectée au MCP. Elle proposera les blocs ici ; tu pourras les valider puis les modifier dans l’Atelier. Aucun modèle local ni appel d’IA n’est lancé par ce champ.")).small().color(p.muted));
             ui.separator();
-            if self.assistant.is_none(){ui.colored_label(Color32::DARK_RED,"Le connecteur local n’a pas pu démarrer.");}
-            ui.label(RichText::new("Connexion locale MCP · Claude, Codex et clients compatibles stdio. Aucune clé d’IA à saisir dans NovyDeck.").small().color(p.muted));
-            if ui.button("Connecter une IA").clicked(){self.connect_window=true;}
-            if ui.button("Copier la configuration MCP").clicked(){let exe=self.path.with_file_name("novydeck-mcp.exe");let config=serde_json::json!({"mcpServers":{"deckforge":{"command":exe.to_string_lossy(),"args":[]}}});ui.ctx().copy_text(serde_json::to_string_pretty(&config).unwrap());self.log("Configuration MCP copiée.".into());}
-            ui.label(RichText::new("Le guide MCP fourni avec l’application détaille la connexion à ChatGPT et aux autres clients.").small().color(p.muted));
-            ui.add_space(14.0);ui.separator();ui.label(RichText::new("ChatGPT web / clients HTTP").strong());
-            ui.label(RichText::new("Le mode HTTP reste local au PC. Un tunnel ou un proxy compatible est nécessaire pour un service IA distant.").small().color(p.muted));
-            ui.horizontal(|ui|{if ui.add_enabled(enabled,egui::Button::new(if self.http_child.is_some(){"Arrêter HTTP"}else{"Démarrer HTTP"})).clicked(){if self.http_child.is_some(){self.stop_http();}else{self.start_http();}}if self.http_child.is_some()&&ui.button("Copier l’adresse").clicked(){ui.ctx().copy_text("http://127.0.0.1:9846/mcp".into());}});
-            if self.http_child.is_some()&&ui.button("Copier la clé HTTP").clicked(){match std::fs::read_to_string(self.path.with_file_name("mcp-http-token.txt")){Ok(t)=>{ui.ctx().copy_text(t.trim().into());self.log("Clé HTTP copiée. Utilise-la uniquement dans ton client MCP.".into());},Err(_)=>self.fail("La clé n’est pas encore prête. Réessaie dans un instant.".into())}}
+            if self.assistant.is_none(){ui.colored_label(Color32::DARK_RED,tr("Le connecteur local n’a pas pu démarrer."));}
+            ui.label(RichText::new(tr("Connexion locale MCP · Claude, Codex et clients compatibles stdio. Aucune clé d’IA à saisir dans NovyDeck.")).small().color(p.muted));
+            if ui.button(tr("Connecter une IA")).clicked(){self.connect_window=true;}
+            if ui.button(tr("Copier la configuration MCP")).clicked(){let exe=self.path.with_file_name("novydeck-mcp.exe");let config=serde_json::json!({"mcpServers":{"deckforge":{"command":exe.to_string_lossy(),"args":[]}}});ui.ctx().copy_text(serde_json::to_string_pretty(&config).unwrap());self.log(tr("Configuration MCP copiée.").into());}
+            ui.label(RichText::new(tr("Le guide MCP fourni avec l’application détaille la connexion à ChatGPT et aux autres clients.")).small().color(p.muted));
+            ui.add_space(14.0);ui.separator();ui.label(RichText::new(tr("ChatGPT web / clients HTTP")).strong());
+            ui.label(RichText::new(tr("Le mode HTTP reste local au PC. Un tunnel ou un proxy compatible est nécessaire pour un service IA distant.")).small().color(p.muted));
+            ui.horizontal(|ui|{if ui.add_enabled(enabled,egui::Button::new(if self.http_child.is_some(){tr("Arrêter HTTP")}else{tr("Démarrer HTTP")})).clicked(){if self.http_child.is_some(){self.stop_http();}else{self.start_http();}}if self.http_child.is_some()&&ui.button(tr("Copier l’adresse")).clicked(){ui.ctx().copy_text("http://127.0.0.1:9846/mcp".into());}});
+            if self.http_child.is_some()&&ui.button(tr("Copier la clé HTTP")).clicked(){match std::fs::read_to_string(self.path.with_file_name("mcp-http-token.txt")){Ok(t)=>{ui.ctx().copy_text(t.trim().into());self.log(tr("Clé HTTP copiée. Utilise-la uniquement dans ton client MCP.").into());},Err(_)=>self.fail(tr("La clé n’est pas encore prête. Réessaie dans un instant.").into())}}
         });
             self.assistant_settings = open;
         }
         self.connect_ai_window(ctx);
         let mut decision = None;
         if let Some(p) = self.proposals.pending.front() {
-            egui::Window::new("Proposition de ton assistant").id(egui::Id::new("ai_review")).collapsible(false).resizable(true).default_width(570.0).show(ctx,|ui|{
-                theme::pill(ui,"VALIDATION NÉCESSAIRE",accent());ui.add_space(8.0);ui.label(RichText::new(&p.title).size(18.0).strong());
-                ui.label(RichText::new("Aucun changement ni lancement n’a encore eu lieu. Vérifie les actions avant de continuer.").color(theme::palette(ctx).muted));
+            egui::Window::new(tr("Proposition de ton assistant")).id(egui::Id::new("ai_review")).collapsible(false).resizable(true).default_width(570.0).show(ctx,|ui|{
+                theme::pill(ui,tr("VALIDATION NÉCESSAIRE"),accent());ui.add_space(8.0);ui.label(RichText::new(&p.title).size(18.0).strong());
+                ui.label(RichText::new(tr("Aucun changement ni lancement n’a encore eu lieu. Vérifie les actions avant de continuer.")).color(theme::palette(ctx).muted));
                 egui::ScrollArea::vertical().max_height(360.0).show(ui,|ui|{ui.label(&p.details);});ui.add_space(12.0);
-                ui.horizontal(|ui|{if ui.button("Refuser").clicked(){decision=Some(false);}if ui.add(theme::primary(RichText::new("Valider cette proposition").color(Color32::WHITE))).clicked(){decision=Some(true);}});
+                ui.horizontal(|ui|{if ui.button(tr("Refuser")).clicked(){decision=Some(false);}if ui.add(theme::primary(RichText::new(tr("Valider cette proposition")).color(Color32::WHITE))).clicked(){decision=Some(true);}});
             });
         }
         if let Some(accept) = decision {
@@ -1435,14 +1434,14 @@ impl App {
                     self.selected = 0;
                     self.edited();
                     self.log(
-                        "Proposition appliquée. Sauvegarde et synchronisation en cours.".into(),
+                        tr("Proposition appliquée. Sauvegarde et synchronisation en cours.").into(),
                     );
                 }
                 Ok(Some(crate::assistant::Change::Run(key))) => {
                     let c = self.config.clone();
                     self.execute_key(key, false, true, &c);
                 }
-                Ok(None) => self.log("Proposition refusée.".into()),
+                Ok(None) => self.log(tr("Proposition refusée.").into()),
                 Err(e) => self.fail(e),
             }
         }
@@ -1516,7 +1515,7 @@ impl App {
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             if !compact {
-                                theme::section_title(ui, "PROFILS");
+                                theme::section_title(ui, tr("PROFILS"));
                             }
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
@@ -1525,23 +1524,23 @@ impl App {
                                         if ui
                                             .add_enabled(
                                                 self.config.profiles.len() < 64,
-                                                egui::Button::new("Nouveau profil"),
+                                                egui::Button::new(tr("Nouveau profil")),
                                             )
                                             .clicked()
                                         {
                                             self.add_profile(false);
                                             ui.close_menu();
                                         }
-                                        if ui.button("Renommer / dupliquer").clicked() {
+                                        if ui.button(tr("Renommer / dupliquer")).clicked() {
                                             self.rename = true;
                                             ui.close_menu();
                                         }
-                                        if ui.button("Applications associées").clicked() {
+                                        if ui.button(tr("Applications associées")).clicked() {
                                             self.show_apps = true;
                                             ui.close_menu();
                                         }
-                                        if ui.button("Profil de démonstration (15 touches)")
-                                            .on_hover_text("Ajoute ou réinitialise « NovyDeck Demo / README ». Tes autres profils ne sont pas modifiés.")
+                                        if ui.button(tr("Profil de démonstration (15 touches)"))
+                                            .on_hover_text(tr("Ajoute ou réinitialise « NovyDeck Demo / README ». Tes autres profils ne sont pas modifiés."))
                                             .clicked()
                                         {
                                             self.add_demo_profile();
@@ -1553,7 +1552,7 @@ impl App {
                                             self.config.profiles.len() < 64,
                                             egui::Button::new("+").small(),
                                         )
-                                        .on_hover_text("Nouveau profil")
+                                        .on_hover_text(tr("Nouveau profil"))
                                         .clicked()
                                     {
                                         self.add_profile(false);
@@ -1615,22 +1614,22 @@ impl App {
                         ui.add_space(14.0);
                         ui.horizontal(|ui| {
                             if !compact {
-                                theme::section_title(ui, "PAGES");
+                                theme::section_title(ui, tr("PAGES"));
                             }
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
                                     ui.menu_button("+", |ui| {
-                                        if ui.button("Nouvelle page").clicked() {
+                                        if ui.button(tr("Nouvelle page")).clicked() {
                                             self.create_page(false);
                                             ui.close_menu();
                                         }
-                                        if ui.button("Gérer pages et dossiers…").clicked() {
+                                        if ui.button(tr("Gérer pages et dossiers…")).clicked() {
                                             self.page_manager = true;
                                             ui.close_menu();
                                         }
                                         if ui
-                                            .button("Dossier sur la touche sélectionnée")
+                                            .button(tr("Dossier sur la touche sélectionnée"))
                                             .clicked()
                                         {
                                             self.create_page(true);
@@ -1710,18 +1709,18 @@ impl App {
                 let spacer = (ui.available_height() - footer_h).max(0.0);
                 ui.add_space(spacer);
                 let (status_label, status_color) = if self.gate.connected {
-                    ("Connecté", GREEN)
+                    (tr("Connecté"), GREEN)
                 } else if self.wanted {
-                    ("En attente", theme::WARNING)
+                    (tr("En attente"), theme::WARNING)
                 } else {
-                    ("Déconnecté", p.muted)
+                    (tr("Déconnecté"), p.muted)
                 };
                 let (card_r, card_resp) = ui.allocate_exact_size(
                     Vec2::new(ui.available_width(), footer_h - 4.0),
                     egui::Sense::click(),
                 );
                 let card_resp = if !self.gate.connected && !self.wanted {
-                    card_resp.on_hover_text("Cliquer pour connecter le périphérique")
+                    card_resp.on_hover_text(tr("Cliquer pour connecter le périphérique"))
                 } else {
                     card_resp
                 };
@@ -1780,36 +1779,36 @@ impl App {
                     });
                     ui.add_space(12.0);
                     if ui
-                        .add_enabled(!self.history.is_empty(), iconset::secondary_button(ctx, Ico::Undo, if ctx.screen_rect().width() < 1320.0 { "" } else { "Annuler" }))
-                        .on_hover_text("Annuler — Ctrl+Z")
+                        .add_enabled(!self.history.is_empty(), iconset::secondary_button(ctx, Ico::Undo, if ctx.screen_rect().width() < 1320.0 { "" } else { tr("Annuler") }))
+                        .on_hover_text(tr("Annuler — Ctrl+Z"))
                         .clicked()
                     {
                         self.undo_edit();
                     }
                     if ui
-                        .add_enabled(!self.future.is_empty(), iconset::secondary_button(ctx, Ico::Redo, if ctx.screen_rect().width() < 1320.0 { "" } else { "Rétablir" }))
-                        .on_hover_text("Rétablir — Ctrl+Y")
+                        .add_enabled(!self.future.is_empty(), iconset::secondary_button(ctx, Ico::Redo, if ctx.screen_rect().width() < 1320.0 { "" } else { tr("Rétablir") }))
+                        .on_hover_text(tr("Rétablir — Ctrl+Y"))
                         .clicked()
                     {
                         self.redo_edit();
                     }
                     });
                     ui.horizontal_wrapped(|ui| {
-                        iconset::menu(ui, Ico::Settings, "Réglages", |ui| {
+                        iconset::menu(ui, Ico::Settings, tr("Réglages"), |ui| {
                         if ui
                             .add(iconset::secondary_button(ctx, Ico::Robot, self.ai_status_label()))
-                            .on_hover_text("Assistant IA : IA locale sur ce PC et IA connectée (Claude, ChatGPT…)")
+                            .on_hover_text(tr("Assistant IA : IA locale sur ce PC et IA connectée (Claude, ChatGPT…)"))
                             .clicked()
                         {
                             self.assistant_settings = true;
                         }
                         if ui
                             .add(iconset::secondary_button(ctx, if self.preferences.dark { Ico::Sun } else { Ico::Moon }, if self.preferences.dark {
-                                "Thème clair"
+                                tr("Thème clair")
                             } else {
-                                "Thème sombre"
+                                tr("Thème sombre")
                             }))
-                            .on_hover_text("Changer le thème de toute l’interface")
+                            .on_hover_text(tr("Changer le thème de toute l’interface"))
                             .clicked()
                         {
                             self.preferences.dark = !self.preferences.dark; self.preferences.scheme = theme::current_scheme(self.preferences.dark).into();
@@ -1818,67 +1817,67 @@ impl App {
                         }
 
  ui.separator();
-                            if ui.add(iconset::button(ctx, Ico::Keyboard, "Windows et raccourcis…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Keyboard, tr("Windows et raccourcis…"))).clicked() {
                                 self.show_desktop_settings = true;
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Picture, "Icônes et extensions…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Picture, tr("Icônes et extensions…"))).clicked() {
                                 self.reload_icons();
                                 self.show_assets = true;
                                 ui.close_menu();
                             }
                             ui.separator();
-                            if ui.button("Quitter NovyDeck").clicked() {
+                            if ui.button(tr("Quitter NovyDeck")).clicked() {
                                 self.quitting = true;
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Install, "Importer depuis Stream Deck…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Install, tr("Importer depuis Stream Deck…"))).clicked() {
                                 self.import_elgato();
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Variable, "Variables enregistrées…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Variable, tr("Variables enregistrées…"))).clicked() {
                                 self.show_saved_variables = true;
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Diagnostic, "Tester mon périphérique…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Diagnostic, tr("Tester mon périphérique…"))).clicked() {
                                 self.show_hardware_test = true;
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Log, "Rapport périphérique…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Log, tr("Rapport périphérique…"))).clicked() {
                                 self.show_device_report = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Signaler un problème avec mon deck").clicked() {
+                            if ui.button(tr("Signaler un problème avec mon deck")).clicked() {
                                 self.open_hardware_report();
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Device, format!("Réglages — {}", self.device_name()))).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Device, trf("Réglages — {device}", &[("device", &self.device_name())]))).clicked() {
                                 self.settings = true;
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Info, "À propos de NovyDeck")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Info, tr("À propos de NovyDeck"))).clicked() {
                                 self.show_about = true;
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Robot, "Assistant IA…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Robot, tr("Assistant IA…"))).clicked() {
                                 self.assistant_settings = true;
                                 ui.close_menu();
                             }
                             ui.separator();
-                            if ui.add(iconset::button(ctx, Ico::Profile, "Importer des profils…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Profile, tr("Importer des profils…"))).clicked() {
                                 self.import();
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Save, "Exporter les profils…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Save, tr("Exporter les profils…"))).clicked() {
                                 self.export();
                                 ui.close_menu();
                             }
                             ui.separator();
                             if ui
                                 .button(if self.wanted {
-                                    "Déconnecter le périphérique"
+                                    tr("Déconnecter le périphérique")
                                 } else {
-                                    "Connecter le périphérique"
+                                    tr("Connecter le périphérique")
                                 })
                                 .clicked()
                             {
@@ -1898,18 +1897,18 @@ impl App {
                             && ui
                             .add(
                                 theme::danger_button(
-                                    RichText::new("Arrêter les macros")
+                                    RichText::new(tr("Arrêter les macros"))
                                         .color(theme::DANGER),
                                 )
                                 .fill(Color32::TRANSPARENT)
                                 .stroke(egui::Stroke::new(1.0_f32, theme::DANGER)),
                             )
-                            .on_hover_text("Arrête les macros en cours et met les touches en pause (Ctrl + Alt + F12). Les applications déjà ouvertes restent ouvertes.")
+                            .on_hover_text(tr("Arrête les macros en cours et met les touches en pause (Ctrl + Alt + F12). Les applications déjà ouvertes restent ouvertes."))
                             .clicked()
                         {
                             self.engine.stop();
                             self.gate.enabled = false;
-                            self.log("Macros arrêtées. Touches en pause.".into());
+                            self.log(tr("Macros arrêtées. Touches en pause.").into());
                         }
                         if theme::toggle(ui, &mut self.gate.enabled).changed() {
                             if !self.gate.enabled {
@@ -1919,21 +1918,21 @@ impl App {
                             }
                         }
                         let (label, color) = match self.gate.decision() {
-                            Decision::Execute => ("Touches actives", GREEN),
+                            Decision::Execute => (tr("Touches actives"), GREEN),
                             Decision::Inspect => ("Diagnostic", accent()),
                             Decision::Blocked(_) => (
                                 if !self.gate.enabled {
-                                    "En pause"
+                                    tr("En pause")
                                 } else if !self.gate.connected {
                                     if self.wanted {
-                                        "En attente"
+                                        tr("En attente")
                                     } else {
-                                        "Déconnecté"
+                                        tr("Déconnecté")
                                     }
                                 } else if self.gate.dirty {
-                                    "Modifications…"
+                                    tr("Modifications…")
                                 } else {
-                                    "Synchronisation…"
+                                    tr("Synchronisation…")
                                 },
                                 p.muted,
                             ),
@@ -1962,82 +1961,82 @@ impl App {
                     });
                     ui.add_space(12.0);
                     if ui
-                        .add_enabled(!self.history.is_empty(), iconset::secondary_button(ctx, Ico::Undo, if ctx.screen_rect().width() < 1320.0 { "" } else { "Annuler" }))
-                        .on_hover_text("Annuler — Ctrl+Z")
+                        .add_enabled(!self.history.is_empty(), iconset::secondary_button(ctx, Ico::Undo, if ctx.screen_rect().width() < 1320.0 { "" } else { tr("Annuler") }))
+                        .on_hover_text(tr("Annuler — Ctrl+Z"))
                         .clicked()
                     {
                         self.undo_edit();
                     }
                     if ui
-                        .add_enabled(!self.future.is_empty(), iconset::secondary_button(ctx, Ico::Redo, if ctx.screen_rect().width() < 1320.0 { "" } else { "Rétablir" }))
-                        .on_hover_text("Rétablir — Ctrl+Y")
+                        .add_enabled(!self.future.is_empty(), iconset::secondary_button(ctx, Ico::Redo, if ctx.screen_rect().width() < 1320.0 { "" } else { tr("Rétablir") }))
+                        .on_hover_text(tr("Rétablir — Ctrl+Y"))
                         .clicked()
                     {
                         self.redo_edit();
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        iconset::menu(ui, Ico::Settings, "Réglages", |ui| {
-                            if ui.add(iconset::button(ctx, Ico::Keyboard, "Windows et raccourcis…")).clicked() {
+                        iconset::menu(ui, Ico::Settings, tr("Réglages"), |ui| {
+                            if ui.add(iconset::button(ctx, Ico::Keyboard, tr("Windows et raccourcis…"))).clicked() {
                                 self.show_desktop_settings = true;
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Picture, "Icônes et extensions…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Picture, tr("Icônes et extensions…"))).clicked() {
                                 self.reload_icons();
                                 self.show_assets = true;
                                 ui.close_menu();
                             }
                             ui.separator();
-                            if ui.button("Quitter NovyDeck").clicked() {
+                            if ui.button(tr("Quitter NovyDeck")).clicked() {
                                 self.quitting = true;
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Install, "Importer depuis Stream Deck…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Install, tr("Importer depuis Stream Deck…"))).clicked() {
                                 self.import_elgato();
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Variable, "Variables enregistrées…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Variable, tr("Variables enregistrées…"))).clicked() {
                                 self.show_saved_variables = true;
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Diagnostic, "Tester mon périphérique…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Diagnostic, tr("Tester mon périphérique…"))).clicked() {
                                 self.show_hardware_test = true;
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Log, "Rapport périphérique…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Log, tr("Rapport périphérique…"))).clicked() {
                                 self.show_device_report = true;
                                 ui.close_menu();
                             }
-                            if ui.button("Signaler un problème avec mon deck").clicked() {
+                            if ui.button(tr("Signaler un problème avec mon deck")).clicked() {
                                 self.open_hardware_report();
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Device, format!("Réglages — {}", self.device_name()))).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Device, trf("Réglages — {device}", &[("device", &self.device_name())]))).clicked() {
                                 self.settings = true;
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Info, "À propos de NovyDeck")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Info, tr("À propos de NovyDeck"))).clicked() {
                                 self.show_about = true;
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Robot, "Assistant IA…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Robot, tr("Assistant IA…"))).clicked() {
                                 self.assistant_settings = true;
                                 ui.close_menu();
                             }
                             ui.separator();
-                            if ui.add(iconset::button(ctx, Ico::Profile, "Importer des profils…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Profile, tr("Importer des profils…"))).clicked() {
                                 self.import();
                                 ui.close_menu();
                             }
-                            if ui.add(iconset::button(ctx, Ico::Save, "Exporter les profils…")).clicked() {
+                            if ui.add(iconset::button(ctx, Ico::Save, tr("Exporter les profils…"))).clicked() {
                                 self.export();
                                 ui.close_menu();
                             }
                             ui.separator();
                             if ui
                                 .button(if self.wanted {
-                                    "Déconnecter le périphérique"
+                                    tr("Déconnecter le périphérique")
                                 } else {
-                                    "Connecter le périphérique"
+                                    tr("Connecter le périphérique")
                                 })
                                 .clicked()
                             {
@@ -2054,18 +2053,18 @@ impl App {
                         });
                         if ui
                             .add(iconset::secondary_button(ctx, Ico::Robot, self.ai_status_label()))
-                            .on_hover_text("Assistant IA : IA locale sur ce PC et IA connectée (Claude, ChatGPT…)")
+                            .on_hover_text(tr("Assistant IA : IA locale sur ce PC et IA connectée (Claude, ChatGPT…)"))
                             .clicked()
                         {
                             self.assistant_settings = true;
                         }
                         if ui
                             .add(iconset::secondary_button(ctx, if self.preferences.dark { Ico::Sun } else { Ico::Moon }, if self.preferences.dark {
-                                "Thème clair"
+                                tr("Thème clair")
                             } else {
-                                "Thème sombre"
+                                tr("Thème sombre")
                             }))
-                            .on_hover_text("Changer le thème de toute l’interface")
+                            .on_hover_text(tr("Changer le thème de toute l’interface"))
                             .clicked()
                         {
                             self.preferences.dark = !self.preferences.dark; self.preferences.scheme = theme::current_scheme(self.preferences.dark).into();
@@ -2077,18 +2076,18 @@ impl App {
                             && ui
                             .add(
                                 theme::danger_button(
-                                    RichText::new("Arrêter les macros en cours")
+                                    RichText::new(tr("Arrêter les macros en cours"))
                                         .color(theme::DANGER),
                                 )
                                 .fill(Color32::TRANSPARENT)
                                 .stroke(egui::Stroke::new(1.0_f32, theme::DANGER)),
                             )
-                            .on_hover_text("Arrête les macros en cours et met les touches en pause (Ctrl + Alt + F12). Les applications déjà ouvertes restent ouvertes.")
+                            .on_hover_text(tr("Arrête les macros en cours et met les touches en pause (Ctrl + Alt + F12). Les applications déjà ouvertes restent ouvertes."))
                             .clicked()
                         {
                             self.engine.stop();
                             self.gate.enabled = false;
-                            self.log("Macros arrêtées. Touches en pause.".into());
+                            self.log(tr("Macros arrêtées. Touches en pause.").into());
                         }
                         if theme::toggle(ui, &mut self.gate.enabled).changed() {
                             if !self.gate.enabled {
@@ -2098,21 +2097,21 @@ impl App {
                             }
                         }
                         let (label, color) = match self.gate.decision() {
-                            Decision::Execute => ("Touches actives", GREEN),
+                            Decision::Execute => (tr("Touches actives"), GREEN),
                             Decision::Inspect => ("Diagnostic", accent()),
                             Decision::Blocked(_) => (
                                 if !self.gate.enabled {
-                                    "En pause"
+                                    tr("En pause")
                                 } else if !self.gate.connected {
                                     if self.wanted {
-                                        "En attente"
+                                        tr("En attente")
                                     } else {
-                                        "Déconnecté"
+                                        tr("Déconnecté")
                                     }
                                 } else if self.gate.dirty {
-                                    "Modifications…"
+                                    tr("Modifications…")
                                 } else {
-                                    "Synchronisation…"
+                                    tr("Synchronisation…")
                                 },
                                 p.muted,
                             ),
@@ -2124,7 +2123,7 @@ impl App {
     }
     fn save_preferences(&mut self) -> bool {
         if !self.preferences_valid {
-            self.fail("Le fichier preferences.json est illisible et reste préservé. Restaure sa sauvegarde avant d’enregistrer.".into());
+            self.fail(tr("Le fichier preferences.json est illisible et reste préservé. Restaure sa sauvegarde avant d’enregistrer.").into());
             return false;
         }
         match self
@@ -2138,7 +2137,7 @@ impl App {
                 true
             },
             Err(e) => {
-                self.fail(format!("Enregistrement de Mes binds impossible : {e}"));
+                self.fail(trf("Enregistrement de Mes binds impossible : {error}", &[("error", &e)]));
                 false
             }
         }
@@ -2171,7 +2170,7 @@ impl App {
                     &self.config,
                     &self.config.profiles[active],
                 ) {
-                    self.fail(format!("Bind incompatible : {e}"));
+                    self.fail(trf("Bind incompatible : {error}", &[("error", &e)]));
                     return;
                 }
                 self.config.keys_mut()[target] = key;
@@ -2179,7 +2178,7 @@ impl App {
             DragItem::Action(key) => {
                 let current = &mut self.config.keys_mut()[target];
                 if current.steps.len() >= 256 {
-                    self.fail("Une macro contient au maximum 256 étapes.".into());
+                    self.fail(tr("Une macro contient au maximum 256 étapes.").into());
                     return;
                 }
                 if current.steps.is_empty() {
@@ -2196,17 +2195,13 @@ impl App {
             &self.config.profiles[active],
         ) {
             *self.config.keys_mut() = before;
-            self.fail(format!("Affectation refusée : {e}"));
+            self.fail(trf("Affectation refusée : {error}", &[("error", &e)]));
             return;
         }
         self.edited();
         let audio_unset = self.config.keys()[target].steps.iter().any(|s| matches!(s, Step::AudioSwitch { first, second, .. } if first.is_empty() || second.is_empty()));
 
-        self.log(format!(
-            "Touche {:02} mise à jour.{} Ctrl+Z pour annuler.",
-            target + 1,
-            if audio_unset { " Choisis maintenant les deux périphériques audio dans l'inspecteur." } else { "" }
-        ));
+        self.log(trf("Touche {key} mise à jour.{hint} Ctrl+Z pour annuler.", &[("key", &format!("{:02}", target + 1)), ("hint", &if audio_unset { tr(" Choisis maintenant les deux périphériques audio dans l'inspecteur.") } else { "" })]));
     }
     fn record_history(&mut self, before: Config, ctx: &egui::Context) {
         if self.replaying || serde_json::to_value(&before).ok() == serde_json::to_value(&self.config).ok() { return; }
@@ -2221,7 +2216,7 @@ impl App {
             let source = self.path.with_file_name(format!("{name}.json"));
             if source.exists() {
                 if let Err(e) = std::fs::copy(&source, self.path.with_file_name(format!("{name}.avant-migration-{stamp}.json"))) {
-                    self.fail(format!("Conversion annulée : sauvegarde de {name}.json impossible ({e})."));
+                    self.fail(trf("Conversion annulée : sauvegarde de {name}.json impossible ({error}).", &[("name", &name), ("error", &e)]));
                     return;
                 }
             }
@@ -2233,18 +2228,18 @@ impl App {
         self.edited();
         self.save();
         if binds > 0 { self.save_preferences(); }
-        self.log(format!("{keys} action(s) de touches et {binds} de Mes binds converties en blocs natifs. Sauvegardes : *.avant-migration-{stamp}.json (Ctrl+Z annule côté touches)."));
+        self.log(trf("{keys} action(s) de touches et {binds} de Mes binds converties en blocs natifs. Sauvegardes : *.avant-migration-{stamp}.json (Ctrl+Z annule côté touches).", &[("keys", &keys), ("binds", &binds), ("stamp", &stamp)]));
     }
     fn undo_edit(&mut self) {
-        if let Some(previous) = self.history.pop() { self.future.push(self.config.clone()); self.config = previous; self.replaying = true; self.edited(); self.log("Modification annulée.".into()); }
+        if let Some(previous) = self.history.pop() { self.future.push(self.config.clone()); self.config = previous; self.replaying = true; self.edited(); self.log(tr("Modification annulée.").into()); }
     }
     fn redo_edit(&mut self) {
-        if let Some(next) = self.future.pop() { self.history.push(self.config.clone()); self.config = next; self.replaying = true; self.edited(); self.log("Modification rétablie.".into()); }
+        if let Some(next) = self.future.pop() { self.history.push(self.config.clone()); self.config = next; self.replaying = true; self.edited(); self.log(tr("Modification rétablie.").into()); }
     }
-    fn copy_key(&mut self) { self.clipboard = Some(self.config.keys()[self.selected].clone()); self.log("Touche copiée.".into()); }
+    fn copy_key(&mut self) { self.clipboard = Some(self.config.keys()[self.selected].clone()); self.log(tr("Touche copiée.").into()); }
     fn paste_key(&mut self, target: usize) { if let Some(key) = self.clipboard.clone() { self.assign(DragItem::Bind(key), target); } }
     fn duplicate_key(&mut self, from: usize) {
-        let Some(target) = ((from+1)..self.device_keys()).find(|&i| Self::empty_key(&self.config.keys()[i])) else { self.log("Aucune touche vide après celle-ci sur cette page.".into()); return; };
+        let Some(target) = ((from+1)..self.device_keys()).find(|&i| Self::empty_key(&self.config.keys()[i])) else { self.log(tr("Aucune touche vide après celle-ci sur cette page.").into()); return; };
         self.assign(DragItem::Bind(self.config.keys()[from].clone()), target);
     }
     fn empty_key(key: &Key) -> bool { key.label.is_empty() && key.image.is_empty() && key.steps.is_empty() }
@@ -2262,7 +2257,7 @@ impl App {
         self.start_dialog(|| {
             let path = rfd::FileDialog::new()
                 .add_filter(
-                    "Profil ou sauvegarde Stream Deck",
+                    tr("Profil ou sauvegarde Stream Deck"),
                     &[
                         "StreamDeckProfilesBackup",
                         "streamdeckprofilesbackup",
@@ -2277,7 +2272,7 @@ impl App {
             let result = crate::elgato::load_all(&path);
             Some(Box::new(move |app| match result {
                 Ok(reports) => app.import_reports = reports,
-                Err(e) => app.fail(format!("Import Stream Deck impossible : {e}")),
+                Err(e) => app.fail(trf("Import Stream Deck impossible : {error}", &[("error", &e)])),
             }))
         });
     }
@@ -2287,10 +2282,9 @@ impl App {
         }
         let reports = std::mem::take(&mut self.import_reports);
         if self.config.profiles.len() + reports.len() > 64 {
-            self.fail(format!(
-                "64 profils maximum (actuels: {}, importés: {}).",
-                self.config.profiles.len(),
-                reports.len()
+            self.fail(trf(
+                "64 profils maximum (actuels: {current}, importés: {imported}).",
+                &[("current", &self.config.profiles.len()), ("imported", &reports.len())]
             ));
             self.import_reports = reports;
             return;
@@ -2346,11 +2340,9 @@ impl App {
             Ok(())
         })();
         match result {
-            Ok(()) => self.log(format!(
-                "Import Stream Deck terminé : {total_converted} actions converties, {total_warnings} avertissements. Touches en pause."
-            )),
+            Ok(()) => self.log(trf("Import Stream Deck terminé : {total_converted} actions converties, {total_warnings} avertissements. Touches en pause.", &[("total_converted", &total_converted), ("total_warnings", &total_warnings)])),
             Err(e) => {
-                self.fail(format!("Import non enregistré : {e}"));
+                self.fail(trf("Import non enregistré : {error}", &[("error", &e)]));
             }
         }
     }
@@ -2361,7 +2353,7 @@ impl App {
                 self.crop_session = Some(session);
             }
             Err(e) => {
-                self.fail(format!("Impossible d'ouvrir le média pour recadrage : {e}"));
+                self.fail(trf("Impossible d'ouvrir le média pour recadrage : {error}", &[("error", &e)]));
             }
         }
     }
@@ -2369,7 +2361,7 @@ impl App {
         self.gate.enabled = false;
         self.engine.stop();
         self.start_dialog(|| {
-            let path = rfd::FileDialog::new().add_filter("Pack NovyDeck", &["json"]).pick_file()?;
+            let path = rfd::FileDialog::new().add_filter(tr("Pack NovyDeck"), &["json"]).pick_file()?;
             let pack = (|| -> anyhow::Result<Library> {
                 let bytes = std::fs::read(path)?;
                 anyhow::ensure!(bytes.len() <= 8_000_000, "Pack trop volumineux");
@@ -2383,16 +2375,16 @@ impl App {
                         let previous = std::mem::replace(&mut app.preferences.library, next);
                         if !app.save_preferences() {
                             app.preferences.library = previous;
-                            anyhow::bail!("Pack non enregistré");
+                            anyhow::bail!(tr("Pack non enregistré"));
                         }
                         Ok(count)
                     })();
                     match result {
-                        Ok(n) => app.log(format!("{n} binds importés. Les touches sont en pause.")),
-                        Err(e) => app.fail(format!("Import refusé : {e}")),
+                        Ok(n) => app.log(trf("{n} binds importés. Les touches sont en pause.", &[("n", &n)])),
+                        Err(e) => app.fail(trf("Import refusé : {error}", &[("error", &e)])),
                     }
                 }
-                Err(e) => app.fail(format!("Import refusé : {e}")),
+                Err(e) => app.fail(trf("Import refusé : {error}", &[("error", &e)])),
             }))
         });
     }
@@ -2402,13 +2394,13 @@ impl App {
         let library = self.preferences.library.clone();
         self.start_dialog(move || {
             let path = rfd::FileDialog::new().set_file_name("mes-binds-novydeck.json")
-                .add_filter("Pack NovyDeck", &["json"]).save_file()?;
+                .add_filter(tr("Pack NovyDeck"), &["json"]).save_file()?;
             let result = serde_json::to_vec_pretty(&library)
                 .map_err(anyhow::Error::from)
                 .and_then(|b| std::fs::write(path, b).map_err(Into::into));
             Some(Box::new(move |app| match result {
-                Ok(()) => app.log("Pack exporté. Les touches sont en pause.".into()),
-                Err(e) => app.fail(format!("Export impossible : {e}")),
+                Ok(()) => app.log(tr("Pack exporté. Les touches sont en pause.").into()),
+                Err(e) => app.fail(trf("Export impossible : {error}", &[("error", &e)])),
             }))
         });
     }
@@ -2420,9 +2412,9 @@ impl App {
             .frame(egui::Frame::new().fill(p.surface).inner_margin(16))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Bibliothèque d'actions").size(17.0).strong());
+                    ui.label(RichText::new(tr("Bibliothèque d'actions")).size(17.0).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        theme::pill(ui, "40 binds", accent());
+                        theme::pill(ui, tr("40 binds"), accent());
                     });
                 });
                 ui.add_space(6.0);
@@ -2445,13 +2437,13 @@ impl App {
                                 egui::TextEdit::singleline(&mut self.catalog_search)
                                     .frame(false)
                                     .desired_width(f32::INFINITY)
-                                    .hint_text("Rechercher une action…"),
+                                    .hint_text(tr("Rechercher une action…")),
                             );
                         });
                     });
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    for (i, label) in ["Actions", "Magasin", "Mes binds", "Plugins"]
+                    for (i, label) in [tr("Actions"), tr("Magasin"), tr("Mes binds"), tr("Plugins")]
                         .iter()
                         .enumerate()
                     {
@@ -2503,7 +2495,7 @@ impl App {
                 } else if self.catalog_tab == 0 {
                     ui.label(
                         RichText::new(
-                            "Glisse une action sur une touche. Elle s’ajoute à la fin de sa macro.",
+                            tr("Glisse une action sur une touche. Elle s’ajoute à la fin de sa macro."),
                         )
                         .small()
                         .color(p.muted),
@@ -2555,7 +2547,7 @@ impl App {
                                     ui.painter().text(
                                         r.min + Vec2::new(47.0, 28.0),
                                         egui::Align2::LEFT_TOP,
-                                        "Action · Glisser ou cliquer",
+                                        tr("Action · Glisser ou cliquer"),
                                         egui::FontId::proportional(10.0),
                                         p.muted,
                                     );
@@ -2572,14 +2564,14 @@ impl App {
                                         self.assign(item, self.selected);
                                     }
                                     response.on_hover_text(
-                                        "Glisser sur une touche, ou cliquer pour ajouter à la touche sélectionnée",
+                                        tr("Glisser sur une touche, ou cliquer pour ajouter à la touche sélectionnée"),
                                     );
                                 });
                             }
                             ui.add_space(14.0);
-                            ui.label(RichText::new("Macro personnalisée").strong());
+                            ui.label(RichText::new(tr("Macro personnalisée")).strong());
                             ui.label(
-                                RichText::new("Combine plusieurs actions dans l’inspecteur du bas, puis enregistre le résultat dans Mes binds.")
+                                RichText::new(tr("Combine plusieurs actions dans l’inspecteur du bas, puis enregistre le résultat dans Mes binds."))
                                     .small()
                                     .color(p.muted),
                             );
@@ -2588,7 +2580,7 @@ impl App {
                     if self.catalog_tab == 1 {
                         egui::ComboBox::from_id_salt("catalog_category")
                             .width(ui.available_width() - 8.0)
-                            .selected_text(&self.catalog_category)
+                            .selected_text(crate::catalog::display_category(&self.catalog_category))
                             .show_ui(ui, |ui| {
                                 for category in [
                                     "Tout",
@@ -2602,27 +2594,27 @@ impl App {
                                     ui.selectable_value(
                                         &mut self.catalog_category,
                                         category.into(),
-                                        category,
+                                        crate::catalog::display_category(category),
                                     );
                                 }
                             });
                         ui.label(
-                            RichText::new("Gratuit · hors ligne · modifiable")
+                            RichText::new(tr("Gratuit · hors ligne · modifiable"))
                                 .small()
                                 .color(p.muted),
                         );
                     } else {
                         ui.horizontal(|ui| {
-                            if ui.button("Enregistrer la touche").clicked() {
+                            if ui.button(tr("Enregistrer la touche")).clicked() {
                                 self.bind_name = self.config.keys()[self.selected].label.clone();
                                 self.save_bind = true;
                             }
                             ui.menu_button("•••", |ui| {
-                                if ui.add(iconset::button(ui.ctx(), Ico::Album, "Importer un pack…")).clicked() {
+                                if ui.add(iconset::button(ui.ctx(), Ico::Album, tr("Importer un pack…"))).clicked() {
                                     self.import_binds();
                                     ui.close_menu();
                                 }
-                                if ui.button("Exporter Mes binds…").clicked() {
+                                if ui.button(tr("Exporter Mes binds…")).clicked() {
                                     self.export_binds();
                                     ui.close_menu();
                                 }
@@ -2632,7 +2624,7 @@ impl App {
                     let items: Vec<(String, String, Key)> = if self.catalog_tab == 1 {
                         catalog::presets()
                             .into_iter()
-                            .map(|v| (v.category.into(), v.description.into(), v.key))
+                            .map(|v| (v.category.into(), catalog::display_description(v.description).into(), v.key))
                             .collect()
                     } else {
                         self.preferences
@@ -2642,10 +2634,9 @@ impl App {
                             .map(|b| {
                                 (
                                     "Personnel".into(),
-                                    format!(
-                                        "{} · {} étape(s). Les images restent liées à leur fichier local.",
-                                        b.name,
-                                        b.key.steps.len()
+                                    trf(
+                                        "{name} · {steps} étape(s). Les images restent liées à leur fichier local.",
+                                        &[("name", &b.name), ("steps", &b.key.steps.len())]
                                     ),
                                     {
                                         let mut k = b.key.clone();
@@ -2726,7 +2717,7 @@ impl App {
                                         );
                                         let mut title =
                                             egui::text::LayoutJob::simple_singleline(
-                                                key.label.clone(),
+                                                if self.catalog_tab == 1 { catalog::display_name(&key.label).to_owned() } else { key.label.clone() },
                                                 egui::FontId::proportional(13.0),
                                                 p.ink,
                                             );
@@ -2770,9 +2761,9 @@ impl App {
                             if found == 0 {
                                 ui.add_space(14.0);
                                 ui.label(if self.catalog_tab == 2 && items.is_empty() {
-                                    "Tes binds enregistrés apparaîtront ici."
+                                    tr("Tes binds enregistrés apparaîtront ici.")
                                 } else {
-                                    "Aucun résultat. Essaie un autre mot."
+                                    tr("Aucun résultat. Essaie un autre mot.")
                                 });
                             }
                         });
@@ -2783,7 +2774,7 @@ impl App {
                             .id_salt("preset_details")
                             .max_height(195.0)
                             .show(ui, |ui| {
-                                ui.label(RichText::new(&key.label).strong());
+                                ui.label(RichText::new(if self.catalog_tab == 1 { catalog::display_name(&key.label) } else { key.label.as_str() }).strong());
                                 ui.label(RichText::new(description).small().color(p.muted));
                                 ui.label(
                                     RichText::new(
@@ -2798,10 +2789,7 @@ impl App {
                                 );
                                 if ui
                                     .add(theme::primary(
-                                        RichText::new(format!(
-                                            "Utiliser sur la touche {:02}",
-                                            self.selected + 1
-                                        ))
+                                        RichText::new(trf("Utiliser sur la touche {key}", &[("key", &format!("{:02}", self.selected + 1))]))
                                         .color(Color32::WHITE),
                                     ))
                                     .clicked()
@@ -2809,7 +2797,7 @@ impl App {
                                     self.assign(DragItem::Bind(key.clone()), self.selected);
                                 }
                                 if self.catalog_tab == 2
-                                    && ui.small_button("Supprimer de Mes binds").clicked()
+                                    && ui.small_button(tr("Supprimer de Mes binds")).clicked()
                                 {
                                     let previous = self.preferences.library.clone();
                                     self.preferences.library.binds.remove(i);
@@ -2823,7 +2811,7 @@ impl App {
                     } else {
                         ui.label(
                             RichText::new(
-                                "Glisse un bind sur une touche, ou clique pour voir ses actions.",
+                                tr("Glisse un bind sur une touche, ou clique pour voir ses actions."),
                             )
                             .small()
                             .color(p.muted),
@@ -2840,9 +2828,9 @@ impl App {
             None
         };
         let message = if let Some(e) = &validation {
-            format!("Brouillon · {e} · Les autres touches restent disponibles.")
+            trf("Brouillon · {error} · Les autres touches restent disponibles.", &[("error", &e)])
         } else if self.gate.dirty {
-            "Sauvegarde automatique…".into()
+            tr("Sauvegarde automatique…").into()
         } else {
             self.notice.clone()
         };
@@ -2870,16 +2858,16 @@ impl App {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .add(iconset::button(ctx, Ico::Log, if self.show_logs {
-                                "Masquer le journal"
+                                tr("Masquer le journal")
                             } else {
-                                "Journal"
+                                tr("Journal")
                             }).small())
                             .clicked()
                         {
                             self.show_logs = !self.show_logs;
                         }
                         ui.label(
-                            RichText::new("Arrêt : Ctrl + Alt + F12")
+                            RichText::new(tr("Arrêt : Ctrl + Alt + F12"))
                                 .size(10.0)
                                 .color(p.muted),
                         );
@@ -2894,8 +2882,8 @@ impl App {
                 .frame(egui::Frame::new().fill(p.surface).inner_margin(16))
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Activité récente").strong());
-                        if ui.small_button("Effacer").clicked() {
+                        ui.label(RichText::new(tr("Activité récente")).strong());
+                        if ui.small_button(tr("Effacer")).clicked() {
                             self.logs.clear();
                         }
                     });
@@ -2922,46 +2910,46 @@ impl App {
             let roomy = ui.available_width() >= 820.0;
             let actions = |app: &mut Self, ui: &mut egui::Ui, narrow: bool, buttons: &mut Vec<egui::Rect>| {
                 if narrow {
-                    let response = ui.add_enabled(!running, theme::primary("Simuler")).on_hover_text("Déroule les actions dans le journal, sans aucun effet sur le PC"); buttons.push(response.rect); if response.clicked() { app.preview(true); }
-                    let response = ui.add_enabled(!running, egui::Button::new("Tester pour de vrai")).on_hover_text("Exécute réellement les actions dans 3 s, sur la fenêtre active"); buttons.push(response.rect); if response.clicked() { app.preview(false); }
-                    let response = if roomy { ui.add(iconset::button(ui.ctx(), Ico::Workshop, "Atelier de blocs")) } else { ui.button("Atelier de blocs") }; buttons.push(response.rect); if response.clicked() { app.show_workflow = true; }
+                    let response = ui.add_enabled(!running, theme::primary(tr("Simuler"))).on_hover_text(tr("Déroule les actions dans le journal, sans aucun effet sur le PC")); buttons.push(response.rect); if response.clicked() { app.preview(true); }
+                    let response = ui.add_enabled(!running, egui::Button::new(tr("Tester pour de vrai"))).on_hover_text(tr("Exécute réellement les actions dans 3 s, sur la fenêtre active")); buttons.push(response.rect); if response.clicked() { app.preview(false); }
+                    let response = if roomy { ui.add(iconset::button(ui.ctx(), Ico::Workshop, tr("Atelier de blocs"))) } else { ui.button(tr("Atelier de blocs")) }; buttons.push(response.rect); if response.clicked() { app.show_workflow = true; }
                     ui.menu_button("•••", |ui| {
-                        if ui.button("Enregistrer dans Mes binds").clicked() { app.bind_name=app.config.keys()[app.selected].label.clone();app.save_bind=true;ui.close_menu(); }
-                        if ui.add_enabled(!app.config.keys()[app.selected].steps.is_empty(), theme::danger_button("Vider")).clicked() { app.assign(DragItem::Bind(Key::default()),app.selected);ui.close_menu(); }
+                        if ui.button(tr("Enregistrer dans Mes binds")).clicked() { app.bind_name=app.config.keys()[app.selected].label.clone();app.save_bind=true;ui.close_menu(); }
+                        if ui.add_enabled(!app.config.keys()[app.selected].steps.is_empty(), theme::danger_button(tr("Vider"))).clicked() { app.assign(DragItem::Bind(Key::default()),app.selected);ui.close_menu(); }
                     });
                 } else {
-                    if ui.add(theme::primary(RichText::new("Atelier de blocs").color(Color32::WHITE))).on_hover_text("Composer l'automatisation avec des blocs visuels").clicked(){app.show_workflow=true;}
-                    if ui.button("Enregistrer dans Mes binds").clicked(){app.bind_name=app.config.keys()[app.selected].label.clone();app.save_bind=true;}
-                    if ui.add_enabled(!app.config.keys()[app.selected].steps.is_empty(),theme::danger_button("Vider")).clicked(){app.assign(DragItem::Bind(Key::default()),app.selected);}
-                    if ui.add_enabled(!running,egui::Button::new("Tester pour de vrai (3 s)")).on_hover_text("Exécute réellement les actions dans 3 s, sur la fenêtre active").clicked(){app.preview(false);}
-                    if ui.add_enabled(!running,theme::primary("Simuler")).on_hover_text("Déroule les actions dans le journal, sans aucun effet sur le PC").clicked(){app.preview(true);}
+                    if ui.add(theme::primary(RichText::new(tr("Atelier de blocs")).color(Color32::WHITE))).on_hover_text(tr("Composer l'automatisation avec des blocs visuels")).clicked(){app.show_workflow=true;}
+                    if ui.button(tr("Enregistrer dans Mes binds")).clicked(){app.bind_name=app.config.keys()[app.selected].label.clone();app.save_bind=true;}
+                    if ui.add_enabled(!app.config.keys()[app.selected].steps.is_empty(),theme::danger_button(tr("Vider"))).clicked(){app.assign(DragItem::Bind(Key::default()),app.selected);}
+                    if ui.add_enabled(!running,egui::Button::new(tr("Tester pour de vrai (3 s)"))).on_hover_text(tr("Exécute réellement les actions dans 3 s, sur la fenêtre active")).clicked(){app.preview(false);}
+                    if ui.add_enabled(!running,theme::primary(tr("Simuler"))).on_hover_text(tr("Déroule les actions dans le journal, sans aucun effet sur le PC")).clicked(){app.preview(true);}
                 }
             };
             let mut buttons = Vec::new();
             let mut below = false;
             ui.horizontal(|ui| {
-                if !two_rows { ui.label(RichText::new(format!("Touche {:02}",self.selected+1)).size(17.0).strong()); }
-                if !narrow { theme::status_badge(ui, if configured { "Action configurée" } else { "Touche vide" }, if configured { GREEN } else { p.muted }); ui.add_space(10.0); }
+                if !two_rows { ui.label(RichText::new(trf("Touche {key}", &[("key", &format!("{:02}", self.selected+1))])).size(17.0).strong()); }
+                if !narrow { theme::status_badge(ui, if configured { tr("Action configurée") } else { tr("Touche vide") }, if configured { GREEN } else { p.muted }); ui.add_space(10.0); }
                 egui::Frame::new().fill(p.bg).corner_radius(10).inner_margin(egui::Margin::same(3)).show(ui, |ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
-                    for (i, ico, label) in [(0u8, Ico::Actions, "Action"), (1u8, Ico::Palette, "Apparence"), (2u8, Ico::Advanced, "Avancé")] {
+                    for (i, ico, label) in [(0u8, Ico::Actions, tr("Action")), (1u8, Ico::Palette, tr("Apparence")), (2u8, Ico::Advanced, tr("Avancé"))] {
                         let response = if roomy { iconset::tab(ui, tab == i, ico, label) } else { iconset::plain_tab(ui, tab == i, label) };
                         if response.on_hover_text(label).clicked() { tab = i; }
                     }
                 });
                 if tab == 0 && two_rows {
-                    let text = if self.long_editor { "Appui long" } else { "Appui court" };
-                    let toggle = ui.button(text).on_hover_text("Basculer entre appui court et appui long");
+                    let text = if self.long_editor { tr("Appui long") } else { tr("Appui court") };
+                    let toggle = ui.button(text).on_hover_text(tr("Basculer entre appui court et appui long"));
                     ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("inspector_press_toggle"), toggle.rect));
                     if toggle.clicked() { self.long_editor = !self.long_editor; }
                 } else if tab == 0 {
                     ui.add_space(6.0);
-                    ui.selectable_value(&mut self.long_editor, false, if narrow { "Court" } else { "Appui court" });
-                    ui.selectable_value(&mut self.long_editor, true, if narrow { "Long" } else { "Appui long" });
+                    ui.selectable_value(&mut self.long_editor, false, if narrow { tr("Court") } else { tr("Appui court") });
+                    ui.selectable_value(&mut self.long_editor, true, if narrow { tr("Long") } else { tr("Appui long") });
                 }
                 // Pas assez de place à droite des onglets : les boutons passent sur une seconde ligne
                 // plutôt que de recouvrir « Appui court ».
-                let need: f32 = ["Simuler", "Tester pour de vrai", "Atelier de blocs", "•••"].iter().map(|t| {
+                let need: f32 = [tr("Simuler"), tr("Tester pour de vrai"), tr("Atelier de blocs"), "•••"].iter().map(|t| {
                     let font = egui::TextStyle::Button.resolve(ui.style());
                     ui.fonts(|f| f.layout_no_wrap((*t).to_owned(), font, Color32::WHITE).size().x)
                         + 2.0 * ui.spacing().button_padding.x + ui.spacing().item_spacing.x
@@ -2980,12 +2968,12 @@ impl App {
             motion::fade(ui, "inspector", (tab, self.selected, self.long_editor, self.config.page.clone()), 0.25, self.animations());
             if let Some(shortcut) = extras::discord_shortcut(&self.config.keys()[self.selected]) {
                 ui.group(|ui| {
-                    ui.label("Discord : configure ce raccourci dans Discord → Paramètres → Raccourcis clavier");
+                    ui.label(tr("Discord : configure ce raccourci dans Discord → Paramètres → Raccourcis clavier"));
                     ui.horizontal(|ui| {
                         ui.label(shortcut);
-                        if ui.button("Copier").clicked() { ui.ctx().copy_text(shortcut.to_owned()); }
+                        if ui.button(tr("Copier")).clicked() { ui.ctx().copy_text(shortcut.to_owned()); }
                     });
-                    ui.label("État estimé : NovyDeck ne lit pas l'état réel du micro ni du casque dans Discord.");
+                    ui.label(tr("État estimé : NovyDeck ne lit pas l'état réel du micro ni du casque dans Discord."));
                 });
             }
             let preview_key = self.presented_key(self.selected);
@@ -3001,9 +2989,9 @@ impl App {
                 let short=|id:&str|id.rsplit('.').next().unwrap_or(id).to_owned();
                 let row=ui.spacing().interact_size.y;
                 ui.allocate_ui_with_layout(egui::vec2(ui.available_width(),row),egui::Layout::right_to_left(egui::Align::Center),|ui|{
-                    if ui.button("Retirer le plugin").clicked(){key.plugin=None;changed=true;}
+                    if ui.button(tr("Retirer le plugin")).clicked(){key.plugin=None;changed=true;}
                     if self.plugins.as_ref().is_some_and(|m|m.inspector_path(selected).is_some())
-                        && ui.button("Réglages du plugin").clicked(){if let Some(m)=&self.plugins {m.open_inspector(selected);}}
+                        && ui.button(tr("Réglages du plugin")).clicked(){if let Some(m)=&self.plugins {m.open_inspector(selected);}}
                     let text=format!("Plugin {} · {} — {}",short(&binding.plugin),short(&binding.action),status.as_deref().unwrap_or("Actif"));
                     let color=if status.is_some(){theme::WARNING}else{ui.visuals().text_color()};
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center),|ui|{
@@ -3026,7 +3014,7 @@ impl App {
                 let roomy = body_height >= 150.0;
                 let preview_width = (if width < 650.0 { 76.0 } else { 140.0_f32 }).min(if roomy { body_height - controls } else { body_height - 6.0 }).max(40.0);
                 // La colonne garde la largeur des boutons même quand l'aperçu rétrécit : pas de libellé sur deux lignes.
-                let button_width = if roomy { ui.fonts(|f| f.layout_no_wrap("Changer l'icône".to_owned(), egui::TextStyle::Button.resolve(ui.style()), Color32::WHITE).size().x) + 2.0 * ui.spacing().button_padding.x } else { 0.0 };
+                let button_width = if roomy { ui.fonts(|f| f.layout_no_wrap(tr("Changer l'icône").to_owned(), egui::TextStyle::Button.resolve(ui.style()), Color32::WHITE).size().x) + 2.0 * ui.spacing().button_padding.x } else { 0.0 };
                 let preview_width_column = preview_width.max(button_width);
                 ui.allocate_ui_with_layout(Vec2::new(preview_width_column + 18.0, body_height), egui::Layout::top_down(egui::Align::Center), |ui| {
                     let (rect, _) = ui.allocate_exact_size(Vec2::splat(preview_width), egui::Sense::hover());
@@ -3034,42 +3022,42 @@ impl App {
                     let lcd = rect.shrink(5.0);
                     match &preview {
                         Ok(texture) => theme::rounded_image(ui.painter(), texture.id(), lcd, theme::KEY_LCD_RADIUS),
-                        Err(_) => { ui.painter().text(lcd.center(), egui::Align2::CENTER_CENTER, "Aperçu indisponible", egui::FontId::proportional(9.0), p.muted); },
+                        Err(_) => { ui.painter().text(lcd.center(), egui::Align2::CENTER_CENTER, tr("Aperçu indisponible"), egui::FontId::proportional(9.0), p.muted); },
                     }
                     if roomy {
                         ui.label(RichText::new(&key.label).strong());
-                        if ui.button("Changer l'icône").clicked() { open_icons = true; }
+                        if ui.button(tr("Changer l'icône")).clicked() { open_icons = true; }
                         if can_recrop
-                            && ui.button("Recadrer").on_hover_text("Ajuster le cadrage de l'image avec aperçu avant validation").clicked() { recrop = true; }
+                            && ui.button(tr("Recadrer")).on_hover_text(tr("Ajuster le cadrage de l'image avec aperçu avant validation")).clicked() { recrop = true; }
                     }
                 });
                 ui.separator();
                 ui.allocate_ui_with_layout(Vec2::new((width-preview_width_column-32.0).max(100.0),body_height),egui::Layout::top_down(egui::Align::Min),|ui| {
                     if tab == 2 {
                         egui::ScrollArea::vertical().id_salt("inspector_advanced").max_height(body_height).show(ui,|ui|{
-                            ui.label(RichText::new("Comportement").strong());
-                            ui.horizontal(|ui|{ui.label("Répéter la macro");changed|=ui.add(egui::DragValue::new(&mut key.repeat).range(1..=1000)).changed();ui.label("fois à chaque appui");});
+                            ui.label(RichText::new(tr("Comportement")).strong());
+                            ui.horizontal(|ui|{ui.label(tr("Répéter la macro"));changed|=ui.add(egui::DragValue::new(&mut key.repeat).range(1..=1000)).changed();ui.label(tr("fois à chaque appui"));});
                              ui.horizontal(|ui| {
-                                 ui.label("Si une macro est en cours");
+                                 ui.label(tr("Si une macro est en cours"));
                                  egui::ComboBox::from_id_salt("key_run_mode").selected_text(match key.run_mode.unwrap_or_default() {
-                                     crate::model::RunMode::Ignore => "Ignorer", crate::model::RunMode::Restart => "Redémarrer", crate::model::RunMode::Queue => "Mettre en attente",
+                                     crate::model::RunMode::Ignore => "Ignorer", crate::model::RunMode::Restart => tr("Redémarrer"), crate::model::RunMode::Queue => tr("Mettre en attente"),
                                  }).show_ui(ui, |ui| {
-                                     changed |= ui.selectable_value(&mut key.run_mode, None, "Ignorer (défaut)").changed();
-                                     changed |= ui.selectable_value(&mut key.run_mode, Some(crate::model::RunMode::Restart), "Redémarrer").changed();
-                                     changed |= ui.selectable_value(&mut key.run_mode, Some(crate::model::RunMode::Queue), "Mettre en attente (5 max)").changed();
+                                     changed |= ui.selectable_value(&mut key.run_mode, None, tr("Ignorer (défaut)")).changed();
+                                     changed |= ui.selectable_value(&mut key.run_mode, Some(crate::model::RunMode::Restart), tr("Redémarrer")).changed();
+                                     changed |= ui.selectable_value(&mut key.run_mode, Some(crate::model::RunMode::Queue), tr("Mettre en attente (5 max)")).changed();
                                  });
                              });
-                             ui.horizontal(|ui| { ui.label("Anti-rebond"); changed |= ui.add(egui::DragValue::new(&mut key.debounce_ms).range(0..=60_000)).changed(); ui.label("ms par touche"); });
-                            ui.label(RichText::new(format!("Appui court : {} étape(s) · Appui long : {} étape(s)", key.steps.len(), key.long_steps.len())).color(p.muted));
+                             ui.horizontal(|ui| { ui.label(tr("Anti-rebond")); changed |= ui.add(egui::DragValue::new(&mut key.debounce_ms).range(0..=60_000)).changed(); ui.label(tr("ms par touche")); });
+                            ui.label(RichText::new(trf("Appui court : {short} étape(s) · Appui long : {long} étape(s)", &[("short", &key.steps.len()), ("long", &key.long_steps.len())])).color(p.muted));
                             ui.add_space(8.0);
-                            ui.label(RichText::new("Touche").strong());
+                            ui.label(RichText::new(tr("Touche")).strong());
                             ui.horizontal(|ui|{
-                                if ui.button("Copier la touche").clicked(){advanced=Some(0);}
-                                if ui.button("Coller ici").clicked(){advanced=Some(1);}
-                                if ui.button("Dupliquer vers la touche libre suivante").clicked(){advanced=Some(2);}
+                                if ui.button(tr("Copier la touche")).clicked(){advanced=Some(0);}
+                                if ui.button(tr("Coller ici")).clicked(){advanced=Some(1);}
+                                if ui.button(tr("Dupliquer vers la touche libre suivante")).clicked(){advanced=Some(2);}
                             });
                             ui.add_space(8.0);
-                            ui.label(RichText::new("La simulation ne lance aucune action. Le test réel vise la fenêtre active ; « Arrêter les macros en cours » (Ctrl + Alt + F12) interrompt une exécution.").size(11.0).color(p.muted));
+                            ui.label(RichText::new(tr("La simulation ne lance aucune action. Le test réel vise la fenêtre active ; « Arrêter les macros en cours » (Ctrl + Alt + F12) interrompt une exécution.")).size(11.0).color(p.muted));
                         });
                         return;
                     }
@@ -3080,48 +3068,48 @@ impl App {
                                 changed |= icon_ui::audio_options(ui,&mut key.steps[0],&self.audio,&mut state,&dialog_tx,&(active,page_id.clone(),selected,vec![0]));
                                 if let Some(state)=state { pick_audio=Some((vec![0],state)); }
                             }
-                        ui.label(RichText::new("Titre sur la touche").small().color(p.muted));
-                        changed|=ui.add(egui::TextEdit::singleline(&mut key.label).desired_width(200.0).hint_text("Nom de la touche")).changed();
+                        ui.label(RichText::new(tr("Titre sur la touche")).small().color(p.muted));
+                        changed|=ui.add(egui::TextEdit::singleline(&mut key.label).desired_width(200.0).hint_text(tr("Nom de la touche"))).changed();
                         ui.horizontal(|ui| {
-                            ui.label("Taille du titre");
+                            ui.label(tr("Taille du titre"));
                             changed |= ui.add(egui::Slider::new(&mut key.title_size, 10..=20).show_value(false)).changed();
                             ui.label(format!("{} px", key.title_size));
                         });
                         changed|=appearance::color(ui,key);
                         ui.add_space(10.0);
                         ui.separator();
-                        ui.label(RichText::new("Affichage selon l'état").strong());
+                        ui.label(RichText::new(tr("Affichage selon l'état")).strong());
                         let mut enabled = key.state_display.is_some();
-                        if ui.checkbox(&mut enabled, "Adapter la touche à une condition réelle").changed() {
+                        if ui.checkbox(&mut enabled, tr("Adapter la touche à une condition réelle")).changed() {
                             key.state_display = enabled.then(crate::model::StateDisplay::default);
                             changed = true;
                         }
                         if let Some(display) = &mut key.state_display {
                             ui.push_id("state_display", |ui| {
                                 changed |= edit_condition(ui, &mut display.condition, &self.audio, 0);
-                                for (active, title, face) in [(true, "Quand c'est vrai", &mut display.on), (false, "Sinon", &mut display.off)] {
+                                for (active, title, face) in [(true, tr("Quand c'est vrai"), &mut display.on), (false, tr("Sinon"), &mut display.off)] {
                                     theme::card_frame(theme::palette(ui.ctx())).show(ui, |ui| {
                                         ui.label(RichText::new(title).strong());
                                         let label = face.label.get_or_insert_with(String::new);
-                                        changed |= ui.add(egui::TextEdit::singleline(label).hint_text("Titre (vide = aucun titre)")).changed();
+                                        changed |= ui.add(egui::TextEdit::singleline(label).hint_text(tr("Titre (vide = aucun titre)"))).changed();
                                         ui.horizontal(|ui| {
                                             let mut color = face.color.unwrap_or(key.color);
                                             if ui.color_edit_button_srgb(&mut color).changed() { face.color = Some(color); changed = true; }
-                                            if ui.small_button("Couleur par défaut").clicked() { face.color = None; changed = true; }
+                                            if ui.small_button(tr("Couleur par défaut")).clicked() { face.color = None; changed = true; }
                                         });
                                         ui.horizontal(|ui| {
-                                            ui.label(face.image.as_deref().filter(|v| !v.is_empty()).unwrap_or("Icône de la touche"));
-                                            if ui.button("Galerie").clicked() { state_icon = Some(active); }
-                                            if ui.small_button("Effacer").clicked() { face.image = None; changed = true; }
+                                            ui.label(face.image.as_deref().filter(|v| !v.is_empty()).unwrap_or(tr("Icône de la touche")));
+                                            if ui.button(tr("Galerie")).clicked() { state_icon = Some(active); }
+                                            if ui.small_button(tr("Effacer")).clicked() { face.image = None; changed = true; }
                                         });
                                     });
                                 }
-                                ui.collapsing("Options avancées", |ui| {
+                                ui.collapsing(tr("Options avancées"), |ui| {
                                     changed |= ui.add(egui::DragValue::new(&mut display.poll_ms).range(250..=600_000).suffix(" ms")).changed();
                                 });
                             });
                         }
-                        if crate::audio::single_switch(&key.steps).is_some(){if ui.button("Icônes par état →").on_hover_text("Choisir séparément les icônes des deux états audio").clicked(){open_icons=true;}}else{
+                        if crate::audio::single_switch(&key.steps).is_some(){if ui.button(tr("Icônes par état →")).on_hover_text(tr("Choisir séparément les icônes des deux états audio")).clicked(){open_icons=true;}}else{
                         let actions=appearance::icons(ui,!key.image.is_empty());
                         open_icons|=actions.gallery;
                         if actions.pick_file {
@@ -3130,7 +3118,7 @@ impl App {
                             let assets=self.path.parent().unwrap().join("assets/mes-icones");
                             let size=image_size;
                             std::thread::spawn(move || {
-                                let path=rfd::FileDialog::new().add_filter("Image ou vidéo", &["png","jpg","jpeg","svg","gif","mp4","webm","mov","mkv","avi"]).pick_file();
+                                let path=rfd::FileDialog::new().add_filter(tr("Image ou vidéo"), &["png","jpg","jpeg","svg","gif","mp4","webm","mov","mkv","avi"]).pick_file();
                                 if let Some(path) = path {
                                     let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
                                     if ext != "svg" {
@@ -3141,13 +3129,13 @@ impl App {
                                     }
                                     let video = crate::assets::is_video(&path);
                                     let src = path.clone(); let assets_dir = assets.clone();
-                                    if video { let _ = tx.send(Some(Box::new(|app: &mut App| app.log("Conversion de la vidéo…".into())) as DialogEffect)); }
+                                    if video { let _ = tx.send(Some(Box::new(|app: &mut App| app.log(tr("Conversion de la vidéo…").into())) as DialogEffect)); }
                                     let result = if video {
                                         crate::assets::import_video(&path, &assets, size).map_err(|e| e.to_string())
                                     } else if path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("gif")) {
                                         std::fs::read(&path).map_err(|e| e.to_string()).and_then(|bytes| {
                                             let oversized = image::image_dimensions(&path).map(|(w,h)| w > 512 || h > 512).unwrap_or(false);
-                                            if oversized { let _ = tx.send(Some(Box::new(|app: &mut App| app.log("GIF trop grand : réduction automatique à 256 px.".into())) as DialogEffect)); }
+                                            if oversized { let _ = tx.send(Some(Box::new(|app: &mut App| app.log(tr("GIF trop grand : réduction automatique à 256 px.").into())) as DialogEffect)); }
                                             crate::assets::import_image(&bytes, &assets, path.file_stem().and_then(|s| s.to_str()).unwrap_or("gif")).map_err(|e| e.to_string())
                                         })
                                     } else { Ok(path) };
@@ -3155,14 +3143,14 @@ impl App {
                                         Ok(path) => {
                                             if let Some(key)=app.config.profiles.get_mut(profile).and_then(|p|p.keys_at_mut(&page)).and_then(|keys|keys.get_mut(index)) {
                                                 key.image=path.to_string_lossy().into_owned();app.edited();
-                                                if video { app.log("Vidéo convertie en GIF animé.".into()); }
+                                                if video { app.log(tr("Vidéo convertie en GIF animé.").into()); }
                                             }
                                         }
                                         Err(e) => {
                                             if video && e.contains(crate::assets::FFMPEG_MISSING) {
                                                 app.ffmpeg_offer = Some(FfmpegOffer { video: src, assets: assets_dir, size, profile, page, index });
                                             }
-                                            app.fail(format!("Import image ou vidéo impossible : {e}"));
+                                            app.fail(trf("Import image ou vidéo impossible : {error}", &[("error", &e)]));
                                         }
                                     }) as DialogEffect));
                                 }
@@ -3172,8 +3160,8 @@ impl App {
 
                         }
                         ui.horizontal(|ui| {
-                        ui.label("Taille de l’icône");
-                            if ui.small_button("Défaut").on_hover_text("Remettre la taille de l’icône à 100 %").clicked() && key.icon_scale != 100 {
+                        ui.label(tr("Taille de l’icône"));
+                            if ui.small_button(tr("Défaut")).on_hover_text(tr("Remettre la taille de l’icône à 100 %")).clicked() && key.icon_scale != 100 {
                                 key.icon_scale = 100; changed = true;
                             }
                         });
@@ -3182,15 +3170,15 @@ impl App {
                         return;
                     }
                     let steps = if long_editor { &mut key.long_steps } else { &mut key.steps };
-                    if long_editor { ui.label(RichText::new("L’atelier de blocs modifie uniquement l’appui court. Pour un fichier, renseigne son chemin dans l’action.").small().color(p.muted)); }
+                    if long_editor { ui.label(RichText::new(tr("L’atelier de blocs modifie uniquement l’appui court. Pour un fichier, renseigne son chemin dans l’action.")).small().color(p.muted)); }
                     ui.horizontal(|ui|{
-                        ui.label(RichText::new(format!("Actions · {} étape(s)",steps.len())).strong());
+                        ui.label(RichText::new(trf("Actions · {steps} étape(s)", &[("steps", &steps.len())])).strong());
                         iconset::menu(ui, Ico::Add, "Ajouter",|ui|{for (i,label) in crate::automation::NAMES.iter().enumerate(){if ui.add_enabled(steps.len()<256,iconset::button(ui.ctx(), iconset::for_step(&crate::automation::step(i)), *label)).clicked(){add_kind=Some(i);ui.close_menu();}}});
                     });
                     let mut remove=None;let mut movement=None;
                     egui::ScrollArea::vertical().id_salt("step_list").auto_shrink([false, false]).max_height((body_height-40.0).max(100.0)).show(ui,|ui| {
-                        if steps.is_empty(){ui.add_space(12.0);ui.label(RichText::new("Glisse une action ou un bind sur cette touche.").strong());ui.label(RichText::new("La bibliothèque à droite propose des raccourcis prêts à l’emploi. Tu peux ensuite combiner et modifier leurs actions ici.").color(p.muted));}
-                        if steps.is_empty(){ui.horizontal(|ui| {if ui.add(iconset::button(ui.ctx(), Ico::Workshop, "Ouvrir l’Atelier de blocs")).clicked(){open_workflow=true;}if ui.add(iconset::button(ui.ctx(), Ico::Template, "Partir d’un modèle")).clicked(){open_model=true;}});}
+                        if steps.is_empty(){ui.add_space(12.0);ui.label(RichText::new(tr("Glisse une action ou un bind sur cette touche.")).strong());ui.label(RichText::new(tr("La bibliothèque à droite propose des raccourcis prêts à l’emploi. Tu peux ensuite combiner et modifier leurs actions ici.")).color(p.muted));}
+                        if steps.is_empty(){ui.horizontal(|ui| {if ui.add(iconset::button(ui.ctx(), Ico::Workshop, tr("Ouvrir l’Atelier de blocs"))).clicked(){open_workflow=true;}if ui.add(iconset::button(ui.ctx(), Ico::Template, tr("Partir d’un modèle"))).clicked(){open_model=true;}});}
                         let count=steps.len();
                         for(i,step) in steps.iter_mut().enumerate(){ui.push_id(i,|ui|{
                             egui::Frame::new().fill(p.bg).corner_radius(6).inner_margin(10).show(ui,|ui| {
@@ -3199,12 +3187,12 @@ impl App {
                                     ui.label(RichText::new(format!("{:02}",i+1)).color(accent()).size(11.0));
                                     ui.label(RichText::new(step.name()).strong().size(12.0));
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{
-                                        if ui.small_button("×").on_hover_text("Supprimer cette étape").clicked(){remove=Some(i);}
+                                        if ui.small_button("×").on_hover_text(tr("Supprimer cette étape")).clicked(){remove=Some(i);}
                                         if ui.add_enabled(i+1<count,egui::Button::new("↓").small()).clicked(){movement=Some((i,i+1));}
                                         if ui.add_enabled(i>0,egui::Button::new("↑").small()).clicked(){movement=Some((i,i-1));}
                                     });
                                 });
-                                if matches!(step,Step::AutoHotkey{..}) {ui.label(RichText::new("Pas besoin d’écrire du code : compose tes actions dans l’Atelier de blocs").small().color(p.muted));if ui.button("Ouvrir l’Atelier de blocs").clicked(){open_workflow=true;}}
+                                if matches!(step,Step::AutoHotkey{..}) {ui.label(RichText::new(tr("Pas besoin d’écrire du code : compose tes actions dans l’Atelier de blocs")).small().color(p.muted));if ui.button(tr("Ouvrir l’Atelier de blocs")).clicked(){open_workflow=true;}}
                                 let mut record=false;let mut audio_icon=None;changed|=edit_step(ui,step,&names,&pages,&mut record,&self.audio,&mut audio_icon,&dialog_tx,&(active,page_id.clone(),selected,vec![i]));if let Some(state)=audio_icon{pick_audio=Some((vec![i],state));}if record && !long_editor {record_step=Some(i);}
                             });
                         });}
@@ -3215,7 +3203,7 @@ impl App {
             match advanced { Some(0)=>self.copy_key(), Some(1)=>self.paste_key(self.selected), Some(2)=>self.duplicate_key(self.selected), _=>{} }
             if open_workflow {self.show_workflow=true;}if open_model {self.show_workflow=true;}
             if let Some(step)=record_step {self.recording=Some((active,self.config.page.clone(),self.selected,vec![step],self.gate.enabled));self.recording_error.clear();self.gate.enabled=false;self.engine.stop();self.refresh_hotkeys();}
-            if changed {self.edited(); if removed_step {self.log("Étape retirée — Ctrl+Z pour annuler".into());}}
+            if changed {self.edited(); if removed_step {self.log(tr("Étape retirée — Ctrl+Z pour annuler").into());}}
             if open_icons{self.open_icon_gallery(None);}
             if recrop {
                 let path = std::path::PathBuf::from(&self.config.keys()[selected].image);
@@ -3270,7 +3258,7 @@ impl App {
                                                     ui.painter().text(
                                                         lcd.center(),
                                                         egui::Align2::CENTER_CENTER,
-                                                        "Aperçu indisponible",
+                                                        tr("Aperçu indisponible"),
                                                         egui::FontId::proportional(9.0),
                                                         p.muted,
                                                     );
@@ -3351,7 +3339,7 @@ impl App {
                                                 self.retarget_gallery();
                                             }
                                             response.context_menu(|ui| {
-                                                if ui.button("Copier").clicked() {
+                                                if ui.button(tr("Copier")).clicked() {
                                                     self.selected = i;
                                                     self.copy_key();
                                                     ui.close_menu();
@@ -3367,13 +3355,13 @@ impl App {
                                                     ui.close_menu();
                                                 }
                                                 if ui
-                                                    .button("Dupliquer vers la prochaine touche vide")
+                                                    .button(tr("Dupliquer vers la prochaine touche vide"))
                                                     .clicked()
                                                 {
                                                     self.duplicate_key(i);
                                                     ui.close_menu();
                                                 }
-                                                if ui.button("Vider").clicked() {
+                                                if ui.button(tr("Vider")).clicked() {
                                                     self.assign(DragItem::Bind(Key::default()), i);
                                                     ui.close_menu();
                                                 }
@@ -3386,11 +3374,7 @@ impl App {
                                                 }
                                             }
 
-                                            response.on_hover_text(format!(
-                                                "Touche {:02} · {}\nGlisse depuis la bibliothèque pour affecter un bind. Glisse une touche sur une autre pour les échanger.",
-                                                i + 1,
-                                                key.label
-                                            ));
+                                            response.on_hover_text(trf("Touche {key} · {label}\nGlisse depuis la bibliothèque pour affecter un bind. Glisse une touche sur une autre pour les échanger.", &[("key", &format!("{:02}", i + 1)), ("label", &key.label)]));
     }
     fn deck(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
@@ -3451,10 +3435,10 @@ impl App {
                     let pad = (center_x - 80.0 - ui.cursor().min.x).max(12.0);
                     ui.add_space(pad);
                     if in_folder {
-                        if ui.button("← Retour").clicked() {
+                        if ui.button(tr("← Retour")).clicked() {
                             self.navigate(Step::Back);
                         }
-                        ui.label(RichText::new("DOSSIER").small().color(p.muted));
+                        ui.label(RichText::new(tr("DOSSIER")).small().color(p.muted));
                         let name = self.config.profiles[self.config.active]
                             .pages
                             .iter()
@@ -3465,29 +3449,29 @@ impl App {
                     } else {
                         if ui
                             .small_button("‹")
-                            .on_hover_text("Page précédente")
+                            .on_hover_text(tr("Page précédente"))
                             .clicked()
                         {
                             self.navigate(Step::PagePrevious);
                         }
                         ui.label(
                             RichText::new(format!(
-                                "Page {} / {}",
-                                current_page_num, total_pages
+                                "Page {current} / {total}",
+                                &[("current", &current_page_num), ("total", &total_pages)]
                             ))
                             .size(13.0)
                             .strong(),
                         );
                         if ui
                             .small_button("›")
-                            .on_hover_text("Page suivante")
+                            .on_hover_text(tr("Page suivante"))
                             .clicked()
                         {
                             self.navigate(Step::PageNext);
                         }
                     }
                     if !self.config.page.is_empty() {
-                        ui.menu_button("Renommer", |ui| {
+                        ui.menu_button(tr("Renommer"), |ui| {
                             if let Some(page) = self.config.profiles[self.config.active]
                                 .pages
                                 .iter_mut()
@@ -3522,13 +3506,13 @@ impl App {
                     ui.label(RichText::new(path).small().color(p.muted));
                 }
                 if grid.keys < self.config.keys().len() {
-                    ui.label(RichText::new(format!("{} touches supplémentaires conservées, masquées sur ce périphérique", self.config.keys().len() - grid.keys)).small().color(p.muted));
+                    ui.label(RichText::new(trf("{keys} touches supplémentaires conservées, masquées sur ce périphérique", &[("keys", &(self.config.keys().len() - grid.keys))])).small().color(p.muted));
                 }
                 ui.add_space(if ctx.screen_rect().height() < 600.0 { 2.0 } else { 7.0 });
                 if ctx.screen_rect().width() >= 1200.0 {
                     ui.label(
                         RichText::new(
-                            "Glisse un bind sur une touche, puis personnalise ses actions dans l’inspecteur.",
+                            tr("Glisse un bind sur une touche, puis personnalise ses actions dans l’inspecteur."),
                         )
                         .small()
                         .color(p.muted),
@@ -3630,12 +3614,12 @@ impl App {
         if let Some((_, _, _, _, enabled)) = self.recording.clone() {
             let mut open = true;
             let mut cancel = false;
-            egui::Window::new("Enregistrer un raccourci").open(&mut open).collapsible(false).resizable(false).default_width(410.0).show(ctx,|ui|{
-                ui.label(RichText::new("Appuie sur la combinaison souhaitée").size(20.0).strong());
-                ui.label("Exemple : maintiens Ctrl + Maj, puis appuie sur S.");
-                ui.label(RichText::new("Seules les touches reçues par cette fenêtre sont capturées. Aucun enregistrement en arrière-plan. Les raccourcis réservés à Windows peuvent quitter la fenêtre.").small().color(p.muted));
+            egui::Window::new(tr("Enregistrer un raccourci")).open(&mut open).collapsible(false).resizable(false).default_width(410.0).show(ctx,|ui|{
+                ui.label(RichText::new(tr("Appuie sur la combinaison souhaitée")).size(20.0).strong());
+                ui.label(tr("Exemple : maintiens Ctrl + Maj, puis appuie sur S."));
+                ui.label(RichText::new(tr("Seules les touches reçues par cette fenêtre sont capturées. Aucun enregistrement en arrière-plan. Les raccourcis réservés à Windows peuvent quitter la fenêtre.")).small().color(p.muted));
                 if !self.recording_error.is_empty(){ui.colored_label(Color32::LIGHT_RED,&self.recording_error);}
-                if ui.button("Annuler l’enregistrement").clicked(){cancel=true;}
+                if ui.button(tr("Annuler l’enregistrement")).clicked(){cancel=true;}
             });
             if !open || cancel {
                 self.recording = None;
@@ -3648,11 +3632,11 @@ impl App {
             let mut target = None;
             let mut delete = None;
             let mut changed = false;
-            egui::Window::new("Pages et dossiers")
+            egui::Window::new(tr("Pages et dossiers"))
                 .open(&mut open)
                 .default_width(480.0)
                 .show(ctx, |ui| {
-                    ui.label("Renomme ou ouvre les pages et dossiers de ce profil.");
+                    ui.label(tr("Renomme ou ouvre les pages et dossiers de ce profil."));
                     if ui.button("Page 1").clicked() {
                         target = Some(Step::Page { id: String::new() });
                     }
@@ -3688,7 +3672,7 @@ impl App {
                                                 }
                                             });
                                         }
-                                        if ui.small_button("Supprimer…").clicked() {
+                                        if ui.small_button(tr("Supprimer…")).clicked() {
                                             delete = Some(page.id.clone());
                                         }
                                     });
@@ -3711,9 +3695,9 @@ impl App {
         if let Some(id) = self.delete_page.clone() {
             let mut open = true;
             let mut remove = false;
-            egui::Window::new("Supprimer cette page ?").open(&mut open).collapsible(false).resizable(false).default_width(380.0).show(ctx,|ui|{
-                ui.label("Son contenu et les touches qui ouvrent cette page seront retirés du profil. Les autres pages seront conservées.");
-                if ui.add(iconset::button(ui.ctx(), Ico::Delete, RichText::new("Supprimer la page").color(Color32::LIGHT_RED))).clicked(){remove=true;}
+            egui::Window::new(tr("Supprimer cette page ?")).open(&mut open).collapsible(false).resizable(false).default_width(380.0).show(ctx,|ui|{
+                ui.label(tr("Son contenu et les touches qui ouvrent cette page seront retirés du profil. Les autres pages seront conservées."));
+                if ui.add(iconset::button(ui.ctx(), Ico::Delete, RichText::new(tr("Supprimer la page")).color(Color32::LIGHT_RED))).clicked(){remove=true;}
             });
             if remove {
                 self.remove_page(&id);
@@ -3726,9 +3710,9 @@ impl App {
             let mut open = true;
             let mut install = false;
             egui::Window::new(if self.import_reports.len() > 1 {
-                "Import Sauvegarde Stream Deck — aperçu"
+                tr("Import Sauvegarde Stream Deck — aperçu")
             } else {
-                "Import Stream Deck — aperçu"
+                tr("Import Stream Deck — aperçu")
             })
             .open(&mut open)
             .collapsible(false)
@@ -3737,28 +3721,26 @@ impl App {
                 if self.import_reports.len() == 1 {
                     let report = &self.import_reports[0];
                     ui.label(RichText::new(&report.profile.name).size(22.0).strong());
-                    ui.label(format!(
-                        "{} actions converties · {} pages/dossiers · {} icônes",
-                        report.converted,
-                        report.profile.pages.len() + 1,
-                        report.icons.len()
+                    ui.label(trf(
+                        "{actions} actions converties · {pages} pages/dossiers · {icons} icônes",
+                        &[("actions", &report.converted), ("pages", &(report.profile.pages.len() + 1)), ("icons", &report.icons.len())]
                     ));
                 } else {
                     let total_actions: usize = self.import_reports.iter().map(|r| r.converted).sum();
                     let total_icons: usize = self.import_reports.iter().map(|r| r.icons.len()).sum();
                     ui.label(
-                        RichText::new(format!(
-                            "Sauvegarde complète : {} profils détectés",
-                            self.import_reports.len()
+                        RichText::new(trf(
+                            "Sauvegarde complète : {profiles} profils détectés",
+                            &[("profiles", &self.import_reports.len())]
                         ))
                         .size(20.0)
                         .strong(),
                     );
-                    ui.label(format!("{total_actions} actions converties au total · {total_icons} icônes"));
+                    ui.label(trf("{total_actions} actions converties au total · {total_icons} icônes", &[("total_actions", &total_actions), ("total_icons", &total_icons)]));
                 }
                 ui.label(
                     RichText::new(
-                        "Les nouveaux profils seront ajoutés à NovyDeck. Les actions non reconnues restent vides. Les touches restent en pause après l’import.",
+                        tr("Les nouveaux profils seront ajoutés à NovyDeck. Les actions non reconnues restent vides. Les touches restent en pause après l’import."),
                     )
                     .small()
                     .color(p.muted),
@@ -3778,9 +3760,9 @@ impl App {
                     }
                 });
                 let btn_text = if self.import_reports.len() > 1 {
-                    format!("Importer tous les profils ({})", self.import_reports.len())
+                    trf("Importer tous les profils ({profiles})", &[("profiles", &self.import_reports.len())])
                 } else {
-                    "Importer ce profil".to_string()
+                    tr("Importer ce profil").to_string()
                 };
                 if ui.add(theme::primary(RichText::new(btn_text).color(Color32::WHITE))).clicked() {
                     install = true;
@@ -3806,14 +3788,14 @@ impl App {
                             key.image = saved_path.to_string_lossy().into_owned();
                             self.edited();
                             if is_vid {
-                                self.log("Vidéo recadrée et convertie en GIF animé pour la touche D6.".into());
+                                self.log(tr("Vidéo recadrée et convertie en GIF animé pour la touche D6.").into());
                             } else {
-                                self.log("Image recadrée et appliquée à la touche D6.".into());
+                                self.log(tr("Image recadrée et appliquée à la touche D6.").into());
                             }
                         }
                     }
                     Err(e) => {
-                        self.fail(format!("Erreur de recadrage : {e}"));
+                        self.fail(trf("Erreur de recadrage : {error}", &[("error", &e)]));
                     }
                 }
             } else if open {
@@ -3823,30 +3805,29 @@ impl App {
         if self.save_bind {
             let mut open = true;
             let mut save = false;
-            egui::Window::new("Enregistrer dans Mes binds")
+            egui::Window::new(tr("Enregistrer dans Mes binds"))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
                 .default_width(380.0)
                 .show(ctx, |ui| {
-                    ui.label("Conserve une copie de cette touche et de toutes ses actions.");
+                    ui.label(tr("Conserve une copie de cette touche et de toutes ses actions."));
                     ui.label(
-                        RichText::new("Tu pourras ensuite la glisser sur n’importe quelle touche.")
+                        RichText::new(tr("Tu pourras ensuite la glisser sur n’importe quelle touche."))
                             .small()
                             .color(p.muted),
                     );
                     ui.text_edit_singleline(&mut self.bind_name);
                     let key = &self.config.keys()[self.selected];
-                    ui.label(format!(
-                        "{} action(s) · répétée(s) {} fois",
-                        key.steps.len(),
-                        key.repeat
+                    ui.label(trf(
+                        "{actions} action(s) · répétée(s) {repeat} fois",
+                        &[("actions", &key.steps.len()), ("repeat", &key.repeat)]
                     ));
                     if ui
                         .add_enabled(
                             !key.steps.is_empty() && !self.bind_name.trim().is_empty(),
                             theme::primary(
-                                RichText::new("Enregistrer le bind").color(Color32::WHITE),
+                                RichText::new(tr("Enregistrer le bind")).color(Color32::WHITE),
                             ),
                         )
                         .clicked()
@@ -3868,12 +3849,12 @@ impl App {
                             self.catalog_tab = 2;
                             self.catalog_selection = Some(self.preferences.library.binds.len() - 1);
                             self.catalog_search.clear();
-                            self.log("Bind enregistré dans Mes binds.".into());
+                            self.log(tr("Bind enregistré dans Mes binds.").into());
                         } else {
                             self.preferences.library = previous;
                         }
                     }
-                    Err(e) => self.fail(format!("Bind non enregistré : {e}")),
+                    Err(e) => self.fail(trf("Bind non enregistré : {error}", &[("error", &e)])),
                 }
             }
             self.save_bind = open;
@@ -3887,18 +3868,18 @@ impl App {
                         self.update_phase = None;
                         finished = true;
                     }
-                    about::UpdateEvent::Verifying => self.update_phase = Some("Vérification…"),
+                    about::UpdateEvent::Verifying => self.update_phase = Some(tr("Vérification…")),
                     about::UpdateEvent::Downloaded(result) => {
                         self.update_phase = None;
                         finished = true;
                         match result {
-                            Err(error) => self.update_result = Some(Err(format!("Mise à jour impossible : {error}"))),
+                            Err(error) => self.update_result = Some(Err(trf("Mise à jour impossible : {error}", &[("error", &error)]))),
                             Ok(setup) => {
                                 // Failure to persist must never silently discard edits on restart.
                                 if self.gate.invalid || self.config.validate_structure().is_err() {
-                                    self.update_result = Some(Err("Configuration invalide : enregistrez-la avant de mettre à jour".into()));
+                                    self.update_result = Some(Err(tr("Configuration invalide : enregistrez-la avant de mettre à jour").into()));
                                 } else if let Err(error) = store::save(&self.path, &self.config) {
-                                    self.update_result = Some(Err(format!("Sauvegarde impossible : {error}")));
+                                    self.update_result = Some(Err(trf("Sauvegarde impossible : {error}", &[("error", &error)])));
                                 } else {
                                     self.gate.dirty = false;
                                     match crate::app_update::launch(&setup) {
@@ -3906,7 +3887,7 @@ impl App {
                                             self.quitting = true; // évite la minimisation dans la barre système
                                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                                         }
-                                        Err(error) => self.update_result = Some(Err(format!("Démarrage de l'installateur impossible : {error}"))),
+                                        Err(error) => self.update_result = Some(Err(trf("Démarrage de l'installateur impossible : {error}", &[("error", &error)]))),
                                     }
                                 }
                                 if self.update_result.as_ref().is_some_and(Result::is_err) {
@@ -3922,7 +3903,7 @@ impl App {
         }
         if self.show_about {
             let mut open = true;
-            egui::Window::new("À propos de NovyDeck")
+            egui::Window::new(tr("À propos de NovyDeck"))
                 .open(&mut open).collapsible(false).resizable(false).default_width(370.0)
                 .show(ctx, |ui| {
                     ui.label(RichText::new("NovyDeck").size(20.0).strong());
@@ -3932,37 +3913,37 @@ impl App {
                         config.migrate_focus_audio() + binds.iter_mut().map(|b| crate::model::migrate_focus_audio_key(&mut b.key)).sum::<usize>()
                     };
                     if legacy_audio > 0 {
-                        ui.colored_label(egui::Color32::from_rgb(240, 180, 60), format!("{legacy_audio} action(s) utilisent l’ancien module FocusAudio.exe."));
-                        if ui.button("Convertir en blocs natifs « Volume d’une application »").on_hover_text("Sauvegarde config.json et preferences.json à côté avant la conversion. Titres, icônes et couleurs restent inchangés.").clicked() {
+                        ui.colored_label(egui::Color32::from_rgb(240, 180, 60), trf("{legacy_audio} action(s) utilisent l’ancien module FocusAudio.exe.", &[("legacy_audio", &legacy_audio)]));
+                        if ui.button(tr("Convertir en blocs natifs « Volume d’une application »")).on_hover_text(tr("Sauvegarde config.json et preferences.json à côté avant la conversion. Titres, icônes et couleurs restent inchangés.")).clicked() {
                             self.migrate_focus_audio_now();
                         }
                         ui.separator();
                     }
                     ui.label(format!("Version : {}", env!("CARGO_PKG_VERSION")));
                     ui.label(format!("Compilation : {} ({})", about::HASH, about::DATE));
-                    if ui.button("Copier ces informations").clicked() {
+                    if ui.button(tr("Copier ces informations")).clicked() {
                         ui.ctx().copy_text(about::information());
                     }
-                    if ui.button("Ouvrir la page GitHub").clicked() {
+                    if ui.button(tr("Ouvrir la page GitHub")).clicked() {
                         ui.ctx().open_url(egui::OpenUrl::new_tab("https://github.com/HatiFlash/NovyDeck"));
                     }
                     about::hardware_report_button(ui, self);
                     ui.separator();
-                    ui.label("Icônes d'interface : IconPark (ByteDance), licence Apache 2.0.");
-                    egui::CollapsingHeader::new("Licence IconPark (Apache 2.0)").show(ui, |ui| {
+                    ui.label(tr("Icônes d'interface : IconPark (ByteDance), licence Apache 2.0."));
+                    egui::CollapsingHeader::new(tr("Licence IconPark (Apache 2.0)")).show(ui, |ui| {
                         egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
                             ui.label(RichText::new(iconset::LICENSE).monospace().size(10.0));
                         });
                     });
                     ui.separator();
-                    if ui.add_enabled(self.update_rx.is_none() && self.update_confirm.is_none(), egui::Button::new("Vérifier les mises à jour")).clicked() {
+                    if ui.add_enabled(self.update_rx.is_none() && self.update_confirm.is_none(), egui::Button::new(tr("Vérifier les mises à jour"))).clicked() {
                         self.update_result = None;
-                        self.update_phase = Some("Vérification en cours…");
+                        self.update_phase = Some(tr("Vérification en cours…"));
                         let (tx, rx) = mpsc::channel();
                         self.update_rx = Some(rx);
                         let context = ctx.clone();
                         std::thread::spawn(move || {
-                            let result = crate::app_update::check().map_err(|e| format!("Vérification impossible : {e}"));
+                            let result = crate::app_update::check().map_err(|e| trf("Vérification impossible : {error}", &[("error", &e)]));
                             let _ = tx.send(about::UpdateEvent::Checked(result));
                             context.request_repaint();
                         });
@@ -3971,18 +3952,18 @@ impl App {
                     if let Some(result) = &self.update_result {
                         match result {
                             Err(error) => { ui.label(error); }
-                            Ok(crate::app_update::Status::Current) => { ui.label(format!("À jour (version {})", env!("CARGO_PKG_VERSION"))); }
-                            Ok(crate::app_update::Status::Ahead) => { ui.label("Cette version est plus récente que la dernière publiée"); }
+                            Ok(crate::app_update::Status::Current) => { ui.label(trf("À jour (version {version})", &[("version", &env!("CARGO_PKG_VERSION"))])); }
+                            Ok(crate::app_update::Status::Ahead) => { ui.label(tr("Cette version est plus récente que la dernière publiée")); }
                             Ok(crate::app_update::Status::New(latest)) => {
-                                ui.label(format!("Nouvelle version {} disponible", latest.version));
+                                ui.label(trf("Nouvelle version {version} disponible", &[("version", &latest.version)]));
                                 if self.update_installed {
-                                    if ui.add_enabled(self.update_rx.is_none(), egui::Button::new("Télécharger et installer")).clicked() {
+                                    if ui.add_enabled(self.update_rx.is_none(), egui::Button::new(tr("Télécharger et installer"))).clicked() {
                                         self.update_confirm = Some(latest.clone());
                                     }
                                 } else {
-                                    ui.label("Version portable : téléchargez le ZIP depuis la page des nouveautés");
+                                    ui.label(tr("Version portable : téléchargez le ZIP depuis la page des nouveautés"));
                                 }
-                                if ui.button("Voir les nouveautés").clicked() {
+                                if ui.button(tr("Voir les nouveautés")).clicked() {
                                     ui.ctx().open_url(egui::OpenUrl::new_tab(latest.page.clone()));
                                 }
                             }
@@ -3993,14 +3974,14 @@ impl App {
         }
         if let Some(latest) = self.update_confirm.clone() {
             let mut confirm = true;
-            egui::Window::new("Installer la mise à jour")
+            egui::Window::new(tr("Installer la mise à jour"))
                 .open(&mut confirm).collapsible(false).resizable(false).default_width(390.0)
                 .show(ctx, |ui| {
-                    ui.label(format!("NovyDeck va se fermer, installer la version {} puis redémarrer. Vos profils, médias et plugins sont conservés.", latest.version));
+                    ui.label(trf("NovyDeck va se fermer, installer la version {version} puis redémarrer. Vos profils, médias et plugins sont conservés.", &[("version", &latest.version)]));
                     ui.horizontal(|ui| {
-                        if ui.button("Installer maintenant").clicked() {
+                        if ui.button(tr("Installer maintenant")).clicked() {
                             self.update_confirm = None;
-                            self.update_phase = Some("Téléchargement…");
+                            self.update_phase = Some(tr("Téléchargement…"));
                             let (tx, rx) = mpsc::channel();
                             self.update_rx = Some(rx);
                             let context = ctx.clone();
@@ -4014,7 +3995,7 @@ impl App {
                                 context.request_repaint();
                             });
                         }
-                        if ui.button("Annuler").clicked() { self.update_confirm = None; }
+                        if ui.button(tr("Annuler")).clicked() { self.update_confirm = None; }
                     });
                 });
             if !confirm { self.update_confirm = None; }
@@ -4023,16 +4004,16 @@ impl App {
             let mut open = true;
             let mut install = false;
             let installing = self.ffmpeg_installing;
-            egui::Window::new("Importer une vidéo").id(egui::Id::new("ffmpeg_offer"))
+            egui::Window::new(tr("Importer une vidéo")).id(egui::Id::new("ffmpeg_offer"))
                 .open(&mut open).collapsible(false).resizable(false).default_width(380.0)
                 .show(ctx, |ui| {
-                    ui.label("Windows n’a pas réussi à convertir cette vidéo (format ou codec non pris en charge). NovyDeck peut télécharger son module vidéo FFmpeg, gratuit, une seule fois.");
+                    ui.label(tr("Windows n’a pas réussi à convertir cette vidéo (format ou codec non pris en charge). NovyDeck peut télécharger son module vidéo FFmpeg, gratuit, une seule fois."));
                     ui.add_space(6.0);
                     if installing {
-                        motion::loading(ui, "Téléchargement du module vidéo (≈ 110 Mo) puis conversion…");
+                        motion::loading(ui, tr("Téléchargement du module vidéo (≈ 110 Mo) puis conversion…"));
                     } else {
-                        if ui.add(iconset::button(ui.ctx(), Ico::Video, "Télécharger le module vidéo et importer")).clicked() { install = true; }
-                        ui.label(RichText::new("Source officielle gyan.dev, empreinte vérifiée, rangé dans les données utilisateur (NovyDeck, ou DeckForge existant)\\tools. Sans droits administrateur. Autre solution : copier ffmpeg.exe à côté de NovyDeck.exe.").small());
+                        if ui.add(iconset::button(ui.ctx(), Ico::Video, tr("Télécharger le module vidéo et importer"))).clicked() { install = true; }
+                        ui.label(RichText::new(tr("Source officielle gyan.dev, empreinte vérifiée, rangé dans les données utilisateur (NovyDeck, ou DeckForge existant)\\tools. Sans droits administrateur. Autre solution : copier ffmpeg.exe à côté de NovyDeck.exe.")).small());
                     }
                 });
             if install {
@@ -4051,9 +4032,9 @@ impl App {
                                     key.image = path.to_string_lossy().into_owned();
                                     app.edited();
                                 }
-                                app.log("Module vidéo installé, vidéo convertie en GIF animé.".into());
+                                app.log(tr("Module vidéo installé, vidéo convertie en GIF animé.").into());
                             }
-                            Err(e) => app.fail(format!("Import vidéo impossible : {e}")),
+                            Err(e) => app.fail(trf("Import vidéo impossible : {error}", &[("error", &e)])),
                         }
                     }) as DialogEffect));
                 });
@@ -4062,20 +4043,20 @@ impl App {
         }
         if self.show_apps {
             let mut open = true;
-            egui::Window::new("Applications associées").open(&mut open).show(ctx, |ui| {
-                ui.label("Noms d'exécutables (ex. obs64.exe) associés à ce profil.");
+            egui::Window::new(tr("Applications associées")).open(&mut open).show(ctx, |ui| {
+                ui.label(tr("Noms d'exécutables (ex. obs64.exe) associés à ce profil."));
                 let apps = &mut self.config.profiles[self.config.active].apps;
                 let mut changed = false;
                 let mut remove = None;
                 for (i, name) in apps.iter_mut().enumerate() {
                     ui.horizontal(|ui| {
                         changed |= ui.text_edit_singleline(name).changed();
-                        if ui.small_button("Supprimer").clicked() { remove = Some(i); }
+                        if ui.small_button(tr("Supprimer")).clicked() { remove = Some(i); }
                     });
                 }
                 if let Some(i) = remove { apps.remove(i); changed = true; }
-                if ui.button("Ajouter une application").clicked() { apps.push(String::new()); changed = true; }
-                if ui.button("Ajouter l'application au premier plan dans 3 s").clicked() {
+                if ui.button(tr("Ajouter une application")).clicked() { apps.push(String::new()); changed = true; }
+                if ui.button(tr("Ajouter l'application au premier plan dans 3 s")).clicked() {
                     let profile = self.config.active;
                     self.start_dialog(move || {
                         std::thread::sleep(Duration::from_secs(3));
@@ -4093,40 +4074,40 @@ impl App {
         }
         if self.show_hardware_test {
             let mut open=true;
-            egui::Window::new("Tester mon périphérique").open(&mut open).default_width(540.0).resizable(true).show(ctx,|ui| {
+            egui::Window::new(tr("Tester mon périphérique")).open(&mut open).default_width(540.0).resizable(true).show(ctx,|ui| {
                 let p=theme::palette(ui.ctx());
                 ui.label(RichText::new(self.device_label()).strong());
                 theme::status_badge(ui, &self.status, if self.gate.connected { GREEN } else { theme::WARNING });
-                ui.label("Ce test met les macros en pause et remplace temporairement les images. Ferme Elgato / Stream Dock / FIFINE Control Deck avant de commencer.");
+                ui.label(tr("Ce test met les macros en pause et remplace temporairement les images. Ferme Elgato / Stream Dock / FIFINE Control Deck avant de commencer."));
                 let active=self.hardware_test.as_ref().is_some_and(|t|t.active);
-                if ui.add_enabled(self.gate.connected && !active,theme::secondary_button("Lancer le test")).clicked() {
+                if ui.add_enabled(self.gate.connected && !active,theme::secondary_button(tr("Lancer le test"))).clicked() {
                     self.engine.stop();
                     self.gate.enabled=false;
                     self.long_press.clear();
                     let grid=self.grid();
                     self.hardware_test=Some(crate::devices::test_assistant::Session::new(grid.keys,grid.cols));
-                    if self.device.send(Command::TestStart).is_err() { self.fail("Service HID arrêté".into()); if let Some(t)=&mut self.hardware_test { t.active=false; } }
+                    if self.device.send(Command::TestStart).is_err() { self.fail(tr("Service HID arrêté").into()); if let Some(t)=&mut self.hardware_test { t.active=false; } }
                 }
-                if active && ui.add(theme::danger_button("Arrêter le test")).clicked() {
+                if active && ui.add(theme::danger_button(tr("Arrêter le test"))).clicked() {
                     let _=self.device.send(Command::TestStop);
                     if let Some(t)=&mut self.hardware_test { t.active=false; }
                 }
                 if let Some(t)=&mut self.hardware_test {
-                    ui.label(format!("Appuie sur le numéro {} / {} (dans l’ordre, sans action exécutée).",(t.next+1).min(t.keys),t.keys));
-                    ui.label(RichText::new(format!("{} touche(s) vérifiée(s), {} erreur(s)",t.next,t.mismatches.len())).color(p.muted));
-                    ui.label("Les numéros sont-ils à l’endroit ?");
-                    ui.horizontal(|ui| { ui.selectable_value(&mut t.orientation,Some(true),"Oui"); ui.selectable_value(&mut t.orientation,Some(false),"Non"); });
+                    ui.label(trf("Appuie sur le numéro {next} / {keys} (dans l’ordre, sans action exécutée).", &[("next", &(t.next+1).min(t.keys)), ("keys", &t.keys)]));
+                    ui.label(RichText::new(trf("{checked} touche(s) vérifiée(s), {errors} erreur(s)", &[("checked", &t.next), ("errors", &t.mismatches.len())])).color(p.muted));
+                    ui.label(tr("Les numéros sont-ils à l’endroit ?"));
+                    ui.horizontal(|ui| { ui.selectable_value(&mut t.orientation,Some(true),tr("Oui")); ui.selectable_value(&mut t.orientation,Some(false),tr("Non")); });
                     ui.label(&t.brightness);
-                    if t.brightness.contains("100 %") { ui.label("As-tu vu le passage à 30 %, puis à 100 % ? Indique-le dans ton retour au support."); }
+                    if t.brightness.contains("100 %") { ui.label(tr("As-tu vu le passage à 30 %, puis à 100 % ? Indique-le dans ton retour au support.")); }
                 }
                 let result=self.hardware_test.as_ref().map(|t|t.result()).unwrap_or_else(||"Test non lancé.\n".into());
                 let log=crate::devices::report::latest(&self.path).ok().flatten().and_then(|p|std::fs::read_to_string(p).ok()).unwrap_or_else(||"Journal périphérique indisponible\n".into());
                 let text=format!("Rapport de test NovyDeck\nModèle : {}\nStatut : {}\n\nRésultat du test\n{}\nJournal périphérique\n{}",self.device_label(),self.status,result,log);
                 ui.horizontal(|ui| {
-                    if ui.add(theme::secondary_button("Copier")).clicked() { ui.ctx().copy_text(text.clone()); }
-                    if ui.add(theme::secondary_button("Enregistrer")).clicked() {
+                    if ui.add(theme::secondary_button(tr("Copier"))).clicked() { ui.ctx().copy_text(text.clone()); }
+                    if ui.add(theme::secondary_button(tr("Enregistrer"))).clicked() {
                         if let Some(path)=rfd::FileDialog::new().add_filter("Texte", &["txt"]).set_file_name("rapport-test-deckforge.txt").save_file() {
-                            if let Err(e)=std::fs::write(path.with_extension("txt"),&text) {self.fail(format!("Enregistrement impossible : {e}"));}
+                            if let Err(e)=std::fs::write(path.with_extension("txt"),&text) {self.fail(trf("Enregistrement impossible : {error}", &[("error", &e)]));}
                         }
                     }
                 });
@@ -4139,29 +4120,29 @@ impl App {
         }
         if self.show_device_report {
             let mut open = true;
-            egui::Window::new("Rapport périphérique").open(&mut open)
+            egui::Window::new(tr("Rapport périphérique")).open(&mut open)
                 .default_width(750.0).default_height(500.0).resizable(true).show(ctx, |ui| {
                     let folder = crate::devices::report::directory(&self.path);
                     match crate::devices::report::latest(&self.path) {
                         Ok(Some(path)) => match std::fs::read_to_string(&path) {
                             Ok(text) => {
                                 ui.horizontal(|ui| {
-                                    if ui.add(theme::secondary_button("Copier")).clicked() { ui.ctx().copy_text(text.clone()); }
-                                    if ui.add(theme::secondary_button("Ouvrir le dossier")).clicked() {
-                                        if let Err(e) = std::process::Command::new("explorer.exe").arg(&folder).spawn() { self.fail(format!("Dossier inaccessible : {e}")); }
+                                    if ui.add(theme::secondary_button(tr("Copier"))).clicked() { ui.ctx().copy_text(text.clone()); }
+                                    if ui.add(theme::secondary_button(tr("Ouvrir le dossier"))).clicked() {
+                                        if let Err(e) = std::process::Command::new("explorer.exe").arg(&folder).spawn() { self.fail(trf("Dossier inaccessible : {error}", &[("error", &e)])); }
                                     }
-                                    if ui.add(theme::secondary_button("Enregistrer sous…")).clicked() {
+                                    if ui.add(theme::secondary_button(tr("Enregistrer sous…"))).clicked() {
                                         if let Some(dest) = rfd::FileDialog::new().add_filter("Texte", &["txt"]).set_file_name("rapport-peripherique.txt").save_file() {
-                                            if let Err(e) = std::fs::write(dest.with_extension("txt"), &text) { self.fail(format!("Enregistrement impossible : {e}")); }
+                                            if let Err(e) = std::fs::write(dest.with_extension("txt"), &text) { self.fail(trf("Enregistrement impossible : {error}", &[("error", &e)])); }
                                         }
                                     }
                                 });
                                 egui::ScrollArea::vertical().show(ui, |ui| { ui.monospace(&text); });
                             }
-                            Err(e) => { ui.label(format!("Lecture du rapport impossible : {e}")); }
+                            Err(e) => { ui.label(trf("Lecture du rapport impossible : {error}", &[("error", &e)])); }
                         },
-                        Ok(None) => { ui.label("Aucun rapport disponible. Lance une connexion du périphérique."); },
-                        Err(e) => { ui.label(format!("Recherche du rapport impossible : {e}")); }
+                        Ok(None) => { ui.label(tr("Aucun rapport disponible. Lance une connexion du périphérique.")); },
+                        Err(e) => { ui.label(trf("Recherche du rapport impossible : {error}", &[("error", &e)])); }
                     }
                 });
             self.show_device_report = open;
@@ -4169,7 +4150,7 @@ impl App {
         if self.settings {
             let mut open = true;
             let d6 = self.is_d6();
-            egui::Window::new(format!("Réglages — {}", self.device_name())).id(egui::Id::new("device_settings"))
+            egui::Window::new(trf("Réglages — {device}", &[("device", &self.device_name())])).id(egui::Id::new("device_settings"))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
@@ -4177,7 +4158,7 @@ impl App {
                 .show(ctx, |ui| {
                     // Onglets : la fenêtre reste courte et tient sur un écran de portable.
                     ui.horizontal(|ui| {
-                        for (i, (ico, label)) in [(Ico::Palette, "Général"), (Ico::Device, "Périphérique"), (Ico::Diagnostic, "Diagnostic")].into_iter().enumerate() {
+                        for (i, (ico, label)) in [(Ico::Palette, tr("Général")), (Ico::Device, tr("Périphérique")), (Ico::Diagnostic, "Diagnostic")].into_iter().enumerate() {
                             if iconset::tab(ui, self.settings_tab == i as u8, ico, RichText::new(label).size(15.0)).clicked() {
                                 self.settings_tab = i as u8;
                             }
@@ -4188,17 +4169,17 @@ impl App {
                     let help = |text: &str| RichText::new(text).size(12.0).color(p.muted);
                     match self.settings_tab {
                         0 => {
-                            iconset::heading(ui, Ico::Palette, RichText::new("Thème de l'interface").size(17.0).strong());
+                            iconset::heading(ui, Ico::Palette, RichText::new(tr("Thème de l'interface")).size(17.0).strong());
                             ui.add_space(4.0);
                             let mut theme_changed = false;
                             egui::Grid::new("settings_theme").num_columns(2).spacing([14.0, 10.0]).show(ui, |ui| {
-                                ui.label("Style");
+                                ui.label(tr("Style"));
                                 let current = theme::SCHEMES.iter().find(|s| s.0 == self.preferences.scheme)
                                     .or_else(|| theme::SCHEMES.iter().find(|s| s.2 == self.preferences.dark))
-                                    .map_or("Bleu nuit", |s| s.1);
+                                    .map_or(tr("Bleu nuit"), |s| theme::display_color_name(s.1));
                                 egui::ComboBox::from_id_salt("theme_scheme").selected_text(current).show_ui(ui, |ui| {
                                     for (id, label, dark) in theme::SCHEMES {
-                                        if ui.selectable_label(self.preferences.scheme == id, format!("{label}{}", if dark { " (sombre)" } else { " (clair)" })).clicked() {
+                                        if ui.selectable_label(self.preferences.scheme == id, format!("{}{}", theme::display_color_name(label), if dark { tr(" (sombre)") } else { tr(" (clair)") })).clicked() {
                                             self.preferences.scheme = id.into();
                                             self.preferences.dark = dark;
                                             theme_changed = true;
@@ -4206,14 +4187,14 @@ impl App {
                                     }
                                 });
                                 ui.end_row();
-                                ui.label("Accent");
+                                ui.label(tr("Accent"));
                                 ui.horizontal(|ui| {
                                     for (id, label, color) in theme::ACCENTS {
                                         let chosen = self.preferences.accent == id || (self.preferences.accent.is_empty() && id == "bleu");
                                         let (r, response) = ui.allocate_exact_size(Vec2::splat(26.0), egui::Sense::click());
                                         ui.painter().circle_filled(r.center(), 10.0, color);
                                         if chosen { ui.painter().circle_stroke(r.center(), 12.5, egui::Stroke::new(2.0_f32, p.ink)); }
-                                        if response.on_hover_text(label).clicked() {
+                                        if response.on_hover_text(theme::display_color_name(label)).clicked() {
                                             self.preferences.accent = id.into();
                                             theme_changed = true;
                                         }
@@ -4221,8 +4202,8 @@ impl App {
                                 });
                                 ui.end_row();
                             });
-                            if ui.checkbox(&mut self.preferences.reduce_motion, "Réduire les animations")
-                                .on_hover_text("Coupe l'intro du démarrage et les fondus de page ; l'indicateur de chargement reste.")
+                            if ui.checkbox(&mut self.preferences.reduce_motion, tr("Réduire les animations"))
+                                .on_hover_text(tr("Coupe l'intro du démarrage et les fondus de page ; l'indicateur de chargement reste."))
                                 .changed()
                             {
                                 self.save_preferences();
@@ -4234,49 +4215,72 @@ impl App {
                             }
                             ui.add_space(10.0);
                             ui.separator();
-                            iconset::heading(ui, Ico::Robot, RichText::new("Assistant IA").size(17.0).strong());
-                            ui.label(help("IA locale sur ce PC et IA connectée (Claude, ChatGPT…) se règlent au même endroit."));
+                            iconset::heading(ui, Ico::Robot, RichText::new(tr("Assistant IA")).size(17.0).strong());
+                            ui.label(help(tr("IA locale sur ce PC et IA connectée (Claude, ChatGPT…) se règlent au même endroit.")));
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(RichText::new(self.ai_status_label()).strong());
-                                if ui.button("Configurer…").clicked() {
+                                if ui.button(tr("Configurer…")).clicked() {
                                     self.assistant_tab = 0;
                                     self.assistant_settings = true;
                                 }
                             });
+                            ui.separator();
+                            ui.horizontal(|ui| {
+                                ui.label(tr("Langue"));
+                                let current = crate::i18n::languages().into_iter()
+                                    .find(|(code, _)| *code == self.preferences.language)
+                                    .map(|(_, name)| name).unwrap_or(tr("Langue de Windows"));
+                                egui::ComboBox::from_id_salt("settings_language")
+                                    .selected_text(current).show_ui(ui, |ui| {
+                                        if ui.selectable_value(&mut self.preferences.language, String::new(), tr("Langue de Windows")).changed() {
+                                            crate::i18n::set_language(crate::i18n::resolve(&self.preferences.language));
+                                            self.save_preferences();
+                                        }
+                                        for (code, name) in crate::i18n::languages() {
+                                            if ui.selectable_value(&mut self.preferences.language, code.to_owned(), name).changed() {
+                                                crate::i18n::set_language(crate::i18n::resolve(&self.preferences.language));
+                                                self.save_preferences();
+                                            }
+                                        }
+                                    });
+                            });
+                            if ui.link(tr("Aider à traduire NovyDeck")).clicked() {
+                                ui.ctx().open_url(egui::OpenUrl::new_tab("https://github.com/HatiFlash/NovyDeck/blob/main/docs/TRANSLATING.md"));
+                            }
                         }
                         1 => {
-                            iconset::heading(ui, Ico::Brightness, RichText::new("Affichage").size(17.0).strong());
+                            iconset::heading(ui, Ico::Brightness, RichText::new(tr("Affichage")).size(17.0).strong());
                             ui.add_space(4.0);
                             let mut edited = false;
                             let mut auto_profile = false;
                             egui::Grid::new("settings_device").num_columns(2).spacing([14.0, 12.0]).show(ui, |ui| {
-                                ui.label("Luminosité");
+                                ui.label(tr("Luminosité"));
                                 edited |= ui.add(egui::Slider::new(&mut self.config.brightness, 0..=100).suffix(" %")).changed();
                                 ui.end_row();
-                                ui.label("Veille après");
-                                edited |= ui.add(egui::Slider::new(&mut self.config.sleep_after_min, 0..=240).suffix(" min")).on_hover_text("0 = jamais").changed();
+                                ui.label(tr("Veille après"));
+                                edited |= ui.add(egui::Slider::new(&mut self.config.sleep_after_min, 0..=240).suffix(" min")).on_hover_text(tr("0 = jamais")).changed();
                                 ui.end_row();
-                                ui.label("Luminosité en veille");
+                                ui.label(tr("Luminosité en veille"));
                                 edited |= ui.add(egui::Slider::new(&mut self.config.sleep_brightness, 0..=100).suffix(" %")).changed();
                                 ui.end_row();
-                                ui.label("Appui long");
+                                ui.label(tr("Appui long"));
                                 edited |= ui.add(egui::Slider::new(&mut self.config.long_press_ms, 250..=2000).suffix(" ms")).changed();
                                 ui.end_row();
-                                ui.label("Images/s max");
+                                ui.label(tr("Images/s max"));
                                 edited |= ui.add(egui::Slider::new(&mut self.config.animation_fps, 1..=15)).changed();
                                 ui.end_row();
                             });
-                            ui.label(help("Veille : 0 = jamais. Une touche avec appui long attend ce délai ; sans relâchement détecté, elle lance l’action longue."));
+                            ui.label(help(tr("Veille : 0 = jamais. Une touche avec appui long attend ce délai ; sans relâchement détecté, elle lance l’action longue.")));
                             ui.add_space(6.0);
-                            if ui.checkbox(&mut self.config.auto_profile, "Changer de profil selon l'application").changed() { edited = true; auto_profile = true; }
-                            edited |= ui.checkbox(&mut self.config.d6_animations, "Animations GIF et vidéo sur les touches").changed();
-                            ui.label(help("Les GIF et les vidéos converties sont joués sur le périphérique, une image à la fois."));
+                            if ui.checkbox(&mut self.config.auto_profile, tr("Changer de profil selon l'application")).changed() { edited = true; auto_profile = true; }
+                            edited |= ui.checkbox(&mut self.config.d6_animations, tr("Animations GIF et vidéo sur les touches")).changed();
+                            ui.label(help(tr("Les GIF et les vidéos converties sont joués sur le périphérique, une image à la fois.")));
                             if edited { self.edited(); }
                             if auto_profile { self.update_auto_profile(); }
                             if d6 {
                                 ui.add_space(6.0);
-                                egui::CollapsingHeader::new("Compatibilité avancée").show(ui, |ui| {
-                                    if ui.checkbox(&mut self.config.flip_input_rows, "Inverser les lignes des appuis").changed() {
+                                egui::CollapsingHeader::new(tr("Compatibilité avancée")).show(ui, |ui| {
+                                    if ui.checkbox(&mut self.config.flip_input_rows, tr("Inverser les lignes des appuis")).changed() {
                                         self.edited();
                                     }
                                     ui.horizontal(|ui| {
@@ -4287,34 +4291,34 @@ impl App {
                                             self.edited();
                                         }
                                     });
-                                    ui.label(help("Ton D6 a été validé en 126 px, sans inversion des appuis."));
+                                    ui.label(help(tr("Ton D6 a été validé en 126 px, sans inversion des appuis.")));
                                 });
                             }
                         }
                         _ => {
-                            iconset::heading(ui, Ico::Diagnostic, RichText::new("Diagnostic du clignotement").size(17.0).strong());
+                            iconset::heading(ui, Ico::Diagnostic, RichText::new(tr("Diagnostic du clignotement")).size(17.0).strong());
                             let running=self.flicker.as_ref().is_some_and(|session|session.active());
-                            if ui.button(if running {"Arrêter le diagnostic"} else {"Démarrer le diagnostic (90 s max)"}).clicked() {
+                            if ui.button(if running {tr("Arrêter le diagnostic")} else {tr("Démarrer le diagnostic (90 s max)")}).clicked() {
                                 if running { if let Some(session)=&self.flicker {session.stop();} }
                                 else { match crate::flicker_diagnostic::Session::start(&self.path) {
                                     Ok(session)=> {self.flicker_path=Some(session.path.clone()); self.flicker=Some(session);}
-                                    Err(e)=> self.fail(format!("Diagnostic indisponible : {e}")),
+                                    Err(e)=> self.fail(trf("Diagnostic indisponible : {error}", &[("error", &e)])),
                                 }}
                             }
-                            ui.label(help("Capture locale sans réseau, limitée à 90 s et 6 Mo. Survole l'aperçu puis les réglages avant d'arrêter."));
+                            ui.label(help(tr("Capture locale sans réseau, limitée à 90 s et 6 Mo. Survole l'aperçu puis les réglages avant d'arrêter.")));
                             if let Some(path)=&self.flicker_path {
                                 let display=path.to_string_lossy().into_owned();
-                                ui.label(format!("Fichier : {display}"));
-                                if ui.button("Copier le chemin du diagnostic").clicked() {ui.ctx().copy_text(display);}
+                                ui.label(trf("Fichier : {display}", &[("display", &display)]));
+                                if ui.button(tr("Copier le chemin du diagnostic")).clicked() {ui.ctx().copy_text(display);}
                             }
-                            if let Some(session)=&self.flicker { ui.label(format!("{} · pertes : {}",if session.active(){"En cours"}else{"Arrêté"},session.dropped())); }
+                            if let Some(session)=&self.flicker { ui.label(trf("{state} · pertes : {losses}", &[("state", &if session.active(){tr("En cours")}else{tr("Arrêté")}), ("losses", &session.dropped())])); }
                             ui.add_space(10.0);
                             ui.separator();
-                            iconset::heading(ui, Ico::Keyboard, RichText::new("Diagnostic des touches").size(17.0).strong());
-                            if ui.checkbox(&mut self.gate.inspect, "Sélectionner les touches sans exécuter d’action").changed() {
+                            iconset::heading(ui, Ico::Keyboard, RichText::new(tr("Diagnostic des touches")).size(17.0).strong());
+                            if ui.checkbox(&mut self.gate.inspect, tr("Sélectionner les touches sans exécuter d’action")).changed() {
                                 self.engine.stop();
                             }
-                            ui.label(help("Le mode actif est indiqué dans la barre supérieure."));
+                            ui.label(help(tr("Le mode actif est indiqué dans la barre supérieure.")));
                         }
                     }
                 });
@@ -4322,13 +4326,13 @@ impl App {
         }
         if self.rename {
             let mut open = true;
-            egui::Window::new("Ce profil")
+            egui::Window::new(tr("Ce profil"))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
                 .show(ctx, |ui| {
                     let old = self.config.profiles[self.config.active].name.clone();
-                    ui.label("Nom du profil");
+                    ui.label(tr("Nom du profil"));
                     if ui
                         .text_edit_singleline(&mut self.config.profiles[self.config.active].name)
                         .changed()
@@ -4353,7 +4357,7 @@ impl App {
                     if ui
                         .add_enabled(
                             self.config.profiles.len() < 64,
-                            egui::Button::new("Dupliquer ce profil"),
+                            egui::Button::new(tr("Dupliquer ce profil")),
                         )
                         .clicked()
                     {
@@ -4427,8 +4431,8 @@ impl App {
             if let (Some((item, _)), Some(pos)) = (&self.drag.active, self.drag.position) {
                 let label = match item {
                     DragItem::Bind(k) | DragItem::Action(k) => k.label.clone(),
-                    DragItem::Position(_, _, i) => format!("Touche {:02}", i + 1),
-                    DragItem::NewFolder => "Nouveau dossier".into(),
+                    DragItem::Position(_, _, i) => trf("Touche {key}", &[("key", &format!("{:02}", i + 1))]),
+                    DragItem::NewFolder => tr("Nouveau dossier").into(),
                 };
                 egui::Area::new(egui::Id::new("drag_preview"))
                     .order(egui::Order::Tooltip)
@@ -4595,13 +4599,13 @@ impl App {
                     if self.config.active==self.applied.active && self.config.page==self.applied.page && !self.gate.dirty {
                         if let Some(binding)=self.config.keys_mut()[v.index].plugin.as_mut(){binding.settings=json!(settings);}
                         if let Some(binding)=self.applied.keys_mut()[v.index].plugin.as_mut(){binding.settings=json!(settings);}
-                        if let Err(e)=store::save(&self.path,&self.config){self.fail(format!("Réglages du plugin non sauvegardés : {e}"));}
+                        if let Err(e)=store::save(&self.path,&self.config){self.fail(trf("Réglages du plugin non sauvegardés : {error}", &[("error", &e)]));}
                         else if let Some(manager)=&mut self.plugins {manager.sync_settings(&self.applied,&v.context,pi.is_some());}
                     }
                 }
             },
             "getSettings"=>{if let (Some(v),Some(manager))=(visible,&self.plugins){manager.send(plugin,app_settings_event(&v,&sdk_device,&v.settings,pi));}},
-            "setGlobalSettings"=>{let settings=&message["payload"];if settings.is_object(){let path=self.path.with_file_name("plugin-settings.json");let mut all=std::fs::read(&path).ok().and_then(|b|serde_json::from_slice::<serde_json::Value>(&b).ok()).filter(|v|v.is_object()).unwrap_or_else(||json!({}));all[plugin]=settings.clone();if let Err(e)=std::fs::write(path,serde_json::to_vec_pretty(&all).unwrap_or_default()){self.fail(format!("Réglages globaux non sauvegardés : {e}"));}else if let Some(manager)=&self.plugins {manager.send(plugin,json!({"event":"didReceiveGlobalSettings","payload":{"settings":settings},"__pi":"*"}));if pi.is_some(){manager.send(plugin,json!({"event":"didReceiveGlobalSettings","payload":{"settings":settings}}));}}}},
+            "setGlobalSettings"=>{let settings=&message["payload"];if settings.is_object(){let path=self.path.with_file_name("plugin-settings.json");let mut all=std::fs::read(&path).ok().and_then(|b|serde_json::from_slice::<serde_json::Value>(&b).ok()).filter(|v|v.is_object()).unwrap_or_else(||json!({}));all[plugin]=settings.clone();if let Err(e)=std::fs::write(path,serde_json::to_vec_pretty(&all).unwrap_or_default()){self.fail(trf("Réglages globaux non sauvegardés : {error}", &[("error", &e)]));}else if let Some(manager)=&self.plugins {manager.send(plugin,json!({"event":"didReceiveGlobalSettings","payload":{"settings":settings},"__pi":"*"}));if pi.is_some(){manager.send(plugin,json!({"event":"didReceiveGlobalSettings","payload":{"settings":settings}}));}}}},
             "getGlobalSettings"=>{let all=std::fs::read(self.path.with_file_name("plugin-settings.json")).ok().and_then(|b|serde_json::from_slice::<serde_json::Value>(&b).ok()).unwrap_or_else(||json!({}));if let Some(manager)=&self.plugins {manager.send(plugin,json!({"event":"didReceiveGlobalSettings","payload":{"settings":all.get(plugin).cloned().unwrap_or_else(||json!({}))},"__pi":pi}));}},
             "openUrl"=>{if let Some(url)=message["payload"]["url"].as_str().filter(|u|u.starts_with("https://")||u.starts_with("http://")){
                 if let Some(effects)=&mut self.plugin_external_effects { effects.push(format!("openUrl: {url}")); }
@@ -4695,15 +4699,15 @@ fn edit_condition(ui: &mut egui::Ui, condition: &mut crate::conditions::Conditio
     use crate::conditions::Condition as C;
     let mut changed = false;
     let variants = [
-        ("foreground_app", "Application au premier plan"), ("app_running", "Application ouverte (arrière-plan inclus)"),
-        ("window_open", "Fenêtre ouverte"), ("app_audio_playing", "Session audio active"),
-        ("app_muted", "Application muette"), ("app_volume_compare", "Volume d’application"),
-        ("device_muted", "Périphérique muet"), ("device_volume_compare", "Volume du périphérique"),
-        ("audio_device_present", "Périphérique audio actif"), ("default_output_is", "Sortie par défaut"),
-        ("variable_compare", "Variable"), ("not", "NON"), ("all", "Toutes (ET)"), ("any", "Au moins une (OU)")
+        ("foreground_app", tr("Application au premier plan")), ("app_running", tr("Application ouverte (arrière-plan inclus)")),
+        ("window_open", tr("Fenêtre ouverte")), ("app_audio_playing", tr("Session audio active")),
+        ("app_muted", tr("Application muette")), ("app_volume_compare", tr("Volume d’application")),
+        ("device_muted", tr("Périphérique muet")), ("device_volume_compare", tr("Volume du périphérique")),
+        ("audio_device_present", tr("Périphérique audio actif")), ("default_output_is", tr("Sortie par défaut")),
+        ("variable_compare", tr("Variable")), ("not", tr("NON")), ("all", tr("Toutes (ET)")), ("any", tr("Au moins une (OU)"))
     ];
     let mut selected = condition.kind().to_owned();
-    egui::ComboBox::from_id_salt(("condition_kind", depth)).selected_text(condition.label()).show_ui(ui, |ui| {
+    egui::ComboBox::from_id_salt(("condition_kind", depth)).selected_text(variants.iter().find(|(id, _)| *id == condition.kind()).map(|(_, label)| *label).unwrap_or(condition.label())).show_ui(ui, |ui| {
         for (id, label) in variants { if depth < 8 || !["not", "all", "any"].contains(&id) {
             changed |= ui.selectable_value(&mut selected, id.into(), label).changed();
         } }
@@ -4729,10 +4733,10 @@ fn edit_condition(ui: &mut egui::Ui, condition: &mut crate::conditions::Conditio
     }
     match condition {
         C::ForegroundApp { exe } | C::AppRunning { exe } => {
-            ui.label("Nom d’exécutable (.exe) :");
+            ui.label(tr("Nom d’exécutable (.exe) :"));
             changed |= condition_exe(ui, exe);
         }
-        C::WindowOpen { title } => { ui.label("Le titre contient :"); changed |= ui.text_edit_singleline(title).changed(); }
+        C::WindowOpen { title } => { ui.label(tr("Le titre contient :")); changed |= ui.text_edit_singleline(title).changed(); }
         C::AppAudioPlaying { exe } | C::AppMuted { exe } => { changed |= condition_audio_exe(ui, exe); }
         C::AppVolumeCompare { exe, op, value } => {
             changed |= condition_audio_exe(ui, exe);
@@ -4740,51 +4744,51 @@ fn edit_condition(ui: &mut egui::Ui, condition: &mut crate::conditions::Conditio
             changed |= ui.add(egui::Slider::new(value, 0..=100).text("%" )).changed();
         }
         C::DeviceMuted { input, device } | C::DeviceVolumeCompare { input, device, .. } => {
-            changed |= ui.checkbox(input, "Microphone (sinon sortie)").changed();
-            egui::ComboBox::from_id_salt("condition_device").selected_text(if device == "default" { "Par défaut" } else { device.as_str() }).show_ui(ui, |ui| {
-                changed |= ui.selectable_value(device, "default".into(), "Par défaut").changed();
+            changed |= ui.checkbox(input, tr("Microphone (sinon sortie)")).changed();
+            egui::ComboBox::from_id_salt("condition_device").selected_text(if device == "default" { tr("Par défaut") } else { device.as_str() }).show_ui(ui, |ui| {
+                changed |= ui.selectable_value(device, "default".into(), tr("Par défaut")).changed();
                 for endpoint in audio.devices.iter().filter(|d| d.input == *input) {
                     changed |= ui.selectable_value(device, endpoint.id.clone(), &endpoint.name).changed();
                 }
             });
-            egui::CollapsingHeader::new("Options avancées").id_salt("condition_device_id").show(ui, |ui| {
+            egui::CollapsingHeader::new(tr("Options avancées")).id_salt("condition_device_id").show(ui, |ui| {
                 changed |= ui.text_edit_singleline(device).changed();
             });
         }
         C::AudioDevicePresent { name_contains, input } => {
-            changed |= ui.checkbox(input, "Microphone (sinon sortie)").changed();
+            changed |= ui.checkbox(input, tr("Microphone (sinon sortie)")).changed();
             let options: Vec<_> = audio.devices.iter().filter(|d| d.input == *input).collect();
             egui::ComboBox::from_id_salt("condition_device_name").selected_text(name_contains.as_str()).show_ui(ui, |ui| {
                 for endpoint in options { changed |= ui.selectable_value(name_contains, endpoint.name.clone(), &endpoint.name).changed(); }
             });
-            ui.label("Le nom contient :"); changed |= ui.text_edit_singleline(name_contains).changed();
+            ui.label(tr("Le nom contient :")); changed |= ui.text_edit_singleline(name_contains).changed();
         }
         C::DefaultOutputIs { name_contains } => {
             egui::ComboBox::from_id_salt("condition_default_output").selected_text(name_contains.as_str()).show_ui(ui, |ui| {
                 for endpoint in audio.devices.iter().filter(|d| !d.input) { changed |= ui.selectable_value(name_contains, endpoint.name.clone(), &endpoint.name).changed(); }
             });
-            ui.label("Le nom contient :"); changed |= ui.text_edit_singleline(name_contains).changed();
+            ui.label(tr("Le nom contient :")); changed |= ui.text_edit_singleline(name_contains).changed();
         }
         C::VariableCompare { name, op, value } => {
-            ui.label("Nom de variable"); changed |= ui.text_edit_singleline(name).changed();
-            egui::ComboBox::from_id_salt("variable_operator").selected_text(op.as_str()).show_ui(ui, |ui| {
-                for (id, label) in [("equals", "Égale"), ("not_equals", "Différente"), ("contains", "Contient"), ("greater", "Supérieure"), ("less", "Inférieure")] {
+            ui.label(tr("Nom de variable")); changed |= ui.text_edit_singleline(name).changed();
+            egui::ComboBox::from_id_salt("variable_operator").selected_text(match op.as_str() { "equals" => tr("Égale"), "not_equals" => tr("Différente"), "contains" => tr("Contient"), "greater" => tr("Supérieure"), "less" => tr("Inférieure"), _ => op.as_str() }).show_ui(ui, |ui| {
+                for (id, label) in [("equals", tr("Égale")), ("not_equals", tr("Différente")), ("contains", tr("Contient")), ("greater", tr("Supérieure")), ("less", tr("Inférieure"))] {
                     changed |= ui.selectable_value(op, id.into(), label).changed();
                 }
             });
-            ui.label("Valeur"); changed |= ui.text_edit_singleline(value).changed();
+            ui.label(tr("Valeur")); changed |= ui.text_edit_singleline(value).changed();
         }
         C::Not { condition } => { ui.indent("not_condition", |ui| { changed |= edit_condition(ui, condition, audio, depth + 1); }); }
         C::All { conditions } | C::Any { conditions } => {
             let mut remove = None;
             for (i, child) in conditions.iter_mut().enumerate() {
-                ui.push_id(i, |ui| { ui.horizontal(|ui| { ui.label(format!("Condition {}", i + 1));
-                    if ui.small_button("Retirer").clicked() { remove = Some(i); }
+                ui.push_id(i, |ui| { ui.horizontal(|ui| { ui.label(trf("Condition {number}", &[("number", &(i + 1))]));
+                    if ui.small_button(tr("Retirer")).clicked() { remove = Some(i); }
                 });
                 ui.indent(i, |ui| { changed |= edit_condition(ui, child, audio, depth + 1); }); });
             }
             if let Some(i) = remove { if conditions.len() > 1 { conditions.remove(i); changed = true; } }
-            if depth < 8 && conditions.len() < 32 && ui.button("+ Ajouter une condition").clicked() { conditions.push(C::default()); changed = true; }
+            if depth < 8 && conditions.len() < 32 && ui.button(tr("+ Ajouter une condition")).clicked() { conditions.push(C::default()); changed = true; }
         }
     }
     if let C::DeviceVolumeCompare { op, value, .. } = condition {
@@ -4802,18 +4806,18 @@ fn condition_exe(ui: &mut egui::Ui, exe: &mut String) -> bool {
 }
 fn condition_audio_exe(ui: &mut egui::Ui, exe: &mut String) -> bool {
     let mut changed = false;
-    egui::ComboBox::from_id_salt("condition_audio_exe").selected_text(if exe == "foreground" { "Application au premier plan" } else { exe.as_str() }).show_ui(ui, |ui| {
-        changed |= ui.selectable_value(exe, "foreground".into(), "Application au premier plan").changed();
+    egui::ComboBox::from_id_salt("condition_audio_exe").selected_text(if exe == "foreground" { tr("Application au premier plan") } else { exe.as_str() }).show_ui(ui, |ui| {
+        changed |= ui.selectable_value(exe, "foreground".into(), tr("Application au premier plan")).changed();
         for name in crate::conditions::running_exes() { changed |= ui.selectable_value(exe, name.clone(), name).changed(); }
     });
-    ui.label("Ou saisir un exécutable (.exe) :");
+    ui.label(tr("Ou saisir un exécutable (.exe) :"));
     changed | ui.text_edit_singleline(exe).changed()
 }
 fn condition_operator(ui: &mut egui::Ui, op: &mut String) -> bool {
     let mut changed = false;
-    egui::ComboBox::from_id_salt("volume_operator").selected_text(if op == "above" { "Au-dessus de" } else { "En dessous de" }).show_ui(ui, |ui| {
-        changed |= ui.selectable_value(op, "above".into(), "Au-dessus de").changed();
-        changed |= ui.selectable_value(op, "below".into(), "En dessous de").changed();
+    egui::ComboBox::from_id_salt("volume_operator").selected_text(if op == "above" { tr("Au-dessus de") } else { tr("En dessous de") }).show_ui(ui, |ui| {
+        changed |= ui.selectable_value(op, "above".into(), tr("Au-dessus de")).changed();
+        changed |= ui.selectable_value(op, "below".into(), tr("En dessous de")).changed();
     });
     changed
 }
@@ -4833,27 +4837,27 @@ fn edit_step(
     match step {
         Step::Disabled { .. } => unreachable!("atelier passe une étape active"),
         Step::KeyHold { keys, action, hold_ms } => {
-            ui.label("Touches (ex. CTRL+SHIFT+A)");
+            ui.label(tr("Touches (ex. CTRL+SHIFT+A)"));
             changed |= ui.text_edit_singleline(keys).changed();
-            egui::ComboBox::from_id_salt("key_hold_action").selected_text(if action == "up" { "Relâcher" } else { "Maintenir" }).show_ui(ui, |ui| {
-                changed |= ui.selectable_value(action, "down".into(), "Maintenir").changed();
-                changed |= ui.selectable_value(action, "up".into(), "Relâcher").changed();
+            egui::ComboBox::from_id_salt("key_hold_action").selected_text(if action == "up" { tr("Relâcher") } else { tr("Maintenir") }).show_ui(ui, |ui| {
+                changed |= ui.selectable_value(action, "down".into(), tr("Maintenir")).changed();
+                changed |= ui.selectable_value(action, "up".into(), tr("Relâcher")).changed();
             });
             if action == "down" {
-                ui.collapsing("Options avancées", |ui| {
-                    ui.label("Durée (ms) : 0 = jusqu’au bloc Relâcher ou fin de macro");
+                ui.collapsing(tr("Options avancées"), |ui| {
+                    ui.label(tr("Durée (ms) : 0 = jusqu’au bloc Relâcher ou fin de macro"));
                     changed |= ui.add(egui::DragValue::new(hold_ms).range(0..=3_600_000)).changed();
                 });
             } else if *hold_ms != 0 { *hold_ms = 0; changed = true; }
         }
         Step::MouseClick { button, double, x, y, relative_to } => {
-            egui::ComboBox::from_id_salt("mouse_button").selected_text(match button.as_str() { "left" => "Gauche", "right" => "Droit", _ => "Milieu" }).show_ui(ui, |ui| {
-                for (id, label) in [("left", "Gauche"), ("right", "Droit"), ("middle", "Milieu")] { changed |= ui.selectable_value(button, id.into(), label).changed(); }
+            egui::ComboBox::from_id_salt("mouse_button").selected_text(match button.as_str() { "left" => tr("Gauche"), "right" => tr("Droit"), _ => tr("Milieu") }).show_ui(ui, |ui| {
+                for (id, label) in [("left", tr("Gauche")), ("right", tr("Droit")), ("middle", tr("Milieu"))] { changed |= ui.selectable_value(button, id.into(), label).changed(); }
             });
-            changed |= ui.checkbox(double, "Double clic").changed();
-            ui.collapsing("Options avancées", |ui| {
+            changed |= ui.checkbox(double, tr("Double clic")).changed();
+            ui.collapsing(tr("Options avancées"), |ui| {
                 let mut positioned = x.is_some();
-                if ui.checkbox(&mut positioned, "Déplacer avant de cliquer").changed() { *x = positioned.then_some(0); *y = positioned.then_some(0); changed = true; }
+                if ui.checkbox(&mut positioned, tr("Déplacer avant de cliquer")).changed() { *x = positioned.then_some(0); *y = positioned.then_some(0); changed = true; }
                 if positioned {
                     mouse_origin_editor(ui, relative_to, &mut changed);
                     ui.horizontal(|ui| { ui.label("X"); changed |= ui.add(egui::DragValue::new(x.as_mut().unwrap()).range(-32768..=32767)).changed(); ui.label("Y"); changed |= ui.add(egui::DragValue::new(y.as_mut().unwrap()).range(-32768..=32767)).changed(); });
@@ -4862,123 +4866,123 @@ fn edit_step(
         }
         Step::MouseMove { x, y, relative, relative_to } => {
             ui.horizontal(|ui| { ui.label("X"); changed |= ui.add(egui::DragValue::new(x).range(-32768..=32767)).changed(); ui.label("Y"); changed |= ui.add(egui::DragValue::new(y).range(-32768..=32767)).changed(); });
-            ui.collapsing("Options avancées", |ui| {
+            ui.collapsing(tr("Options avancées"), |ui| {
                 if *relative { *relative_to = "cursor".into(); *relative = false; changed = true; }
                 mouse_origin_editor(ui, relative_to, &mut changed);
             });
         }
         Step::MouseScroll { amount, horizontal } => {
-            ui.label("Défilement (crans)"); changed |= ui.add(egui::DragValue::new(amount).range(-100..=100)).changed();
-            ui.collapsing("Options avancées", |ui| { changed |= ui.checkbox(horizontal, "Horizontal").changed(); });
+            ui.label(tr("Défilement (crans)")); changed |= ui.add(egui::DragValue::new(amount).range(-100..=100)).changed();
+            ui.collapsing(tr("Options avancées"), |ui| { changed |= ui.checkbox(horizontal, tr("Horizontal")).changed(); });
         }
-        Step::PlaySound { path, volume } => { ui.label("Fichier WAV ou MP3"); changed |= ui.text_edit_singleline(path).changed(); ui.label("Volume"); changed |= ui.add(egui::Slider::new(volume, 0..=100)).changed(); }
-        Step::StopSounds => { ui.label("Arrête tous les sons lancés par NovyDeck."); }
-        Step::Toggle { .. } => { ui.label("Alterne les états 1 et 2 à chaque appui. Modifie leurs blocs dans l’Atelier."); }
-        Step::UdpSend { host, port, text } => { ui.label("Message : accepte {nom}, {date}, {heure}, {horodatage}, {presse_papiers}."); ui.label("Hôte UDP"); changed |= ui.text_edit_singleline(host).changed(); ui.label("Port"); changed |= ui.add(egui::DragValue::new(port).range(1..=65535)).changed(); ui.label("Message"); changed |= ui.text_edit_multiline(text).changed(); }
-        Step::HttpRequest { method, url, body, content_type } => { ui.label("Adresse et corps : {nom}, {date}, {heure}, {horodatage}, {presse_papiers}."); ui.label("Méthode"); egui::ComboBox::from_id_salt("http_method").selected_text(method.as_str()).show_ui(ui, |ui| { for choice in ["GET", "POST", "PUT"] { changed |= ui.selectable_value(method, choice.into(), choice).changed(); } }); ui.label("Adresse HTTP (sans HTTPS)"); changed |= ui.text_edit_singleline(url).changed(); ui.label("Corps"); changed |= ui.text_edit_multiline(body).changed(); ui.label("Type de contenu"); changed |= ui.text_edit_singleline(content_type).changed(); }
+        Step::PlaySound { path, volume } => { ui.label(tr("Fichier WAV ou MP3")); changed |= ui.text_edit_singleline(path).changed(); ui.label(tr("Volume")); changed |= ui.add(egui::Slider::new(volume, 0..=100)).changed(); }
+        Step::StopSounds => { ui.label(tr("Arrête tous les sons lancés par NovyDeck.")); }
+        Step::Toggle { .. } => { ui.label(tr("Alterne les états 1 et 2 à chaque appui. Modifie leurs blocs dans l’Atelier.")); }
+        Step::UdpSend { host, port, text } => { ui.label(tr("Message : accepte {nom}, {date}, {heure}, {horodatage}, {presse_papiers}.")); ui.label(tr("Hôte UDP")); changed |= ui.text_edit_singleline(host).changed(); ui.label(tr("Port")); changed |= ui.add(egui::DragValue::new(port).range(1..=65535)).changed(); ui.label(tr("Message")); changed |= ui.text_edit_multiline(text).changed(); }
+        Step::HttpRequest { method, url, body, content_type } => { ui.label(tr("Adresse et corps : {nom}, {date}, {heure}, {horodatage}, {presse_papiers}.")); ui.label(tr("Méthode")); egui::ComboBox::from_id_salt("http_method").selected_text(method.as_str()).show_ui(ui, |ui| { for choice in ["GET", "POST", "PUT"] { changed |= ui.selectable_value(method, choice.into(), choice).changed(); } }); ui.label(tr("Adresse HTTP (sans HTTPS)")); changed |= ui.text_edit_singleline(url).changed(); ui.label(tr("Corps")); changed |= ui.text_edit_multiline(body).changed(); ui.label(tr("Type de contenu")); changed |= ui.text_edit_singleline(content_type).changed(); }
         Step::D6Brightness { mode, value } => {
-            ui.label("Luminosité du périphérique");
-            egui::ComboBox::from_id_salt("d6_brightness_mode").selected_text(match mode.as_str() { "up" => "Augmenter", "down" => "Diminuer", _ => "Régler à" }).show_ui(ui, |ui| {
-                for (id, label) in [("set", "Régler à"), ("up", "Augmenter"), ("down", "Diminuer")] { changed |= ui.selectable_value(mode, id.into(), label).changed(); }
+            ui.label(tr("Luminosité du périphérique"));
+            egui::ComboBox::from_id_salt("d6_brightness_mode").selected_text(match mode.as_str() { "up" => tr("Augmenter"), "down" => tr("Diminuer"), _ => tr("Régler à") }).show_ui(ui, |ui| {
+                for (id, label) in [("set", tr("Régler à")), ("up", tr("Augmenter")), ("down", tr("Diminuer"))] { changed |= ui.selectable_value(mode, id.into(), label).changed(); }
             });
             changed |= ui.add(egui::Slider::new(value, 0..=100).text("%" )).changed();
         }
         Step::DeviceVolume { input, device, action, step, level } => {
-            ui.label("Volume du périphérique (pas celui d'une application)");
-            changed |= ui.checkbox(input, "Microphone (sinon sortie)").changed();
+            ui.label(tr("Volume du périphérique (pas celui d'une application)"));
+            changed |= ui.checkbox(input, tr("Microphone (sinon sortie)")).changed();
             let options: Vec<_> = audio.devices.iter().filter(|d| d.input == *input).collect();
-            let selected = if device == "default" { "Par défaut".to_string() }
+            let selected = if device == "default" { tr("Par défaut").to_string() }
                 else { options.iter().find(|d| d.id == *device).map(|d| d.name.clone()).unwrap_or_else(|| device.clone()) };
             egui::ComboBox::from_id_salt("device_volume_target").selected_text(selected).show_ui(ui, |ui| {
-                changed |= ui.selectable_value(device, "default".into(), "Par défaut").changed();
+                changed |= ui.selectable_value(device, "default".into(), tr("Par défaut")).changed();
                 for endpoint in &options {
                     changed |= ui.selectable_value(device, endpoint.id.clone(), &endpoint.name).changed();
                 }
             });
-            ui.label("Action");
+            ui.label(tr("Action"));
             egui::ComboBox::from_id_salt("device_volume_action").selected_text(match action.as_str() {
-                "up" => "Augmenter", "down" => "Diminuer", "set" => "Régler à", "mute" => "Couper", "unmute" => "Rétablir", _ => "Basculer muet",
+                "up" => tr("Augmenter"), "down" => tr("Diminuer"), "set" => tr("Régler à"), "mute" => tr("Couper"), "unmute" => tr("Rétablir"), _ => tr("Basculer muet"),
             }).show_ui(ui, |ui| {
-                for (id, label) in [("up", "Augmenter"), ("down", "Diminuer"), ("set", "Régler à"), ("mute", "Couper"), ("unmute", "Rétablir"), ("toggle_mute", "Basculer muet")] {
+                for (id, label) in [("up", tr("Augmenter")), ("down", tr("Diminuer")), ("set", tr("Régler à")), ("mute", tr("Couper")), ("unmute", tr("Rétablir")), ("toggle_mute", tr("Basculer muet"))] {
                     changed |= ui.selectable_value(action, id.into(), label).changed();
                 }
             });
-            if action == "up" || action == "down" { changed |= ui.add(egui::Slider::new(step, 1..=100).text("Pas (points)")).changed(); }
-            if action == "set" { changed |= ui.add(egui::Slider::new(level, 0..=100).text("Niveau (%)")).changed(); }
-            egui::CollapsingHeader::new("Options avancées").id_salt("device_volume_advanced").show(ui, |ui| {
-                ui.label("ID du périphérique (ou default) :");
+            if action == "up" || action == "down" { changed |= ui.add(egui::Slider::new(step, 1..=100).text(tr("Pas (points)"))).changed(); }
+            if action == "set" { changed |= ui.add(egui::Slider::new(level, 0..=100).text(tr("Niveau (%)"))).changed(); }
+            egui::CollapsingHeader::new(tr("Options avancées")).id_salt("device_volume_advanced").show(ui, |ui| {
+                ui.label(tr("ID du périphérique (ou default) :"));
                 changed |= ui.text_edit_singleline(device).changed();
             });
         }
         Step::Clipboard { op, value, name } => {
-            ui.label("Action sur le presse-papiers");
+            ui.label(tr("Action sur le presse-papiers"));
             egui::ComboBox::from_id_salt("clipboard_op").selected_text(match op.as_str() {
-                "copy_text" => "Copier du texte", "read_to_variable" => "Lire dans une variable",
-                "clear" => "Vider", "save" => "Sauvegarder le texte", _ => "Restaurer le texte",
+                "copy_text" => tr("Copier du texte"), "read_to_variable" => tr("Lire dans une variable"),
+                "clear" => tr("Vider"), "save" => tr("Sauvegarder le texte"), _ => tr("Restaurer le texte"),
             }).show_ui(ui, |ui| {
-                for (id, label) in [("copy_text", "Copier du texte"), ("read_to_variable", "Lire dans une variable"), ("clear", "Vider"), ("save", "Sauvegarder le texte"), ("restore", "Restaurer le texte")] {
+                for (id, label) in [("copy_text", tr("Copier du texte")), ("read_to_variable", tr("Lire dans une variable")), ("clear", "Vider"), ("save", tr("Sauvegarder le texte")), ("restore", tr("Restaurer le texte"))] {
                     changed |= ui.selectable_value(op, id.into(), label).changed();
                 }
             });
-            if op == "copy_text" { ui.label("Texte (accepte {nom})"); changed |= ui.text_edit_multiline(value).changed(); }
-            if op == "read_to_variable" { ui.label("Nom de la variable"); changed |= ui.text_edit_singleline(name).changed(); }
-            egui::CollapsingHeader::new("Options avancées").id_salt("clipboard_advanced").show(ui, |ui| {
-                ui.label("Sauvegarder et restaurer conservent le texte uniquement pendant cette exécution ; les autres formats ne sont pas restaurés.");
-                if op != "copy_text" { ui.label("Valeur enregistrée (utilisée seulement par Copier du texte)"); changed |= ui.text_edit_multiline(value).changed(); }
-                if op != "read_to_variable" { ui.label("Nom de variable (utilisé seulement par Lire)"); changed |= ui.text_edit_singleline(name).changed(); }
+            if op == "copy_text" { ui.label(tr("Texte (accepte {nom})")); changed |= ui.text_edit_multiline(value).changed(); }
+            if op == "read_to_variable" { ui.label(tr("Nom de la variable")); changed |= ui.text_edit_singleline(name).changed(); }
+            egui::CollapsingHeader::new(tr("Options avancées")).id_salt("clipboard_advanced").show(ui, |ui| {
+                ui.label(tr("Sauvegarder et restaurer conservent le texte uniquement pendant cette exécution ; les autres formats ne sont pas restaurés."));
+                if op != "copy_text" { ui.label(tr("Valeur enregistrée (utilisée seulement par Copier du texte)")); changed |= ui.text_edit_multiline(value).changed(); }
+                if op != "read_to_variable" { ui.label(tr("Nom de variable (utilisé seulement par Lire)")); changed |= ui.text_edit_singleline(name).changed(); }
             });
         }
         Step::WindowOp { target, value, op, x, y, w, h, monitor } => {
-            ui.label("Fenêtre ciblée");
-            egui::ComboBox::from_id_salt("window_op_target").selected_text(match target.as_str() { "title" => "Titre", "exe" => "Exécutable", _ => "Fenêtre active" }).show_ui(ui, |ui| {
-                for (id, label) in [("foreground", "Fenêtre active"), ("title", "Titre"), ("exe", "Exécutable")] { changed |= ui.selectable_value(target, id.into(), label).changed(); }
+            ui.label(tr("Fenêtre ciblée"));
+            egui::ComboBox::from_id_salt("window_op_target").selected_text(match target.as_str() { "title" => tr("Titre"), "exe" => tr("Exécutable"), _ => tr("Fenêtre active") }).show_ui(ui, |ui| {
+                for (id, label) in [("foreground", tr("Fenêtre active")), ("title", tr("Titre")), ("exe", tr("Exécutable"))] { changed |= ui.selectable_value(target, id.into(), label).changed(); }
             });
-            if target != "foreground" { ui.label(if target == "title" { "Titre contenant" } else { "Nom .exe" }); changed |= ui.text_edit_singleline(value).changed(); }
-            ui.label("Action");
+            if target != "foreground" { ui.label(if target == "title" { tr("Titre contenant") } else { tr("Nom .exe") }); changed |= ui.text_edit_singleline(value).changed(); }
+            ui.label(tr("Action"));
             egui::ComboBox::from_id_salt("window_op_action").selected_text(match op.as_str() {
-                "activate" => "Activer", "minimize" => "Réduire", "maximize" => "Maximiser", "restore" => "Restaurer", "move" => "Déplacer", "resize" => "Redimensionner", "move_to_monitor" => "Changer d’écran", "toggle_always_on_top" => "Basculer toujours au premier plan", "always_on_top_on" => "Toujours au premier plan", "close_others" => "Fermer les autres fenêtres", "minimize_others" => "Réduire les autres fenêtres", _ => "Retirer du premier plan permanent"
+                "activate" => tr("Activer"), "minimize" => tr("Réduire"), "maximize" => tr("Maximiser"), "restore" => tr("Restaurer"), "move" => tr("Déplacer"), "resize" => tr("Redimensionner"), "move_to_monitor" => tr("Changer d’écran"), "toggle_always_on_top" => tr("Basculer toujours au premier plan"), "always_on_top_on" => tr("Toujours au premier plan"), "close_others" => tr("Fermer les autres fenêtres"), "minimize_others" => tr("Réduire les autres fenêtres"), _ => tr("Retirer du premier plan permanent")
             }).show_ui(ui, |ui| {
-                for (id, label) in [("activate", "Activer"), ("minimize", "Réduire"), ("maximize", "Maximiser"), ("restore", "Restaurer"), ("move", "Déplacer"), ("resize", "Redimensionner"), ("move_to_monitor", "Changer d’écran"), ("toggle_always_on_top", "Basculer toujours au premier plan"), ("always_on_top_on", "Toujours au premier plan"), ("always_on_top_off", "Retirer du premier plan permanent"), ("close_others", "Fermer les autres fenêtres"), ("minimize_others", "Réduire les autres fenêtres")] { changed |= ui.selectable_value(op, id.into(), label).changed(); }
+                for (id, label) in [("activate", tr("Activer")), ("minimize", tr("Réduire")), ("maximize", tr("Maximiser")), ("restore", tr("Restaurer")), ("move", tr("Déplacer")), ("resize", tr("Redimensionner")), ("move_to_monitor", tr("Changer d’écran")), ("toggle_always_on_top", tr("Basculer toujours au premier plan")), ("always_on_top_on", tr("Toujours au premier plan")), ("always_on_top_off", tr("Retirer du premier plan permanent")), ("close_others", tr("Fermer les autres fenêtres")), ("minimize_others", tr("Réduire les autres fenêtres"))] { changed |= ui.selectable_value(op, id.into(), label).changed(); }
             });
-            if op == "move_to_monitor" { changed |= ui.add(egui::DragValue::new(monitor).range(1..=16).prefix("Écran ")).changed(); }
-            egui::CollapsingHeader::new("Options avancées").id_salt("window_op_advanced").show(ui, |ui| {
+            if op == "move_to_monitor" { changed |= ui.add(egui::DragValue::new(monitor).range(1..=16).prefix(tr("Écran "))).changed(); }
+            egui::CollapsingHeader::new(tr("Options avancées")).id_salt("window_op_advanced").show(ui, |ui| {
                 if op == "move" { changed |= ui.add(egui::DragValue::new(x).range(-32768..=32767).prefix("X ")).changed(); changed |= ui.add(egui::DragValue::new(y).range(-32768..=32767).prefix("Y ")).changed(); }
-                if op == "resize" { changed |= ui.add(egui::DragValue::new(w).range(1..=32767).prefix("Largeur ")).changed(); changed |= ui.add(egui::DragValue::new(h).range(1..=32767).prefix("Hauteur ")).changed(); }
-                ui.label("Écran 1 = écran principal ; autres écrans triés de gauche à droite, puis de haut en bas.");
+                if op == "resize" { changed |= ui.add(egui::DragValue::new(w).range(1..=32767).prefix(tr("Largeur "))).changed(); changed |= ui.add(egui::DragValue::new(h).range(1..=32767).prefix(tr("Hauteur "))).changed(); }
+                ui.label(tr("Écran 1 = écran principal ; autres écrans triés de gauche à droite, puis de haut en bas."));
             });
         }
         Step::AppVolume { target, action, step, level, include_children } => {
-            ui.label("Cible");
+            ui.label(tr("Cible"));
             let mut foreground = target == "foreground";
-            egui::ComboBox::from_id_salt("app_volume_target").selected_text(if foreground { "Application au premier plan" } else { "Application précise" }).show_ui(ui, |ui| {
-                changed |= ui.selectable_value(&mut foreground, true, "Application au premier plan").changed();
-                changed |= ui.selectable_value(&mut foreground, false, "Application précise").changed();
+            egui::ComboBox::from_id_salt("app_volume_target").selected_text(if foreground { tr("Application au premier plan") } else { tr("Application précise") }).show_ui(ui, |ui| {
+                changed |= ui.selectable_value(&mut foreground, true, tr("Application au premier plan")).changed();
+                changed |= ui.selectable_value(&mut foreground, false, tr("Application précise")).changed();
             });
             if foreground { if target != "foreground" { *target = "foreground".into(); changed = true; } }
             else {
                 if target == "foreground" { *target = "chrome.exe".into(); changed = true; }
-                ui.label("Nom du programme (ex. chrome.exe)");
+                ui.label(tr("Nom du programme (ex. chrome.exe)"));
                 changed |= ui.text_edit_singleline(target).changed();
             }
-            ui.label("Action");
+            ui.label(tr("Action"));
             egui::ComboBox::from_id_salt("app_volume_action").selected_text(match action.as_str() {
-                "up" => "Augmenter", "down" => "Diminuer", "set" => "Régler à", "mute" => "Couper", "unmute" => "Rétablir", _ => "Basculer muet",
+                "up" => tr("Augmenter"), "down" => tr("Diminuer"), "set" => tr("Régler à"), "mute" => tr("Couper"), "unmute" => tr("Rétablir"), _ => tr("Basculer muet"),
             }).show_ui(ui, |ui| {
-                for (id, label) in [("up", "Augmenter"), ("down", "Diminuer"), ("set", "Régler à"), ("mute", "Couper"), ("unmute", "Rétablir"), ("toggle_mute", "Basculer muet")] {
+                for (id, label) in [("up", tr("Augmenter")), ("down", tr("Diminuer")), ("set", tr("Régler à")), ("mute", tr("Couper")), ("unmute", tr("Rétablir")), ("toggle_mute", tr("Basculer muet"))] {
                     changed |= ui.selectable_value(action, id.into(), label).changed();
                 }
             });
-            if action == "up" || action == "down" { changed |= ui.add(egui::Slider::new(step, 1..=100).text("Pas (points)")).changed(); }
-            if action == "set" { changed |= ui.add(egui::Slider::new(level, 0..=100).text("Niveau (%)")).changed(); }
-            egui::CollapsingHeader::new("Options avancées").id_salt("app_volume_advanced").show(ui, |ui| {
-                changed |= ui.checkbox(include_children, "Inclure les processus enfants").changed();
+            if action == "up" || action == "down" { changed |= ui.add(egui::Slider::new(step, 1..=100).text(tr("Pas (points)"))).changed(); }
+            if action == "set" { changed |= ui.add(egui::Slider::new(level, 0..=100).text(tr("Niveau (%)"))).changed(); }
+            egui::CollapsingHeader::new(tr("Options avancées")).id_salt("app_volume_advanced").show(ui, |ui| {
+                changed |= ui.checkbox(include_children, tr("Inclure les processus enfants")).changed();
             });
         }
-        Step::D6Sleep => { ui.label("Met le périphérique en veille maintenant. Un appui le réveille sans lancer la macro."); }
-        Step::CloseWindow => { ui.label("Ferme la fenêtre active (jamais NovyDeck)."); }
-        Step::ObsScene { name } => { ui.label("Scène OBS"); changed |= obs_entry(ui, name, &crate::obs_monitor::snapshot().scenes); }
-        Step::ObsMute { input, mode } => { ui.label("Entrée audio OBS"); changed |= obs_entry(ui, input, &crate::obs_monitor::snapshot().inputs); obs_choice(ui, mode, &["toggle", "mute", "unmute"], &mut changed); }
-        Step::ObsSourceVisibility { scene, source, mode } => { ui.label("Scène puis source OBS"); changed |= obs_entry(ui, scene, &crate::obs_monitor::snapshot().scenes); changed |= obs_entry(ui, source, crate::obs_monitor::snapshot().scene_items.get(scene).map(Vec::as_slice).unwrap_or(&[])); obs_choice(ui, mode, &["toggle", "show", "hide"], &mut changed); }
+        Step::D6Sleep => { ui.label(tr("Met le périphérique en veille maintenant. Un appui le réveille sans lancer la macro.")); }
+        Step::CloseWindow => { ui.label(tr("Ferme la fenêtre active (jamais NovyDeck).")); }
+        Step::ObsScene { name } => { ui.label(tr("Scène OBS")); changed |= obs_entry(ui, name, &crate::obs_monitor::snapshot().scenes); }
+        Step::ObsMute { input, mode } => { ui.label(tr("Entrée audio OBS")); changed |= obs_entry(ui, input, &crate::obs_monitor::snapshot().inputs); obs_choice(ui, mode, &["toggle", "mute", "unmute"], &mut changed); }
+        Step::ObsSourceVisibility { scene, source, mode } => { ui.label(tr("Scène puis source OBS")); changed |= obs_entry(ui, scene, &crate::obs_monitor::snapshot().scenes); changed |= obs_entry(ui, source, crate::obs_monitor::snapshot().scene_items.get(scene).map(Vec::as_slice).unwrap_or(&[])); obs_choice(ui, mode, &["toggle", "show", "hide"], &mut changed); }
         Step::ObsRecord { mode } => obs_choice(ui, mode, &["toggle", "start", "stop", "pause"], &mut changed),
         Step::ObsStream { mode } | Step::ObsVirtualCam { mode } => obs_choice(ui, mode, &["toggle", "start", "stop"], &mut changed),
         Step::ObsReplay { mode } => obs_choice(ui, mode, &["toggle", "start", "stop", "save"], &mut changed),
@@ -4993,18 +4997,18 @@ fn edit_step(
         Step::Hotkey { keys } => {
             ui.horizontal(|ui| {
                 // Le champ laisse la place au bouton : panneau de propriétés étroit compris.
-                let button = ui.fonts(|f| f.layout_no_wrap("Enregistrer…".into(), egui::TextStyle::Button.resolve(ui.style()), Color32::WHITE).size().x)
+                let button = ui.fonts(|f| f.layout_no_wrap(tr("Enregistrer…").into(), egui::TextStyle::Button.resolve(ui.style()), Color32::WHITE).size().x)
                     + ui.spacing().button_padding.x * 2.0;
                 let width = (ui.available_width() - button - ui.spacing().item_spacing.x).max(60.0);
                 changed |= ui.add(egui::TextEdit::singleline(keys).desired_width(width)).changed();
-                if ui.button("Enregistrer…").clicked() {
+                if ui.button(tr("Enregistrer…")).clicked() {
                     *record = true;
                 }
             });
             ui.label(RichText::new("Ex. CTRL+SHIFT+S · ALT+TAB · F13").small());
         }
         Step::Text { text } => {
-            ui.label("Gabarit : {nom}, {date}, {heure}, {horodatage}, {presse_papiers} ; {{ pour une accolade.");
+            ui.label(tr("Gabarit : {nom}, {date}, {heure}, {horodatage}, {presse_papiers} ; {{ pour une accolade."));
             changed |= ui
                 .add(
                     egui::TextEdit::multiline(text)
@@ -5014,15 +5018,15 @@ fn edit_step(
                 .changed();
         }
         Step::Launch { program, args, focus_if_running } => {
-            ui.label("Arguments : {nom}, {date}, {heure}, {horodatage}, {presse_papiers}.");
+            ui.label(tr("Arguments : {nom}, {date}, {heure}, {horodatage}, {presse_papiers}."));
             ui.horizontal(|ui| {
                 changed |= ui.text_edit_singleline(program).changed();
                 if ui.small_button("…").clicked() {
                     choose_step_file(tx.clone(),target.clone(),false);
                 }
             });
-            changed |= ui.checkbox(focus_if_running, "Si déjà ouverte, activer au lieu de relancer").changed();
-            ui.label(RichText::new("Arguments : un par ligne, sans guillemets ajoutés").small());
+            changed |= ui.checkbox(focus_if_running, tr("Si déjà ouverte, activer au lieu de relancer")).changed();
+            ui.label(RichText::new(tr("Arguments : un par ligne, sans guillemets ajoutés")).small());
             let mut text = args.join("\n");
             if ui
                 .add(
@@ -5041,7 +5045,7 @@ fn edit_step(
             }
         }
         Step::Url { url } => {
-            ui.label("Adresse : accepte {nom}, {date}, {heure}, {horodatage}, {presse_papiers}.");
+            ui.label(tr("Adresse : accepte {nom}, {date}, {heure}, {horodatage}, {presse_papiers}."));
             changed |= ui.text_edit_singleline(url).changed();
         }
         Step::WaitWindow {
@@ -5049,10 +5053,10 @@ fn edit_step(
             timeout_ms,
             focus,
         } => {
-            ui.label("Le titre contient (sans distinction majuscule/minuscule)");
+            ui.label(tr("Le titre contient (sans distinction majuscule/minuscule)"));
             changed |= ui.text_edit_singleline(title).changed();
             ui.horizontal(|ui| {
-                ui.label("Délai max.");
+                ui.label(tr("Délai max."));
                 changed |= ui
                     .add(
                         egui::DragValue::new(timeout_ms)
@@ -5063,16 +5067,16 @@ fn edit_step(
                 ui.label("ms");
             });
             changed |= ui
-                .checkbox(focus, "Mettre cette fenêtre au premier plan")
+                .checkbox(focus, tr("Mettre cette fenêtre au premier plan"))
                 .changed();
         }
         Step::Media { command } => {
             let items = [
-                ("play_pause", "Lecture / pause"),
-                ("next", "Piste suivante"),
-                ("previous", "Piste précédente"),
-                ("stop", "Arrêter"),
-                ("mute", "Muet"),
+                ("play_pause", tr("Lecture / pause")),
+                ("next", tr("Piste suivante")),
+                ("previous", tr("Piste précédente")),
+                ("stop", tr("Arrêter")),
+                ("mute", tr("Muet")),
                 ("volume_up", "Volume +"),
                 ("volume_down", "Volume −"),
             ];
@@ -5080,7 +5084,7 @@ fn edit_step(
                 .iter()
                 .find(|(id, _)| *id == command)
                 .map(|(_, label)| *label)
-                .unwrap_or("Choisir");
+                .unwrap_or(tr("Choisir"));
             egui::ComboBox::from_id_salt("media")
                 .selected_text(label)
                 .show_ui(ui, |ui| {
@@ -5118,91 +5122,91 @@ fn edit_step(
             changed |= icon_ui::audio_options(ui, step, audio, pick_audio_icon, tx, target);
         }
         Step::TextOp { name, op, value, find, persistent } => {
-            ui.label("Variable texte");
+            ui.label(tr("Variable texte"));
             changed |= ui.text_edit_singleline(name).changed();
-            let choices = [("set", "Définir"), ("append", "Ajouter à la fin"), ("prepend", "Ajouter au début"),
-                ("upper", "Mettre en majuscules"), ("lower", "Mettre en minuscules"), ("trim", "Supprimer les espaces"),
-                ("replace", "Remplacer"), ("length", "Compter les caractères")];
-            let selected = choices.iter().find(|(id, _)| *id == op).map(|(_, label)| *label).unwrap_or("Opération inconnue");
+            let choices = [("set", tr("Définir")), ("append", tr("Ajouter à la fin")), ("prepend", tr("Ajouter au début")),
+                ("upper", tr("Mettre en majuscules")), ("lower", tr("Mettre en minuscules")), ("trim", tr("Supprimer les espaces")),
+                ("replace", tr("Remplacer")), ("length", tr("Compter les caractères"))];
+            let selected = choices.iter().find(|(id, _)| *id == op).map(|(_, label)| *label).unwrap_or(tr("Opération inconnue"));
             egui::ComboBox::from_id_salt("text_op_choice").selected_text(selected).show_ui(ui, |ui| {
                 for (id, label) in choices { changed |= ui.selectable_value(op, id.into(), label).changed(); }
             });
             if ["set", "append", "prepend", "replace"].contains(&op.as_str()) {
-                ui.label("Valeur (accepte {variable})"); changed |= ui.text_edit_multiline(value).changed();
+                ui.label(tr("Valeur (accepte {variable})")); changed |= ui.text_edit_multiline(value).changed();
             }
-            egui::CollapsingHeader::new("Options avancées").id_salt("text_op_advanced").show(ui, |ui| {
-                if op == "replace" { ui.label("Texte recherché (accepte {variable}, non vide après interpolation)"); changed |= ui.text_edit_singleline(find).changed(); }
-                else { ui.label("Remplacer : sélectionner l’opération pour préciser le texte recherché."); }
-                ui.label("Longueur : nombre de caractères Unicode ; le résultat est stocké dans la même variable.");
-                changed |= ui.checkbox(persistent, "Conserver entre les macros").changed();
+            egui::CollapsingHeader::new(tr("Options avancées")).id_salt("text_op_advanced").show(ui, |ui| {
+                if op == "replace" { ui.label(tr("Texte recherché (accepte {variable}, non vide après interpolation)")); changed |= ui.text_edit_singleline(find).changed(); }
+                else { ui.label(tr("Remplacer : sélectionner l’opération pour préciser le texte recherché.")); }
+                ui.label(tr("Longueur : nombre de caractères Unicode ; le résultat est stocké dans la même variable."));
+                changed |= ui.checkbox(persistent, tr("Conserver entre les macros")).changed();
             });
         }
         Step::Notify { title, message } => {
-            ui.label("Titre"); changed |= ui.text_edit_singleline(title).changed();
-            ui.label("Message (variables : {nom} ; {{ pour une accolade)"); changed |= ui.text_edit_multiline(message).changed();
+            ui.label(tr("Titre")); changed |= ui.text_edit_singleline(title).changed();
+            ui.label(tr("Message (variables : {nom} ; {{ pour une accolade)")); changed |= ui.text_edit_multiline(message).changed();
         }
         Step::WaitUntil { condition, timeout_ms, poll_ms } => {
             changed |= edit_condition(ui, condition, audio, 0);
-            egui::CollapsingHeader::new("Options avancées").id_salt("wait_until_advanced").show(ui, |ui| {
-                ui.label("Délai maximal (ms)");
+            egui::CollapsingHeader::new(tr("Options avancées")).id_salt("wait_until_advanced").show(ui, |ui| {
+                ui.label(tr("Délai maximal (ms)"));
                 changed |= ui.add(egui::DragValue::new(timeout_ms).range(50..=600_000)).changed();
-                ui.label("Intervalle de vérification (ms)");
+                ui.label(tr("Intervalle de vérification (ms)"));
                 changed |= ui.add(egui::DragValue::new(poll_ms).range(50..=600_000)).changed();
             });
         }
         Step::IfCondition { condition, .. } => {
             changed |= edit_condition(ui, condition, audio, 0);
-            ui.label("Configure ALORS et SINON dans l’Atelier blocs.");
+            ui.label(tr("Configure ALORS et SINON dans l’Atelier blocs."));
         }
         Step::IfWindow { title, .. } => {
-            ui.label("Le titre de la fenêtre contient");
+            ui.label(tr("Le titre de la fenêtre contient"));
             changed |= ui.text_edit_singleline(title).changed();
-            ui.label("Configure ALORS et SINON dans l’Atelier blocs.");
+            ui.label(tr("Configure ALORS et SINON dans l’Atelier blocs."));
         }
         Step::Repeat { count, .. } => {
             ui.horizontal(|ui| {
-                ui.label("Répéter");
+                ui.label(tr("Répéter"));
                 changed |= ui.add(egui::DragValue::new(count).range(1..=100)).changed();
-                ui.label("fois les blocs de l’Atelier");
+                ui.label(tr("fois les blocs de l’Atelier"));
             });
         }
         Step::Math { name, op, value, min, max, persistent } => {
-            ui.label("Variable numérique"); changed |= ui.text_edit_singleline(name).changed();
-            ui.label("Opération");
+            ui.label(tr("Variable numérique")); changed |= ui.text_edit_singleline(name).changed();
+            ui.label(tr("Opération"));
             egui::ComboBox::from_id_salt("math_op").selected_text(match op.as_str() {
-                "set" => "Définir", "add" => "Ajouter", "subtract" => "Soustraire",
-                "multiply" => "Multiplier", "divide" => "Diviser", "modulo" => "Modulo",
-                "min" => "Minimum", "max" => "Maximum", _ => "Aléatoire",
+                "set" => tr("Définir"), "add" => tr("Ajouter"), "subtract" => tr("Soustraire"),
+                "multiply" => tr("Multiplier"), "divide" => tr("Diviser"), "modulo" => tr("Modulo"),
+                "min" => tr("Minimum"), "max" => tr("Maximum"), _ => tr("Aléatoire"),
             }).show_ui(ui, |ui| {
-                for (id, label) in [("set", "Définir"), ("add", "Ajouter"), ("subtract", "Soustraire"),
-                    ("multiply", "Multiplier"), ("divide", "Diviser"), ("modulo", "Modulo"),
-                    ("min", "Minimum"), ("max", "Maximum"), ("random", "Aléatoire")] {
+                for (id, label) in [("set", tr("Définir")), ("add", tr("Ajouter")), ("subtract", tr("Soustraire")),
+                    ("multiply", tr("Multiplier")), ("divide", tr("Diviser")), ("modulo", tr("Modulo")),
+                    ("min", "Minimum"), ("max", "Maximum"), ("random", tr("Aléatoire"))] {
                     changed |= ui.selectable_value(op, id.into(), label).changed();
                 }
             });
-            if op != "random" { ui.label("Valeur (nombre ou {variable})"); changed |= ui.text_edit_singleline(value).changed(); }
-            egui::CollapsingHeader::new("Options avancées").id_salt("math_advanced").show(ui, |ui| {
+            if op != "random" { ui.label(tr("Valeur (nombre ou {variable})")); changed |= ui.text_edit_singleline(value).changed(); }
+            egui::CollapsingHeader::new(tr("Options avancées")).id_salt("math_advanced").show(ui, |ui| {
                 if op == "random" {
-                    ui.label("Minimum"); changed |= ui.add(egui::DragValue::new(min)).changed();
-                    ui.label("Maximum"); changed |= ui.add(egui::DragValue::new(max)).changed();
+                    ui.label(tr("Minimum")); changed |= ui.add(egui::DragValue::new(min)).changed();
+                    ui.label(tr("Maximum")); changed |= ui.add(egui::DragValue::new(max)).changed();
                 }
-                changed |= ui.checkbox(persistent, "Conserver entre les macros").changed();
+                changed |= ui.checkbox(persistent, tr("Conserver entre les macros")).changed();
             });
         }
         Step::SetVariable { name, value, persistent } => {
-            ui.label("Variable"); changed |= ui.text_edit_singleline(name).changed();
-            ui.label("Valeur (accepte {variable})"); changed |= ui.text_edit_singleline(value).changed();
-            egui::CollapsingHeader::new("Options avancées").id_salt("set_variable_advanced").show(ui, |ui| {
-                changed |= ui.checkbox(persistent, "Conserver entre les macros").changed();
+            ui.label(tr("Variable")); changed |= ui.text_edit_singleline(name).changed();
+            ui.label(tr("Valeur (accepte {variable})")); changed |= ui.text_edit_singleline(value).changed();
+            egui::CollapsingHeader::new(tr("Options avancées")).id_salt("set_variable_advanced").show(ui, |ui| {
+                changed |= ui.checkbox(persistent, tr("Conserver entre les macros")).changed();
             });
         }
         Step::IfVariable { name, value, .. } => {
             ui.horizontal(|ui| {
-                ui.label("Variable");
+                ui.label(tr("Variable"));
                 changed |= ui.text_edit_singleline(name).changed();
             });
             ui.horizontal(|ui| {
-                ui.label("Valeur");
+                ui.label(tr("Valeur"));
                 changed |= ui.text_edit_singleline(value).changed();
             });
         }
@@ -5212,7 +5216,7 @@ fn edit_step(
             args,
         } => {
             ui.horizontal(|ui| {
-                ui.label("AutoHotkey v2");
+                ui.label(tr("AutoHotkey v2"));
                 changed |= ui.text_edit_singleline(executable).changed();
                 if ui.button("Parcourir…").clicked() {
                     choose_step_file(tx.clone(),target.clone(),true);
@@ -5227,15 +5231,15 @@ fn edit_step(
                 )
                 .changed();
             let mut text = args.join("\n");
-            ui.label("Arguments : un par ligne");
+            ui.label(tr("Arguments : un par ligne"));
             if ui.text_edit_multiline(&mut text).changed() {
                 *args = text.lines().map(String::from).collect();
                 changed = true;
             }
-            ui.label(RichText::new("Le script agit sur ton PC lors de l’exécution. Arrêter la macro termine le processus AutoHotkey lancé par NovyDeck.").small());
+            ui.label(RichText::new(tr("Le script agit sur ton PC lors de l’exécution. Arrêter la macro termine le processus AutoHotkey lancé par NovyDeck.")).small());
         }
         Step::Back | Step::PageNext | Step::PagePrevious => {
-            ui.label("Navigation dans ce profil, aussi disponible depuis les touches du périphérique.");
+            ui.label(tr("Navigation dans ce profil, aussi disponible depuis les touches du périphérique."));
         }
         Step::Profile { name } => {
             egui::ComboBox::from_id_salt("profile_action")
@@ -5251,47 +5255,47 @@ fn edit_step(
 }
 
 fn mouse_origin_editor(ui: &mut egui::Ui, origin: &mut String, changed: &mut bool) {
-    egui::ComboBox::from_id_salt("mouse_origin").selected_text(match origin.as_str() { "window" => "Fenêtre (zone client)", "cursor" => "Curseur", _ => "Écran" }).show_ui(ui, |ui| {
-        for (id, label) in [("screen", "Écran"), ("window", "Fenêtre (zone client)"), ("cursor", "Curseur")] { *changed |= ui.selectable_value(origin, id.into(), label).changed(); }
+    egui::ComboBox::from_id_salt("mouse_origin").selected_text(match origin.as_str() { "window" => tr("Fenêtre (zone client)"), "cursor" => tr("Curseur"), _ => tr("Écran") }).show_ui(ui, |ui| {
+        for (id, label) in [("screen", tr("Écran")), ("window", tr("Fenêtre (zone client)")), ("cursor", tr("Curseur"))] { *changed |= ui.selectable_value(origin, id.into(), label).changed(); }
     });
 }
 fn step_summary(step: &Step) -> String {
     match step {
         Step::Hotkey { keys } => keys.clone(),
         Step::KeyHold { .. } => step.key_hold_summary().unwrap_or_default(),
-        Step::Delay { ms } => format!("Attendre {ms} ms"),
-        Step::MouseClick { button, double, x, y, relative_to } => format!("Clic {button}{}{}", if *double { " double" } else { "" }, x.zip(*y).map(|(x, y)| format!(" à {x}, {y} ({relative_to})")).unwrap_or_default()),
-        Step::MouseMove { x, y, relative, relative_to } => format!("Souris {x}, {y} ({})", if *relative { "cursor" } else { relative_to }),
-        Step::MouseScroll { amount, horizontal } => format!("Défiler de {amount} crans {}", if *horizontal { "horizontalement" } else { "verticalement" }),
-        Step::PlaySound { path, volume } => format!("Son : {path} ({volume} %)"),
-        Step::IfCondition { condition, .. } => format!("Si {}", condition.summary()),
-        Step::WaitUntil { condition, timeout_ms, .. } => format!("Attendre que {} ({} ms max)", condition.summary(), timeout_ms),
-        Step::Notify { title, message } => format!("Notification « {title} » : {}", message.chars().take(50).collect::<String>()),
+        Step::Delay { ms } => trf("Attendre {ms} ms", &[("ms", &ms)]),
+        Step::MouseClick { button, double, x, y, relative_to } => trf("Clic {button}{double}{position}", &[("button", &button), ("double", &if *double { tr(" double") } else { "" }), ("position", &x.zip(*y).map(|(x, y)| trf(" à {x}, {y} ({relative_to})", &[("x", &x), ("y", &y), ("relative_to", &relative_to)])).unwrap_or_default())]),
+        Step::MouseMove { x, y, relative, relative_to } => trf("Souris {x}, {y} ({origin})", &[("x", &x), ("y", &y), ("origin", &if *relative { "cursor" } else { relative_to })]),
+        Step::MouseScroll { amount, horizontal } => trf("Défiler de {amount} crans {direction}", &[("amount", &amount), ("direction", &if *horizontal { tr("horizontalement") } else { tr("verticalement") })]),
+        Step::PlaySound { path, volume } => trf("Son : {path} ({volume} %)", &[("path", &path), ("volume", &volume)]),
+        Step::IfCondition { condition, .. } => trf("Si {condition}", &[("condition", &condition.summary())]),
+        Step::WaitUntil { condition, timeout_ms, .. } => trf("Attendre que {condition} ({timeout} ms max)", &[("condition", &condition.summary()), ("timeout", &timeout_ms)]),
+        Step::Notify { title, message } => trf("Notification « {title} » : {message}", &[("title", &title), ("message", &message.chars().take(50).collect::<String>())]),
         Step::Math { .. } => step.math_summary().unwrap_or_default(),
         Step::TextOp { .. } => step.text_op_summary().unwrap_or_default(),
-        Step::SetVariable { name, persistent, .. } => format!("Définir {name}{}", if *persistent { " (enregistrée)" } else { "" }),
+        Step::SetVariable { name, persistent, .. } => trf("Définir {name}{persistent}", &[("name", &name), ("persistent", &if *persistent { tr(" (enregistrée)") } else { "" })]),
         Step::Clipboard { .. } => step.clipboard_summary().unwrap_or_default(),
         Step::WindowOp { .. } => step.window_op_summary().unwrap_or_default(),
         Step::AppVolume { .. } => step.app_volume_summary().unwrap_or_default(),
         Step::DeviceVolume { .. } => step.device_volume_summary().unwrap_or_default(),
-        Step::StopSounds => "Arrêter les sons".into(),
-        Step::Toggle { a, b } => format!("Basculer 1 / 2 ({} / {} blocs)", a.len(), b.len()),
+        Step::StopSounds => tr("Arrêter les sons").into(),
+        Step::Toggle { a, b } => trf("Basculer 1 / 2 ({a} / {b} blocs)", &[("a", &a.len()), ("b", &b.len())]),
         Step::UdpSend { host, port, .. } => format!("UDP : {host}:{port}"),
         Step::HttpRequest { method, url, .. } => format!("HTTP {method} : {url}"),
-        Step::D6Brightness { mode, value } => format!("Luminosité : {mode} {value} %"),
-        Step::D6Sleep => "Veille du périphérique".into(),
-        Step::CloseWindow => "Fermer la fenêtre active".into(),
-        Step::Media { command } => format!("Média : {command}"),
+        Step::D6Brightness { mode, value } => trf("Luminosité : {mode} {value} %", &[("mode", &mode), ("value", &value)]),
+        Step::D6Sleep => tr("Veille du périphérique").into(),
+        Step::CloseWindow => tr("Fermer la fenêtre active").into(),
+        Step::Media { command } => trf("Média : {command}", &[("command", &command)]),
         Step::Url { url } => url.clone(),
-        Step::Text { .. } => "Texte".into(),
-        Step::Launch { program, .. } => format!("Lancer {program}"),
-        Step::WaitWindow { title, .. } => format!("Attendre {title}"),
-        Step::Profile { name } => format!("Profil {name}"),
-        Step::Folder { id } => format!("Dossier {id}"),
-        Step::Page { id } => format!("Page {id}"),
-        Step::Back => "Retour".into(),
-        Step::PageNext => "Page suivante".into(),
-        Step::PagePrevious => "Page précédente".into(),
+        Step::Text { .. } => tr("Texte").into(),
+        Step::Launch { program, .. } => trf("Lancer {program}", &[("program", &program)]),
+        Step::WaitWindow { title, .. } => trf("Attendre {title}", &[("title", &title)]),
+        Step::Profile { name } => trf("Profil {name}", &[("name", &name)]),
+        Step::Folder { id } => trf("Dossier {id}", &[("id", &id)]),
+        Step::Page { id } => trf("Page {id}", &[("id", &id)]),
+        Step::Back => tr("Retour").into(),
+        Step::PageNext => tr("Page suivante").into(),
+        Step::PagePrevious => tr("Page précédente").into(),
         _ => step.name().into(),
     }
 }
@@ -5396,7 +5400,7 @@ fn obs_choice(ui: &mut egui::Ui, mode: &mut String, options: &[&str], changed: &
 fn obs_entry(ui: &mut egui::Ui, value: &mut String, options: &[String]) -> bool {
     let mut changed = ui.text_edit_singleline(value).changed();
     if !options.is_empty() {
-        egui::ComboBox::from_id_salt(ui.next_auto_id()).selected_text("Choisir…").show_ui(ui, |ui| {
+        egui::ComboBox::from_id_salt(ui.next_auto_id()).selected_text(tr("Choisir…")).show_ui(ui, |ui| {
             for item in options {
                 if ui.selectable_label(value == item, item).clicked() { *value = item.clone(); changed = true; }
             }
