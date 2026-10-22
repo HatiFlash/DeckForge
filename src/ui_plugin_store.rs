@@ -26,10 +26,11 @@ impl App {
   egui::ScrollArea::vertical().id_salt("plugin_store").auto_shrink([false,false]).max_height(height).show(ui,|ui|{
    // A ScrollArea may expose an unbounded child width; constrain paragraphs and cards to its viewport.
    ui.set_max_width(content_width);
-   ui.group(|ui| {
-    if ui.add(iconset::button(ui.ctx(),Ico::Store,crate::i18n::tr("Magasin de plugins"))).clicked(){super::plugin_market_ui::open();}
-    ui.label(crate::i18n::tr("Explorez les plugins communautaires avant de les installer."));
-   });
+   // Premier élément de l'onglet, sur une seule ligne pour garder l'inventaire local visible.
+   let store=ui.add_sized([ui.available_width(),34.0],iconset::button(ui.ctx(),Ico::Store,crate::i18n::tr("Magasin de plugins")))
+    .on_hover_text(crate::i18n::tr("Explorez les plugins communautaires avant de les installer."));
+   if store.clicked(){super::plugin_market_ui::open();}
+   ui.add_space(4.0);
   iconset::heading(ui,Ico::Plugin,RichText::new(crate::i18n::tr("Plugins · importer")).strong());
   ui.add(egui::Label::new(RichText::new(crate::i18n::tr("Catalogue local, hors ligne. Importer ne lance rien.")).small()).wrap());
   let catalog=crate::plugin_catalog::Catalog::offline();
