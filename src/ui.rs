@@ -3179,7 +3179,7 @@ impl App {
                                         ui.horizontal_wrapped(|ui| {
                                             let image = face.image.as_deref().filter(|v| !v.is_empty());
                                             let image_name = image.map(|v| v.rsplit(['/', '\\']).next().unwrap_or(v)).unwrap_or(tr("Icône de la touche"));
-                                            ui.label(egui::Label::new(image_name).truncate()).on_hover_text(image.unwrap_or(""));
+                                            ui.add(egui::Label::new(image_name).truncate()).on_hover_text(image.unwrap_or(""));
                                             if ui.button(tr("Galerie")).clicked() { state_icon = Some(active); }
                                             if ui.button(tr("Choisir une image…")).clicked() { state_file = Some(active); }
                                             if ui.small_button(tr("Effacer")).clicked() { face.image = None; changed = true; }
