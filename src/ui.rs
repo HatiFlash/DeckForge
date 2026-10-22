@@ -4691,6 +4691,29 @@ impl App {
         let name=message["event"].as_str().unwrap_or("");
         let context=message["context"].as_str().unwrap_or("");
         let visible=self.plugins.as_ref().and_then(|m|m.visible().get(context)).filter(|v|v.plugin==plugin).cloned();
+        if context.starts_with("novydeck-block-") && matches!(name,"setTitle"|"setImage"|"setState"|"showOk"|"showAlert"|"setSettings"|"getSettings") {
+            let Some((index,path))=crate::plugin_runtime::virtual_step_path(&self.applied,context) else {return};
+            let Some(crate::model::Step::PluginAction { plugin: owner, action, settings, .. })=
+                extras::step_mut(&mut self.applied.keys_mut()[index].steps,&path) else {return};
+            if owner!=plugin || action!=message["action"].as_str().unwrap_or("") {return;}
+            if name=="getSettings" {
+                let v=crate::plugin_runtime::Visible {context:context.into(),plugin:owner.clone(),action:action.clone(),index:0,settings:settings.clone(),state:0};
+                if let Some(manager)=&self.plugins {manager.send(plugin,app_settings_event(&v,&crate::plugin_runtime::Device::virtual_device(),settings,None));}
+            } else if name=="setSettings" {
+                if let Some(new)=message["payload"].as_object() {
+                    let new=serde_json::Value::Object(new.clone());
+                    *settings=new.clone();
+                    if self.config.active==self.applied.active && self.config.page==self.applied.page && !self.gate.dirty {
+                        if let Some(crate::model::Step::PluginAction { settings, .. })=extras::step_mut(&mut self.config.keys_mut()[index].steps,&path) {
+                            *settings=new.clone();
+                            if let Err(e)=store::save(&self.path,&self.config){self.fail(trf("Réglages du plugin non sauvegardés : {error}", &[("error", &e)]));}
+                            else if let Some(manager)=&self.plugins {manager.virtual_settings(context,new);}
+                        }
+                    }
+                }
+            }
+            return;
+        }
         let pi=message["__pi"].as_str();
         let sdk_device=self.device_model.as_ref().map_or_else(crate::plugin_runtime::Device::virtual_device,|d|crate::plugin_runtime::Device::from_grid(d.name.clone(),d.cols,d.rows));
         match name {

@@ -523,6 +523,28 @@ pub fn propose_with(text: &str, config: &Config, knowledge: &crate::local_llm::K
     }
 }
 
+fn plugin_intent(clause: &str, plugins: &[crate::plugins::Plugin]) -> Option<Result<Step, String>> {
+    let n = parser::normalize(clause);
+    let named = |name: &str| !name.trim().is_empty() && contains_phrase(&n, &parser::normalize(name));
+    let mut candidates = Vec::new();
+    let mut plugin_mentioned = false;
+    for p in plugins.iter().filter(|p| p.prerequisite.is_none() && matches!(p.runtime, crate::plugins::Runtime::Exe(_) | crate::plugins::Runtime::Node(_) | crate::plugins::Runtime::Html(_))) {
+        let named_plugin = named(p.display_name()) || named(&p.uuid);
+        plugin_mentioned |= named_plugin;
+        for a in &p.actions {
+            if (named_plugin || has(&n, &["action", "plugin"])) && (named(&a.name) || named(&a.uuid)) {
+                candidates.push((p, a));
+            }
+        }
+    }
+    match candidates.as_slice() {
+        [(p, a)] => Some(Ok(Step::PluginAction { plugin: p.uuid.clone(), action: a.uuid.clone(), settings: serde_json::json!({}), label: a.name.clone() })),
+        [] if plugin_mentioned => Some(Err("Précise le nom de l'action de ce plugin installé.".into())),
+        [] => None,
+        _ => Some(Err("Plusieurs actions de plugins correspondent : précise le plugin et l'action.".into())),
+    }
+}
+
 fn propose_plain(text: &str, config: &Config, knowledge: &crate::local_llm::Knowledge) -> Proposal {
     let mut result = Proposal {
         steps: vec![],
@@ -532,6 +554,16 @@ fn propose_plain(text: &str, config: &Config, knowledge: &crate::local_llm::Know
     };
     for clause in parser::clauses(text) {
         let cn = parser::normalize(&clause);
+        if let Some(intent) = plugin_intent(&clause, &knowledge.plugins) {
+            match intent {
+                Ok(step) => { result.steps.push(step); continue; }
+                Err(question) => {
+                    result.steps.clear();
+                    result.status = Status::Ambigue { question, choix: vec![] };
+                    return result;
+                }
+            }
+        }
         if let Some(steps) = multi_step(&cn) {
             result.steps.extend(steps);
             continue;

@@ -528,6 +528,9 @@ fn run_steps(
             if let Step::Notify { title, message } = step { let _ = tx.send(Event::Log(format!("Simulation : notification « {} » — {} (non envoyée)", interpolate(title, variables), interpolate(message, variables)))); }
             if let Some(summary) = step.active().app_volume_summary().or_else(|| step.active().device_volume_summary()) { let _ = tx.send(Event::Log(format!("Simulation : {summary}"))); }
             match step {
+                Step::PluginAction { plugin, action, label, .. } => {
+                    let _=tx.send(Event::Log(format!("Simulation : plugin {plugin} › {} (aucun événement envoyé)",if label.is_empty(){action}else{label})));
+                }
                 Step::WindowOp { .. } => { let _ = tx.send(Event::Log(format!("Simulation : {} (aucune fenêtre modifiée)", step.window_op_summary().unwrap_or_default()))); }
                 Step::KeyHold { .. } => { let _ = tx.send(Event::Log(format!("Simulation : {} (aucune touche enfoncée)", step.key_hold_summary().unwrap_or_default()))); }
                 Step::Clipboard { .. } => {
@@ -612,6 +615,16 @@ fn run_steps(
             continue;
         }
         match step {
+            Step::PluginAction { plugin, action, settings, .. } => {
+                let identity=ACTIVE_KEY.with(|id|id.borrow().clone());
+                let v=crate::plugin_runtime::Visible {
+                    context:crate::plugin_runtime::virtual_context(&identity,&path),
+                    plugin:plugin.clone(),action:action.clone(),index:0,settings:settings.clone(),state:0,
+                };
+                if let Err(e)=crate::plugin_runtime::press_virtual(v) {
+                    let _=tx.send(Event::Log(format!("Action de plugin {plugin} › {action} ignorée : {e}")));
+                }
+            }
             Step::Disabled { .. } => {},
             Step::Toggle { a, b } => {
                 let branch = next_branch(&path);
