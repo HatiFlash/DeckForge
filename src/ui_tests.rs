@@ -1846,6 +1846,9 @@ fn plugin_store_is_rendered_without_a_window() {
     h.app.catalog_tab=3;
     let size=vec2(1180.0,800.0);
     let output=h.warm(size);
+    if let Some(dir)=std::env::var_os("NOVYDECK_UI_OUTPUT") {
+        h.png(size,output.clone(),&PathBuf::from(dir).join("plugins-tab-early.png"));
+    }
     assert!(text_position(&output.shapes,"Installés dans NovyDeck").is_some());
     assert!(text_position(&output.shapes,"Plugins disponibles sur ce PC").is_some());
     if let Some(dir)=std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
