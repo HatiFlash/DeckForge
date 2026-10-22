@@ -2219,10 +2219,14 @@ fn key_toggle_appearance_shows_two_image_controls() {
     ] {
     let mut h = Harness::new();
     crate::i18n::set_language(lang);
+    let on_path = h.dir.path().join("on.png");
+    let off_path = h.dir.path().join("off.png");
+    image::RgbaImage::from_pixel(144, 144, image::Rgba([30, 170, 90, 255])).save(&on_path).unwrap();
+    image::RgbaImage::from_pixel(144, 144, image::Rgba([180, 70, 45, 255])).save(&off_path).unwrap();
     h.app.config.keys_mut()[0].state_display = Some(crate::model::StateDisplay {
         toggle: true,
-        on: crate::model::StateFace { image: Some("builtin:microphone".into()), ..Default::default() },
-        off: crate::model::StateFace { image: Some("builtin:speakers".into()), ..Default::default() },
+        on: crate::model::StateFace { image: Some(on_path.to_string_lossy().into_owned()), ..Default::default() },
+        off: crate::model::StateFace { image: Some(off_path.to_string_lossy().into_owned()), ..Default::default() },
         ..Default::default()
     });
     h.ctx.data_mut(|d| d.insert_persisted(egui::Id::new("inspector_tab"), 1u8));
