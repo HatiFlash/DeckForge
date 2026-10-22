@@ -503,7 +503,14 @@ pub(super) fn block_editor(
                         block_glyph(ui, step, color);
                         let folded_id = egui::Id::new("block_fold").with(&path);
                         let folded = ui.data(|d| d.get_temp::<bool>(folded_id)).unwrap_or(true);
-                        let summary = block_summary(step);
+                        let summary = if let Step::PluginAction { plugin, action, label, .. } = step.active() {
+                            let owner = plugins.iter().find(|p| &p.uuid == plugin);
+                            let plugin_name = owner.map(|p| p.display_name()).unwrap_or(plugin);
+                            let action_name = owner.and_then(|p| p.actions.iter().find(|a| &a.uuid == action))
+                                .map(|a| if a.name.is_empty() { action.as_str() } else { a.name.as_str() })
+                                .unwrap_or_else(|| if label.is_empty() { action.as_str() } else { label.as_str() });
+                            format!("{plugin_name} › {action_name}")
+                        } else { block_summary(step) };
                         if ui.selectable_label(!folded, if summary.starts_with(step_label(step)) { summary.clone() } else { format!("{} · {}", step_label(step), summary) })
                             .on_hover_text(format!("{} — {}", step_label(step), summary)).clicked() {
                             ui.data_mut(|d| d.insert_temp(folded_id, !folded));

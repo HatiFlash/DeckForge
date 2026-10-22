@@ -532,7 +532,7 @@ fn plugin_intent(clause: &str, plugins: &[crate::plugins::Plugin]) -> Option<Res
         let named_plugin = named(p.display_name()) || named(&p.uuid);
         plugin_mentioned |= named_plugin;
         for a in &p.actions {
-            if (named_plugin || has(&n, &["action", "plugin"])) && (named(&a.name) || named(&a.uuid)) {
+            if named_plugin && (named(&a.name) || named(&a.uuid)) {
                 candidates.push((p, a));
             }
         }
