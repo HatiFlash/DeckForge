@@ -2222,7 +2222,8 @@ fn key_toggle_appearance_shows_two_image_controls() {
     });
     h.ctx.data_mut(|d| d.insert_persisted(egui::Id::new("inspector_tab"), 1u8));
     let mut output = h.warm(size);
-    let cursor = pos2(size.x - 130.0, size.y * 0.65);
+    let origin = text_position(&output.shapes, "Titre sur la touche").expect("onglet Apparence ouvert");
+    let cursor = pos2(origin.x + 85.0, origin.y + 90.0);
     let mut seen_mode = false;
     let mut seen_on = false;
     let mut seen_off = false;
