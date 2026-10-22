@@ -1,0 +1,20 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Clock settings</title>
+<style>body{background:#252831;color:white;font:14px sans-serif;padding:12px}label{display:block;margin:12px 0}input{max-width:170px}</style>
+<label>24 h / 12 h <select id="format12"><option value="false">24 h</option><option value="true">12 h</option></select></label>
+<label>Show date / Afficher la date <input id="showDate" type="checkbox"></label>
+<label>Timer duration (seconds) / Durée (secondes) <input id="seconds" type="number" min="1" max="86400" value="300"></label>
+<script>
+let ws,context,settings={};
+function connectElgatoStreamDeckSocket(port,uuid,registerEvent,info,actionInfo){
+  try { const a=JSON.parse(actionInfo);context=a.context;settings=a.payload?.settings||{}; } catch(e) { console.error(e); }
+  function fill(){for(const key of ['format12','showDate','seconds']) if(settings[key]!==undefined) document.getElementById(key)[key==='showDate'?'checked':'value']=key==='showDate'?Boolean(settings[key]):String(settings[key]);}
+  fill();
+  ws=new WebSocket('ws://127.0.0.1:'+port);
+  ws.onopen=()=>{ws.send(JSON.stringify({event:registerEvent,uuid}));ws.send(JSON.stringify({event:'getSettings',context}));};
+  ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.event==='didReceiveSettings'&&m.context===context){settings=m.payload?.settings||{};fill();}};
+}
+for(const key of ['format12','showDate','seconds']) document.getElementById(key).addEventListener('change',()=>{
+  settings={...settings,format12:document.getElementById('format12').value==='true',showDate:document.getElementById('showDate').checked,seconds:Math.max(1,Math.min(86400,Number(document.getElementById('seconds').value)||300))};
+  if(ws?.readyState===WebSocket.OPEN) ws.send(JSON.stringify({event:'setSettings',context,payload:settings}));
+});
+</script></html>

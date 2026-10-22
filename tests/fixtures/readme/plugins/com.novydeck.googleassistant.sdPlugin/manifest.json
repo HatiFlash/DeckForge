@@ -1,0 +1,15 @@
+{
+  "Name": "NovyDeck Google Assistant Command",
+  "Description": "Google Home text commands / Commandes Google Home par texte",
+  "Author": "NovyDeck",
+  "Version": "1.0.0",
+  "SDKVersion": 2,
+  "CodePathWin": "bin/novydeck-googleassistant.exe",
+  "Icon": "images/plugin-icon",
+  "URL": "https://github.com/HatiFlash/novydeck-plugins",
+  "OS": [{"Platform":"windows","MinimumVersion":"10"}],
+  "Software": {"MinimumVersion":"6.0"},
+  "Actions": [
+    {"UUID":"com.novydeck.googleassistant.command", "Name":"Send Command", "Tooltip":"Send Command / Envoyer une commande", "Icon":"images/command-icon", "PropertyInspectorPath":"inspector.html", "Controllers":["Keypad"], "States":[{"Image":"images/command"}]}
+  ]
+}

@@ -2480,3 +2480,83 @@ fn workshop_plugin_catalogue_adds_action_card_and_capture() {
         h.png(size, output, &PathBuf::from(dir).join("workshop-plugins.png"));
     }
 }
+
+
+/// Captures du README (FR et EN) : ne s'exécute que si NOVYDECK_UI_OUTPUT est défini.
+#[test]
+fn readme_captures_plugin_store_workshop_and_startup() {
+    use super::plugin_store_ui::community_state;
+    let Some(out) = std::env::var_os("NOVYDECK_UI_OUTPUT").map(PathBuf::from) else { return; };
+    let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/readme");
+    let size = vec2(1600.0, 1000.0);
+    for lang in ["fr", "en"] {
+        crate::i18n::set_language(lang);
+        // 1. Magasin : vrai catalogue publié, icônes et captures locales.
+        let mut h = Harness::new();
+        h.app.catalog_tab = 3;
+        let mut entries = crate::community_plugins::parse(&std::fs::read(fixtures.join("registry.json")).unwrap()).unwrap();
+        for entry in &mut entries { entry.compatible = true; }
+        for entry in &entries {
+            if let Some(icon) = &entry.icon {
+                if let Ok(bytes) = std::fs::read(fixtures.join("icons").join(format!("{}.png", entry.id))) { super::plugin_market_ui::test_image_png(&h.ctx, icon, &bytes); }
+            }
+            for shot in &entry.screenshots {
+                let name = shot.rsplit('/').nth(1).unwrap_or("");
+                if let Ok(bytes) = std::fs::read(fixtures.join("shots").join(format!("{name}.png"))) { super::plugin_market_ui::test_image_png(&h.ctx, shot, &bytes); }
+            }
+        }
+        { let mut state = community_state().lock().unwrap(); state.consent = true; state.entries = entries; state.message.clear(); }
+        super::plugin_market_ui::test_view(None);
+        let grid = h.warm(size);
+        h.png(size, grid, &out.join(format!("readme-store-{lang}.png")));
+        super::plugin_market_ui::test_view(Some("com.novydeck.googleassistant"));
+        let detail = h.warm(size);
+        h.png(size, detail, &out.join(format!("readme-store-detail-{lang}.png")));
+        super::plugin_market_ui::test_view(None);
+        { let mut state = community_state().lock().unwrap(); state.consent = false; state.entries.clear(); }
+        super::plugin_market_ui::test_view(None);
+        drop(h);
+        // 2. Atelier : deux plugins différents enchaînés dans la même macro.
+        let mut h = Harness::new();
+        let mut plugins = Vec::new();
+        for id in ["com.novydeck.clock", "com.novydeck.googleassistant"] {
+            let folder = h.dir.path().join(format!("{id}.sdPlugin"));
+            std::fs::create_dir_all(folder.join("bin")).unwrap();
+            let src = fixtures.join("plugins").join(format!("{id}.sdPlugin"));
+            for entry in walk(&src) { let rel = entry.strip_prefix(&src).unwrap(); let dst = folder.join(rel); std::fs::create_dir_all(dst.parent().unwrap()).unwrap(); std::fs::copy(&entry, &dst).unwrap(); }
+            let manifest = std::fs::read(folder.join("manifest.json")).unwrap();
+            let code: serde_json::Value = serde_json::from_slice(&manifest).unwrap();
+            std::fs::write(folder.join(code["CodePathWin"].as_str().or(code["CodePath"].as_str()).unwrap()), b"").unwrap();
+            plugins.push(crate::plugins::parse(&folder, &manifest).unwrap());
+        }
+        let (clock, google) = (plugins[0].clone(), plugins[1].clone());
+        let stopwatch = clock.actions.iter().find(|a| a.uuid.ends_with(".stopwatch")).unwrap().uuid.clone();
+        let phrase = if lang == "fr" { "allume la lumière du salon" } else { "turn on the living room light" };
+        h.app.plugins = Some(crate::plugin_runtime::Manager::new(plugins));
+        h.app.config.keys_mut()[h.app.selected].steps = vec![
+            Step::PluginAction { plugin: clock.uuid.clone(), action: stopwatch, settings: serde_json::json!({}), label: String::new() },
+            Step::Delay { ms: 500 },
+            Step::PluginAction { plugin: google.uuid.clone(), action: google.actions[0].uuid.clone(), settings: serde_json::json!({"phrase": phrase, "language": if lang == "fr" {"fr-FR"} else {"en-US"}}), label: String::new() },
+        ];
+        h.app.show_workflow = true;
+        let first = h.warm(size);
+        if let Some(category) = text_position(&first.shapes, "Plugins") { h.click(size, category); }
+        let workshop = h.warm(size);
+        h.png(size, workshop, &out.join(format!("readme-workshop-plugins-{lang}.png")));
+        drop(h);
+        // 3. Réglages : démarrage avec Windows en mode réduit.
+        let mut h = Harness::new();
+        h.app.preferences.start_with_windows = true;
+        h.app.preferences.start_minimized = true;
+        h.app.settings = true;
+        h.app.settings_tab = 0;
+        let settings = h.warm(vec2(1366.0, 768.0));
+        h.png(vec2(1366.0, 768.0), settings, &out.join(format!("readme-start-minimized-{lang}.png")));
+    }
+    crate::i18n::set_language("fr");
+    fn walk(dir: &std::path::Path) -> Vec<PathBuf> {
+        let mut files = Vec::new();
+        for entry in std::fs::read_dir(dir).unwrap() { let path = entry.unwrap().path(); if path.is_dir() { files.extend(walk(&path)); } else { files.push(path); } }
+        files
+    }
+}

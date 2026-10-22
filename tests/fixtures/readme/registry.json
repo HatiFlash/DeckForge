@@ -1,0 +1,367 @@
+{
+ "schema": 1,
+ "plugins": [
+  {
+   "id": "com.novydeck.clock",
+   "name": "NovyDeck Clock",
+   "author": "NovyDeck",
+   "version": "1.0.0",
+   "description": "Native clock, timer and stopwatch for Stream Deck.",
+   "description_fr": "Horloge, minuteur et chronomètre natifs pour Stream Deck.",
+   "summary": "Clock, timer and stopwatch",
+   "summary_fr": "Horloge, minuteur et chronomètre",
+   "category": "productivity",
+   "uuid": "com.novydeck.clock",
+   "actions": [
+    {
+     "name": "Clock",
+     "name_fr": "Horloge"
+    },
+    {
+     "name": "Timer",
+     "name_fr": "Minuteur"
+    },
+    {
+     "name": "Stopwatch",
+     "name_fr": "Chronomètre"
+    }
+   ],
+   "tags": [
+    "clock",
+    "timer",
+    "stopwatch"
+   ],
+   "homepage": "https://github.com/HatiFlash/novydeck-plugins/tree/main/first-party/plugins/com.novydeck.clock.sdPlugin",
+   "license": "MIT",
+   "tested_decks": [
+    "NovyDeck 0.9.0 (VM Windows 10, automated bench)"
+   ],
+   "min_novydeck": "0.9.0",
+   "requires": "Windows 10+",
+   "download": "https://github.com/HatiFlash/novydeck-plugins/releases/download/first-party-v1.0.0/com.novydeck.clock.streamDeckPlugin",
+   "sha256": "7504ccbc8959df1708eeedc181e8bb39f640c28fd5f7fe427e4e3366069cfe52",
+   "icon": "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/first-party/plugins/com.novydeck.clock.sdPlugin/images/plugin@2x.png",
+   "screenshots": [
+    "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/first-party/screenshots/clock/keys.png"
+   ]
+  },
+  {
+   "id": "com.novydeck.counter",
+   "name": "NovyDeck Counter",
+   "author": "NovyDeck",
+   "version": "1.0.0",
+   "description": "Native counter, quick note and clipboard actions for Stream Deck.",
+   "description_fr": "Compteur, note rapide et presse-papiers natifs pour Stream Deck.",
+   "summary": "Counter, quick note and clipboard",
+   "summary_fr": "Compteur, note rapide et presse-papiers",
+   "category": "productivity",
+   "uuid": "com.novydeck.counter",
+   "actions": [
+    {
+     "name": "Counter",
+     "name_fr": "Compteur"
+    },
+    {
+     "name": "Quick Note",
+     "name_fr": "Note rapide"
+    },
+    {
+     "name": "Clipboard",
+     "name_fr": "Presse-papiers"
+    }
+   ],
+   "tags": [
+    "counter",
+    "notes",
+    "clipboard"
+   ],
+   "homepage": "https://github.com/HatiFlash/novydeck-plugins/tree/main/first-party/plugins/com.novydeck.counter.sdPlugin",
+   "license": "MIT",
+   "tested_decks": [
+    "NovyDeck 0.9.0 (VM Windows 10, automated bench)"
+   ],
+   "min_novydeck": "0.9.0",
+   "requires": "Windows 10+",
+   "download": "https://github.com/HatiFlash/novydeck-plugins/releases/download/first-party-v1.0.0/com.novydeck.counter.streamDeckPlugin",
+   "sha256": "911844ec70f54c5155747519d4109f072d65f8cb008f6da7962012646f1fd865",
+   "icon": "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/first-party/plugins/com.novydeck.counter.sdPlugin/images/plugin@2x.png",
+   "screenshots": [
+    "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/first-party/screenshots/counter/keys.png"
+   ]
+  },
+  {
+   "id": "com.novydeck.sysmonitor",
+   "name": "NovyDeck System Monitor",
+   "author": "NovyDeck",
+   "version": "1.0.0",
+   "description": "Native CPU, RAM and GPU engine monitor with NVIDIA GPU temperature; CPU temperature unavailable without a third-party driver.",
+   "description_fr": "Moniteur natif CPU, RAM et moteurs GPU avec température GPU NVIDIA ; température CPU indisponible sans pilote tiers.",
+   "summary": "CPU, RAM, GPU and temperature",
+   "summary_fr": "CPU, RAM, GPU et température",
+   "category": "system",
+   "uuid": "com.novydeck.sysmonitor",
+   "actions": [
+    {
+     "name": "CPU",
+     "name_fr": "CPU"
+    },
+    {
+     "name": "RAM",
+     "name_fr": "RAM"
+    },
+    {
+     "name": "GPU",
+     "name_fr": "GPU"
+    },
+    {
+     "name": "Temperature",
+     "name_fr": "Température"
+    }
+   ],
+   "tags": [
+    "monitor",
+    "cpu",
+    "ram",
+    "gpu"
+   ],
+   "homepage": "https://github.com/HatiFlash/novydeck-plugins/tree/main/first-party/plugins/com.novydeck.sysmonitor.sdPlugin",
+   "license": "MIT",
+   "tested_decks": [
+    "NovyDeck 0.9.0 (VM Windows 10, automated bench)"
+   ],
+   "min_novydeck": "0.9.0",
+   "requires": "Windows 10+",
+   "download": "https://github.com/HatiFlash/novydeck-plugins/releases/download/first-party-v1.0.0/com.novydeck.sysmonitor.streamDeckPlugin",
+   "sha256": "f87ba057be124898a2ef237a6165059efe26c3b61df99d7e455395be9a56e210",
+   "icon": "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/first-party/plugins/com.novydeck.sysmonitor.sdPlugin/images/plugin@2x.png",
+   "screenshots": [
+    "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/first-party/screenshots/sysmonitor/keys.png"
+   ]
+  },
+  {
+   "id": "com.novydeck.nowplaying",
+   "name": "NovyDeck Now Playing",
+   "author": "NovyDeck",
+   "version": "1.0.0",
+   "description": "Native playback controls and album artwork for Windows GSMTC-compatible media players.",
+   "description_fr": "Commandes de lecture et pochette pour lecteurs multimédias compatibles GSMTC Windows.",
+   "summary": "Play, skip and artwork",
+   "summary_fr": "Lecture, pistes et pochette",
+   "category": "audio",
+   "uuid": "com.novydeck.nowplaying",
+   "actions": [
+    {
+     "name": "Play / Pause",
+     "name_fr": "Lecture / Pause"
+    },
+    {
+     "name": "Next",
+     "name_fr": "Suivant"
+    },
+    {
+     "name": "Previous",
+     "name_fr": "Précédent"
+    }
+   ],
+   "tags": [
+    "media",
+    "music",
+    "artwork"
+   ],
+   "homepage": "https://github.com/HatiFlash/novydeck-plugins/tree/main/first-party/plugins/com.novydeck.nowplaying.sdPlugin",
+   "license": "MIT",
+   "tested_decks": [
+    "NovyDeck 0.9.0 (VM Windows 10, automated bench)"
+   ],
+   "min_novydeck": "0.9.0",
+   "requires": "Windows 10+; GSMTC-compatible player",
+   "download": "https://github.com/HatiFlash/novydeck-plugins/releases/download/first-party-v1.0.0/com.novydeck.nowplaying.streamDeckPlugin",
+   "sha256": "0fb5a7a95a145e627920a47c847c8c09e274da167adafb60cd958a7de346cfd9",
+   "icon": "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/first-party/plugins/com.novydeck.nowplaying.sdPlugin/images/plugin@2x.png",
+   "screenshots": [
+    "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/first-party/screenshots/nowplaying/keys.png"
+   ]
+  },
+  {
+   "id": "com.novydeck.oledsaver",
+   "name": "NovyDeck OLED Saver",
+   "author": "NovyDeck",
+   "version": "1.0.0",
+   "description": "Cover a selected monitor with a borderless black fullscreen window; no Windows power settings changed.",
+   "description_fr": "Recouvre l'écran choisi d'une fenêtre noire sans bordure ; aucun réglage d'alimentation Windows modifié.",
+   "summary": "Black fullscreen overlay",
+   "summary_fr": "Fenêtre noire plein écran",
+   "category": "utilities",
+   "uuid": "com.novydeck.oledsaver",
+   "actions": [
+    {
+     "name": "OLED Saver",
+     "name_fr": "Économiseur OLED"
+    }
+   ],
+   "tags": [
+    "oled",
+    "display",
+    "screen"
+   ],
+   "homepage": "https://github.com/HatiFlash/novydeck-plugins/tree/main/first-party/plugins/com.novydeck.oledsaver.sdPlugin",
+   "license": "MIT",
+   "tested_decks": [
+    "NovyDeck 0.9.0 (VM Windows 10, automated bench)"
+   ],
+   "min_novydeck": "0.9.0",
+   "requires": "Windows 10+",
+   "download": "https://github.com/HatiFlash/novydeck-plugins/releases/download/first-party-v1.0.0/com.novydeck.oledsaver.streamDeckPlugin",
+   "sha256": "e9f6515d3abf913884d44acbc373d33fb0c302cabc6e5a3f6fca5e052757423e",
+   "icon": "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/first-party/plugins/com.novydeck.oledsaver.sdPlugin/images/plugin@2x.png",
+   "screenshots": [
+    "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/first-party/screenshots/oledsaver/keys.png"
+   ]
+  },
+  {
+   "id": "com.novydeck.homeassistant",
+   "name": "NovyDeck Home Assistant",
+   "author": "NovyDeck",
+   "version": "1.0.0",
+   "description": "Control Home Assistant entities, call services and display sensor states.",
+   "description_fr": "Commandez les entités Home Assistant, appelez des services et affichez les états des capteurs.",
+   "summary": "Home Assistant control and states",
+   "summary_fr": "Commandes et états Home Assistant",
+   "category": "smart-home",
+   "uuid": "com.novydeck.homeassistant",
+   "actions": [
+    {
+     "name": "Toggle entity",
+     "name_fr": "Basculer une entité"
+    },
+    {
+     "name": "Call service",
+     "name_fr": "Appeler un service"
+    },
+    {
+     "name": "Display state",
+     "name_fr": "Afficher un état"
+    }
+   ],
+   "tags": [
+    "homeassistant",
+    "smarthome",
+    "sensors"
+   ],
+   "homepage": "https://github.com/HatiFlash/novydeck-plugins/tree/main/first-party/plugins/com.novydeck.homeassistant.sdPlugin",
+   "license": "MIT",
+   "tested_decks": [],
+   "min_novydeck": "0.9.0",
+   "requires": "Windows 10+; Home Assistant server and long-lived access token",
+   "download": "https://github.com/HatiFlash/novydeck-plugins/releases/download/first-party-v1.0.0/com.novydeck.homeassistant.streamDeckPlugin",
+   "sha256": "22942bab893ccfc2e2620e60cc6aab564d22125c0dcc262a33da708369450594",
+   "icon": "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/first-party/plugins/com.novydeck.homeassistant.sdPlugin/images/plugin@2x.png",
+   "screenshots": [
+    "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/first-party/screenshots/homeassistant/keys.png"
+   ]
+  },
+  {
+   "id": "com.novydeck.googleassistant",
+   "name": "NovyDeck Google Assistant Command",
+   "author": "NovyDeck",
+   "version": "1.0.0",
+   "description": "Send a text command to your Google Home devices via Google Assistant SDK, without Home Assistant.",
+   "description_fr": "Envoie une commande écrite aux appareils Google Home via Google Assistant SDK, sans Home Assistant.",
+   "summary": "Google Assistant text command",
+   "summary_fr": "Commande Google Assistant",
+   "category": "smart-home",
+   "uuid": "com.novydeck.googleassistant",
+   "actions": [
+    {
+     "name": "Send Command",
+     "name_fr": "Envoyer une commande"
+    }
+   ],
+   "tags": [
+    "google",
+    "assistant",
+    "home",
+    "smart-home"
+   ],
+   "homepage": "https://github.com/HatiFlash/novydeck-plugins/tree/main/first-party/plugins/com.novydeck.googleassistant.sdPlugin",
+   "license": "MIT",
+   "tested_decks": [],
+   "min_novydeck": "0.9.0",
+   "requires": "Windows 10+; personal Google Cloud project with Google Assistant API (desktop OAuth)",
+   "download": "https://github.com/HatiFlash/novydeck-plugins/releases/download/first-party-v1.0.0/com.novydeck.googleassistant.streamDeckPlugin",
+   "sha256": "1431b2549323790de4e2d4e2f2bc4d176cada7c7c7990ac97ba0af2bfd48ee9b",
+   "icon": "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/first-party/plugins/com.novydeck.googleassistant.sdPlugin/images/plugin@2x.png",
+   "screenshots": [
+    "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/first-party/screenshots/googleassistant/keys.png"
+   ]
+  },
+  {
+   "id": "com.elgato.cpu",
+   "name": "CPU",
+   "author": "Elgato (Corsair)",
+   "version": "1.2",
+   "description": "Shows the current CPU usage on a key. Official open-source sample plugin from Elgato.",
+   "description_fr": "Affiche l'utilisation actuelle du processeur sur une touche. Plugin d'exemple open source officiel d'Elgato.",
+   "summary": "CPU usage on a key",
+   "summary_fr": "Utilisation du processeur sur une touche",
+   "category": "system",
+   "uuid": "com.elgato.cpu",
+   "actions": [
+    {
+     "name": "CPU",
+     "name_fr": "CPU"
+    }
+   ],
+   "tags": [
+    "cpu",
+    "monitor",
+    "elgato"
+   ],
+   "homepage": "https://github.com/elgatosf/streamdeck-cpu",
+   "license": "MIT",
+   "tested_decks": [
+    "NovyDeck 0.9.0 (VM Windows 10, automated bench)"
+   ],
+   "min_novydeck": "0.8.12",
+   "requires": "Windows 10+",
+   "download": "https://github.com/elgatosf/streamdeck-cpu/releases/download/1.2/com.elgato.cpu.streamDeckPlugin",
+   "sha256": "582c03fa2c5118e4a083c5b32d411cede07383668d8f4be4c9f131a13a417276",
+   "icon": "https://raw.githubusercontent.com/elgatosf/streamdeck-cpu/master/Sources/com.elgato.cpu.sdPlugin/pluginIcon@2x.png",
+   "screenshots": [
+    "https://raw.githubusercontent.com/elgatosf/streamdeck-cpu/master/screenshot.png"
+   ]
+  },
+  {
+   "id": "com.barraider.stopwatch",
+   "name": "Stopwatch",
+   "author": "BarRaider",
+   "version": "1.1",
+   "description": "A simple stopwatch on a key: press to start or pause; the elapsed time is shown on the key. Open-source demo plugin by BarRaider.",
+   "description_fr": "Un chronomètre simple sur une touche : appuyez pour démarrer ou mettre en pause ; le temps écoulé s'affiche sur la touche. Plugin de démonstration open source de BarRaider.",
+   "summary": "Simple stopwatch on a key",
+   "summary_fr": "Chronomètre simple sur une touche",
+   "category": "productivity",
+   "uuid": "com.barraider.stopwatch",
+   "actions": [
+    {
+     "name": "Stopwatch",
+     "name_fr": "Chronomètre"
+    }
+   ],
+   "tags": [
+    "stopwatch",
+    "timer",
+    "barraider"
+   ],
+   "homepage": "https://github.com/BarRaider/streamdeck-stopwatchdemo",
+   "license": "MIT",
+   "tested_decks": [
+    "NovyDeck 0.9.0 (VM Windows 10, automated bench)"
+   ],
+   "min_novydeck": "0.8.12",
+   "requires": "Windows 10+",
+   "download": "https://github.com/BarRaider/streamdeck-stopwatchdemo/releases/download/v1.1/com.barraider.stopwatch.streamDeckPlugin",
+   "sha256": "f7551a2b535c1956849c491369b1d85f4b9891edcd1ce759fbcc6fdc24c5f1dc"
+  }
+ ]
+}

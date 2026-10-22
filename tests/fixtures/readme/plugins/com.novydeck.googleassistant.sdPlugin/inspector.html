@@ -1,0 +1,43 @@
+<!doctype html><html lang="fr"><meta charset="utf-8"><title>Google Assistant / Commande</title>
+<style>body{background:#252831;color:white;font:14px sans-serif;padding:12px}label{display:block;margin:12px 0}input{box-sizing:border-box;width:100%}button{margin:5px 0}a{color:#68c4b1}small{display:block;line-height:1.4}#message{color:#68c4b1;white-space:pre-wrap}</style>
+<h3>Google Assistant / Commande</h3>
+<small>1. Créer un projet dans <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a> / Create a project.</small>
+<small>2. Activer Google Assistant API / Enable Google Assistant API.</small>
+<small>3. Configurer l'écran de consentement en mode Test et ajouter votre adresse comme utilisateur de test / Configure OAuth consent (Testing) and add your email as a test user.</small>
+<small>4. Créer un identifiant OAuth « Application de bureau » / Create OAuth Desktop app credentials.</small>
+<small>5. Télécharger le JSON client et l'importer ici / Download and import the client JSON below.</small>
+<small>6. Se connecter, autoriser l'accès puis régler la commande / Connect, authorize, then set your command.</small>
+<label>JSON OAuth (local uniquement / local only) <input id="file" type="file" accept=".json,application/json"></label>
+<button id="connect">Se connecter à Google / Connect</button> <button id="disconnect">Déconnecter / Disconnect</button>
+<p id="status">Non connecté / Not connected</p>
+<label>Phrase / Command <input id="phrase" maxlength="500" placeholder="allume la lumière du salon"></label>
+<label>Langue / Language <input id="language" maxlength="20" value="fr-FR"></label>
+<button id="test">Tester / Test</button><p id="message" role="status"></p>
+<small>Prototype Google : peut cesser de fonctionner, quotas et compte Google requis. Réponse audio seulement, non lue ici ; un statut OK ne confirme pas l'action physique. / Prototype API may stop working; quota and Google account required. Audio-only reply is discarded; OK does not confirm the device changed state.</small>
+<script>
+let ws,context,settings={};
+const $=id=>document.getElementById(id);
+function emit(type,extra={}){if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({event:'sendToPlugin',context,payload:{type,...extra}}));}
+function fill(){ $('phrase').value=settings.phrase||''; $('language').value=settings.language||'fr-FR'; }
+function connectElgatoStreamDeckSocket(port,uuid,registerEvent,info,actionInfo){
+  try{const a=JSON.parse(actionInfo);context=a.context;settings=a.payload?.settings||{};}catch(e){$('message').textContent='Invalid action info';}
+  fill();ws=new WebSocket('ws://127.0.0.1:'+port);
+  ws.onopen=()=>{ws.send(JSON.stringify({event:registerEvent,uuid}));ws.send(JSON.stringify({event:'getSettings',context}));emit('status');};
+  ws.onmessage=e=>{let m;try{m=JSON.parse(e.data);}catch(_){return;}
+    if(m.context!==context)return;
+    if(m.event==='didReceiveSettings'){settings=m.payload?.settings||{};fill();}
+    if(m.event==='sendToPropertyInspector'){
+      if(m.payload?.type==='status'){$('status').textContent=m.payload.connected?'Connecté (adresse inconnue) / Connected (email unknown)':'Non connecté / Not connected';$('connect').disabled=!!m.payload.pending;}
+      if(m.payload?.type==='message')$('message').textContent=m.payload.message||'';
+    }
+  };
+}
+function save(){settings={phrase:$('phrase').value,language:$('language').value};if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({event:'setSettings',context,payload:settings}));}
+for(const k of ['phrase','language'])$(k).addEventListener('change',save);
+$('file').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;
+  if(file.size>65536){$('message').textContent='JSON trop grand / File too large';return;}
+  emit('import',{json:await file.text()});e.target.value='';
+});
+$('connect').onclick=()=>emit('connect');$('disconnect').onclick=()=>emit('disconnect');
+$('test').onclick=()=>{save();emit('test');};
+</script></html>

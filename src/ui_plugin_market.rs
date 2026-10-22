@@ -16,6 +16,14 @@ pub(super) fn open(){market().lock().unwrap_or_else(|e|e.into_inner()).open=true
 enum ImageSlot { Pending(Receiver<Option<egui::ColorImage>>), Ready(egui::TextureHandle), Failed }
 fn images()->&'static Mutex<HashMap<String,ImageSlot>> {static CACHE:OnceLock<Mutex<HashMap<String,ImageSlot>>>=OnceLock::new();CACHE.get_or_init(||Mutex::new(HashMap::new()))}
 #[cfg(test)]
+pub(super) fn test_image_png(ctx:&egui::Context,url:&str,bytes:&[u8]){
+ let decoded=image::load_from_memory(bytes).expect("PNG de test").to_rgba8();
+ let image=egui::ColorImage::from_rgba_unmultiplied([decoded.width() as usize,decoded.height() as usize],decoded.as_raw());
+ images().lock().unwrap().insert(url.into(),ImageSlot::Ready(ctx.load_texture(url,image,egui::TextureOptions::LINEAR)));
+}
+#[cfg(test)]
+pub(super) fn test_view(selected:Option<&str>){let mut view=market().lock().unwrap();view.open=true;view.selected=selected.map(str::to_owned);view.search.clear();view.category.clear();}
+#[cfg(test)]
 pub(super) fn test_image(ctx:&egui::Context,url:&str){
  let image=egui::ColorImage::new([2,2],egui::Color32::WHITE);
  images().lock().unwrap().insert(url.into(),ImageSlot::Ready(ctx.load_texture(url,image,egui::TextureOptions::LINEAR)));

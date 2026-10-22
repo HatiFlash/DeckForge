@@ -1,0 +1,17 @@
+{
+  "Name": "NovyDeck Clock",
+  "Description": "Clock, timer and stopwatch / Horloge, minuteur et chronomètre",
+  "Author": "NovyDeck",
+  "Version": "1.0.0",
+  "SDKVersion": 2,
+  "CodePathWin": "bin/novydeck-clock.exe",
+  "Icon": "images/plugin-icon",
+  "URL": "https://github.com/HatiFlash/novydeck-plugins",
+  "OS": [{"Platform": "windows", "MinimumVersion": "10"}],
+  "Software": {"MinimumVersion": "6.0"},
+  "Actions": [
+    {"UUID":"com.novydeck.clock.clock", "Name":"Clock", "Tooltip":"Clock / Horloge", "Icon":"images/clock-icon", "PropertyInspectorPath":"inspector.html", "Controllers":["Keypad"], "States":[{"Image":"images/clock"}]},
+    {"UUID":"com.novydeck.clock.timer", "Name":"Timer", "Tooltip":"Timer / Minuteur", "Icon":"images/timer-icon", "PropertyInspectorPath":"inspector.html", "Controllers":["Keypad"], "States":[{"Image":"images/timer"}]},
+    {"UUID":"com.novydeck.clock.stopwatch", "Name":"Stopwatch", "Tooltip":"Stopwatch / Chronomètre", "Icon":"images/stopwatch-icon", "Controllers":["Keypad"], "States":[{"Image":"images/stopwatch"}]}
+  ]
+}
