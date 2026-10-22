@@ -47,7 +47,7 @@ impl App {
   let mut view=market().lock().unwrap_or_else(|e|e.into_inner());
   if !view.open{return;}
   let mut open=view.open;
-  let screen=ctx.content_rect().size();
+  let screen=ctx.screen_rect().size();
   egui::Window::new(tr("Magasin de plugins")).open(&mut open).resizable(true)
    .default_size(egui::vec2(screen.x.min(1000.0),screen.y.min(680.0)))
    .max_size(egui::vec2(screen.x.max(200.0),screen.y.max(200.0))).show(ctx,|ui|{
