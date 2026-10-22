@@ -814,6 +814,7 @@
     "Page précédente": "Previous page",
     "Page suivante": "Next page",
     "Page supprimée et touches de navigation correspondantes retirées.": "Page deleted and corresponding navigation keys removed.",
+    "Page {current} / {total}": "Page {current} / {total}",
     "Page {id}": "Page {id}",
     "Pages et dossiers": "Pages and folders",
     "Par défaut": "Default",
