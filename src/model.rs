@@ -489,7 +489,14 @@ impl StateDisplay {
         let mut result = key.clone();
         let face = if active { &self.on } else { &self.off };
         if let Some(label) = &face.label { result.label.clone_from(label); }
-        if let Some(image) = &face.image { result.image.clone_from(image); }
+        if let Some(image) = &face.image {
+            if let Some(kind) = crate::audio::builtin_kind(image) {
+                result.image.clear();
+                result.display_kind = Some(kind);
+            } else {
+                result.image.clone_from(image);
+            }
+        }
         if let Some(color) = face.color { result.color = color; result.background = true; }
         result
     }
@@ -1304,6 +1311,10 @@ mod state_display_tests {
         assert!(validate_key(&key, &Config::default()).is_ok());
         assert_eq!(toggle.apply(&key, false).image, "off.png");
         assert_eq!(toggle.apply(&key, true).image, "on.png");
+        let builtin = StateDisplay { off: StateFace { image: Some("builtin:speakers".into()), ..Default::default() }, ..toggle.clone() };
+        let shown = builtin.apply(&key, false);
+        assert!(shown.image.is_empty());
+        assert_eq!(shown.display_kind, crate::audio::builtin_kind("builtin:speakers"));
         let value = serde_json::to_value(&toggle).unwrap();
         assert_eq!(value["toggle"], true);
         assert_eq!(serde_json::from_value::<StateDisplay>(value).unwrap(), toggle);
