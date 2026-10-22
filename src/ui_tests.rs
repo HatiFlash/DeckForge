@@ -2213,7 +2213,12 @@ fn key_toggle_alternates_faces_without_touching_actions_or_existing_images() {
 #[test]
 fn key_toggle_appearance_shows_two_image_controls() {
     let size = vec2(1600.0, 1000.0);
+    for (lang, origin_label, mode, on, off, image_control, filename) in [
+        ("fr", "Titre sur la touche", "Interrupteur : change à chaque appui", "Activé", "Désactivé", "Choisir une image…", "key-toggle-fr.png"),
+        ("en", "Label on key", "Switch: change on each press", "On", "Off", "Choose an image…", "key-toggle-en.png"),
+    ] {
     let mut h = Harness::new();
+    crate::i18n::set_language(lang);
     h.app.config.keys_mut()[0].state_display = Some(crate::model::StateDisplay {
         toggle: true,
         on: crate::model::StateFace { image: Some("builtin:microphone".into()), ..Default::default() },
@@ -2222,17 +2227,17 @@ fn key_toggle_appearance_shows_two_image_controls() {
     });
     h.ctx.data_mut(|d| d.insert_persisted(egui::Id::new("inspector_tab"), 1u8));
     let mut output = h.warm(size);
-    let origin = text_position(&output.shapes, "Titre sur la touche").expect("onglet Apparence ouvert");
+    let origin = text_position(&output.shapes, origin_label).expect("onglet Apparence ouvert");
     let cursor = pos2(origin.x + 85.0, origin.y + 90.0);
     let mut seen_mode = false;
     let mut seen_on = false;
     let mut seen_off = false;
     let mut seen_image_control = false;
     for _ in 0..40 {
-        seen_mode |= text_position(&output.shapes, "Interrupteur : change à chaque appui").is_some();
-        seen_on |= text_position(&output.shapes, "Activé").is_some();
-        seen_off |= text_position(&output.shapes, "Désactivé").is_some();
-        seen_image_control |= text_position(&output.shapes, "Choisir une image…").is_some();
+        seen_mode |= text_position(&output.shapes, mode).is_some();
+        seen_on |= text_position(&output.shapes, on).is_some();
+        seen_off |= text_position(&output.shapes, off).is_some();
+        seen_image_control |= text_position(&output.shapes, image_control).is_some();
         if seen_mode && seen_on && seen_off && seen_image_control { break; }
         output = h.frame(size, vec![Input::PointerMoved(cursor), Input::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, -90.0), modifiers: Modifiers::NONE }]);
     }
@@ -2240,8 +2245,10 @@ fn key_toggle_appearance_shows_two_image_controls() {
         "mode={seen_mode}, activé={seen_on}, désactivé={seen_off}, image={seen_image_control}; textes visibles: {:?}",
         output.shapes.iter().filter_map(|s| if let egui::Shape::Text(t) = &s.shape { Some(t.galley.job.text.clone()) } else { None }).take(80).collect::<Vec<_>>());
     if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) {
-        h.png(size, output, &PathBuf::from(dir).join("key-toggle.png"));
+        h.png(size, output, &PathBuf::from(dir).join(filename));
     }
+    }
+    crate::i18n::set_language("fr");
 }
 
 /// Contrôle manuel (réseau + captures) : `cargo test -- --ignored release_0812_review`.
