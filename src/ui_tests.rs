@@ -2421,6 +2421,7 @@ fn market_opens_offline_and_displays_localized_detail() {
         let mut state=community_state().lock().unwrap();
         state.consent=false;state.entries.clear();
     }
+    super::plugin_market_ui::test_close();
 }
 
 #[test]
@@ -2514,7 +2515,7 @@ fn readme_captures_plugin_store_workshop_and_startup() {
         h.png(size, detail, &out.join(format!("readme-store-detail-{lang}.png")));
         super::plugin_market_ui::test_view(None);
         { let mut state = community_state().lock().unwrap(); state.consent = false; state.entries.clear(); }
-        super::plugin_market_ui::test_view(None);
+        super::plugin_market_ui::test_close();
         drop(h);
         // 2. Atelier : deux plugins différents enchaînés dans la même macro.
         let mut h = Harness::new();

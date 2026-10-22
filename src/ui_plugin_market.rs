@@ -12,6 +12,8 @@ use std::sync::{mpsc::{self,Receiver},Mutex,OnceLock};
 struct Market { open:bool, search:String, category:String, selected:Option<String>, enlarged:Option<String> }
 fn market()->&'static Mutex<Market> { static STATE:OnceLock<Mutex<Market>>=OnceLock::new(); STATE.get_or_init(||Mutex::new(Market::default())) }
 pub(super) fn open(){market().lock().unwrap_or_else(|e|e.into_inner()).open=true;}
+/// Le magasin est une page de l'application (comme l'Atelier), pas une fenêtre flottante.
+pub(super) fn is_open()->bool{market().lock().unwrap_or_else(|e|e.into_inner()).open}
 
 enum ImageSlot { Pending(Receiver<Option<egui::ColorImage>>), Ready(egui::TextureHandle), Failed }
 fn images()->&'static Mutex<HashMap<String,ImageSlot>> {static CACHE:OnceLock<Mutex<HashMap<String,ImageSlot>>>=OnceLock::new();CACHE.get_or_init(||Mutex::new(HashMap::new()))}
@@ -21,6 +23,8 @@ pub(super) fn test_image_png(ctx:&egui::Context,url:&str,bytes:&[u8]){
  let image=egui::ColorImage::from_rgba_unmultiplied([decoded.width() as usize,decoded.height() as usize],decoded.as_raw());
  images().lock().unwrap().insert(url.into(),ImageSlot::Ready(ctx.load_texture(url,image,egui::TextureOptions::LINEAR)));
 }
+#[cfg(test)]
+pub(super) fn test_close(){let mut view=market().lock().unwrap();*view=Market::default();}
 #[cfg(test)]
 pub(super) fn test_view(selected:Option<&str>){let mut view=market().lock().unwrap();view.open=true;view.selected=selected.map(str::to_owned);view.search.clear();view.category.clear();}
 #[cfg(test)]
@@ -73,21 +77,30 @@ impl App {
   let mut view=market().lock().unwrap_or_else(|e|e.into_inner());
   if !view.open{return;}
   let mut open=view.open;
-  let screen=ctx.screen_rect();
-  let size=egui::vec2((screen.width()*0.88).max(900.0).min(screen.width()),(screen.height()*0.86).max(600.0).min(screen.height()));
-  egui::Window::new(tr("Magasin de plugins")).open(&mut open).resizable(true).collapsible(false)
-   .pivot(egui::Align2::CENTER_CENTER).default_pos(screen.center())
-   .default_size(size).min_size(egui::vec2(900.0_f32.min(screen.width()),600.0_f32.min(screen.height())))
-   .max_size(screen.size()).show(ctx,|ui|{
+  // Échap : fiche → grille, grille → retour au deck (sauf saisie en cours).
+  if view.enlarged.is_none() && !ctx.wants_keyboard_input() && ctx.input(|i|i.key_pressed(egui::Key::Escape)) {
+   if view.selected.is_some(){view.selected=None;}else{open=false;}
+  }
+  egui::CentralPanel::default().frame(egui::Frame::central_panel(&ctx.style()).inner_margin(egui::Margin::symmetric(24,16))).show(ctx,|ui|{
+    let p=theme::palette(ctx);
+    ui.horizontal(|ui|{
+     let back=if view.selected.is_some(){tr("← Retour")}else{tr("← Retour au deck")};
+     if ui.button(back).clicked(){if view.selected.is_some(){view.selected=None;}else{open=false;}}
+     ui.add_space(12.0);
+     if let Some(image)=iconset::image(ctx,Ico::Store,22.0){ui.add(image);}
+     ui.label(RichText::new(tr("Magasin de plugins")).size(22.0).strong().color(p.ink));
+    });
+    ui.add_space(10.0);
     let mut state=community_state().lock().unwrap_or_else(|e|e.into_inner());
     if let Some(rx)=state.fetching.as_ref(){if let Ok(result)=rx.try_recv(){state.fetching=None;state.loading=false;match result{Ok(entries)=>{state.entries=entries;state.message=tr("Bibliothèque actualisée.").into()},Err(error)=>state.message=trf("Bibliothèque indisponible : {error}",&[("error",&error)])}}}
     if let Some(rx)=state.installing.as_ref(){if let Ok(result)=rx.try_recv(){state.installing=None;match result{Ok(installed)=>{state.message=if installed{tr("Plugin communautaire importé.")}else{tr("Plugin déjà présent.")}.into();self.refresh_plugin_catalog();},Err(error)=>state.message=trf("Installation impossible : {error}",&[("error",&error)])}}}
     if !state.consent {
+     ui.add_space(24.0);
      ui.add(egui::Label::new(tr("Le magasin se connecte à GitHub. Rien n'est installé sans confirmation.")).wrap());
+     ui.add_space(8.0);
      if ui.button(tr("Se connecter au magasin")).clicked(){state.consent=true;let(tx,rx)=mpsc::channel();state.fetching=Some(rx);state.loading=true;let ctx=ctx.clone();std::thread::spawn(move||{let _=tx.send(community_plugins::fetch().map_err(|e|e.to_string()));ctx.request_repaint();});}
      return;
     }
-    let p=theme::palette(ctx);
     ui.horizontal(|ui|{
      let width=(ui.available_width()-130.0).max(160.0);
      egui::Frame::new().fill(p.surface).stroke(egui::Stroke::new(1.0,p.border)).corner_radius(8)
@@ -105,12 +118,10 @@ impl App {
      if ui.add_enabled(!state.loading,iconset::secondary_button(ctx,Ico::Redo,tr("Actualiser"))).clicked(){let(tx,rx)=mpsc::channel();state.fetching=Some(rx);state.loading=true;let ctx=ctx.clone();std::thread::spawn(move||{let _=tx.send(community_plugins::fetch().map_err(|e|e.to_string()));ctx.request_repaint();});}
     });
     if state.loading{ui.label(tr("Chargement de la bibliothèque…"));}
-    if !state.message.is_empty(){ui.add(egui::Label::new(&state.message).wrap());}
+    if !state.message.is_empty(){ui.add(egui::Label::new(RichText::new(&state.message).color(p.text_secondary)).wrap());}
     ui.add_space(12.0);
     egui::ScrollArea::vertical().id_salt("market_content").auto_shrink([false,false]).show(ui,|ui|{
      if let Some(entry)=view.selected.as_ref().and_then(|id|state.entries.iter().find(|entry|&entry.id==id)).cloned(){
-      if ui.button(tr("← Retour")).clicked(){view.selected=None;return;}
-      ui.add_space(12.0);
       let installed=entry.uuid.as_ref().is_some_and(|uuid|self.plugin_inventory().installed.iter().any(|p|&p.uuid==uuid));
       theme::panel_frame(p).show(ui,|ui|{
        ui.horizontal(|ui|{
@@ -157,7 +168,7 @@ impl App {
       entries.sort_by(|a,b|a.name.to_lowercase().cmp(&b.name.to_lowercase()));
       if entries.is_empty() && !state.loading{ui.label(tr("Aucun plugin ne correspond à votre recherche."));if ui.button(tr("Proposer un plugin")).clicked(){ctx.open_url(egui::OpenUrl::new_tab(community_plugins::CONTRIBUTE_URL));}}
       let available=ui.available_width();
-      let cols=(((available+12.0)/312.0).floor() as usize).clamp(2,4);
+      let cols=(((available+12.0)/332.0).floor() as usize).clamp(2,5);
       let card_width=((available-(cols-1) as f32*12.0)/cols as f32).max(180.0);
       for row in entries.chunks(cols){ui.horizontal(|ui|{ui.spacing_mut().item_spacing.x=12.0;for entry in row{ui.push_id(&entry.id,|ui|{
        let card=egui::Frame::new().fill(p.card).stroke(egui::Stroke::new(1.0,p.border)).corner_radius(theme::RADIUS_MD).inner_margin(egui::Margin::same(14)).show(ui,|ui|{
@@ -191,8 +202,11 @@ impl App {
       });}});ui.add_space(12.0);}
      }
     });
+    drop(state);
+    // La confirmation d'installation s'affiche aussi quand le magasin occupe la page.
+    self.community_confirmation(ui);
    });
   view.open=open;
-  if let Some(url)=view.enlarged.clone(){let mut enlarged=true;egui::Window::new(tr("Capture du plugin")).open(&mut enlarged).resizable(true).default_size(egui::vec2(800.0,480.0)).show(ctx,|ui|{let width=ui.available_width().min(800.0);thumbnail(ui,Some(&url),false,egui::vec2(width,width*9.0/16.0));});if !enlarged{view.enlarged=None;}}
+  if let Some(url)=view.enlarged.clone(){let mut enlarged=true;egui::Window::new(tr("Capture du plugin")).open(&mut enlarged).collapsible(false).movable(false).resizable(false).anchor(egui::Align2::CENTER_CENTER,egui::Vec2::ZERO).default_size(egui::vec2(800.0,480.0)).show(ctx,|ui|{let width=ui.available_width().min(800.0);thumbnail(ui,Some(&url),false,egui::vec2(width,width*9.0/16.0));});if !enlarged{view.enlarged=None;}}
  }
 }

@@ -150,7 +150,6 @@ impl App {
    });
    // Le catalogue communautaire s'ouvre dans une fenêtre dédiée.
   });
-  self.plugin_market(ui.ctx());
   self.community_confirmation(ui);
   self.plugin_confirm_real(ui);
  }
@@ -194,11 +193,11 @@ impl App {
    }));
   }
  }
- fn community_confirmation(&mut self,ui:&egui::Ui){
+ pub(super) fn community_confirmation(&mut self,ui:&egui::Ui){
   let mut state=community_state().lock().unwrap_or_else(|e|e.into_inner());
   let Some(entry)=state.confirmation.clone() else{return;};
   let mut open=true;
-  egui::Window::new(crate::i18n::tr("Confirmer l'installation communautaire")).open(&mut open).collapsible(false).show(ui.ctx(),|ui|{
+  egui::Window::new(crate::i18n::tr("Confirmer l'installation communautaire")).open(&mut open).collapsible(false).movable(false).resizable(false).anchor(egui::Align2::CENTER_CENTER,egui::Vec2::ZERO).show(ui.ctx(),|ui|{
    ui.label(crate::i18n::trf("Plugin : {name} · Auteur : {author}", &[("name", &(entry.name)), ("author", &(entry.author))] ));
    ui.add(egui::Label::new(crate::i18n::trf("Téléchargement : {url}", &[("url", &(entry.download))] )).wrap());
    ui.add(egui::Label::new(crate::i18n::trf("SHA-256 attendu : {hash}", &[("hash", &(entry.sha256))] )).wrap());

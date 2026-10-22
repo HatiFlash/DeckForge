@@ -4506,6 +4506,7 @@ impl App {
         self.housekeeping();
         self.assistant_events();
         let modal = self.show_workflow
+            || plugin_market_ui::is_open()
             || self.show_assets
             || self.show_desktop_settings
             || self.page_manager
@@ -4544,13 +4545,16 @@ impl App {
         self.screenshot(ctx);
         self.header(ctx);
         self.footer(ctx);
-        if !self.show_workflow {
+        if self.show_workflow {
+            self.workflow(ctx);
+        } else if plugin_market_ui::is_open() {
+            // Le magasin remplace la zone centrale ; l'en-tête et le pied de page restent.
+            self.plugin_market(ctx);
+        } else {
             self.sidebar(ctx);
             self.catalog(ctx);
             self.editor(ctx);
             self.deck(ctx);
-        } else {
-            self.workflow(ctx);
         }
         let logo = theme::intro_logo_texture(ctx);
         motion::intro(ctx, &logo, self.animations());
