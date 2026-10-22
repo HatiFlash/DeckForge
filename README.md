@@ -102,7 +102,7 @@ Native C++/Rust/C# executables, Node.js scripts (`@elgato/streamdeck` v2) and pl
 
 ### Plugin store and community library
 
-Open **Library → Plugins** (**Bibliothèque → Plugins** in the French interface). The tab has two parts:
+Open **Library → Plugins** (**Bibliothèque → Plugins** in the French interface). The **Plugin store** button is first, above installed plugins. It opens a resizable window: after consenting to the GitHub connection, search or filter the community catalog, inspect descriptions and screenshots, then choose **Install** on the detail page. Installed plugins remain available in the tab below the button; local imports work offline.
 
 1. **Installed in NovyDeck** (*Installés dans NovyDeck*): plugins already imported from a file, a folder or the built-in catalog. Drag one of their actions onto a key like any other action.
 2. **Community** (*Communauté*): a public directory of third-party plugins maintained in [HatiFlash/novydeck-plugins](https://github.com/HatiFlash/novydeck-plugins).

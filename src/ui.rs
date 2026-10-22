@@ -33,6 +33,8 @@ mod appearance;
 
 #[path = "ui_plugin_store.rs"]
 mod plugin_store_ui;
+#[path = "ui_plugin_market.rs"]
+mod plugin_market_ui;
 #[path = "ui_plugin_validation.rs"]
 mod plugin_validation_harness;
 pub(crate) use plugin_validation_harness::validate_oracle;
