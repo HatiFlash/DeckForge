@@ -4982,7 +4982,7 @@ fn edit_step(
     match step {
         Step::Disabled { .. } => unreachable!("atelier passe une étape active"),
         Step::PluginAction { .. } => {
-            ui.label(tr("Réglez cette action de plugin dans l’Atelier de blocs."));
+            ui.label(tr("Action fournie par un plugin installé."));
         }
         Step::KeyHold { keys, action, hold_ms } => {
             ui.label(tr("Touches (ex. CTRL+SHIFT+A)"));
