@@ -5,7 +5,7 @@ English · [Français](README.fr.md)
   <h1>NovyDeck</h1>
   <p>Open-source Windows software for stream decks: keys, macros, media and plugins, without the official software. Tested on the FIFINE AmpliGame D6 and the Elgato Stream Deck.</p>
   <p>
-    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.9.0"><img src="https://img.shields.io/badge/Release-v0.9.0-3478F6.svg" alt="Release v0.9.0"></a>
+    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.9.1"><img src="https://img.shields.io/badge/Release-v0.9.1-3478F6.svg" alt="Release v0.9.1"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-22C58B.svg" alt="MIT license"></a>
     <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-555.svg" alt="Windows 10/11">
   </p>
@@ -20,6 +20,30 @@ English · [Français](README.fr.md)
 [![Watch the NovyDeck presentation film](docs/media/novydeck-demo-poster.png)](docs/media/novydeck-demo.mp4)
 
 A 40-second presentation film in 1920 × 1080 at 60 fps with sound, made with Remotion and three.js. It features a 3D D6 deck, actual interface captures and synthesized music. The published film was produced outside this repository.
+
+## What's new in 0.9.0
+
+### Plugin store
+
+Open **Library → Plugins → Plugin store**. The store is a page of the app, like the block editor: search, filter by category, open a plugin to read its description, see its screenshots and requirements, then click **Install**. The archive is downloaded only after your confirmation and its SHA-256 fingerprint is checked before import.
+
+| Store | Plugin page |
+|---|---|
+| ![NovyDeck plugin store with official and open-source plugins](docs/images/plugin-store.png) | ![Plugin page with screenshots and Install button](docs/images/plugin-store-detail.png) |
+
+Available today: seven **official NovyDeck plugins** — Clock, Counter, System Monitor, Now Playing, OLED Saver, Home Assistant and **Google Assistant Command** (control your Google Home devices with a written command such as “turn on the living room light”) — plus open-source plugins tested in NovyDeck (Elgato CPU, BarRaider Stopwatch).
+
+### Plugin actions in the block editor
+
+The **Plugins** palette lists the actions of every installed plugin. Chain actions from **different plugins** in the same macro, with delays, conditions and any other block. The local assistant understands plugin names and never invents an action that is not installed.
+
+![Macro chaining NovyDeck Clock and Google Assistant Command](docs/images/workshop-plugins.png)
+
+### Start minimized
+
+When NovyDeck starts with Windows, it can now stay minimized near the clock without showing its window (option under **Start NovyDeck when Windows starts**, in **Windows and shortcuts…**).
+
+![Start minimized option](docs/images/start-minimized.png)
 
 ## Highlights
 
@@ -50,7 +74,7 @@ Close FIFINE Control Deck before using the D6: it holds exclusive USB access to 
 
 ## Quick start / installation
 
-1. Download **`NovyDeck-0.9.0-Setup.exe`** from the [latest release](https://github.com/HatiFlash/NovyDeck/releases/latest) and run it without administrator rights, or extract `NovyDeck-0.9.0-Windows.zip`. A fresh installation uses `%LOCALAPPDATA%\Programs\NovyDeck`.
+1. Download **`NovyDeck-0.9.1-Setup.exe`** from the [latest release](https://github.com/HatiFlash/NovyDeck/releases/latest) and run it without administrator rights, or extract `NovyDeck-0.9.1-Windows.zip`. A fresh installation uses `%LOCALAPPDATA%\Programs\NovyDeck`.
 2. For updates, the installer updates an existing installation while preserving profiles, media and plugins. For a portable installation, close the app and replace the executables without deleting `config.json`, preferences, `assets` or `plugins`.
 3. Launch NovyDeck from the Start menu (or the portable folder) and connect the D6. To explore without changing your profiles, choose **Profiles → ••• → Demo profile (15 keys)**. The same command resets the demo profile; you can also delete it like any other profile.
 4. Drag an action from the library onto a key, or open the block editor.
@@ -157,6 +181,7 @@ NovyDeck works offline. Local AI stays on your PC and is optional and disabled b
 
 ## Latest release
 
+- **0.9.1:** the plugin store is now a fixed page of the app (no floating window), with a back button and Esc; plugin blocks in the block editor show readable plugin and action names; README presents the 0.9.0 features with screenshots.
 - **0.9.0:** Play Store-style **plugin store** window (search, categories, detail page with screenshots, one-click install with SHA-256 check); seven official NovyDeck plugins plus tested open-source plugins; **plugin actions in the block editor**, combinable across plugins, understood by the local assistant; **start minimized** option when NovyDeck starts with Windows.
 - **0.8.15:** English interface with a language selector (**Settings → Language**) and community translations as simple JSON files; optional update check at startup (asked once); release notes shown before installing an update and a **What's new** window after it.
 - **0.8.14:** update from the app: **À propos → Vérifier les mises à jour** (About → Check for updates) checks the latest GitHub release; **Télécharger et installer** (Download and install) verifies the installer's SHA-256, closes NovyDeck, installs over it (profiles, media and plugins kept) and restarts it. Portable copies are pointed to the download page.
@@ -176,7 +201,7 @@ git clone https://github.com/HatiFlash/NovyDeck.git
 cd NovyDeck
 cargo build --release --locked
 cargo test --locked
-powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.9.0 -Build
+powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.9.1 -Build
 ```
 
 ## License & credits
