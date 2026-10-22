@@ -144,6 +144,8 @@ impl App {
       for row in entries.chunks(cols){ui.horizontal(|ui|{ui.spacing_mut().item_spacing.x=12.0;for entry in row{ui.push_id(&entry.id,|ui|{
        let card=egui::Frame::new().fill(p.card).stroke(egui::Stroke::new(1.0,p.border)).corner_radius(theme::RADIUS_MD).inner_margin(egui::Margin::same(14)).show(ui,|ui|{
         ui.set_width(card_width-28.0);
+        // La rangée de cartes est horizontale : le contenu d'une carte s'empile verticalement.
+        ui.vertical(|ui|{
         ui.horizontal(|ui|{thumbnail(ui,entry.icon.as_deref(),true,egui::vec2(64.0,64.0));ui.vertical(|ui|{
          ui.set_max_width((card_width-112.0).max(80.0));
          ui.add(egui::Label::new(RichText::new(&entry.name).strong().size(16.0)).truncate());
@@ -160,6 +162,7 @@ impl App {
         });
         ui.add_space(8.0);
         if ui.link(tr("Voir la fiche")).clicked(){view.selected=Some(entry.id.clone());}
+        });
        });
        let response=ui.interact(card.response.rect,ui.id().with("card_click"),egui::Sense::click());
        if response.hovered(){ui.painter().rect_stroke(card.response.rect,theme::RADIUS_MD,egui::Stroke::new(1.5,p.accent),egui::StrokeKind::Inside);}
