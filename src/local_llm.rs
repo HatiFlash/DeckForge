@@ -1078,7 +1078,7 @@ mod tests {
         for app in &knowledge.applications {
             assert!(valid_exe(&app.exe), "{}", app.exe);
         }
-        assert_eq!(schema()["properties"]["steps"]["items"]["anyOf"].as_array().unwrap().len(), 14);
+        assert_eq!(schema()["properties"]["steps"]["items"]["anyOf"].as_array().unwrap().len(), 15);
         let messages = messages("test", &knowledge);
         let system = messages[0]["content"].as_str().unwrap();
         assert!(system.contains("brave = brave.exe") && system.contains("if_app"));
