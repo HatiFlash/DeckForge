@@ -155,6 +155,8 @@
     "Assistant périphérique : {message}": "Device assistant: {message}",
     "Assistant · Atelier": "Assistant · Block editor",
     "Atelier de blocs": "Block editor",
+    "Atelier · Touche {key}": "Workshop · Key {key}",
+    "Atelier · Touche {key} · {label}": "Workshop · Key {key} · {label}",
     "Attend avant le bloc suivant.": "Wait before the next block.",
     "Attend et peut activer une fenêtre.": "Wait for a window and optionally activate it.",
     "Attend une condition Windows en lecture seule, avec délai et bouton Arrêter.": "Wait for a read-only Windows condition, with a timeout and Stop button.",
@@ -1019,6 +1021,7 @@
     "Signaler un problème avec mon deck": "Report a problem with my deck",
     "Signature de message": "Message signature",
     "Simple": "Simple",
+    "Simulation · Aucun test effectué": "Simulation · No test performed",
     "Simuler": "Simulate",
     "Sinon": "Otherwise",
     "Site web": "Website",
@@ -1213,8 +1216,12 @@
     "{name} · {keys} touches{experimental}": "{name} · {keys} keys{experimental}",
     "{name} · {steps} étape(s). Les images restent liées à leur fichier local.": "{name} · {steps} step(s). Images remain linked to their local files.",
     "{n} binds importés. Les touches sont en pause.": "{n} bindings imported. Keys paused.",
+    "{prefix} · En cours": "{prefix} · In progress",
     "{prefix} · {block} — désactivé, sauté": "{prefix} · {block} — disabled, skipped",
     "{prefix} · {block} — {detail}": "{prefix} · {block} — {detail}",
+    "{prefix} · {count} étapes · OK · {seconds} s": "{prefix} · {count} steps · OK · {seconds} s",
+    "{prefix} · Échec": "{prefix} · Failed",
+    "{prefix} · Échec à l'étape {step}": "{prefix} · Failed at step {step}",
     "{state} · pertes : {losses}": "{state} · dropped: {losses}",
     "{total_actions} actions converties au total · {total_icons} icônes": "{total_actions} actions converted in total · {total_icons} icons",
     "À compléter : {e}": "To complete: {e}",
@@ -1249,12 +1256,5 @@
     "• {action}": "• {action}",
     "← Retour": "← Back",
     "← Retour au deck": "← Back to deck"
-  },
-  "Simulation · Aucun test effectué": "Simulation · No test performed",
-  "{prefix} · En cours": "{prefix} · In progress",
-  "{prefix} · Échec à l'étape {step}": "{prefix} · Failed at step {step}",
-  "{prefix} · Échec": "{prefix} · Failed",
-  "{prefix} · {count} étapes · OK · {seconds} s": "{prefix} · {count} steps · OK · {seconds} s",
-  "Atelier · Touche {key}": "Workshop · Key {key}",
-  "Atelier · Touche {key} · {label}": "Workshop · Key {key} · {label}"
+  }
 }
