@@ -3455,7 +3455,7 @@ impl App {
                             self.navigate(Step::PagePrevious);
                         }
                         ui.label(
-                            RichText::new(format!(
+                            RichText::new(trf(
                                 "Page {current} / {total}",
                                 &[("current", &current_page_num), ("total", &total_pages)]
                             ))
