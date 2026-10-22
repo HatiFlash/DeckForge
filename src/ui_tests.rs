@@ -2319,7 +2319,7 @@ fn whats_new_is_only_for_existing_installations_with_new_notes() {
     let shown = h.warm(size);
     let title = format!("Quoi de neuf dans NovyDeck {}", env!("CARGO_PKG_VERSION"));
     assert!(text_position(&shown.shapes, &title).is_some());
-    assert!(text_position(&shown.shapes, "Changement après mise à jour").is_some());
+    assert!(text_position(&shown.shapes, "- Changement après mise à jour").is_some());
     let acknowledge = text_position(&shown.shapes, "Compris").unwrap();
     h.click(size, acknowledge);
     assert_eq!(h.app.preferences.last_seen_version, env!("CARGO_PKG_VERSION"));
@@ -2342,7 +2342,7 @@ fn startup_offer_shows_notes_and_installation_choice_without_network() {
         notes: "## Français\n- Fonction nouvelle injectée".into(),
     });
     let shown = h.warm(size);
-    for label in ["Mise à jour disponible", "Fonction nouvelle injectée", "Télécharger et installer", "Voir les nouveautés", "Plus tard"] {
+    for label in ["Mise à jour disponible", "- Fonction nouvelle injectée", "Télécharger et installer", "Voir les nouveautés", "Plus tard"] {
         assert!(text_position(&shown.shapes, label).is_some(), "{label}");
     }
     assert!(h.app.startup_rx.is_none());
