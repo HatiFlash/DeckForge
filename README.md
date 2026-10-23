@@ -23,7 +23,28 @@ A 40-second presentation film in 1920 × 1080 at 60 fps with sound, made with Re
 
 ## What's new in 0.9.3
 
-The in-app updater now starts its wait without opening a visible ping console (from this version onward). Plugin settings use a smaller, named window attached to NovyDeck, and plugins receive the selected interface language. See [release notes](docs/RELEASE-0.9.3.md). The 0.9.2 → 0.9.3 update can still show the old console once.
+### Security badges in the plugin store
+
+Open **Library → Plugins → Plugin store**. Each plugin now shows up to three badges: **Official** (published by NovyDeck), **Scanned** (the exact archive passed the automatic check) and **Tested by NovyDeck** (that exact version was tried by hand). The check runs on GitHub, with no manual step, every time the catalogue changes and every week: Microsoft Defender plus a static inspection of the archive (executables and signatures, risky scripts, manifest, licence and source). A plugin whose scan needs review shows a warning, also highlighted in the install confirmation. The **Security** section of each plugin page explains the badges. A scan reduces risk; it cannot rule it out completely.
+
+| Store with badges | Security section of a plugin page |
+|:--:|:--:|
+| ![Plugin store with Official, Scanned and Tested badges](docs/images/plugin-store.png) | ![Security section explaining the badges](docs/images/store-security.png) |
+
+### Official plugins 1.0.2: logos and cleaner settings
+
+The seven NovyDeck plugins each have their own logo, and their settings pages were redesigned: one language at a time (following NovyDeck), grouped cards, clear help and number checks. The settings window is smaller, titled with the plugin and action, and attached to NovyDeck. The System Monitor reads the CPU temperature when Windows exposes it and shows "N/A" when a sensor is unavailable. Update them from the plugin store.
+
+![New logos and settings pages of the official plugins](docs/images/official-plugins.png)
+
+### Quieter updates and polish
+
+- Updating from inside NovyDeck no longer opens a black console window (the 0.9.2 → 0.9.3 update is still started by 0.9.2 and may show it one last time).
+- Secondary windows (Settings, About, AI assistant…) stay centered and can no longer be dragged around.
+- ON/OFF keys keep their state when you switch pages during the session.
+- Remaining French texts in the English interface are translated; plugin keys show readable plugin and action names.
+
+See the [release notes](docs/RELEASE-0.9.3.md).
 
 ## What's new in 0.9.2
 
@@ -71,7 +92,7 @@ When NovyDeck starts with Windows, it can now stay minimized near the clock with
 - **Local assistant:** turn a sentence in English or French into previewed blocks. Nothing is inserted without confirmation; optional local AI is off by default.
 - **Stream Deck / OpenAction plugins:** import `.streamDeckPlugin` and `.sdPlugin` packages with isolated HTML settings ([compatibility, French](docs/PLUGINS-COMPATIBILITE.md)).
 - **MCP server:** work with Claude, Codex or Cursor while approving every proposed change ([MCP guide, French](docs/MCP.md)).
-- **Community plugin library:** browse and install plugins shared by the community from [novydeck-plugins](https://github.com/HatiFlash/novydeck-plugins). NovyDeck only connects after you agree, asks for confirmation and verifies each download's SHA-256; community plugins are marked as unverified.
+- **Community plugin library:** browse and install plugins shared by the community from [novydeck-plugins](https://github.com/HatiFlash/novydeck-plugins). NovyDeck only connects after you agree, asks for confirmation and verifies each download's SHA-256; each plugin shows its security badges (Official, Scanned, Tested by NovyDeck).
 - **Hardware report:** testing another deck brand? **Signaler un problème avec mon deck** (“Report a problem with my deck”) prepares an anonymized report (preview first) and opens a pre-filled GitHub issue; just add your deck model and what goes wrong.
 
 ## Compatibility
@@ -155,7 +176,7 @@ Open **Library → Plugins** (**Bibliothèque → Plugins** in the French interf
 How the community library works:
 
 - NovyDeck stays offline until you click **Connect to the store**; it then downloads only the catalog (`registry.json`) from GitHub.
-- Each card shows the name, version, author, license, tested decks and minimum NovyDeck version. Entries are labelled **Community — unverified**.
+- Each card shows the name, version, author, license, tested decks and minimum NovyDeck version. Badges show whether a plugin is **Official**, **Scanned** automatically and **Tested by NovyDeck**; other community plugins are labelled **Community — unverified**.
 - **Install…** opens a confirmation with the download address and the expected SHA-256. NovyDeck downloads the archive, checks its fingerprint and only then imports it. A matching fingerprint proves the file is the one listed, not that third-party code is safe: install only plugins you trust.
 
 ```mermaid
@@ -199,6 +220,7 @@ NovyDeck works offline. Local AI stays on your PC and is optional and disabled b
 
 ## Latest release
 
+- **0.9.3:** security badges in the plugin store (automatic GitHub scan); official plugins 1.0.2 with logos and cleaner settings; no console during in-app updates; fixed secondary windows; ON/OFF state kept across pages.
 - **0.9.2:** keys can alternate two user-selected ON/OFF images on short physical presses; English text and a fixed Windows and shortcuts dialog; official plugins 1.0.1 improve key text and CPU/RAM previews.
 - **0.9.1:** the plugin store is now a fixed page of the app (no floating window), with a back button and Esc; plugin blocks in the block editor show readable plugin and action names; README presents the 0.9.0 features with screenshots.
 - **0.9.0:** Play Store-style **plugin store** window (search, categories, detail page with screenshots, one-click install with SHA-256 check); seven official NovyDeck plugins plus tested open-source plugins; **plugin actions in the block editor**, combinable across plugins, understood by the local assistant; **start minimized** option when NovyDeck starts with Windows.

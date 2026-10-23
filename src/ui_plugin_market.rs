@@ -177,8 +177,13 @@ impl App {
       ui.add_space(18.0);
       if !entry.actions.is_empty(){theme::section_title(ui,tr("Actions"));ui.add_space(8.0);for action in &entry.actions{ui.label(trf("• {action}",&[("action",&localized(action.name_fr.as_deref(),&action.name))]));}ui.add_space(18.0);}
       egui::Frame::new().fill(p.warning.gamma_multiply(0.12)).stroke(egui::Stroke::new(1.0,p.warning.gamma_multiply(0.65))).corner_radius(theme::RADIUS_MD).inner_margin(egui::Margin::same(16)).show(ui,|ui|{
-       ui.label(RichText::new(tr("Communauté — non vérifié")).color(p.warning).strong());
-       ui.add(egui::Label::new(tr("Ce plugin exécute du code tiers avec vos droits utilisateur.")).wrap());
+       if badges.official{
+        ui.label(RichText::new(tr("Plugin officiel NovyDeck")).color(p.accent).strong());
+        ui.add(egui::Label::new(tr("Ce plugin exécute du code avec vos droits utilisateur.")).wrap());
+       }else{
+        ui.label(RichText::new(tr("Communauté — non vérifié")).color(p.warning).strong());
+        ui.add(egui::Label::new(tr("Ce plugin exécute du code tiers avec vos droits utilisateur.")).wrap());
+       }
       });
       ui.add_space(12.0);
       if ui.link(tr("Page du projet")).clicked(){ctx.open_url(egui::OpenUrl::new_tab(&entry.homepage));}

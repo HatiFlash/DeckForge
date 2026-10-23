@@ -23,7 +23,28 @@ Un film de présentation de 40 s en 1920 × 1080 à 60 i/s, avec son, réalisé 
 
 ## Nouveautés 0.9.3
 
-La mise à jour depuis l'application attend désormais sans console ping visible (à partir de cette version). Les réglages des plugins s'ouvrent dans une fenêtre plus compacte, nommée et rattachée à NovyDeck ; les plugins reçoivent la langue choisie. Voir les [notes de version](docs/RELEASE-0.9.3.md). Le passage de 0.9.2 à 0.9.3 peut encore afficher l'ancienne console une fois.
+### Badges de sécurité dans le magasin de plugins
+
+Ouvrez **Bibliothèque → Plugins → Magasin de plugins**. Chaque plugin affiche désormais jusqu'à trois badges : **Officiel** (publié par NovyDeck), **Analysé** (l'archive exacte a passé le contrôle automatique) et **Testé par NovyDeck** (cette version précise a été essayée à la main). Le contrôle tourne sur GitHub, sans intervention manuelle, à chaque modification du catalogue et chaque semaine : Microsoft Defender et inspection de l'archive (exécutables et signatures, scripts à risque, manifest, licence et source). Un plugin dont l'analyse est à examiner affiche un avertissement, repris dans la confirmation d'installation. La section **Sécurité** de chaque fiche explique les badges. Une analyse réduit les risques sans les supprimer.
+
+| Magasin avec badges | Section Sécurité d'une fiche |
+|:--:|:--:|
+| ![Magasin de plugins avec badges Officiel, Analysé et Testé](docs/images/plugin-store-fr.png) | ![Section Sécurité qui explique les badges](docs/images/store-security-fr.png) |
+
+### Plugins officiels 1.0.2 : logos et réglages repensés
+
+Les sept plugins NovyDeck ont chacun leur logo, et leurs pages de réglages ont été refaites : une seule langue à la fois (celle de NovyDeck), cartes groupées, aides claires et contrôle des nombres. La fenêtre de réglages est plus compacte, titrée avec le plugin et l'action, et rattachée à NovyDeck. Le moniteur système lit la température du processeur quand Windows la fournit et affiche « N/D » quand un capteur manque. Mettez-les à jour depuis le magasin.
+
+![Nouveaux logos et pages de réglages des plugins officiels](docs/images/official-plugins-fr.png)
+
+### Mises à jour plus discrètes et finitions
+
+- La mise à jour depuis NovyDeck n'ouvre plus de fenêtre de console noire (le passage 0.9.2 → 0.9.3 est encore lancé par la 0.9.2 et peut l'afficher une dernière fois).
+- Les fenêtres secondaires (Réglages, À propos, Assistant IA…) restent centrées et ne se déplacent plus.
+- Les touches ON/OFF gardent leur état quand on change de page pendant la session.
+- Les textes encore en français dans l'interface anglaise sont traduits ; les touches de plugins affichent des noms lisibles.
+
+Voir les [notes de version](docs/RELEASE-0.9.3.md).
 
 ## Nouveautés 0.9.2
 
@@ -71,7 +92,7 @@ Quand NovyDeck se lance avec Windows, il peut maintenant rester réduit près de
 - **Assistant local :** une phrase en français ou en anglais devient des blocs présentés en aperçu. Rien n'est inséré sans validation ; l'IA locale facultative est désactivée par défaut.
 - **Plugins Stream Deck / OpenAction :** import des archives `.streamDeckPlugin` et `.sdPlugin`, réglages HTML isolés ([compatibilité](docs/PLUGINS-COMPATIBILITE.md)).
 - **Serveur MCP :** utilisation avec Claude, Codex ou Cursor et validation humaine de chaque modification proposée ([guide MCP](docs/MCP.md)).
-- **Bibliothèque communautaire de plugins :** parcourez et installez les plugins partagés par la communauté depuis [novydeck-plugins](https://github.com/HatiFlash/novydeck-plugins). NovyDeck ne se connecte qu'avec votre accord, demande confirmation et vérifie l'empreinte SHA-256 de chaque téléchargement ; les plugins communautaires sont signalés comme non vérifiés.
+- **Bibliothèque communautaire de plugins :** parcourez et installez les plugins partagés par la communauté depuis [novydeck-plugins](https://github.com/HatiFlash/novydeck-plugins). NovyDeck ne se connecte qu'avec votre accord, demande confirmation et vérifie l'empreinte SHA-256 de chaque téléchargement ; chaque plugin affiche ses badges de sécurité (Officiel, Analysé, Testé par NovyDeck).
 - **Rapport matériel :** vous testez une autre marque de deck ? **Signaler un problème avec mon deck** prépare un rapport anonymisé (avec aperçu) et ouvre une issue GitHub préremplie ; il suffit d'indiquer le modèle du deck et ce qui ne va pas.
 
 ## Compatibilité
@@ -155,7 +176,7 @@ Ouvrez **Bibliothèque → Plugins**. Le bouton **Magasin de plugins** apparaît
 Fonctionnement de la bibliothèque communautaire :
 
 - NovyDeck reste hors ligne tant que vous n'avez pas cliqué sur **Se connecter au magasin** ; il télécharge alors uniquement le catalogue (`registry.json`) depuis GitHub.
-- Chaque carte indique le nom, la version, l'auteur, la licence, les decks testés et la version minimale de NovyDeck. Les entrées portent la mention **Communauté — non vérifié**.
+- Chaque carte indique le nom, la version, l'auteur, la licence, les decks testés et la version minimale de NovyDeck. Des badges indiquent si un plugin est **Officiel**, **Analysé** automatiquement et **Testé par NovyDeck** ; les autres plugins communautaires portent la mention **Communauté — non vérifié**.
 - **Installer…** ouvre une confirmation avec l'adresse de téléchargement et l'empreinte SHA-256 attendue. NovyDeck télécharge l'archive, vérifie son empreinte et l'importe seulement ensuite. Une empreinte identique prouve que le fichier est bien celui référencé, pas que le code tiers est sûr : n'installez que des plugins de confiance.
 
 ```mermaid
@@ -199,6 +220,7 @@ NovyDeck fonctionne hors ligne. L'IA locale reste sur votre PC ; elle est facult
 
 ## Dernière version
 
+- **0.9.3 :** badges de sécurité dans le magasin (analyse automatique sur GitHub) ; plugins officiels 1.0.2 avec logos et réglages repensés ; plus de console pendant la mise à jour ; fenêtres secondaires fixes ; état ON/OFF conservé entre les pages.
 - **0.9.2 :** deux images Activé/Désactivé par touche alternent à l’appui court physique ; textes anglais et panneau Windows fixe ; plugins officiels 1.0.1 sans cadres noirs, aperçus CPU/RAM mesurés.
 - **0.9.1 :** le magasin de plugins devient une page fixe de l'application (plus de fenêtre flottante), avec bouton retour et Échap ; les blocs de plugins de l'Atelier affichent les noms lisibles du plugin et de l'action ; le README présente les nouveautés 0.9.0 avec captures.
 - **0.9.0 :** fenêtre **Magasin de plugins** façon Play Store (recherche, catégories, fiche avec captures, installation en un clic avec contrôle SHA-256) ; sept plugins NovyDeck officiels et des plugins open source testés ; **actions de plugins dans l'Atelier de blocs**, combinables entre plugins et comprises par l'assistant local ; option **démarrer réduit** quand NovyDeck se lance avec Windows.

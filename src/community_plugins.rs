@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 
 pub const REGISTRY_URL: &str = "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/registry.json";
 pub const CONTRIBUTE_URL: &str = "https://github.com/HatiFlash/novydeck-plugins/blob/main/CONTRIBUTING.md";
-pub const SECURITY_URL: &str = "https://github.com/HatiFlash/novydeck-plugins#use-the-community-library-in-novydeck";
+pub const SECURITY_URL: &str = "https://github.com/HatiFlash/novydeck-plugins#security-badges";
 const SCAN_URL: &str = "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/security/scan-results.json";
 const ARCHIVE_LIMIT: usize = 50 * 1024 * 1024;
 const REGISTRY_LIMIT: usize = 1024 * 1024;
