@@ -231,7 +231,8 @@ fn run(mut plugins:Vec<Plugin>,requests:Receiver<Request>,reply:Sender<Reply>){
             Ok(Request::Open(context))=>{if let Some(v)=current.get(&context){if let (Some(p),Some(host))=(plugins.iter().find(|p|p.uuid==v.plugin),hosts.get(&v.plugin)){
                 let path=p.actions.iter().find(|a|a.uuid==v.action).and_then(|a|a.inspector.as_ref()).or(p.inspector.as_ref());
                 if let Some(path)=path {let action_info=json!({"action":v.action,"context":v.context,"device":device.id,"payload":{"settings":v.settings,"coordinates":{"column":v.index%device.columns,"row":v.index/device.columns}}});
-                    match host.open_inspector(path,action_info){Ok(id)=>{inspectors.insert(id,v.clone());},Err(e)=>{let _=reply.send(Reply::Error(v.plugin.clone(),format!("Inspecteur : {e}")));}}
+                    let title=crate::plugin_host::inspector_title(&p.name,&p.actions.iter().find(|a|a.uuid==v.action).map(|a|a.name.as_str()).unwrap_or(""));
+                    match host.open_inspector_with_title(path,action_info,&title){Ok(id)=>{inspectors.insert(id,v.clone());},Err(e)=>{let _=reply.send(Reply::Error(v.plugin.clone(),format!("Inspecteur : {e}")));}}
                 }
             }}}
             Ok(Request::Key(context,down))=>{if let Some(v)=current.get(&context){if let Some(host)=hosts.get(&v.plugin){let _=host.send(event(if down{"keyDown"}else{"keyUp"},v,&device));}}}

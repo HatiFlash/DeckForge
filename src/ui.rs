@@ -288,6 +288,7 @@ impl App {
         if let Some(desktop) = &app.desktop {
             if let Ok(handle) = cc.window_handle() {
                 if let raw_window_handle::RawWindowHandle::Win32(handle) = handle.as_raw() {
+                    crate::plugin_host::set_main_window(handle.hwnd.get());
                     let _ = desktop
                         .tx
                         .send(crate::desktop::Command::Window(handle.hwnd.get()));

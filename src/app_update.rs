@@ -160,6 +160,10 @@ pub fn installer_command(setup: &Path) -> (String, Vec<String>) {
     let script = format!("\"ping -n 4 127.0.0.1 >NUL & \"{path}\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /relaunch=1\"");
     ("cmd.exe".into(), vec!["/D".into(), "/V:OFF".into(), "/C".into(), script])
 }
+/// Le shell et son enfant `ping` héritent d'une console cachée ; DETACHED_PROCESS
+/// empêcherait cet héritage et laisserait `ping` ouvrir une console visible.
+fn launch_flags() -> u32 { 0x0800_0000 } // CREATE_NO_WINDOW
+
 pub fn launch(setup: &Path) -> Result<()> {
     use std::os::windows::process::CommandExt;
     anyhow::ensure!(setup.is_file(), "Installateur introuvable");
@@ -169,7 +173,7 @@ pub fn launch(setup: &Path) -> Result<()> {
     // `args` échapperait les guillemets en \" que cmd.exe ne comprend pas : passer la ligne brute.
     let mut command = Command::new(program);
     for arg in &args { command.raw_arg(arg); }
-    command.creation_flags(0x0800_0000 | 0x0000_0008)
+    command.creation_flags(launch_flags())
         .spawn().context("Démarrage de l'installateur impossible")?;
     Ok(())
 }
@@ -233,6 +237,12 @@ pub fn launch(setup: &Path) -> Result<()> {
         assert_eq!(program, "cmd.exe");
         assert!(args.last().unwrap().contains(r#""C:\Some Folder\setup.exe" /VERYSILENT"#));
         assert!(args.last().unwrap().contains("/relaunch=1"));
+    }
+    #[test] fn launch_hides_console_for_cmd_and_ping() {
+        assert_eq!(launch_flags(), 0x0800_0000); // CREATE_NO_WINDOW
+        assert_eq!(launch_flags() & 0x0000_0008, 0); // never DETACHED_PROCESS
+        let (_, args) = installer_command(Path::new(r"C:\Some Folder\setup.exe"));
+        assert!(args.last().unwrap().contains("ping -n 4 127.0.0.1 >NUL &"));
     }
     #[test] fn release_notes_selects_language_and_strips_markdown() {
         let markdown = include_str!("../docs/RELEASE-0.8.14.md");

@@ -5,7 +5,7 @@
   <h1>NovyDeck</h1>
   <p>Logiciel libre pour Windows qui pilote les stream decks : touches, macros, médias et plugins, sans le logiciel officiel. Testé sur le FIFINE AmpliGame D6 et l'Elgato Stream Deck.</p>
   <p>
-    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.9.2"><img src="https://img.shields.io/badge/Release-v0.9.2-3478F6.svg" alt="Version 0.9.2"></a>
+    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.9.3"><img src="https://img.shields.io/badge/Release-v0.9.3-3478F6.svg" alt="Version 0.9.3"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/Licence-MIT-22C58B.svg" alt="Licence MIT"></a>
     <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-555.svg" alt="Windows 10/11">
   </p>
@@ -20,6 +20,10 @@
 [![Voir le film de présentation NovyDeck](docs/media/novydeck-demo-poster.png)](docs/media/novydeck-demo.mp4)
 
 Un film de présentation de 40 s en 1920 × 1080 à 60 i/s, avec son, réalisé avec Remotion et three.js. Il montre le pavé D6 en 3D, de vraies captures de l'interface et une musique synthétisée. Le film publié a été produit hors du dépôt.
+
+## Nouveautés 0.9.3
+
+La mise à jour depuis l'application attend désormais sans console ping visible (à partir de cette version). Les réglages des plugins s'ouvrent dans une fenêtre plus compacte, nommée et rattachée à NovyDeck ; les plugins reçoivent la langue choisie. Voir les [notes de version](docs/RELEASE-0.9.3.md). Le passage de 0.9.2 à 0.9.3 peut encore afficher l'ancienne console une fois.
 
 ## Nouveautés 0.9.2
 
@@ -88,7 +92,7 @@ Fermez FIFINE Control Deck avant d'utiliser le D6 : ce logiciel conserve l'accè
 
 ## Démarrage rapide / installation
 
-1. Téléchargez **`NovyDeck-0.9.2-Setup.exe`** depuis la [dernière version](https://github.com/HatiFlash/NovyDeck/releases/latest) et lancez-le sans droits administrateur, ou extrayez `NovyDeck-0.9.2-Windows.zip`. Une nouvelle installation utilise `%LOCALAPPDATA%\Programs\NovyDeck`.
+1. Téléchargez **`NovyDeck-0.9.3-Setup.exe`** depuis la [dernière version](https://github.com/HatiFlash/NovyDeck/releases/latest) et lancez-le sans droits administrateur, ou extrayez `NovyDeck-0.9.3-Windows.zip`. Une nouvelle installation utilise `%LOCALAPPDATA%\Programs\NovyDeck`.
 2. Pour une mise à jour, l'installateur met à jour l'installation existante en conservant profils, médias et plugins. En version portable, fermez l'application et remplacez les exécutables sans supprimer `config.json`, les préférences, `assets` ni `plugins`.
 3. Lancez NovyDeck depuis le menu Démarrer (ou le dossier portable) et branchez le D6. Pour découvrir l'application sans toucher à vos profils, choisissez **Profils → ••• → Profil de démonstration (15 touches)**. Cette commande réinitialise aussi le profil de démonstration ; vous pouvez le supprimer comme tout autre profil.
 4. Glissez une action de la bibliothèque sur une touche, ou ouvrez l'atelier de blocs.
@@ -216,7 +220,7 @@ git clone https://github.com/HatiFlash/NovyDeck.git
 cd NovyDeck
 cargo build --release --locked
 cargo test --locked
-powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.9.2 -Build
+powershell -ExecutionPolicy Bypass -File tools\Build-Installer.ps1 -Version 0.9.3 -Build
 ```
 
 ## Licence et crédits

@@ -42,7 +42,16 @@ fn working_dir(plugin:&Plugin)->std::path::PathBuf{
 }
 fn launch_info(plugin:&Plugin,device:&crate::plugin_runtime::Device)->Value {
  let platform_version=std::env::var("DECKFORGE_PLATFORM_VERSION").unwrap_or_else(|_|"10.0".into());
- json!({"application":{"font":"","language":"fr","platform":"windows","platformVersion":platform_version,"version":env!("CARGO_PKG_VERSION")},"plugin":{"uuid":plugin.uuid,"version":plugin.version},"devicePixelRatio":1,"colors":{},"devices":[device.info()]})
+ json!({"application":{"font":"","language":crate::i18n::current(),"platform":"windows","platformVersion":platform_version,"version":env!("CARGO_PKG_VERSION")},"plugin":{"uuid":plugin.uuid,"version":plugin.version},"devicePixelRatio":1,"colors":{},"devices":[device.info()]})
+}
+/// Le handle n'est qu'une indication de présentation ; l'enfant vérifie son processus propriétaire.
+static MAIN_WINDOW:std::sync::atomic::AtomicIsize=std::sync::atomic::AtomicIsize::new(0);
+pub fn set_main_window(hwnd:isize){MAIN_WINDOW.store(hwnd,Ordering::Relaxed);}
+pub(crate) fn inspector_title(plugin:&str,action:&str)->String{
+ let clean=|text:&str|text.chars().filter(|c|!c.is_control()).take(80).collect::<String>().trim().to_owned();
+ let (plugin,action)=(clean(plugin),clean(action));
+ if plugin.is_empty() || action.is_empty(){return crate::i18n::tr("Réglages du plugin").to_owned();}
+ crate::i18n::trf("Réglages — {plugin} · {action}",&[("plugin",&plugin),("action",&action)])
 }
 // Trace opt-in : uniquement le sens, le nom de commande et les identifiants non secrets. Jamais payload/settings.
 struct Trace { file:std::fs::File, entries:usize }
@@ -170,6 +179,10 @@ impl Host {
   Ok(Self{#[cfg(windows)] job,incoming,outgoing,feedback,ws_port:port,http_port:http.as_ref().map(|h|h.port),inspectors:http.as_ref().map(|h|h.inspectors.clone()),folder:plugin.folder.clone(),uuid:plugin.uuid.clone(),child,worker:Some(worker),stop,inspector_children:Mutex::new(Vec::new()),_http:http})
  }
  pub fn open_inspector(&self,path:&str,action_info:Value)->anyhow::Result<String> {
+  self.open_inspector_with_title(path,action_info,crate::i18n::tr("Réglages du plugin"))
+ }
+ pub fn open_inspector_with_title(&self,path:&str,action_info:Value,title:&str)->anyhow::Result<String> {
+  let title=crate::plugin_inspector::clean_title(title);
   let server=self.http_port.ok_or_else(||anyhow::anyhow!("Serveur HTML indisponible"))?;
   let registry=self.inspectors.as_ref().ok_or_else(||anyhow::anyhow!("Inspecteur indisponible"))?;
   let rel=std::path::Path::new(path);
@@ -187,7 +200,7 @@ impl Host {
    let mut inspector=Command::new(inspector_exe()?).arg("--isolated-inspector")
        .stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()?;
    #[cfg(windows)] if let Err(e)=self.job.assign(&inspector){let _=inspector.kill();let _=inspector.wait();return Err(e.into());}
-   if let Err(e)=inspector.stdin.take().unwrap().write_all(format!("{url}\n{}\n",self.ws_port).as_bytes()){let _=inspector.kill();let _=inspector.wait();return Err(e.into());}
+   if let Err(e)=inspector.stdin.take().unwrap().write_all(format!("{url}\n{}\n{title}\n{}\n{}\n",self.ws_port,MAIN_WINDOW.load(Ordering::Relaxed),std::process::id()).as_bytes()){let _=inspector.kill();let _=inspector.wait();return Err(e.into());}
    Ok(inspector)
   })();
   match result {Ok(child)=>{children.push(child);Ok(id)},Err(e)=>{registry.lock().unwrap().remove(&id);Err(e)}}
@@ -286,6 +299,21 @@ impl Drop for Host {fn drop(&mut self){self.stop.store(true,Ordering::Relaxed);
 }}
 #[cfg(windows)] use std::os::windows::process::CommandExt;
 #[cfg(test)] mod tests {use super::*;
+    #[test] fn title_is_bounded_clean_and_translated() {
+        crate::i18n::set_language("en");
+        assert_eq!(inspector_title("Test", "Counter"), "Settings — Test · Counter");
+        assert_eq!(inspector_title("\r\n", "Counter"), "Plugin settings");
+        let title=inspector_title(&"a".repeat(200),"Counter\nUnsafe");
+        assert!(!title.contains('\n') && title.contains("CounterUnsafe") && title.chars().count()<180);
+        crate::i18n::set_language("fr");
+    }
+    #[test] fn launch_info_uses_active_language() {
+        let d=tempfile::tempdir().unwrap();let p=crate::plugins::parse(d.path(),br#"{"UUID":"test"}"#).unwrap();
+        crate::i18n::set_language("en");
+        assert_eq!(launch_info(&p,&crate::plugin_runtime::Device::virtual_device())["application"]["language"],"en");
+        crate::i18n::set_language("fr");
+        assert_eq!(launch_info(&p,&crate::plugin_runtime::Device::virtual_device())["application"]["language"],"fr");
+    }
  #[test] fn browser_websocket_origin_is_rejected_without_pi_server(){
   use tungstenite::client::IntoClientRequest;
   let listener=TcpListener::bind("127.0.0.1:0").unwrap();let port=listener.local_addr().unwrap().port();

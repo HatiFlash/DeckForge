@@ -978,6 +978,7 @@
     "Réglages du plugin non sauvegardés : {error}": "Plugin settings not saved: {error}",
     "Réglages globaux non sauvegardés : {error}": "Global settings not saved: {error}",
     "Réglages — {device}": "Settings — {device}",
+    "Réglages — {plugin} · {action}": "Settings — {plugin} · {action}",
     "Régler à": "Set to",
     "Réinitialiser le zoom et le positionnement au centre": "Reset zoom and position to center",
     "Réponse de l'IA locale ignorée : la touche sélectionnée a changé.": "Local AI response ignored: selected key changed.",

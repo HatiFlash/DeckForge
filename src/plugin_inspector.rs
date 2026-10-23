@@ -1,6 +1,7 @@
 //! Isolated PI WebView2 process. The parent supplies a single URL on stdin, never argv.
 //! Untrusted local markup is denied network resources before its first navigation.
 use std::io::Read;
+use raw_window_handle::HasWindowHandle;
 use tao::{event::{Event, WindowEvent}, event_loop::{ControlFlow, EventLoop}, window::WindowBuilder};
 use wry::{NewWindowResponse, PermissionResponse, WebViewBuilder, WebViewBuilderExtWindows, WebViewExtWindows};
 use webview2_com::{CoTaskMemPWSTR, WebResourceRequestedEventHandler};
@@ -84,24 +85,59 @@ fn allowed_runtime_resource(raw: &str) -> bool {
     url::Url::parse(raw).is_ok_and(|u| matches!(u.scheme(), "http" | "https" | "ws" | "wss" | "data" | "blob" | "about"))
 }
 
+pub(crate) fn clean_title(title:&str)->String {
+    title.chars().filter(|c|!c.is_control()).take(180).collect::<String>().trim().to_owned()
+}
+
+/// Associate the isolated window with NovyDeck before showing it. Never trust a stale HWND.
+fn attach_owner(window:&tao::window::Window, owner:isize,parent_pid:u32) {
+    use windows_sys::Win32::{Foundation::HWND, UI::WindowsAndMessaging::{GetWindowRect,GetWindowThreadProcessId,IsWindow,SetWindowLongPtrW,GWLP_HWNDPARENT,RECT}};
+    let hwnd=owner as HWND;
+    if hwnd.is_null() || unsafe { IsWindow(hwnd) } == 0 { return; }
+    let mut pid=0;
+    unsafe { GetWindowThreadProcessId(hwnd,&mut pid); }
+    if pid == 0 || pid != parent_pid { return; }
+    if let Ok(handle)=window.window_handle() {
+        if let raw_window_handle::RawWindowHandle::Win32(raw)=handle.as_raw() {
+            unsafe { SetWindowLongPtrW(raw.hwnd.get() as HWND,GWLP_HWNDPARENT,owner); }
+        }
+    }
+    let mut rect=RECT::default();
+    if unsafe { GetWindowRect(hwnd,&mut rect) } != 0 {
+        let size=window.outer_size();
+        window.set_outer_position(tao::dpi::PhysicalPosition::new(
+            rect.left+(rect.right-rect.left-size.width as i32)/2,
+            rect.top+(rect.bottom-rect.top-size.height as i32)/2));
+    }
+}
+
 pub fn run() -> anyhow::Result<()> {
     // One line only, bounded; parent closes the pipe after writing. Never echo nonce or URL.
     let mut input = String::new();
-    std::io::stdin().take(2049).read_to_string(&mut input)?;
+    std::io::stdin().take(4097).read_to_string(&mut input)?;
     let lines: Vec<&str> = input.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
-    anyhow::ensure!(lines.len() == 2 || (lines.len() == 3 && lines[2] == "runtime"), "invalid isolated inspector input");
+    anyhow::ensure!(lines.len() == 5 || (lines.len() == 3 && lines[2] == "runtime"), "invalid isolated inspector input");
     // "runtime": hidden backend page of an HTML plugin (same network trust as Node/native plugins).
     let runtime = lines.len() == 3;
     let url = lines[0];
     let ws = lines[1];
-    anyhow::ensure!(input.len() <= 2048 && allowed_initial(url)
+    anyhow::ensure!(input.len() <= 4096 && allowed_initial(url)
         && ws.parse::<u16>().ok().filter(|port|*port>0).is_some()
         && ws.parse::<u16>().unwrap().to_string()==ws,"invalid isolated inspector URL");
     let ws_port=ws.parse::<u16>()?;let url=url.to_owned();
+    let title=if runtime { "NovyDeck HTML plugin".to_owned() } else { clean_title(lines[2]) };
+    anyhow::ensure!(runtime || (!title.is_empty() && title==lines[2] && title.chars().count()<=180),"invalid inspector title");
+    let owner=if runtime { 0 } else { lines[3].parse::<isize>()? };
+    let parent_pid=if runtime { 0 } else { lines[4].parse::<u32>()? };
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new().with_title(if runtime {"NovyDeck HTML plugin"} else {"NovyDeck Plugin Inspector"})
-        .with_visible(!runtime)
-        .with_inner_size(tao::dpi::LogicalSize::new(900.0, 650.0)).build(&event_loop)?;
+    let icon=image::load_from_memory(include_bytes!("../res/branding/novydeck-32.png"))?.into_rgba8();
+    let window_icon=tao::window::Icon::from_rgba(icon.into_raw(),32,32)?;
+    let window = WindowBuilder::new().with_title(title)
+        .with_visible(false)
+        .with_window_icon(Some(window_icon))
+        .with_inner_size(tao::dpi::LogicalSize::new(520.0, 560.0))
+        .with_min_inner_size(tao::dpi::LogicalSize::new(420.0, 360.0)).build(&event_loop)?;
+    if !runtime { attach_owner(&window,owner,parent_pid); }
     let expected = url.clone();
     let proxy=if runtime {None} else {Some(crate::plugin_inspector_proxy::LocalProxy::start(&url,ws_port)?)};
     // Each isolated WebView2 process gets its own user-data directory so multiple instances
@@ -151,6 +187,7 @@ pub fn run() -> anyhow::Result<()> {
         })),&mut token)?;
     }
     webview.load_url(&url)?;
+    if !runtime { window.set_visible(true); }
     // Never print the URL or session key, including on error.
     println!("INSPECTOR_WEBVIEW_READY pid={}", std::process::id());
     event_loop.run(move |event, _, flow| {
@@ -179,6 +216,10 @@ mod cdn_tests { use super::*;
 mod tests {
     use super::allowed_initial;
     const VALID: &str = "http://127.0.0.1:45678/com.elgato.counter/property%20inspector/index.html?pi=0123456789abcdef0123456789abcdef";
+    #[test] fn clean_title_removes_controls_and_caps_length() {
+        assert_eq!(super::clean_title(" Écran\r\n Titre\t"),"Écran Titre");
+        assert_eq!(super::clean_title(&"A".repeat(400)).chars().count(),180);
+    }
     #[test]
     fn pi_url_allowlist() {
         assert!(allowed_initial(VALID));
