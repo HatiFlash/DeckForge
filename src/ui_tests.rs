@@ -1082,6 +1082,33 @@ fn demo_profile_is_added_beside_user_profiles_and_resets_by_name() {
     assert_eq!(h.app.config.page, "demo-page-2");
 }
 
+/// Revue phase 1 : captures natives du vrai écran principal, thèmes et densités ciblés.
+#[test]
+fn redesign_review_main() {
+    let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").map(PathBuf::from) else { return };
+    std::fs::create_dir_all(&dir).unwrap();
+    for (physical, dpi) in [(vec2(1600.0, 1000.0), 1.0), (vec2(1366.0, 768.0), 1.0), (vec2(1920.0, 1080.0), 1.5)] {
+        for (dark, name) in [(true, "dark"), (false, "light")] {
+            let mut h = demo_harness();
+            crate::i18n::set_language("fr");
+            h.app.selected = 8;
+            h.app.preferences.dark = dark;
+            h.app.preferences.scheme = if dark { "navy" } else { "clair" }.into();
+            crate::theme::set_theme(&h.app.preferences.scheme, &h.app.preferences.accent);
+            crate::theme::apply(&h.ctx, dark);
+            h.ctx.set_pixels_per_point(dpi);
+            let size = physical / dpi;
+            let output = settle(&mut h, size);
+            let shapes = output.shapes.clone();
+            let path = dir.join(format!("redesign-main-{name}-{}x{}-{}pct.png", physical.x as u32, physical.y as u32, (dpi * 100.0) as u32));
+            h.png(size, output, &path);
+            assert_eq!(h.app.drop_targets.len(), 15, "{path:?}: grille complète");
+            assert!(text_position(&shapes, "Bibliothèque d'actions").is_some(), "{path:?}: bibliothèque visible");
+            assert!(text_position(&shapes, "Simuler").is_some(), "{path:?}: commande visible");
+        }
+    }
+}
+
 /// Captures du README : vraie interface rendue hors écran à 2560 px de large (1600 × 1000 points à 160 %).
 #[test]
 fn readme_captures_from_the_demo_profile() {

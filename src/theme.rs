@@ -369,9 +369,9 @@ pub fn palette_for(scheme: &str, accent: Color32) -> Palette {
         accent_hover: if dark { mix(accent, Color32::WHITE, 0.18) } else { mix(accent, Color32::BLACK, 0.15) },
         purple: if dark { PURPLE } else { rgb(124, 58, 237) },
         cyan: if dark { CYAN } else { rgb(8, 145, 178) },
-        success: if dark { GREEN } else { rgb(5, 150, 105) },
-        warning: if dark { WARNING } else { rgb(194, 105, 6) },
-        danger: if dark { DANGER } else { rgb(205, 30, 70) },
+        success: if dark { GREEN } else { rgb(5, 112, 78) },
+        warning: if dark { WARNING } else { rgb(147, 73, 5) },
+        danger: if dark { rgb(255, 133, 147) } else { rgb(180, 31, 61) },
         border,
         text_secondary: secondary,
         surface_1: surface,
@@ -385,7 +385,7 @@ pub fn palette_for(scheme: &str, accent: Color32) -> Palette {
         accent_subtle: if dark { mix(card, accent, 0.20) } else { mix(card, accent, 0.12) },
         success_subtle: mix(card, if dark { GREEN } else { rgb(5, 112, 78) }, 0.16),
         warning_subtle: mix(card, if dark { WARNING } else { rgb(159, 82, 8) }, 0.16),
-        danger_subtle: mix(card, if dark { DANGER } else { rgb(180, 31, 61) }, 0.16),
+        danger_subtle: mix(card, if dark { rgb(255, 133, 147) } else { rgb(180, 31, 61) }, 0.16),
         on_accent: if contrast(Color32::WHITE, accent) >= 4.5 { Color32::WHITE } else { Color32::BLACK },
     }
 }
@@ -502,6 +502,86 @@ pub fn apply(ctx: &egui::Context, dark: bool) {
         .text_styles
         .insert(egui::TextStyle::Small, egui::FontId::proportional(11.0));
     ctx.set_style(style);
+}
+
+/// Easing d'un état de survol ; aucun mouvement et aucune peinture continue si inactif.
+pub fn hover_progress(ctx: &egui::Context, response: &egui::Response, motion: bool) -> f32 {
+    if motion { ctx.animate_bool_with_time(response.id, response.hovered() || response.has_focus(), MOTION_FAST) }
+    else { f32::from(response.hovered() || response.has_focus()) }
+}
+
+pub fn ghost_button(text: impl Into<egui::WidgetText>) -> egui::Button<'static> {
+    egui::Button::new(text).fill(Color32::TRANSPARENT).stroke(Stroke::NONE).corner_radius(RADIUS_BUTTON)
+}
+
+pub fn icon_button(ctx: &egui::Context, icon: crate::iconset::Ico, label: &str) -> egui::Button<'static> {
+    let p = palette(ctx);
+    let button = match crate::iconset::image(ctx, icon, 16.0) {
+        Some(image) => egui::Button::image_and_text(image, label),
+        None => egui::Button::new(label),
+    };
+    button.fill(p.surface_2).stroke(Stroke::new(BORDER_HAIRLINE, p.border_subtle)).corner_radius(RADIUS_BUTTON)
+}
+
+/// Champ de commande : le raccourci reste un indice, le champ lui-même garde son label accessible.
+pub fn search_field(ui: &mut egui::Ui, query: &mut String, hint: &str, shortcut: &str) {
+    let p = palette(ui.ctx());
+    egui::Frame::new().fill(p.surface_2).stroke(Stroke::new(1.0_f32, p.border_subtle))
+        .corner_radius(RADIUS_SM).inner_margin(egui::Margin::symmetric(8, 5)).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                let (rect, _) = ui.allocate_exact_size(Vec2::splat(16.0), egui::Sense::hover());
+                let center = rect.center() - Vec2::new(1.5, 1.5);
+                ui.painter().circle_stroke(center, 4.5, Stroke::new(1.5_f32, p.text_secondary));
+                ui.painter().line_segment([center + Vec2::new(3.2, 3.2), center + Vec2::new(6.5, 6.5)], Stroke::new(1.5_f32, p.text_secondary));
+                let reserved = if shortcut.is_empty() { 0.0 } else { 34.0 };
+                ui.add(egui::TextEdit::singleline(query).frame(false)
+                    .desired_width((ui.available_width() - reserved).max(50.0)).hint_text(hint));
+                if !shortcut.is_empty() && ui.available_width() >= 30.0 {
+                    ui.label(egui::RichText::new(shortcut).size(11.0).color(p.text_secondary));
+                }
+            });
+        });
+}
+
+pub fn segmented_tab(ui: &mut egui::Ui, selected: bool, label: &str) -> egui::Response {
+    let p = palette(ui.ctx());
+    ui.add(egui::Button::new(label).selected(selected)
+        .fill(if selected { p.accent_subtle } else { Color32::TRANSPARENT })
+        .stroke(if selected { Stroke::new(1.0_f32, p.border_strong) } else { Stroke::NONE })
+        .corner_radius(RADIUS_BUTTON))
+}
+
+pub fn clickable_card(ui: &mut egui::Ui, size: Vec2, motion: bool) -> (egui::Rect, egui::Response) {
+    let p = palette(ui.ctx());
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
+    let t = hover_progress(ui.ctx(), &response, motion);
+    ui.painter().rect_filled(rect, RADIUS_SM, mix(p.surface_2, p.surface_3, t));
+    ui.painter().rect_stroke(rect, RADIUS_SM, Stroke::new(1.0_f32, mix(p.border_subtle, p.border_strong, t)), egui::StrokeKind::Inside);
+    (rect, response)
+}
+
+pub fn section_header(ui: &mut egui::Ui, title: &str, detail: &str) {
+    let p = palette(ui.ctx());
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(title).size(15.0).strong().color(p.text_primary));
+        if !detail.is_empty() { ui.label(egui::RichText::new(detail).size(12.0).color(p.text_secondary)); }
+    });
+}
+
+pub fn divider(ui: &mut egui::Ui) {
+    let p = palette(ui.ctx());
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), egui::Sense::hover());
+    ui.painter().rect_filled(rect, 0.0, p.border_subtle);
+}
+
+pub fn empty_state(ui: &mut egui::Ui, title: &str, action: &str, icon: crate::iconset::Ico) -> egui::Response {
+    let p = palette(ui.ctx());
+    ui.vertical_centered(|ui| {
+        ui.add_space(SPACE[4]);
+        if let Some(image) = crate::iconset::image(ui.ctx(), icon, 28.0) { ui.add(image); }
+        ui.label(egui::RichText::new(title).color(p.text_secondary));
+        ui.add(secondary_button(action))
+    }).inner
 }
 
 pub fn primary(text: impl Into<egui::WidgetText>) -> egui::Button<'static> {

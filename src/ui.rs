@@ -2488,7 +2488,7 @@ impl App {
     }
     fn catalog(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
-        egui::SidePanel::right("action_catalog")
+        egui::SidePanel::left("action_catalog")
             .exact_width(296.0)
             .resizable(false)
             .frame(egui::Frame::new().fill(p.surface).inner_margin(16))
@@ -2500,29 +2500,7 @@ impl App {
                     });
                 });
                 ui.add_space(6.0);
-                egui::Frame::new()
-                    .fill(p.card)
-                    .corner_radius(8)
-                    .inner_margin(egui::Margin::symmetric(8, 5))
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            let (icon_r, _) =
-                                ui.allocate_exact_size(Vec2::splat(16.0), egui::Sense::hover());
-                            let c = icon_r.center() - Vec2::new(1.5, 1.5);
-                            ui.painter()
-                                .circle_stroke(c, 4.5, egui::Stroke::new(1.5_f32, p.muted));
-                            ui.painter().line_segment(
-                                [c + Vec2::new(3.2, 3.2), c + Vec2::new(6.5, 6.5)],
-                                egui::Stroke::new(1.5_f32, p.muted),
-                            );
-                            ui.add(
-                                egui::TextEdit::singleline(&mut self.catalog_search)
-                                    .frame(false)
-                                    .desired_width(f32::INFINITY)
-                                    .hint_text(tr("Rechercher une action…")),
-                            );
-                        });
-                    });
+                theme::search_field(ui, &mut self.catalog_search, tr("Rechercher une action…"), "");
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     for (i, label) in [tr("Actions"), tr("Magasin"), tr("Mes binds"), tr("Plugins")]
@@ -2599,15 +2577,7 @@ impl App {
                                     ))
                                 };
                                 ui.push_id(i, |ui| {
-                                    let (r, response) = ui.allocate_exact_size(
-                                        Vec2::new(ui.available_width(), 50.0),
-                                        egui::Sense::click_and_drag(),
-                                    );
-                                    ui.painter().rect_filled(
-                                        r,
-                                        12.0,
-                                        if response.hovered() { p.hover } else { p.card },
-                                    );
+                                    let (r, response) = theme::clickable_card(ui, Vec2::new(ui.available_width(), 50.0), self.animations());
                                     let badge = egui::Rect::from_center_size(
                                         r.left_center() + Vec2::new(23.0, 0.0),
                                         Vec2::splat(32.0),
