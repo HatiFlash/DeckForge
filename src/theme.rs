@@ -555,8 +555,10 @@ pub fn clickable_card(ui: &mut egui::Ui, size: Vec2, motion: bool) -> (egui::Rec
     let p = palette(ui.ctx());
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
     let t = hover_progress(ui.ctx(), &response, motion);
-    ui.painter().rect_filled(rect, RADIUS_SM, mix(p.surface_2, p.surface_3, t));
-    ui.painter().rect_stroke(rect, RADIUS_SM, Stroke::new(1.0_f32, mix(p.border_subtle, p.border_strong, t)), egui::StrokeKind::Inside);
+    ui.painter().rect_filled(rect, RADIUS_SM, mix(p.surface_1, p.surface_3, t));
+    if response.has_focus() {
+        ui.painter().rect_stroke(rect, RADIUS_SM, Stroke::new(2.0, p.accent_active), egui::StrokeKind::Inside);
+    }
     (rect, response)
 }
 

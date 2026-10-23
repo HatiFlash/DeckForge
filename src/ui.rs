@@ -1578,14 +1578,15 @@ impl App {
     }
     fn sidebar(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
-        let compact = ctx.screen_rect().width() < 1150.0;
-        let width = if compact { 100.0 } else { 200.0 };
+        let compact = ctx.screen_rect().width() < 1050.0;
+        let width = if compact { 76.0 } else { 168.0 };
         egui::SidePanel::left("navigation")
             .exact_width(width)
             .resizable(false)
             .frame(
                 egui::Frame::new()
                     .fill(p.sidebar)
+                    .stroke(egui::Stroke::new(1.0, p.border_subtle))
                     .inner_margin(egui::Margin::symmetric(if compact { 6 } else { 12 }, 12)),
             )
             .show(ctx, |ui| {
@@ -2029,19 +2030,15 @@ impl App {
         egui::TopBottomPanel::top("header")
             .frame(
                 egui::Frame::new()
-                    .fill(p.surface)
-                    .inner_margin(egui::Margin::symmetric(18, 10)),
+                    .fill(p.sidebar)
+                    .inner_margin(egui::Margin::symmetric(16, 6)),
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     let logo = theme::logo_texture(ctx);
-                    ui.add(egui::Image::new((logo.id(), Vec2::splat(34.0))));
-                    ui.vertical(|ui| {
-                        ui.spacing_mut().item_spacing.y = 0.0;
-                        ui.label(RichText::new("NovyDeck").size(18.0).strong());
-                        ui.label(RichText::new(self.device_label()).size(10.0).color(p.muted));
-                    });
-                    ui.add_space(12.0);
+                    ui.add(egui::Image::new((logo.id(), Vec2::splat(28.0))));
+                    ui.label(RichText::new("NovyDeck").size(17.0).strong().color(p.text_primary));
+                    ui.add_space(16.0);
                     if ui
                         .add_enabled(!self.history.is_empty(), iconset::secondary_button(ctx, Ico::Undo, if ctx.screen_rect().width() < 1320.0 { "" } else { tr("Annuler") }))
                         .on_hover_text(tr("Annuler — Ctrl+Z"))
@@ -2488,54 +2485,36 @@ impl App {
     }
     fn catalog(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
-        egui::SidePanel::left("action_catalog")
+        egui::SidePanel::right("action_catalog")
             .exact_width(296.0)
             .resizable(false)
-            .frame(egui::Frame::new().fill(p.surface).inner_margin(16))
+            .frame(egui::Frame::new().fill(p.surface_1).stroke(egui::Stroke::new(1.0, p.border_subtle)).inner_margin(egui::Margin::symmetric(14, 18)))
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(tr("Bibliothèque d'actions")).size(17.0).strong());
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        theme::pill(ui, tr("40 binds"), accent());
-                    });
-                });
-                ui.add_space(6.0);
+                ui.label(RichText::new(tr("Bibliothèque d'actions")).size(18.0).strong().color(p.text_primary));
+                ui.label(RichText::new(tr("Glisse un bind sur une touche, ou clique pour voir ses actions.")).size(11.0).color(p.text_secondary));
+                ui.add_space(12.0);
                 theme::search_field(ui, &mut self.catalog_search, tr("Rechercher une action…"), "");
-                ui.add_space(6.0);
+                ui.add_space(12.0);
                 ui.horizontal(|ui| {
                     for (i, label) in [tr("Actions"), tr("Magasin"), tr("Mes binds"), tr("Plugins")]
                         .iter()
                         .enumerate()
                     {
                         let (r, response) =
-                            ui.allocate_exact_size(Vec2::new(62.0, 48.0), egui::Sense::click());
+                            ui.allocate_exact_size(Vec2::new(62.0, 36.0), egui::Sense::click());
                         let selected = i == self.catalog_tab;
-                        ui.painter().rect_filled(
-                            r,
-                            10.0,
-                            if selected {
-                                p.wash
-                            } else if response.hovered() {
-                                p.hover
-                            } else {
-                                p.surface
-                            },
-                        );
-                        iconset::paint(
-                            ui.painter(),
-                            r.center_top() + Vec2::new(0.0, 15.0),
-                            20.0,
-                            [Ico::Actions, Ico::Shop, Ico::Bookmark, Ico::Plugin][i],
-                            [Family::Accent, Family::Plugin, Family::Accent, Family::Plugin][i],
-                            if selected { 1.0 } else { 0.55 },
-                            [21, 20, 15, 15][i],
-                        );
+                        if selected || response.hovered() {
+                            ui.painter().rect_filled(r, 6.0, if selected { p.accent_subtle } else { p.hover });
+                        }
+                        if selected {
+                            ui.painter().rect_filled(egui::Rect::from_min_max(egui::pos2(r.left() + 7.0, r.bottom() - 2.0), egui::pos2(r.right() - 7.0, r.bottom())), 1.0, p.accent_active);
+                        }
                         ui.painter().text(
-                            r.center_bottom() - Vec2::new(0.0, 6.0),
-                            egui::Align2::CENTER_BOTTOM,
+                            r.center(),
+                            egui::Align2::CENTER_CENTER,
                             *label,
                             egui::FontId::proportional(11.0),
-                            if selected { p.ink } else { p.muted },
+                            if selected { p.text_primary } else { p.text_secondary },
                         );
                         if response.clicked() {
                             if i == 3 && self.catalog_tab != 3 {
@@ -2727,19 +2706,17 @@ impl App {
                                             egui::Sense::click_and_drag(),
                                         );
                                         let fill = if selected == Some(i) {
-                                            p.wash
-                                        } else if response.hovered() {
+                                            p.accent_subtle
+                                        } else if response.hovered() || response.has_focus() {
                                             p.hover
                                         } else {
-                                            p.card
+                                            p.surface_1
                                         };
-                                        ui.painter().rect_filled(r, 12.0, fill);
-                                        if selected == Some(i) {
-                                            ui.painter().rect_stroke(
-                                                r,
-                                                12.0,
-                                                egui::Stroke::new(1.5_f32, accent()),
-                                                egui::StrokeKind::Inside,
+                                        ui.painter().rect_filled(r, 7.0, fill);
+                                        if selected == Some(i) || response.has_focus() {
+                                            ui.painter().rect_filled(
+                                                egui::Rect::from_min_size(r.min, Vec2::new(3.0, r.height())),
+                                                1.0, p.accent_active,
                                             );
                                         }
                                         let color = Color32::from_rgb(
@@ -2954,7 +2931,12 @@ impl App {
     fn editor(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
         let running = self.engine.running.load(Ordering::SeqCst);
-        egui::TopBottomPanel::bottom("key_inspector").default_height(if ctx.screen_rect().height()<800.0 {(ctx.screen_rect().height()*0.31).clamp(140.0,260.0)}else{260.0}).height_range(120.0..=(ctx.screen_rect().height()*if ctx.screen_rect().height()<600.0 {0.31} else {0.5}).max(140.0)).resizable(true).frame(egui::Frame::new().fill(p.surface).inner_margin(16)).show(ctx,|ui| {
+        egui::TopBottomPanel::bottom("key_inspector")
+            .default_height(if ctx.screen_rect().height() < 800.0 { 255.0 } else { 286.0 })
+            .height_range(180.0..=(ctx.screen_rect().height() * 0.52).max(180.0))
+            .resizable(true)
+            .frame(egui::Frame::new().fill(p.surface_1).stroke(egui::Stroke::new(1.0, p.border_subtle)).inner_margin(egui::Margin::symmetric(18, 12)))
+            .show(ctx, |ui| {
             let tab_id = egui::Id::new("inspector_tab");
             let mut tab = ui.ctx().data_mut(|d| *d.get_persisted_mut_or_default::<u8>(tab_id));
             let configured = { let k = &self.config.keys()[self.selected]; !k.steps.is_empty() || !k.long_steps.is_empty() || k.plugin.is_some() };
@@ -2980,10 +2962,12 @@ impl App {
                 }
             };
             let mut buttons = Vec::new();
-            let mut below = false;
             ui.horizontal(|ui| {
-                if !two_rows { ui.label(RichText::new(trf("Touche {key}", &[("key", &format!("{:02}", self.selected+1))])).size(17.0).strong()); }
-                if !narrow { theme::status_badge(ui, if configured { tr("Action configurée") } else { tr("Touche vide") }, if configured { GREEN } else { p.muted }); ui.add_space(10.0); }
+                ui.label(RichText::new(trf("Touche {key}", &[("key", &format!("{:02}", self.selected+1))])).size(18.0).strong().color(p.text_primary));
+                ui.label(RichText::new(if configured { tr("Action configurée") } else { tr("Touche vide") }).size(11.0).color(p.text_secondary));
+            });
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
                 egui::Frame::new().fill(p.bg).corner_radius(10).inner_margin(egui::Margin::same(3)).show(ui, |ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
                     for (i, ico, label) in [(0u8, Ico::Actions, tr("Action")), (1u8, Ico::Palette, tr("Apparence")), (2u8, Ico::Advanced, tr("Avancé"))] {
@@ -3001,24 +2985,16 @@ impl App {
                     ui.selectable_value(&mut self.long_editor, false, if narrow { tr("Court") } else { tr("Appui court") });
                     ui.selectable_value(&mut self.long_editor, true, if narrow { tr("Long") } else { tr("Appui long") });
                 }
-                // Pas assez de place à droite des onglets : les boutons passent sur une seconde ligne
-                // plutôt que de recouvrir « Appui court ».
-                let need: f32 = [tr("Simuler"), tr("Tester pour de vrai"), tr("Atelier de blocs"), "•••"].iter().map(|t| {
-                    let font = egui::TextStyle::Button.resolve(ui.style());
-                    ui.fonts(|f| f.layout_no_wrap((*t).to_owned(), font, Color32::WHITE).size().x)
-                        + 2.0 * ui.spacing().button_padding.x + ui.spacing().item_spacing.x
-                }).sum::<f32>() + if roomy { 22.0 } else { 0.0 };
-                below = narrow && ui.available_width() < need;
-                if !below {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| actions(self, ui, narrow, &mut buttons));
-                }
             });
-            if below {
-                ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), 30.0), egui::Layout::right_to_left(egui::Align::Center), |ui| actions(self, ui, narrow, &mut buttons));
-            }
+            ui.add_space(5.0);
+            egui::Frame::new().fill(p.surface_2).corner_radius(6).inner_margin(egui::Margin::symmetric(8, 3)).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| actions(self, ui, true, &mut buttons));
+            });
             ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("inspector_button_rects"), buttons));
             ui.ctx().data_mut(|d| d.insert_persisted(tab_id, tab));
-            ui.separator();
+            ui.add_space(4.0);
+            theme::divider(ui);
             motion::fade(ui, "inspector", (tab, self.selected, self.long_editor, self.config.page.clone()), 0.25, self.animations());
             if let Some(shortcut) = extras::discord_shortcut(&self.config.keys()[self.selected]) {
                 ui.group(|ui| {
@@ -3459,21 +3435,13 @@ impl App {
         let p = theme::palette(ctx);
         let grid = self.grid();
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(p.bg).inner_margin(18))
+            .frame(egui::Frame::new().fill(p.bg).inner_margin(egui::Margin::symmetric(22, 14)))
             .show(ctx, |ui| {
                 if self.flicker.as_ref().is_some_and(|session| session.active()) {
                     self.diagnostic_deck = Some(ui.max_rect());
                 }
-                theme::gradient(
-                    ui.painter(),
-                    ui.max_rect(),
-                    p.bg,
-                    if self.preferences.dark {
-                        Color32::from_rgb(29, 34, 49)
-                    } else {
-                        Color32::from_rgb(225, 231, 248)
-                    },
-                );
+                // Une scène calme : le châssis est la seule surface à fort relief.
+                ui.painter().rect_filled(ui.max_rect(), 0.0, p.bg);
                 let in_folder = !self.config.page.is_empty()
                     && self.config.profiles[self.config.active]
                         .pages
@@ -3497,8 +3465,9 @@ impl App {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(&self.config.profiles[self.config.active].name)
-                            .size(18.0)
-                            .strong(),
+                            .size(21.0)
+                            .strong()
+                            .color(p.text_primary),
                     );
                     if self.auto_active {
                         ui.label(
@@ -3510,9 +3479,7 @@ impl App {
                             .color(p.muted),
                         );
                     }
-                    let center_x = ui.max_rect().center().x;
-                    let pad = (center_x - 80.0 - ui.cursor().min.x).max(12.0);
-                    ui.add_space(pad);
+                    ui.add_space(16.0);
                     if in_folder {
                         if ui.button(tr("← Retour")).clicked() {
                             self.navigate(Step::Back);
@@ -3601,7 +3568,12 @@ impl App {
                     // Châssis SVG (couche 1), faces dynamiques (couche 2), aperçus LCD (couche 3).
                     // Bornée à l'écran : à la première image, la zone disponible peut être démesurée.
                     let available = ui.available_rect_before_wrap().intersect(ctx.screen_rect());
-                    let chassis = crate::deck_chassis::fit(available);
+                    ui.painter().rect_filled(available, 14.0, p.surface_1);
+                    ui.painter().line_segment(
+                        [available.left_top() + Vec2::new(20.0, 1.0), available.right_top() + Vec2::new(-20.0, 1.0)],
+                        egui::Stroke::new(1.0, p.border_subtle),
+                    );
+                    let chassis = crate::deck_chassis::fit(available.shrink2(Vec2::new(16.0, 12.0)));
                     ui.allocate_rect(egui::Rect::from_min_max(available.min, egui::pos2(available.max.x, chassis.max.y)), egui::Sense::hover());
                     let s = crate::deck_chassis::scale(chassis);
                     let width = crate::deck_chassis::FACE_SIZE.x * s;

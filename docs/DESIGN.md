@@ -1,6 +1,15 @@
 # Identité visuelle de NovyDeck
 
-Ce document décrit les règles visuelles **déjà appliquées dans le code** (`src/theme.rs`). Il sert de référence pour les nouvelles fenêtres, la documentation et la vidéo. Il ne décrit pas une refonte.
+Ce document décrit les règles visuelles appliquées dans le code (`src/theme.rs`) et le contrat de composition de l'écran principal.
+
+## Contrat de composition — écran principal
+
+- Trois plans, pas trois piles de cartes : rail de profils/pages compact à gauche, scène du D6 au centre, bibliothèque à droite. L'inspecteur occupe uniquement la largeur de la scène, sous le deck ; jamais sous la bibliothèque.
+- Bande supérieure courte : marque immédiatement lisible, commandes secondaires discrètes. La scène nomme le profil et la page ; le châssis reste le sujet principal, sur une surface graphite/ardoise claire ou sombre qui ne colore jamais les images des touches.
+- Inspecteur = feuille de propriétés : titre et état, onglets sur une ligne, actions dans une barre dédiée, aperçu à côté des propriétés. Séparer les groupes par espace et fines lignes, pas par une boîte autour de chaque ligne.
+- Bibliothèque = outil de découverte : recherche visible, catégories identifiables, lignes ouvertes à fond neutre avec sélection seule accentuée ; glisser et cliquer conservent leur sens.
+- À 1366 × 768 et à 150 %, conserver les trois régions sans chevauchement. Les contenus longs défilent dans leur propre région ; les textes de commande sont traduits et les contrôles restent atteignables au clavier. Mouvement court uniquement si les animations sont autorisées.
+
 
 ## Principes
 

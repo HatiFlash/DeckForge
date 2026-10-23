@@ -1739,11 +1739,13 @@ fn inspector_step_remove_buttons_stay_inside_center_panel_at_both_sizes() {
             h.app.config.keys_mut()[0].steps = if script_first { vec![script, media] } else { vec![media, script] };
             h.app.selected = 0;
             let output = h.warm(size);
-            // L'inspecteur est un panneau inférieur dans l'espace restant APRÈS les
-            // colonnes de navigation et bibliothèque, et s'étend jusqu'au bord droit.
+            // L'inspecteur reste entre le rail gauche et la bibliothèque de droite.
             let panel = egui::containers::panel::PanelState::load(&h.ctx, egui::Id::new("key_inspector"))
                 .expect("inspector panel").rect;
-            assert!(panel.left() > 0.0 && panel.right() <= size.x + 1.0, "inspector {panel:?} at {size:?}");
+            let library = egui::containers::panel::PanelState::load(&h.ctx, egui::Id::new("action_catalog"))
+                .expect("library panel").rect;
+            assert!(panel.left() > 0.0 && panel.right() <= library.left() + 1.0
+                && library.right() <= size.x + 1.0, "inspector {panel:?}, library {library:?} at {size:?}");
             let buttons: Vec<_> = output.shapes.iter().filter_map(|clipped| {
                 if let egui::Shape::Text(text) = &clipped.shape {
                     let glyph = Rect::from_min_size(text.pos, text.galley.size());
