@@ -3437,68 +3437,90 @@ impl App {
                         .map(|idx| idx + 2)
                         .unwrap_or(1)
                 };
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(&self.config.profiles[self.config.active].name)
-                            .size(20.0)
-                            .font(theme::strong(20.0)),
-                    );
-                    if self.auto_active {
-                        ui.label(
-                            RichText::new(format!(
-                                "Auto : {}",
-                                self.config.profiles[self.config.active].name
-                            ))
-                            .small()
-                            .color(p.muted),
-                        );
-                    }
-                    let center_x = ui.max_rect().center().x;
-                    let pad = (center_x - 80.0 - ui.cursor().min.x).max(12.0);
-                    ui.add_space(pad);
-                    if in_folder {
-                        if ui.button(tr("← Retour")).clicked() {
-                            self.navigate(Step::Back);
-                        }
-                        ui.label(RichText::new(tr("DOSSIER")).small().color(p.muted));
-                        let name = self.config.profiles[self.config.active]
-                            .pages
-                            .iter()
-                            .find(|page| page.id == self.config.page)
-                            .map(|page| page.name.as_str())
-                            .unwrap_or_default();
-                        ui.label(RichText::new(name).strong());
-                    } else {
-                        if theme::segmented(ui, false, "‹").on_hover_text(tr("Page précédente")).clicked()
-                        {
-                            self.navigate(Step::PagePrevious);
-                        }
-                        ui.label(
-                            RichText::new(trf(
-                                "Page {current} / {total}",
-                                &[("current", &current_page_num), ("total", &total_pages)]
-                            ))
-                            .size(12.0).color(p.text_secondary),
-                        );
-                        if theme::segmented(ui, false, "›").on_hover_text(tr("Page suivante")).clicked()
-                        {
-                            self.navigate(Step::PageNext);
-                        }
-                    }
-                    if !self.config.page.is_empty() {
-                        ui.menu_button(tr("Renommer"), |ui| {
-                            if let Some(page) = self.config.profiles[self.config.active]
-                                .pages
-                                .iter_mut()
-                                .find(|page| page.id == self.config.page)
-                            {
-                                if ui.text_edit_singleline(&mut page.name).changed() {
-                                    self.edited();
+                // En-tête de la scène : titre et aide à gauche, pagination groupée à droite,
+                // le tout dans la marge intérieure de la carte (rien ne déborde du cadre).
+                let show_help = ctx.screen_rect().width() >= 1200.0 && ctx.screen_rect().height() >= 700.0;
+                egui::Frame::new()
+                    .inner_margin(egui::Margin { left: 18, right: 14, top: 10, bottom: 0 })
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.set_min_height(32.0);
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if in_folder {
+                                    let name = self.config.profiles[self.config.active]
+                                        .pages
+                                        .iter()
+                                        .find(|page| page.id == self.config.page)
+                                        .map(|page| page.name.clone())
+                                        .unwrap_or_default();
+                                    ui.label(RichText::new(name).font(theme::strong(13.0)));
+                                    ui.label(RichText::new(tr("DOSSIER")).size(11.0).color(p.muted));
+                                    if ui.add(theme::ghost_button(tr("← Retour"))).clicked() {
+                                        self.navigate(Step::Back);
+                                    }
+                                } else {
+                                    let several = total_pages > 1;
+                                    egui::Frame::new()
+                                        .fill(p.sunken)
+                                        .stroke(egui::Stroke::new(1.0, p.hairline))
+                                        .corner_radius(9)
+                                        .inner_margin(egui::Margin::same(3))
+                                        .show(ui, |ui| {
+                                            ui.spacing_mut().item_spacing.x = 2.0;
+                                            if theme::chevron_button(ui, false, several)
+                                                .on_hover_text(tr("Page suivante"))
+                                                .clicked()
+                                            {
+                                                self.navigate(Step::PageNext);
+                                            }
+                                            ui.add(egui::Label::new(
+                                                RichText::new(trf(
+                                                    "Page {current} / {total}",
+                                                    &[("current", &current_page_num), ("total", &total_pages)],
+                                                ))
+                                                .size(12.0)
+                                                .color(p.text_secondary),
+                                            ).selectable(false));
+                                            if theme::chevron_button(ui, true, several)
+                                                .on_hover_text(tr("Page précédente"))
+                                                .clicked()
+                                            {
+                                                self.navigate(Step::PagePrevious);
+                                            }
+                                        });
                                 }
-                            }
+                                if !self.config.page.is_empty() {
+                                    ui.menu_button(tr("Renommer"), |ui| {
+                                        if let Some(page) = self.config.profiles[self.config.active]
+                                            .pages
+                                            .iter_mut()
+                                            .find(|page| page.id == self.config.page)
+                                        {
+                                            if ui.text_edit_singleline(&mut page.name).changed() {
+                                                self.edited();
+                                            }
+                                        }
+                                    });
+                                }
+                                // Titre : prend la place restante, tronqué avec infobulle si besoin.
+                                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                    let name = self.config.profiles[self.config.active].name.clone();
+                                    ui.add(egui::Label::new(RichText::new(&name).font(theme::strong(20.0))).truncate())
+                                        .on_hover_text(&name);
+                                    if self.auto_active {
+                                        ui.label(RichText::new(format!("Auto : {name}")).small().color(p.muted));
+                                    }
+                                });
+                            });
                         });
-                    }
-                });
+                        if show_help {
+                            ui.add(egui::Label::new(
+                                RichText::new(tr("Glisse un bind sur une touche, puis personnalise ses actions dans l’inspecteur."))
+                                    .size(12.0)
+                                    .color(p.muted),
+                            ).truncate());
+                        }
+                    });
                 // Changement de page, de dossier ou de profil : les touches apparaissent en fondu.
                 motion::fade(ui, "deck_page", (self.config.active, self.config.page.clone()), 0.2, self.animations());
                 if !self.config.trail.is_empty() {
@@ -3523,16 +3545,7 @@ impl App {
                 if grid.keys < self.config.keys().len() {
                     ui.label(RichText::new(trf("{keys} touches supplémentaires conservées, masquées sur ce périphérique", &[("keys", &(self.config.keys().len() - grid.keys))])).small().color(p.muted));
                 }
-                ui.add_space(if ctx.screen_rect().height() < 700.0 { 2.0 } else { 7.0 });
-                if ctx.screen_rect().width() >= 1200.0 && ctx.screen_rect().height() >= 700.0 {
-                    ui.label(
-                        RichText::new(
-                            tr("Glisse un bind sur une touche, puis personnalise ses actions dans l’inspecteur."),
-                        )
-                        .small()
-                        .color(p.muted),
-                    );
-                }
+                ui.add_space(if ctx.screen_rect().height() < 700.0 { 2.0 } else { 4.0 });
                 if crate::deck_chassis::applies(grid.cols, grid.rows) {
                     // Châssis SVG (couche 1), faces dynamiques (couche 2), aperçus LCD (couche 3).
                     // Bornée à l'écran : à la première image, la zone disponible peut être démesurée.

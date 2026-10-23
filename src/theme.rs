@@ -546,6 +546,28 @@ pub fn segmented(ui: &mut egui::Ui, selected: bool, text: impl Into<egui::Widget
         .stroke(Stroke::NONE).corner_radius(7))
 }
 
+/// Bouton flèche de pagination : chevron dessiné (net à toutes les échelles), fond au survol.
+pub fn chevron_button(ui: &mut egui::Ui, left: bool, enabled: bool) -> egui::Response {
+    let p = palette(ui.ctx());
+    let sense = if enabled { egui::Sense::click() } else { egui::Sense::hover() };
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(26.0), sense);
+    let hover = ui.ctx().animate_bool_with_time(response.id, enabled && response.hovered(), ui.style().animation_time.min(0.1));
+    if hover > 0.0 {
+        ui.painter().rect_filled(rect, 7.0, p.raised.gamma_multiply(hover));
+    }
+    let color = if !enabled { p.muted.gamma_multiply(0.45) } else if response.hovered() { p.ink } else { p.text_secondary };
+    let c = rect.center();
+    let (dx, dy) = (3.0, 5.0);
+    let (tip, back) = if left { (c.x - dx, c.x + dx) } else { (c.x + dx, c.x - dx) };
+    ui.painter().add(egui::Shape::line(
+        vec![egui::pos2(back, c.y - dy), egui::pos2(tip, c.y), egui::pos2(back, c.y + dy)],
+        Stroke::new(1.6_f32, color),
+    ));
+    let label = if left { crate::i18n::tr("Page précédente") } else { crate::i18n::tr("Page suivante") };
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label));
+    response
+}
+
 pub fn underline_tabs(ui: &mut egui::Ui, selected: bool, text: impl Into<egui::WidgetText>) -> egui::Response {
     let p = palette(ui.ctx());
     let response = ui.add(ghost_button(text).fill(Color32::TRANSPARENT));
