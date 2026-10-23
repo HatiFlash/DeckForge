@@ -137,7 +137,8 @@ impl App {
          ui.label(RichText::new(&entry.name).size(26.0).strong());
          ui.label(RichText::new(&entry.author).color(p.text_secondary));
          theme::pill(ui,category_name(entry.category.as_deref().unwrap_or("")),p.accent);
-         ui.horizontal_wrapped(|ui|badge_pills(ui,community_plugins::badges(&entry,&state.scans)));
+         let header_badges=community_plugins::badges(&entry,&state.scans);
+         if header_badges.official||header_badges.scanned||header_badges.tested||header_badges.warning{ui.horizontal_wrapped(|ui|badge_pills(ui,header_badges));}
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{
          if ui.add_enabled_ui(entry.compatible && !installed && state.installing.is_none(),|ui|ui.add_sized([120.0,44.0],theme::primary(if installed{tr("Installé")}else{tr("Installer")}))).inner.clicked(){state.confirmation=Some(entry.clone());}
