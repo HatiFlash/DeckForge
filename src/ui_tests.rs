@@ -1084,6 +1084,26 @@ fn demo_profile_is_added_beside_user_profiles_and_resets_by_name() {
 
 /// Captures du README : vraie interface rendue hors écran à 2560 px de large (1600 × 1000 points à 160 %).
 #[test]
+fn readme_captures_redesign_in_both_themes_and_languages() {
+    let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").map(PathBuf::from) else { return };
+    std::fs::create_dir_all(&dir).unwrap();
+    let size = vec2(1600.0, 1000.0);
+    for lang in ["fr", "en"] {
+        for dark in [true, false] {
+            crate::i18n::set_language(lang);
+            let mut h = demo_harness();
+            crate::i18n::set_language(lang);
+            theme::apply(&h.ctx, dark);
+            h.app.selected = 8;
+            h.ctx.set_pixels_per_point(1.6);
+            let out = settle(&mut h, size);
+            let suffix = if lang == "fr" { "-fr" } else { "" };
+            h.png(size, out, &dir.join(format!("redesign-{}{suffix}.png", if dark { "dark" } else { "light" })));
+        }
+    }
+    crate::i18n::set_language("fr");
+}
+#[test]
 fn readme_captures_from_the_demo_profile() {
     let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT").or_else(|| std::env::var_os("DECKFORGE_UI_OUTPUT")) else { return };
     let dir = PathBuf::from(dir);

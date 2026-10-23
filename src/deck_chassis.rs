@@ -154,15 +154,18 @@ pub fn paint_face(painter: &egui::Painter, face: Rect, scale: f32, selected: boo
         painter.rect_filled(face.expand(2.0), radius + 2.0, glow.gamma_multiply(0.14));
     }
     let fade = painter.ctx().animate_bool_with_time(egui::Id::new(("deck_face_hover", face.min.x.to_bits(), face.min.y.to_bits())), hovering, painter.ctx().style().animation_time.min(0.1));
+    // Les faces sont posées sur le châssis graphite dans les deux thèmes : teintes fixes,
+    // sinon la surface claire du thème clair dessine un liseré blanc autour des touches.
+    let (rest, lit) = (Color32::from_rgb(36, 40, 47), Color32::from_rgb(48, 53, 62));
     let top = if flashing { Color32::from_rgb(22, 68, 62) } else {
         let blend = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * fade).round() as u8;
-        Color32::from_rgb(blend(p.raised.r(), p.hover.r()), blend(p.raised.g(), p.hover.g()), blend(p.raised.b(), p.hover.b()))
+        Color32::from_rgb(blend(rest.r(), lit.r()), blend(rest.g(), lit.g()), blend(rest.b(), lit.b()))
     };
-    let bottom = if flashing { Color32::from_rgb(15, 46, 44) } else { p.sunken };
+    let bottom = if flashing { Color32::from_rgb(15, 46, 44) } else { Color32::from_rgb(24, 27, 32) };
     crate::theme::rounded_gradient(painter, face, radius, top, bottom);
-    let stroke = if flashing { crate::theme::GREEN } else if selected { p.accent_ring } else { p.hairline };
+    let stroke = if flashing { crate::theme::GREEN } else if selected { p.accent_ring } else { Color32::from_white_alpha(16) };
     painter.rect_stroke(face, radius, Stroke::new(if selected || flashing { 2.0 } else { 1.0 }, stroke), egui::StrokeKind::Inside);
-    if painter.ctx().style().visuals.dark_mode {
+    {
         painter.line_segment([
             face.left_top() + Vec2::new(20.0, 2.0) * scale,
             face.right_top() + Vec2::new(-20.0, 2.0) * scale,
