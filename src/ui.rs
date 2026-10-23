@@ -2925,7 +2925,8 @@ impl App {
             let tab_id = egui::Id::new("inspector_tab");
             let mut tab = ui.ctx().data_mut(|d| *d.get_persisted_mut_or_default::<u8>(tab_id));
             let configured = { let k = &self.config.keys()[self.selected]; !k.steps.is_empty() || !k.long_steps.is_empty() || k.plugin.is_some() };
-            let two_rows = ui.available_width() < 900.0;
+            let actions_width = 420.0;
+            let two_rows = ui.available_width() < actions_width + 295.0;
             let actions = |app: &mut Self, ui: &mut egui::Ui, buttons: &mut Vec<egui::Rect>| {
                 let response = ui.add_enabled(!running, theme::primary(tr("Simuler"))).on_hover_text(tr("Déroule les actions dans le journal, sans aucun effet sur le PC")); buttons.push(response.rect); if response.clicked() { app.preview(true); }
                 let response = ui.add_enabled(!running, theme::ghost_button(tr("Tester pour de vrai"))).on_hover_text(tr("Exécute réellement les actions dans 3 s, sur la fenêtre active")); buttons.push(response.rect); if response.clicked() { app.preview(false); }
@@ -2940,32 +2941,38 @@ impl App {
             let header_face = self.plugin_face(self.selected).cloned();
             let header_texture = self.key_previews.texture(ctx, self.selected, &header_preview, self.config.image_size, header_face.as_ref());
             ui.horizontal(|ui| {
-                let (mini, _) = ui.allocate_exact_size(Vec2::splat(32.0), egui::Sense::hover());
+                let (mini, _) = ui.allocate_exact_size(Vec2::splat(28.0), egui::Sense::hover());
                 ui.painter().rect_filled(mini, 6.0, p.raised);
                 if let Ok(texture) = &header_texture { theme::rounded_image(ui.painter(), texture.id(), mini.shrink(3.0), 4.0); }
                 ui.label(RichText::new(trf("Touche {key}", &[("key", &format!("{:02}", self.selected+1))])).font(theme::strong(15.0)));
                 theme::status_badge(ui, if configured { tr("Action configurée") } else { tr("Touche vide") }, if configured { GREEN } else { p.text_tertiary });
                 if !two_rows {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| actions(self, ui, &mut buttons));
+                    ui.allocate_ui_with_layout(Vec2::new(actions_width, 28.0), egui::Layout::right_to_left(egui::Align::Center), |ui| actions(self, ui, &mut buttons));
                 }
             });
             if two_rows { ui.horizontal(|ui| actions(self, ui, &mut buttons)); }
-            ui.add_space(4.0);
+            ui.add_space(2.0);
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 16.0;
+                ui.spacing_mut().item_spacing.x = 4.0;
                 for (i, ico, label) in [(0u8, Ico::Actions, tr("Action")), (1u8, Ico::Palette, tr("Apparence")), (2u8, Ico::Advanced, tr("Avancé"))] {
-                    if let Some(image) = iconset::image(ui.ctx(), ico, 14.0) { ui.add(image); }
-                    if theme::underline_tabs(ui, tab == i, label).on_hover_text(label).clicked() { tab = i; }
+                    let button = match iconset::image(ui.ctx(), ico, 14.0) {
+                        Some(image) => egui::Button::image_and_text(image, label),
+                        None => egui::Button::new(label),
+                    }.fill(Color32::TRANSPARENT).stroke(egui::Stroke::NONE);
+                    let response = ui.add(button);
+                    if tab == i { ui.painter().line_segment([response.rect.left_bottom(), response.rect.right_bottom()], egui::Stroke::new(2.0, p.accent)); }
+                    if response.on_hover_text(label).clicked() { tab = i; }
+                }
+                if tab == 0 {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let long = theme::segmented(ui, self.long_editor, tr("Appui long"));
+                        if long.clicked() { self.long_editor = true; }
+                        let short = theme::segmented(ui, !self.long_editor, tr("Appui court"));
+                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("inspector_press_toggle"), short.rect));
+                        if short.clicked() { self.long_editor = false; }
+                    });
                 }
             });
-            if tab == 0 {
-                ui.horizontal(|ui| {
-                    let short = theme::segmented(ui, !self.long_editor, tr("Appui court"));
-                    ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("inspector_press_toggle"), short.rect));
-                    if short.clicked() { self.long_editor = false; }
-                    if theme::segmented(ui, self.long_editor, tr("Appui long")).clicked() { self.long_editor = true; }
-                });
-            }
             ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("inspector_button_rects"), buttons));
             ui.ctx().data_mut(|d| d.insert_persisted(tab_id, tab));
             ui.separator();
