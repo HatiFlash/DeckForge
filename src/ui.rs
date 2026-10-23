@@ -3070,7 +3070,7 @@ impl App {
             if let Some(binding)=key.plugin.clone(){
                 // Boutons d'abord, à droite : l'identifiant long du plugin est tronqué à gauche.
                 let status=self.plugin_errors.get(&binding.plugin).cloned();
-                let (plugin_name, action_name) = ui_extras::plugin_names(&binding.plugin, &binding.action, "", self.plugins.as_ref().map(|m| m.catalog.as_slice()).unwrap_or(&[]));
+                let (plugin_name, action_name) = extras::plugin_names(&binding.plugin, &binding.action, "", self.plugins.as_ref().map(|m| m.catalog.as_slice()).unwrap_or(&[]));
                 let row=ui.spacing().interact_size.y;
                 ui.allocate_ui_with_layout(egui::vec2(ui.available_width(),row),egui::Layout::right_to_left(egui::Align::Center),|ui|{
                     if ui.button(tr("Retirer le plugin")).clicked(){key.plugin=None;changed=true;}
