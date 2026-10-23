@@ -129,32 +129,45 @@ pub fn paint(painter: &egui::Painter, chassis: Rect) -> bool {
         }
     };
     painter.image(texture.id(), chassis, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
+    // Neutral case above the cached geometry: same SVG coordinate system, no blue rim.
+    let p = crate::theme::palette(ctx);
+    let s = scale(chassis);
+    let outer = Rect::from_min_max(svg_point(chassis, egui::pos2(31.0, 20.0)), svg_point(chassis, egui::pos2(1369.0, 818.0)));
+    for (spread, opacity) in [(12.0, 9), (7.0, 13), (3.0, 17)] {
+        painter.rect_filled(outer.translate(Vec2::new(0.0, 8.0 * s)).expand(spread * s), 80.0 * s, Color32::from_black_alpha(opacity));
+    }
+    let shell_top = if ctx.style().visuals.dark_mode { Color32::from_rgb(43, 48, 56) } else { Color32::from_rgb(57, 61, 67) };
+    crate::theme::rounded_gradient(painter, outer, 80.0 * s, shell_top, Color32::from_rgb(22, 25, 30));
+    painter.rect_stroke(outer, 80.0 * s, Stroke::new((1.0 * s).max(0.8), p.border_strong), egui::StrokeKind::Inside);
+    let inset = Rect::from_min_max(svg_point(chassis, egui::pos2(65.0, 54.0)), svg_point(chassis, egui::pos2(1335.0, 784.0)));
+    painter.rect_filled(inset, 63.0 * s, Color32::from_rgb(18, 21, 26));
+    painter.line_segment([svg_point(chassis, egui::pos2(108.0, 60.0)), svg_point(chassis, egui::pos2(1290.0, 60.0))], Stroke::new((1.0 * s).max(0.5), Color32::from_white_alpha(32)));
     true
 }
 
 /// Face 3D dynamique : ombre intérieure dans le dégradé, un unique contour et un reflet discret.
-pub fn paint_face(painter: &egui::Painter, face: Rect, scale: f32, selected: bool, flashing: bool) {
-    let radius = FACE_RADIUS * scale;
-    // Le sommet sombre suggère l'enfoncement ; la base plus claire garde le relief lisible.
-    let (top, bottom) = if flashing {
-        (Color32::from_rgb(19, 47, 48), Color32::from_rgb(34, 63, 59))
-    } else {
-        (Color32::from_rgb(24, 34, 50), Color32::from_rgb(39, 52, 72))
+pub fn paint_face(painter: &egui::Painter, face: Rect, scale: f32, selected: bool, hovering: bool, flashing: bool) {
+    let p = crate::theme::palette(painter.ctx());
+    let radius = 10.0;
+    let glow = if flashing { crate::theme::GREEN } else { p.accent_ring };
+    if selected || flashing {
+        painter.rect_filled(face.expand(2.0), radius + 2.0, glow.gamma_multiply(0.14));
+    }
+    let fade = painter.ctx().animate_bool_with_time(egui::Id::new(("deck_face_hover", face.min.x.to_bits(), face.min.y.to_bits())), hovering, painter.ctx().style().animation_time.min(0.1));
+    let top = if flashing { Color32::from_rgb(22, 68, 62) } else {
+        let blend = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * fade).round() as u8;
+        Color32::from_rgb(blend(p.raised.r(), p.hover.r()), blend(p.raised.g(), p.hover.g()), blend(p.raised.b(), p.hover.b()))
     };
+    let bottom = if flashing { Color32::from_rgb(15, 46, 44) } else { p.sunken };
     crate::theme::rounded_gradient(painter, face, radius, top, bottom);
-    let (stroke, color) = if flashing {
-        (2.2, crate::theme::GREEN)
-    } else if selected {
-        (2.2, crate::theme::CYAN)
-    } else {
-        (1.15, Color32::from_rgba_unmultiplied(126, 157, 196, 125))
-    };
-    painter.rect_stroke(face, radius, Stroke::new((stroke * scale).max(0.9), color), egui::StrokeKind::Inside);
-    // Un reflet local (pas un second rectangle qui doublerait les bordures).
+    if selected || flashing || hovering {
+        let stroke = if flashing { crate::theme::GREEN } else if selected { p.accent_ring } else { p.hairline };
+        painter.rect_stroke(face, radius, Stroke::new(if selected || flashing { 2.0 } else { 1.0 }, stroke), egui::StrokeKind::Inside);
+    }
     painter.line_segment([
-        face.left_top() + Vec2::new(24.0, 3.0) * scale,
-        face.right_top() + Vec2::new(-24.0, 3.0) * scale,
-    ], Stroke::new((1.0 * scale).max(0.5), Color32::from_rgba_unmultiplied(202, 221, 244, 68)));
+        face.left_top() + Vec2::new(20.0, 2.0) * scale,
+        face.right_top() + Vec2::new(-20.0, 2.0) * scale,
+    ], Stroke::new(1.0, Color32::from_white_alpha(25)));
 }
 
 #[cfg(test)]

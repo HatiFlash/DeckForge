@@ -295,9 +295,9 @@ pub fn secondary_button(ctx: &egui::Context, ico: Ico, text: impl Into<egui::Wid
         Some(image) => egui::Button::image_and_text(image, text),
         None => egui::Button::new(text),
     }
-    .fill(p.card)
-    .stroke(egui::Stroke::new(1.0_f32, p.border))
-    .corner_radius(8)
+    .fill(p.raised)
+    .stroke(egui::Stroke::NONE)
+    .corner_radius(6)
 }
 
 /// Bouton ordinaire avec icône.

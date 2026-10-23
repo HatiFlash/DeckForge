@@ -1586,7 +1586,7 @@ impl App {
             .frame(
                 egui::Frame::new()
                     .fill(p.surface)
-                    .stroke(egui::Stroke::new(1.0, p.hairline))
+                    .stroke(egui::Stroke::NONE)
                     .inner_margin(egui::Margin::symmetric(if compact { 6 } else { 12 }, 12)),
             )
             .show(ctx, |ui| {
@@ -2925,63 +2925,46 @@ impl App {
             let tab_id = egui::Id::new("inspector_tab");
             let mut tab = ui.ctx().data_mut(|d| *d.get_persisted_mut_or_default::<u8>(tab_id));
             let configured = { let k = &self.config.keys()[self.selected]; !k.steps.is_empty() || !k.long_steps.is_empty() || k.plugin.is_some() };
-            let narrow = ui.available_width() < 1180.0;
             let two_rows = ui.available_width() < 900.0;
-            // Icônes des onglets et de l'Atelier seulement s'il reste la place (sinon les boutons se chevauchent).
-            let roomy = ui.available_width() >= 820.0;
-            let actions = |app: &mut Self, ui: &mut egui::Ui, narrow: bool, buttons: &mut Vec<egui::Rect>| {
-                if narrow {
-                    let response = ui.add_enabled(!running, theme::primary(tr("Simuler"))).on_hover_text(tr("Déroule les actions dans le journal, sans aucun effet sur le PC")); buttons.push(response.rect); if response.clicked() { app.preview(true); }
-                    let response = ui.add_enabled(!running, egui::Button::new(tr("Tester pour de vrai"))).on_hover_text(tr("Exécute réellement les actions dans 3 s, sur la fenêtre active")); buttons.push(response.rect); if response.clicked() { app.preview(false); }
-                    let response = if roomy { ui.add(iconset::button(ui.ctx(), Ico::Workshop, tr("Atelier de blocs"))) } else { ui.button(tr("Atelier de blocs")) }; buttons.push(response.rect); if response.clicked() { app.show_workflow = true; }
-                    ui.menu_button("•••", |ui| {
-                        if ui.button(tr("Enregistrer dans Mes binds")).clicked() { app.bind_name=app.config.keys()[app.selected].label.clone();app.save_bind=true;ui.close_menu(); }
-                        if ui.add_enabled(!app.config.keys()[app.selected].steps.is_empty(), theme::danger_button(tr("Vider"))).clicked() { app.assign(DragItem::Bind(Key::default()),app.selected);ui.close_menu(); }
-                    });
-                } else {
-                    if ui.add(theme::primary(RichText::new(tr("Atelier de blocs")).color(Color32::WHITE))).on_hover_text(tr("Composer l'automatisation avec des blocs visuels")).clicked(){app.show_workflow=true;}
-                    if ui.button(tr("Enregistrer dans Mes binds")).clicked(){app.bind_name=app.config.keys()[app.selected].label.clone();app.save_bind=true;}
-                    if ui.add_enabled(!app.config.keys()[app.selected].steps.is_empty(),theme::danger_button(tr("Vider"))).clicked(){app.assign(DragItem::Bind(Key::default()),app.selected);}
-                    if ui.add_enabled(!running,egui::Button::new(tr("Tester pour de vrai (3 s)"))).on_hover_text(tr("Exécute réellement les actions dans 3 s, sur la fenêtre active")).clicked(){app.preview(false);}
-                    if ui.add_enabled(!running,theme::primary(tr("Simuler"))).on_hover_text(tr("Déroule les actions dans le journal, sans aucun effet sur le PC")).clicked(){app.preview(true);}
-                }
+            let actions = |app: &mut Self, ui: &mut egui::Ui, buttons: &mut Vec<egui::Rect>| {
+                let response = ui.add_enabled(!running, theme::primary(tr("Simuler"))).on_hover_text(tr("Déroule les actions dans le journal, sans aucun effet sur le PC")); buttons.push(response.rect); if response.clicked() { app.preview(true); }
+                let response = ui.add_enabled(!running, theme::ghost_button(tr("Tester pour de vrai"))).on_hover_text(tr("Exécute réellement les actions dans 3 s, sur la fenêtre active")); buttons.push(response.rect); if response.clicked() { app.preview(false); }
+                let response = ui.add(theme::ghost_button(tr("Atelier de blocs"))); buttons.push(response.rect); if response.clicked() { app.show_workflow = true; }
+                ui.menu_button("•••", |ui| {
+                    if ui.button(tr("Enregistrer dans Mes binds")).clicked() { app.bind_name=app.config.keys()[app.selected].label.clone();app.save_bind=true;ui.close_menu(); }
+                    if ui.add_enabled(!app.config.keys()[app.selected].steps.is_empty(), theme::danger_button(tr("Vider"))).clicked() { app.assign(DragItem::Bind(Key::default()),app.selected);ui.close_menu(); }
+                });
             };
             let mut buttons = Vec::new();
-            let mut below = false;
+            let header_preview = self.presented_key(self.selected);
+            let header_face = self.plugin_face(self.selected).cloned();
+            let header_texture = self.key_previews.texture(ctx, self.selected, &header_preview, self.config.image_size, header_face.as_ref());
             ui.horizontal(|ui| {
-                if !two_rows { ui.label(RichText::new(trf("Touche {key}", &[("key", &format!("{:02}", self.selected+1))])).size(17.0).strong()); }
-                if !narrow { theme::status_badge(ui, if configured { tr("Action configurée") } else { tr("Touche vide") }, if configured { GREEN } else { p.muted }); ui.add_space(10.0); }
-                egui::Frame::new().fill(p.bg).corner_radius(10).inner_margin(egui::Margin::same(3)).show(ui, |ui| {
-                    ui.spacing_mut().item_spacing.x = 2.0;
-                    for (i, ico, label) in [(0u8, Ico::Actions, tr("Action")), (1u8, Ico::Palette, tr("Apparence")), (2u8, Ico::Advanced, tr("Avancé"))] {
-                        let response = if roomy { iconset::tab(ui, tab == i, ico, label) } else { iconset::plain_tab(ui, tab == i, label) };
-                        if response.on_hover_text(label).clicked() { tab = i; }
-                    }
-                });
-                if tab == 0 && two_rows {
-                    let text = if self.long_editor { tr("Appui long") } else { tr("Appui court") };
-                    let toggle = ui.button(text).on_hover_text(tr("Basculer entre appui court et appui long"));
-                    ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("inspector_press_toggle"), toggle.rect));
-                    if toggle.clicked() { self.long_editor = !self.long_editor; }
-                } else if tab == 0 {
-                    ui.add_space(6.0);
-                    ui.selectable_value(&mut self.long_editor, false, if narrow { tr("Court") } else { tr("Appui court") });
-                    ui.selectable_value(&mut self.long_editor, true, if narrow { tr("Long") } else { tr("Appui long") });
-                }
-                // Pas assez de place à droite des onglets : les boutons passent sur une seconde ligne
-                // plutôt que de recouvrir « Appui court ».
-                let need: f32 = [tr("Simuler"), tr("Tester pour de vrai"), tr("Atelier de blocs"), "•••"].iter().map(|t| {
-                    let font = egui::TextStyle::Button.resolve(ui.style());
-                    ui.fonts(|f| f.layout_no_wrap((*t).to_owned(), font, Color32::WHITE).size().x)
-                        + 2.0 * ui.spacing().button_padding.x + ui.spacing().item_spacing.x
-                }).sum::<f32>() + if roomy { 22.0 } else { 0.0 };
-                below = narrow && ui.available_width() < need;
-                if !below {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui| actions(self, ui, narrow, &mut buttons));
+                let (mini, _) = ui.allocate_exact_size(Vec2::splat(32.0), egui::Sense::hover());
+                ui.painter().rect_filled(mini, 6.0, p.raised);
+                if let Ok(texture) = &header_texture { theme::rounded_image(ui.painter(), texture.id(), mini.shrink(3.0), 4.0); }
+                ui.label(RichText::new(trf("Touche {key}", &[("key", &format!("{:02}", self.selected+1))])).font(theme::strong(15.0)));
+                theme::status_badge(ui, if configured { tr("Action configurée") } else { tr("Touche vide") }, if configured { GREEN } else { p.text_tertiary });
+                if !two_rows {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| actions(self, ui, &mut buttons));
                 }
             });
-            if below {
-                ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), 30.0), egui::Layout::right_to_left(egui::Align::Center), |ui| actions(self, ui, narrow, &mut buttons));
+            if two_rows { ui.horizontal(|ui| actions(self, ui, &mut buttons)); }
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 16.0;
+                for (i, ico, label) in [(0u8, Ico::Actions, tr("Action")), (1u8, Ico::Palette, tr("Apparence")), (2u8, Ico::Advanced, tr("Avancé"))] {
+                    if let Some(image) = iconset::image(ui.ctx(), ico, 14.0) { ui.add(image); }
+                    if theme::underline_tabs(ui, tab == i, label).on_hover_text(label).clicked() { tab = i; }
+                }
+            });
+            if tab == 0 {
+                ui.horizontal(|ui| {
+                    let short = theme::segmented(ui, !self.long_editor, tr("Appui court"));
+                    ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("inspector_press_toggle"), short.rect));
+                    if short.clicked() { self.long_editor = false; }
+                    if theme::segmented(ui, self.long_editor, tr("Appui long")).clicked() { self.long_editor = true; }
+                });
             }
             ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("inspector_button_rects"), buttons));
             ui.ctx().data_mut(|d| d.insert_persisted(tab_id, tab));
@@ -3047,7 +3030,7 @@ impl App {
                     }
                     if roomy {
                         ui.label(RichText::new(&key.label).strong());
-                        if ui.button(tr("Changer l'icône")).clicked() { open_icons = true; }
+                        if ui.add(theme::ghost_button(tr("Changer l'icône"))).clicked() { open_icons = true; }
                         if can_recrop
                             && ui.button(tr("Recadrer")).on_hover_text(tr("Ajuster le cadrage de l'image avec aperçu avant validation")).clicked() { recrop = true; }
                     }
@@ -3209,19 +3192,19 @@ impl App {
                     });
                     let mut remove=None;let mut movement=None;
                     egui::ScrollArea::vertical().id_salt("step_list").auto_shrink([false, false]).max_height((body_height-40.0).max(100.0)).show(ui,|ui| {
-                        if steps.is_empty(){ui.add_space(12.0);ui.label(RichText::new(tr("Glisse une action ou un bind sur cette touche.")).strong());ui.label(RichText::new(tr("La bibliothèque à droite propose des raccourcis prêts à l’emploi. Tu peux ensuite combiner et modifier leurs actions ici.")).color(p.muted));}
-                        if steps.is_empty(){ui.horizontal(|ui| {if ui.add(iconset::button(ui.ctx(), Ico::Workshop, tr("Ouvrir l’Atelier de blocs"))).clicked(){open_workflow=true;}if ui.add(iconset::button(ui.ctx(), Ico::Template, tr("Partir d’un modèle"))).clicked(){open_model=true;}});}
+                        if steps.is_empty(){ui.add_space(8.0);if let Some(image)=iconset::image(ui.ctx(), Ico::Actions, 20.0){ui.add(image);}ui.label(RichText::new(tr("Glisse une action ou un bind sur cette touche.")).font(theme::strong(15.0)));ui.label(RichText::new(tr("La bibliothèque à droite propose des raccourcis prêts à l’emploi. Tu peux ensuite combiner et modifier leurs actions ici.")).color(p.text_tertiary));}
+                        if steps.is_empty(){ui.horizontal(|ui| {if ui.add(theme::ghost_button(tr("Ouvrir l’Atelier de blocs"))).clicked(){open_workflow=true;}if ui.add(theme::ghost_button(tr("Partir d’un modèle"))).clicked(){open_model=true;}});}
                         let count=steps.len();
                         for(i,step) in steps.iter_mut().enumerate(){ui.push_id(i,|ui|{
-                            egui::Frame::new().fill(p.bg).corner_radius(6).inner_margin(10).show(ui,|ui| {
+                            egui::Frame::new().fill(p.raised).corner_radius(10).inner_margin(10).show(ui,|ui| {
                                 ui.set_max_width(ui.available_width());
                                 ui.horizontal(|ui|{
-                                    ui.label(RichText::new(format!("{:02}",i+1)).color(accent()).size(11.0));
-                                    ui.label(RichText::new(step.name()).strong().size(12.0));
+                                    egui::Frame::new().fill(p.accent_soft).corner_radius(20).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| { ui.label(RichText::new(format!("{:02}",i+1)).color(p.accent).size(11.0)); });
+                                    ui.label(RichText::new(step.name()).font(theme::strong(12.0)));
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{
-                                        if ui.small_button("×").on_hover_text(tr("Supprimer cette étape")).clicked(){remove=Some(i);}
-                                        if ui.add_enabled(i+1<count,egui::Button::new("↓").small()).clicked(){movement=Some((i,i+1));}
-                                        if ui.add_enabled(i>0,egui::Button::new("↑").small()).clicked(){movement=Some((i,i-1));}
+                                        if ui.add(theme::ghost_button("×").small()).on_hover_text(tr("Supprimer cette étape")).clicked(){remove=Some(i);}
+                                        if ui.add_enabled(i+1<count,theme::ghost_button("↓").small()).clicked(){movement=Some((i,i+1));}
+                                        if ui.add_enabled(i>0,theme::ghost_button("↑").small()).clicked(){movement=Some((i,i-1));}
                                     });
                                 });
                                 if matches!(step,Step::AutoHotkey{..}) {ui.label(RichText::new(tr("Pas besoin d’écrire du code : compose tes actions dans l’Atelier de blocs")).small().color(p.muted));if ui.button(tr("Ouvrir l’Atelier de blocs")).clicked(){open_workflow=true;}}
@@ -3281,13 +3264,10 @@ impl App {
                                             let flashing = self.last_key.is_some_and(|(idx, t)| {
                                                 idx == i && t.elapsed() < Duration::from_millis(350)
                                             });
-                                            let hovering = self.drag.moving()
-                                                && self
-                                                    .drag
-                                                    .position
-                                                    .is_some_and(|pos| r.contains(pos));
+                                            let hovering = response.hovered() || (self.drag.moving()
+                                                && self.drag.position.is_some_and(|pos| r.contains(pos)));
                                             match chassis {
-                                                Some(s) => crate::deck_chassis::paint_face(ui.painter(), r, s, selected || hovering, flashing),
+                                                Some(s) => crate::deck_chassis::paint_face(ui.painter(), r, s, selected, hovering, flashing),
                                                 None => theme::key_face(ui.painter(), r, selected || hovering, flashing),
                                             }
                                             let lcd = chassis.map_or(r.shrink(5.0), |s| crate::deck_chassis::lcd(r, s));
@@ -3431,16 +3411,9 @@ impl App {
                 if self.flicker.as_ref().is_some_and(|session| session.active()) {
                     self.diagnostic_deck = Some(ui.max_rect());
                 }
-                theme::gradient(
-                    ui.painter(),
-                    ui.max_rect(),
-                    p.bg,
-                    if self.preferences.dark {
-                        Color32::from_rgb(29, 34, 49)
-                    } else {
-                        Color32::from_rgb(225, 231, 248)
-                    },
-                );
+                let scene = ui.max_rect().shrink(2.0);
+                theme::rounded_gradient(ui.painter(), scene, 14.0, p.surface, p.raised);
+                ui.painter().rect_stroke(scene, 14.0, egui::Stroke::new(1.0, p.hairline), egui::StrokeKind::Inside);
                 let in_folder = !self.config.page.is_empty()
                     && self.config.profiles[self.config.active]
                         .pages
@@ -3464,8 +3437,8 @@ impl App {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(&self.config.profiles[self.config.active].name)
-                            .size(18.0)
-                            .strong(),
+                            .size(20.0)
+                            .font(theme::strong(20.0)),
                     );
                     if self.auto_active {
                         ui.label(
@@ -3493,10 +3466,7 @@ impl App {
                             .unwrap_or_default();
                         ui.label(RichText::new(name).strong());
                     } else {
-                        if ui
-                            .small_button("‹")
-                            .on_hover_text(tr("Page précédente"))
-                            .clicked()
+                        if theme::segmented(ui, false, "‹").on_hover_text(tr("Page précédente")).clicked()
                         {
                             self.navigate(Step::PagePrevious);
                         }
@@ -3505,13 +3475,9 @@ impl App {
                                 "Page {current} / {total}",
                                 &[("current", &current_page_num), ("total", &total_pages)]
                             ))
-                            .size(13.0)
-                            .strong(),
+                            .size(12.0).color(p.text_secondary),
                         );
-                        if ui
-                            .small_button("›")
-                            .on_hover_text(tr("Page suivante"))
-                            .clicked()
+                        if theme::segmented(ui, false, "›").on_hover_text(tr("Page suivante")).clicked()
                         {
                             self.navigate(Step::PageNext);
                         }
@@ -3569,6 +3535,11 @@ impl App {
                     // Bornée à l'écran : à la première image, la zone disponible peut être démesurée.
                     let available = ui.available_rect_before_wrap().intersect(ctx.screen_rect());
                     let chassis = crate::deck_chassis::fit(available);
+                    let halo = chassis.center() + Vec2::new(0.0, chassis.height() * 0.25);
+                    let color = p.accent;
+                    for (radius, alpha) in [(0.61, 3), (0.45, 5), (0.30, 9)] {
+                        ui.painter().circle_filled(halo, chassis.width() * radius, Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha));
+                    }
                     ui.allocate_rect(egui::Rect::from_min_max(available.min, egui::pos2(available.max.x, chassis.max.y)), egui::Sense::hover());
                     let s = crate::deck_chassis::scale(chassis);
                     let width = crate::deck_chassis::FACE_SIZE.x * s;

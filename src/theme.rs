@@ -137,11 +137,8 @@ pub fn rounded_image(p: &egui::Painter, texture: egui::TextureId, r: egui::Rect,
 }
 
 pub fn device_shell(p: &egui::Painter, r: egui::Rect) {
-    p.rect_filled(
-        r.expand(6.0),
-        28.0,
-        Color32::from_rgba_unmultiplied(52, 120, 246, 16),
-    );
+    let palette = palette(p.ctx());
+    p.rect_filled(r.translate(Vec2::new(0.0, 10.0)).expand(8.0), 28.0, Color32::from_black_alpha(18));
     p.rect_filled(
         r.translate(Vec2::new(0.0, 6.0)).expand(2.0),
         26.0,
@@ -151,20 +148,20 @@ pub fn device_shell(p: &egui::Painter, r: egui::Rect) {
         p,
         r,
         24.0,
-        Color32::from_rgb(24, 37, 60),
-        Color32::from_rgb(13, 21, 36),
+        Color32::from_rgb(42, 47, 55),
+        Color32::from_rgb(20, 24, 31),
     );
     rounded_gradient(
         p,
         r.shrink(6.0),
         19.0,
-        Color32::from_rgb(15, 24, 40),
-        Color32::from_rgb(10, 16, 28),
+        Color32::from_rgb(27, 31, 39),
+        Color32::from_rgb(19, 22, 28),
     );
     p.rect_stroke(
         r,
         24.0,
-        Stroke::new(1.0_f32, Color32::from_rgb(49, 65, 90)),
+        Stroke::new(1.0_f32, palette.border_strong),
         egui::StrokeKind::Inside,
     );
     p.rect_stroke(
@@ -183,12 +180,13 @@ pub fn device_shell(p: &egui::Painter, r: egui::Rect) {
 }
 
 pub fn key_face(p: &egui::Painter, r: egui::Rect, selected: bool, flashing: bool) {
+    let palette = palette(p.ctx());
     let outer_fill = if flashing {
         GREEN.gamma_multiply(0.22)
     } else if selected {
-        CYAN.gamma_multiply(0.18)
+        palette.accent.gamma_multiply(0.18)
     } else {
-        Color32::from_rgb(8, 13, 24)
+        Color32::TRANSPARENT
     };
     p.rect_filled(
         r.expand(if selected || flashing { 3.0 } else { 2.0 }),
@@ -199,19 +197,15 @@ pub fn key_face(p: &egui::Painter, r: egui::Rect, selected: bool, flashing: bool
     p.rect_filled(
         r,
         10.0,
-        if selected {
-            Color32::from_rgb(23, 59, 121)
-        } else {
-            Color32::from_rgb(18, 28, 46)
-        },
+        if selected { palette.accent_soft } else { palette.raised },
     );
 
     let (top, bottom) = if flashing {
         (Color32::from_rgb(22, 68, 62), Color32::from_rgb(15, 46, 44))
     } else if selected {
-        (Color32::from_rgb(28, 63, 122), Color32::from_rgb(19, 44, 88))
+        (palette.accent_soft, palette.raised)
     } else {
-        (Color32::from_rgb(31, 46, 70), Color32::from_rgb(21, 32, 51))
+        (palette.raised, palette.sunken)
     };
     rounded_gradient(p, r.shrink(1.5), 8.5, top, bottom);
 
@@ -226,9 +220,9 @@ pub fn key_face(p: &egui::Painter, r: egui::Rect, selected: bool, flashing: bool
     let stroke = if flashing {
         Stroke::new(2.0_f32, GREEN)
     } else if selected {
-        Stroke::new(2.0_f32, CYAN)
+        Stroke::new(2.0_f32, palette.accent_ring)
     } else {
-        Stroke::new(1.0_f32, Color32::from_rgb(49, 65, 90))
+        Stroke::NONE
     };
     p.rect_stroke(r, 10.0, stroke, egui::StrokeKind::Inside);
 }
@@ -582,12 +576,7 @@ pub fn card(p: Palette) -> egui::Frame {
 
 #[allow(dead_code)] // used by the upcoming layout refresh
 pub fn secondary_button(text: impl Into<egui::WidgetText>) -> egui::Button<'static> {
-    // Couleurs du thème courant : en clair, ces boutons restaient bleu nuit avec un texte sombre.
-    let p = current_palette();
-    egui::Button::new(text)
-        .fill(p.card)
-        .stroke(Stroke::new(1.0_f32, p.border))
-        .corner_radius(8)
+    ghost_button(text)
 }
 
 #[allow(dead_code)] // used by the upcoming layout refresh
@@ -601,9 +590,9 @@ pub fn danger_button(text: impl Into<egui::WidgetText>) -> egui::Button<'static>
 #[allow(dead_code)] // used by the upcoming layout refresh
 pub fn card_frame(p: Palette) -> egui::Frame {
     egui::Frame::new()
-        .fill(p.card)
-        .stroke(Stroke::new(1.0_f32, p.border))
-        .corner_radius(12)
+        .fill(p.raised)
+        .stroke(Stroke::NONE)
+        .corner_radius(RADIUS_MD)
         .inner_margin(egui::Margin::symmetric(12, 12))
 }
 
@@ -625,7 +614,7 @@ pub fn section_title(ui: &mut egui::Ui, text: &str) {
 pub fn pill(ui: &mut egui::Ui, text: &str, color: Color32) {
     egui::Frame::new()
         .fill(color.gamma_multiply(0.14))
-        .stroke(Stroke::new(1.0_f32, color.gamma_multiply(0.32)))
+        .stroke(Stroke::NONE)
         .corner_radius(20)
         .inner_margin(egui::Margin::symmetric(10, 5))
         .show(ui, |ui| {
@@ -637,7 +626,7 @@ pub fn pill(ui: &mut egui::Ui, text: &str, color: Color32) {
 pub fn status_badge(ui: &mut egui::Ui, text: &str, color: Color32) {
     egui::Frame::new()
         .fill(color.gamma_multiply(0.14))
-        .stroke(Stroke::new(1.0_f32, color.gamma_multiply(0.32)))
+        .stroke(Stroke::NONE)
         .corner_radius(20)
         .inner_margin(egui::Margin::symmetric(10, 5))
         .show(ui, |ui| {
