@@ -2921,7 +2921,7 @@ impl App {
     fn editor(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
         let running = self.engine.running.load(Ordering::SeqCst);
-        egui::TopBottomPanel::bottom("key_inspector").default_height(if ctx.screen_rect().height()<800.0 {(ctx.screen_rect().height()*0.40).clamp(200.0,300.0)}else{320.0}).height_range(120.0..=(ctx.screen_rect().height()*if ctx.screen_rect().height()<600.0 {0.31} else {0.5}).max(140.0)).resizable(true).frame(egui::Frame::new().fill(p.surface).inner_margin(16)).show(ctx,|ui| {
+        egui::TopBottomPanel::bottom("key_inspector").default_height(if ctx.screen_rect().height()<700.0 {(ctx.screen_rect().height()*0.34).clamp(180.0,240.0)}else if ctx.screen_rect().height()<800.0 {(ctx.screen_rect().height()*0.40).clamp(200.0,300.0)}else{320.0}).height_range(120.0..=(ctx.screen_rect().height()*if ctx.screen_rect().height()<600.0 {0.31} else {0.5}).max(140.0)).resizable(true).frame(egui::Frame::new().fill(p.surface).inner_margin(egui::Margin::symmetric(16, 12))).show(ctx,|ui| {
             let tab_id = egui::Id::new("inspector_tab");
             let mut tab = ui.ctx().data_mut(|d| *d.get_persisted_mut_or_default::<u8>(tab_id));
             let configured = { let k = &self.config.keys()[self.selected]; !k.steps.is_empty() || !k.long_steps.is_empty() || k.plugin.is_some() };
@@ -2951,7 +2951,6 @@ impl App {
                 }
             });
             if two_rows { ui.horizontal(|ui| actions(self, ui, &mut buttons)); }
-            ui.add_space(2.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 for (i, ico, label) in [(0u8, Ico::Actions, tr("Action")), (1u8, Ico::Palette, tr("Apparence")), (2u8, Ico::Advanced, tr("Avancé"))] {
@@ -2975,7 +2974,6 @@ impl App {
             });
             ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("inspector_button_rects"), buttons));
             ui.ctx().data_mut(|d| d.insert_persisted(tab_id, tab));
-            ui.separator();
             motion::fade(ui, "inspector", (tab, self.selected, self.long_editor, self.config.page.clone()), 0.25, self.animations());
             if let Some(shortcut) = extras::discord_shortcut(&self.config.keys()[self.selected]) {
                 ui.group(|ui| {
@@ -3411,7 +3409,7 @@ impl App {
         let p = theme::palette(ctx);
         let grid = self.grid();
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(p.bg).inner_margin(18))
+            .frame(egui::Frame::new().fill(p.bg).inner_margin(12))
             .show(ctx, |ui| {
                 if self.flicker.as_ref().is_some_and(|session| session.active()) {
                     self.diagnostic_deck = Some(ui.max_rect());
@@ -3525,8 +3523,8 @@ impl App {
                 if grid.keys < self.config.keys().len() {
                     ui.label(RichText::new(trf("{keys} touches supplémentaires conservées, masquées sur ce périphérique", &[("keys", &(self.config.keys().len() - grid.keys))])).small().color(p.muted));
                 }
-                ui.add_space(if ctx.screen_rect().height() < 600.0 { 2.0 } else { 7.0 });
-                if ctx.screen_rect().width() >= 1200.0 {
+                ui.add_space(if ctx.screen_rect().height() < 700.0 { 2.0 } else { 7.0 });
+                if ctx.screen_rect().width() >= 1200.0 && ctx.screen_rect().height() >= 700.0 {
                     ui.label(
                         RichText::new(
                             tr("Glisse un bind sur une touche, puis personnalise ses actions dans l’inspecteur."),
@@ -3540,13 +3538,17 @@ impl App {
                     // Bornée à l'écran : à la première image, la zone disponible peut être démesurée.
                     let available = ui.available_rect_before_wrap().intersect(ctx.screen_rect());
                     let chassis = crate::deck_chassis::fit(available);
-                    let halo = chassis.center() + Vec2::new(0.0, chassis.height() * 0.25);
-                    let color = p.accent;
-                    // Superposition douce : 16 couronnes de faible opacité, quasi imperceptibles en clair.
-                    for ring in 0..16 {
-                        let radius = chassis.width() * (0.88 - ring as f32 * 0.042);
-                        let alpha = if ctx.style().visuals.dark_mode { 1 + u8::from(ring > 9) } else { u8::from(ring % 3 == 0) };
-                        ui.painter().circle_filled(halo, radius, Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha));
+                    // Ombre portée douce sous le châssis (pas de halo coloré) : couches noires
+                    // décalées vers le bas, d'opacité décroissante.
+                    let dark = ctx.style().visuals.dark_mode;
+                    for layer in 0..10 {
+                        let grow = 2.0 + layer as f32 * 3.0;
+                        let alpha = if dark { 14 - layer as u8 } else { 7 - (layer as u8 / 2) };
+                        ui.painter().rect_filled(
+                            chassis.translate(Vec2::new(0.0, 6.0 + layer as f32 * 1.2)).expand(grow),
+                            egui::CornerRadius::same((34.0 + grow).min(255.0) as u8),
+                            Color32::from_black_alpha(alpha),
+                        );
                     }
                     ui.allocate_rect(egui::Rect::from_min_max(available.min, egui::pos2(available.max.x, chassis.max.y)), egui::Sense::hover());
                     let s = crate::deck_chassis::scale(chassis);

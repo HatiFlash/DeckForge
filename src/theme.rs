@@ -194,18 +194,18 @@ pub fn key_face(p: &egui::Painter, r: egui::Rect, selected: bool, flashing: bool
         outer_fill,
     );
 
-    p.rect_filled(
-        r,
-        10.0,
-        if selected { palette.accent_soft } else { palette.raised },
-    );
+    // Les faces sont posées sur le châssis graphite dans les deux thèmes : couleurs
+    // fixes, pour éviter un liseré clair autour des touches en thème clair.
+    let face = Color32::from_rgb(30, 33, 39);
+    let selected_face = mix(face, palette.accent, 0.22);
+    p.rect_filled(r, 10.0, if selected { selected_face } else { face });
 
     let (top, bottom) = if flashing {
         (Color32::from_rgb(22, 68, 62), Color32::from_rgb(15, 46, 44))
     } else if selected {
-        (palette.accent_soft, palette.raised)
+        (selected_face, face)
     } else {
-        (palette.raised, palette.sunken)
+        (Color32::from_rgb(36, 40, 47), Color32::from_rgb(25, 28, 33))
     };
     rounded_gradient(p, r.shrink(1.5), 8.5, top, bottom);
 
@@ -628,10 +628,11 @@ pub fn status_badge(ui: &mut egui::Ui, text: &str, color: Color32) {
         .fill(color.gamma_multiply(0.14))
         .stroke(Stroke::NONE)
         .corner_radius(20)
-        .inner_margin(egui::Margin::symmetric(10, 5))
+        .inner_margin(egui::Margin::symmetric(8, 2))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.spacing_mut().item_spacing.x = 5.0;
+                ui.spacing_mut().interact_size.y = 18.0;
                 let (dot, _) = ui.allocate_exact_size(Vec2::splat(8.0), egui::Sense::hover());
                 ui.painter().circle_filled(dot.center(), 3.5, color);
                 ui.label(egui::RichText::new(text).color(color).size(11.0).strong());
