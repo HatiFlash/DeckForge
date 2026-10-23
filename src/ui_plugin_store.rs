@@ -316,7 +316,7 @@ fn egui_file_dialog_archive()->Option<std::path::PathBuf>{rfd::FileDialog::new()
  }
  #[test] fn binding_for_imported_action_roundtrips(){let k=Key{plugin:Some(PluginBinding{plugin:"fixture.plugin".into(),action:"fixture.action".into(),settings:serde_json::json!({}),state:0}),..Key::default()};let value=serde_json::to_value(&k).unwrap();assert_eq!(serde_json::from_value::<Key>(value).unwrap().plugin.unwrap().action,"fixture.action");}
  #[test] fn community_search_covers_author_version_license_and_decks(){
-  let entry=Entry{id:"x".into(),name:"Nom".into(),author:"Alice".into(),version:"1.2.0".into(),description:"Audio".into(),description_fr:Some("Son".into()),homepage:"https://example.org".into(),download:"https://example.org/x.zip".into(),sha256:"a".repeat(64),license:"MIT".into(),tested_decks:vec!["FIFINE D6".into()],min_novydeck:"0.8.12".into(),uuid:None,category:None,summary:None,summary_fr:None,icon:None,screenshots:vec![],actions:vec![],tags:vec![],requires:None,compatible:true};
+  let entry=Entry{id:"x".into(),name:"Nom".into(),author:"Alice".into(),version:"1.2.0".into(),description:"Audio".into(),description_fr:Some("Son".into()),homepage:"https://example.org".into(),download:"https://example.org/x.zip".into(),sha256:"a".repeat(64),license:"MIT".into(),tested_decks:vec!["FIFINE D6".into()],min_novydeck:"0.8.12".into(),uuid:None,category:None,summary:None,summary_fr:None,icon:None,screenshots:vec![],actions:vec![],tags:vec![],requires:None,tested_by_novydeck:None,compatible:true};
   for query in ["nom","alice","1.2","audio","son","mit","fifine"]{assert!(community_matches(&entry,query),"{query}");}
   assert!(!community_matches(&entry,"inconnu"));
  }
