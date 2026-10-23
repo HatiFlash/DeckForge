@@ -91,7 +91,7 @@ pub(crate) fn clean_title(title:&str)->String {
 
 /// Associate the isolated window with NovyDeck before showing it. Never trust a stale HWND.
 fn attach_owner(window:&tao::window::Window, owner:isize,parent_pid:u32) {
-    use windows_sys::Win32::{Foundation::HWND, UI::WindowsAndMessaging::{GetWindowRect,GetWindowThreadProcessId,IsWindow,SetWindowLongPtrW,GWLP_HWNDPARENT,RECT}};
+    use windows_sys::Win32::{Foundation::{HWND,RECT}, UI::WindowsAndMessaging::{GetWindowRect,GetWindowThreadProcessId,IsWindow,SetWindowLongPtrW,GWLP_HWNDPARENT}};
     let hwnd=owner as HWND;
     if hwnd.is_null() || unsafe { IsWindow(hwnd) } == 0 { return; }
     let mut pid=0;
