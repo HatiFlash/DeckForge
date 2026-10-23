@@ -10,8 +10,8 @@ pub const DANGER: Color32 = Color32::from_rgb(242, 95, 112);
 /// Jetons de mise en page NovyDeck (voir docs/DESIGN.md) : espacements et rayons partagés.
 pub const SPACE: [f32; 6] = [4.0, 8.0, 12.0, 16.0, 24.0, 32.0];
 /// Rayons : contrôle (bouton, champ), menu/carte, fenêtre/panneau.
-pub const RADIUS_SM: u8 = 8;
-pub const RADIUS_MD: u8 = 12;
+pub const RADIUS_SM: u8 = 6;
+pub const RADIUS_MD: u8 = 10;
 pub const RADIUS_LG: u8 = 14;
 /// Écran d'une touche hors châssis SVG (face `key_face` de rayon 10, écran inséré de 5) :
 /// les fonds et médias sont masqués à ce rayon, concentrique à la face.
@@ -265,6 +265,20 @@ pub struct Palette {
     pub danger: Color32,
     pub border: Color32,
     pub text_secondary: Color32,
+    pub canvas: Color32,
+    pub sunken: Color32,
+    pub raised: Color32,
+    pub overlay: Color32,
+    pub hairline: Color32,
+    pub border_strong: Color32,
+    pub text_primary: Color32,
+    pub text_tertiary: Color32,
+    pub accent_soft: Color32,
+    pub accent_ring: Color32,
+    pub on_accent: Color32,
+    pub success_soft: Color32,
+    pub warning_soft: Color32,
+    pub danger_soft: Color32,
 }
 
 /// Styles proposés dans Réglages → Thème. `dark` indique le mode egui associé.
@@ -322,32 +336,55 @@ fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
 /// Palette pure d'un style et d'un accent (testable sans contexte egui).
 pub fn palette_for(scheme: &str, accent: Color32) -> Palette {
     let rgb = Color32::from_rgb;
-    let (bg, surface, card, sidebar, hover, border, ink, muted, secondary, dark) = match scheme {
-        "graphite" => (rgb(17, 18, 21), rgb(26, 27, 31), rgb(34, 36, 41), rgb(21, 22, 26), rgb(46, 48, 55), rgb(56, 59, 67), rgb(238, 239, 242), rgb(140, 145, 156), rgb(186, 190, 199), true),
-        "clair" => (rgb(243, 245, 249), rgb(255, 255, 255), rgb(255, 255, 255), rgb(234, 238, 245), rgb(228, 234, 244), rgb(208, 215, 227), rgb(17, 24, 39), rgb(84, 96, 115), rgb(51, 65, 85), false),
-        "sable" => (rgb(246, 242, 235), rgb(253, 251, 247), rgb(255, 255, 255), rgb(238, 232, 221), rgb(236, 228, 214), rgb(219, 209, 192), rgb(41, 33, 25), rgb(110, 97, 82), rgb(74, 63, 51), false),
-        _ => (rgb(11, 18, 32), rgb(20, 31, 50), rgb(28, 42, 64), rgb(16, 26, 43), rgb(41, 61, 91), rgb(49, 65, 90), rgb(241, 245, 251), rgb(117, 134, 159), rgb(167, 181, 204), true),
+    let (bg, surface, card, sunken, overlay, hairline, border, ink, muted, secondary, dark) = match scheme {
+        "graphite" => (rgb(12, 13, 16), rgb(18, 20, 24), rgb(25, 28, 33), rgb(10, 11, 14), rgb(32, 36, 42), rgb(35, 38, 45), rgb(66, 70, 78), rgb(243, 244, 246), rgb(174, 179, 187), rgb(203, 207, 214), true),
+        "clair" => (rgb(245, 246, 248), rgb(255, 255, 255), rgb(240, 242, 245), rgb(235, 237, 241), rgb(255, 255, 255), rgb(228, 231, 236), rgb(192, 199, 208), rgb(14, 17, 22), rgb(86, 93, 103), rgb(67, 74, 85), false),
+        "sable" => (rgb(247, 244, 239), rgb(255, 253, 249), rgb(242, 237, 229), rgb(238, 233, 225), rgb(255, 253, 249), rgb(227, 220, 210), rgb(198, 186, 172), rgb(33, 29, 24), rgb(99, 88, 76), rgb(77, 68, 58), false),
+        _ => (rgb(11, 15, 23), rgb(17, 23, 35), rgb(24, 32, 46), rgb(9, 14, 22), rgb(30, 39, 55), rgb(34, 43, 58), rgb(69, 82, 102), rgb(239, 243, 249), rgb(169, 180, 197), rgb(199, 209, 223), true),
     };
+    // Orange and emerald accents need a darker treatment on pale surfaces.
+    let accent = if dark { accent } else if accent == ACCENTS[2].2 { rgb(5, 120, 92) }
+        else if accent == ACCENTS[3].2 { rgb(168, 72, 10) } else { accent };
+    let on_accent = if dark && (accent == ACCENTS[2].2 || accent == ACCENTS[3].2) {
+        rgb(11, 15, 23)
+    } else { Color32::WHITE };
+    let success = if dark { GREEN } else { rgb(5, 119, 83) };
+    let warning = if dark { WARNING } else { rgb(158, 82, 5) };
+    let danger = if dark { DANGER } else { rgb(190, 28, 64) };
     Palette {
         bg,
         surface,
         ink,
         muted,
-        line: border,
-        wash: if dark { mix(card, accent, 0.45) } else { mix(Color32::WHITE, accent, 0.16) },
+        line: hairline,
+        wash: mix(surface, accent, 0.14),
         tile: card,
-        sidebar,
+        sidebar: surface,
         card,
-        hover,
+        hover: if dark { mix(card, Color32::WHITE, 0.07) } else { mix(card, ink, 0.04) },
         accent,
-        accent_hover: if dark { mix(accent, Color32::WHITE, 0.18) } else { mix(accent, Color32::BLACK, 0.15) },
+        accent_hover: if dark { mix(accent, Color32::WHITE, 0.18) } else { mix(accent, Color32::BLACK, 0.12) },
         purple: if dark { PURPLE } else { rgb(124, 58, 237) },
-        cyan: if dark { CYAN } else { rgb(8, 145, 178) },
-        success: if dark { GREEN } else { rgb(5, 150, 105) },
-        warning: if dark { WARNING } else { rgb(194, 105, 6) },
-        danger: if dark { DANGER } else { rgb(205, 30, 70) },
+        cyan: if dark { CYAN } else { rgb(8, 115, 148) },
+        success,
+        warning,
+        danger,
         border,
         text_secondary: secondary,
+        canvas: bg,
+        sunken,
+        raised: card,
+        overlay,
+        hairline,
+        border_strong: border,
+        text_primary: ink,
+        text_tertiary: muted,
+        accent_soft: mix(surface, accent, 0.14),
+        accent_ring: accent,
+        on_accent,
+        success_soft: mix(surface, success, 0.14),
+        warning_soft: mix(surface, warning, 0.14),
+        danger_soft: mix(surface, danger, 0.14),
     }
 }
 pub fn current_scheme(dark: bool) -> &'static str {
@@ -364,8 +401,10 @@ pub fn palette(ctx: &egui::Context) -> Palette {
 
 pub fn install(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
+    let strong = egui::FontFamily::Name("strong".into());
+    fonts.families.insert(strong.clone(), fonts.families[&egui::FontFamily::Proportional].clone());
     let windir = std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into());
-    if let Ok(bytes) = std::fs::read(std::path::PathBuf::from(windir).join("Fonts/segoeui.ttf")) {
+    if let Ok(bytes) = std::fs::read(std::path::PathBuf::from(&windir).join("Fonts/segoeui.ttf")) {
         fonts
             .font_data
             .insert("system-ui".into(), egui::FontData::from_owned(bytes).into());
@@ -374,6 +413,11 @@ pub fn install(ctx: &egui::Context) {
             .get_mut(&egui::FontFamily::Proportional)
             .unwrap()
             .insert(0, "system-ui".into());
+        fonts.families.get_mut(&strong).unwrap().push("system-ui".into());
+    }
+    if let Ok(bytes) = std::fs::read(std::path::PathBuf::from(&windir).join("Fonts/seguisb.ttf")) {
+        fonts.font_data.insert("system-strong".into(), egui::FontData::from_owned(bytes).into());
+        fonts.families.get_mut(&strong).unwrap().insert(0, "system-strong".into());
     }
     ctx.set_fonts(fonts);
     apply(ctx, true);
@@ -388,26 +432,27 @@ pub fn apply(ctx: &egui::Context, dark: bool) {
     });
     let p = palette(ctx);
     let mut style = (*ctx.style()).clone();
-    style.visuals.panel_fill = p.bg;
-    style.visuals.window_fill = p.surface;
-    style.visuals.extreme_bg_color = p.bg;
-    style.visuals.faint_bg_color = p.sidebar;
-    style.visuals.code_bg_color = p.card;
-    style.visuals.override_text_color = Some(p.ink);
+    style.visuals.panel_fill = p.canvas;
+    style.visuals.window_fill = p.overlay;
+    style.visuals.extreme_bg_color = p.sunken;
+    style.visuals.faint_bg_color = p.raised;
+    style.visuals.code_bg_color = p.sunken;
+    style.visuals.override_text_color = Some(p.text_primary);
     style.visuals.hyperlink_color = p.accent_hover;
     style.visuals.warn_fg_color = p.warning;
     style.visuals.error_fg_color = p.danger;
-    style.visuals.selection.bg_fill = p.wash;
-    style.visuals.selection.stroke = Stroke::new(1.0_f32, p.accent);
+    style.visuals.selection.bg_fill = p.accent_soft;
+    style.visuals.selection.stroke = Stroke::new(1.0_f32, p.text_primary);
     style.visuals.window_corner_radius = egui::CornerRadius::same(RADIUS_LG);
-    style.visuals.window_stroke = Stroke::new(1.0_f32, p.border);
+    style.visuals.window_stroke = Stroke::new(1.0_f32, p.hairline);
+    style.visuals.window_shadow = egui::epaint::Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(if dark { 102 } else { 28 }) };
+    style.visuals.popup_shadow = style.visuals.window_shadow;
     style.visuals.menu_corner_radius = egui::CornerRadius::same(RADIUS_MD);
-
     style.visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(RADIUS_MD);
     style.visuals.widgets.noninteractive.bg_fill = p.surface;
-    style.visuals.widgets.noninteractive.weak_bg_fill = p.card;
-    style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, p.border);
-    style.visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, p.ink);
+    style.visuals.widgets.noninteractive.weak_bg_fill = p.raised;
+    style.visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, p.hairline);
+    style.visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, p.text_primary);
 
     for widget in [
         &mut style.visuals.widgets.inactive,
@@ -416,24 +461,23 @@ pub fn apply(ctx: &egui::Context, dark: bool) {
         &mut style.visuals.widgets.open,
     ] {
         widget.corner_radius = egui::CornerRadius::same(RADIUS_SM);
-        widget.bg_stroke = Stroke::new(1.0_f32, p.line);
-        widget.fg_stroke = Stroke::new(1.0_f32, p.ink);
+        widget.bg_stroke = Stroke::NONE;
+        widget.fg_stroke = Stroke::new(1.0_f32, p.text_primary);
     }
-
-    style.visuals.widgets.inactive.bg_fill = p.card;
-    style.visuals.widgets.inactive.weak_bg_fill = p.tile;
-
+    style.visuals.widgets.inactive.bg_fill = p.raised;
+    style.visuals.widgets.inactive.weak_bg_fill = p.raised;
     style.visuals.widgets.hovered.bg_fill = p.hover;
     style.visuals.widgets.hovered.weak_bg_fill = p.hover;
-    style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, p.accent);
-
-    style.visuals.widgets.active.bg_fill = p.wash;
-    style.visuals.widgets.active.weak_bg_fill = p.wash;
-    style.visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, p.accent_hover);
-
-    style.visuals.widgets.open.bg_fill = p.hover;
-    style.visuals.widgets.open.weak_bg_fill = p.hover;
-    style.visuals.widgets.open.bg_stroke = Stroke::new(1.0_f32, p.accent);
+    style.visuals.widgets.active.bg_fill = p.accent_soft;
+    style.visuals.widgets.active.weak_bg_fill = p.accent_soft;
+    style.visuals.widgets.open.bg_fill = p.overlay;
+    style.visuals.widgets.open.weak_bg_fill = p.overlay;
+    style.visuals.widgets.open.bg_stroke = Stroke::new(1.0_f32, p.hairline);
+    style.visuals.widgets.inactive.expansion = 0.0;
+    style.visuals.widgets.hovered.expansion = 0.0;
+    style.visuals.widgets.active.expansion = 0.0;
+    style.visuals.widgets.open.expansion = 0.0;
+    style.visuals.widgets.noninteractive.expansion = 0.0;
 
     style.spacing.item_spacing = Vec2::splat(SPACE[1]);
     style.spacing.button_padding = Vec2::new(10.0, 6.0);
@@ -441,7 +485,7 @@ pub fn apply(ctx: &egui::Context, dark: bool) {
 
     style
         .text_styles
-        .insert(egui::TextStyle::Body, egui::FontId::proportional(14.0));
+        .insert(egui::TextStyle::Body, egui::FontId::proportional(13.0));
     style
         .text_styles
         .insert(egui::TextStyle::Button, egui::FontId::proportional(13.0));
@@ -455,10 +499,76 @@ pub fn apply(ctx: &egui::Context, dark: bool) {
 }
 
 pub fn primary(text: impl Into<egui::WidgetText>) -> egui::Button<'static> {
-    egui::Button::new(text.into().color(Color32::WHITE))
-        .fill(accent())
+    let p = current_palette();
+    egui::Button::new(text.into().color(p.on_accent))
+        .fill(p.accent)
         .stroke(Stroke::NONE)
-        .corner_radius(8)
+        .corner_radius(RADIUS_SM)
+}
+
+pub fn ghost_button(text: impl Into<egui::WidgetText>) -> egui::Button<'static> {
+    egui::Button::new(text).fill(current_palette().raised).stroke(Stroke::NONE).corner_radius(RADIUS_SM)
+}
+
+pub fn strong(size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name("strong".into()))
+}
+
+pub fn overline(ui: &mut egui::Ui, text: &str) {
+    let p = palette(ui.ctx());
+    let mut job = egui::text::LayoutJob::default();
+    job.append(&text.to_uppercase(), 0.0, egui::TextFormat {
+        font_id: strong(11.0), color: p.text_tertiary, extra_letter_spacing: 0.6, ..Default::default()
+    });
+    ui.label(job);
+}
+
+pub fn list_row(ui: &mut egui::Ui, height: f32, selected: bool, sense: egui::Sense) -> (egui::Rect, egui::Response) {
+    let p = palette(ui.ctx());
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), sense);
+    let t = ui.ctx().animate_bool_with_time(response.id, response.hovered(), ui.style().animation_time.min(0.12));
+    if selected || t > 0.0 {
+        ui.painter().rect_filled(rect, 8.0, if selected { p.accent_soft } else { mix(p.surface, p.hover, t) });
+    }
+    if selected {
+        ui.painter().rect_filled(egui::Rect::from_min_size(rect.min, Vec2::new(2.0, rect.height())), 1.0, p.accent);
+    }
+    (rect, response)
+}
+
+pub fn segmented(ui: &mut egui::Ui, selected: bool, text: impl Into<egui::WidgetText>) -> egui::Response {
+    let p = palette(ui.ctx());
+    ui.add(egui::Button::new(text).selected(selected)
+        .fill(if selected { p.raised } else { p.sunken })
+        .stroke(Stroke::NONE).corner_radius(7))
+}
+
+pub fn underline_tabs(ui: &mut egui::Ui, selected: bool, text: impl Into<egui::WidgetText>) -> egui::Response {
+    let p = palette(ui.ctx());
+    let response = ui.add(ghost_button(text).fill(Color32::TRANSPARENT));
+    if selected {
+        ui.painter().line_segment([response.rect.left_bottom(), response.rect.right_bottom()], Stroke::new(2.0, p.accent));
+    }
+    response
+}
+
+pub fn search_field(ui: &mut egui::Ui, value: &mut String, placeholder: &str) -> egui::Response {
+    let p = palette(ui.ctx());
+    egui::Frame::new().fill(p.sunken).stroke(Stroke::new(1.0, p.hairline))
+        .corner_radius(RADIUS_SM).inner_margin(egui::Margin::symmetric(8, 5))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                let (rect, _) = ui.allocate_exact_size(Vec2::splat(16.0), egui::Sense::hover());
+                let center = rect.center() - Vec2::new(1.5, 1.5);
+                ui.painter().circle_stroke(center, 4.5, Stroke::new(1.5, p.text_tertiary));
+                ui.painter().line_segment([center + Vec2::new(3.2, 3.2), center + Vec2::new(6.5, 6.5)], Stroke::new(1.5, p.text_tertiary));
+                ui.add(egui::TextEdit::singleline(value).frame(false).desired_width(f32::INFINITY).hint_text(placeholder))
+            }).inner
+        }).inner
+}
+
+pub fn card(p: Palette) -> egui::Frame {
+    egui::Frame::new().fill(p.raised).corner_radius(RADIUS_MD).inner_margin(egui::Margin::same(12))
 }
 
 #[allow(dead_code)] // used by the upcoming layout refresh
@@ -923,9 +1033,13 @@ mod theme_tests {
             for (_, _, accent) in super::ACCENTS {
                 let p = super::palette_for(scheme, accent);
                 assert!(contrast(p.ink, p.bg) >= 7.0, "{scheme}: texte/fond");
-                assert!(contrast(p.ink, p.card) >= 7.0, "{scheme}: texte/carte");
-                assert!(contrast(p.muted, p.card) >= 3.0, "{scheme}: texte secondaire");
-                assert!(contrast(super::Color32::WHITE, accent) >= 3.0, "{scheme}: bouton principal {accent:?}");
+                for surface in [p.surface, p.raised] {
+                    for (role, color) in [("primary", p.text_primary), ("secondary", p.text_secondary), ("tertiary", p.text_tertiary)] {
+                        assert!(contrast(color, surface) >= 4.5, "{scheme}/{accent:?}: {role} contraste {:?}", surface);
+                    }
+                    assert!(contrast(p.accent, surface) >= 3.0, "{scheme}/{accent:?}: accent sur surface {:?}", surface);
+                }
+                assert!(contrast(p.on_accent, p.accent) >= 3.0, "{scheme}/{accent:?}: bouton principal");
             }
         }
     }
