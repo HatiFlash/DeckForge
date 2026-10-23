@@ -1095,6 +1095,7 @@
     "Sortie par défaut": "Default output",
     "Sortie −5 %": "Output −5%",
     "Sorties": "Outputs",
+    "Source officielle gyan.dev, empreinte vérifiée, rangé dans les données utilisateur (NovyDeck, ou DeckForge existant)\\tools. Sans droits administrateur. Autre solution : copier ffmpeg.exe à côté de NovyDeck.exe.": "Official gyan.dev source, verified checksum, stored in user data (NovyDeck or existing DeckForge)\\tools. No administrator rights. Alternatively, copy ffmpeg.exe next to NovyDeck.exe.",
     "Souris {x}, {y} ({origin})": "Mouse {x}, {y} ({origin})",
     "Soustraire": "Subtract",
     "Soustraire {value} de {name}": "Subtract {value} from {name}",
