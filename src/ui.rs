@@ -1585,7 +1585,8 @@ impl App {
             .resizable(false)
             .frame(
                 egui::Frame::new()
-                    .fill(p.sidebar)
+                    .fill(p.surface)
+                    .stroke(egui::Stroke::new(1.0, p.hairline))
                     .inner_margin(egui::Margin::symmetric(if compact { 6 } else { 12 }, 12)),
             )
             .show(ctx, |ui| {
@@ -1597,7 +1598,7 @@ impl App {
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             if !compact {
-                                theme::section_title(ui, tr("PROFILS"));
+                                theme::overline(ui, tr("PROFILS"));
                             }
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
@@ -1646,17 +1647,7 @@ impl App {
                         let mut next_profile = None;
                         for (i, profile) in self.config.profiles.iter().enumerate() {
                             let selected = i == self.config.active;
-                            let (r, response) = ui.allocate_exact_size(
-                                Vec2::new(ui.available_width(), 34.0),
-                                egui::Sense::click(),
-                            );
-                            if selected || response.hovered() {
-                                ui.painter().rect_filled(
-                                    r,
-                                    10.0,
-                                    if selected { p.wash } else { p.hover },
-                                );
-                            }
+                            let (r, response) = theme::list_row(ui, 34.0, selected, egui::Sense::click());
                             let icon_color = if selected { accent() } else { p.muted };
                             let text_color = if selected { p.ink } else { p.muted };
                             let icon_pos = if compact {
@@ -1696,7 +1687,7 @@ impl App {
                         ui.add_space(14.0);
                         ui.horizontal(|ui| {
                             if !compact {
-                                theme::section_title(ui, tr("PAGES"));
+                                theme::overline(ui, tr("PAGES"));
                             }
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
@@ -1734,17 +1725,7 @@ impl App {
                         let mut next_page = None;
                         for (idx, (id, name)) in pages.iter().enumerate() {
                             let selected = *id == self.config.page;
-                            let (r, response) = ui.allocate_exact_size(
-                                Vec2::new(ui.available_width(), 32.0),
-                                egui::Sense::click(),
-                            );
-                            if selected || response.hovered() {
-                                ui.painter().rect_filled(
-                                    r,
-                                    10.0,
-                                    if selected { p.wash } else { p.hover },
-                                );
-                            }
+                            let (r, response) = theme::list_row(ui, 32.0, selected, egui::Sense::click());
                             let dot_color = if selected { accent() } else { p.muted };
                             let text_color = if selected { p.ink } else { p.muted };
                             if compact {
@@ -1846,8 +1827,9 @@ impl App {
         egui::TopBottomPanel::top("header")
             .frame(
                 egui::Frame::new()
-                    .fill(p.surface)
-                    .inner_margin(egui::Margin::symmetric(18, 10)),
+                    .fill(p.canvas)
+                    .stroke(egui::Stroke::new(1.0, p.hairline))
+                    .inner_margin(egui::Margin::symmetric(16, 6)),
             )
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
@@ -2029,18 +2011,17 @@ impl App {
         egui::TopBottomPanel::top("header")
             .frame(
                 egui::Frame::new()
-                    .fill(p.surface)
-                    .inner_margin(egui::Margin::symmetric(18, 10)),
+                    .fill(p.canvas)
+                    .stroke(egui::Stroke::new(1.0, p.hairline))
+                    .inner_margin(egui::Margin::symmetric(16, 6)),
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     let logo = theme::logo_texture(ctx);
-                    ui.add(egui::Image::new((logo.id(), Vec2::splat(34.0))));
-                    ui.vertical(|ui| {
-                        ui.spacing_mut().item_spacing.y = 0.0;
-                        ui.label(RichText::new("NovyDeck").size(18.0).strong());
-                        ui.label(RichText::new(self.device_label()).size(10.0).color(p.muted));
-                    });
+                    ui.add(egui::Image::new((logo.id(), Vec2::splat(28.0))));
+                    ui.label(RichText::new("NovyDeck").font(theme::strong(15.0)).color(p.text_primary));
+                    theme::status_badge(ui, if self.gate.connected { tr("Connecté") } else if self.wanted { tr("En attente") } else { tr("Déconnecté") },
+                        if self.gate.connected { p.success } else if self.wanted { p.warning } else { p.text_tertiary });
                     ui.add_space(12.0);
                     if ui
                         .add_enabled(!self.history.is_empty(), iconset::secondary_button(ctx, Ico::Undo, if ctx.screen_rect().width() < 1320.0 { "" } else { tr("Annuler") }))
@@ -2491,38 +2472,16 @@ impl App {
         egui::SidePanel::right("action_catalog")
             .exact_width(296.0)
             .resizable(false)
-            .frame(egui::Frame::new().fill(p.surface).inner_margin(16))
+            .frame(egui::Frame::new().fill(p.surface).stroke(egui::Stroke::new(1.0, p.hairline)).inner_margin(16))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(tr("Bibliothèque d'actions")).size(17.0).strong());
+                    ui.label(RichText::new(tr("Bibliothèque d'actions")).font(theme::strong(15.0)).color(p.text_primary));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        theme::pill(ui, tr("40 binds"), accent());
+                        theme::pill(ui, tr("40 binds"), p.text_tertiary);
                     });
                 });
                 ui.add_space(6.0);
-                egui::Frame::new()
-                    .fill(p.card)
-                    .corner_radius(8)
-                    .inner_margin(egui::Margin::symmetric(8, 5))
-                    .show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            let (icon_r, _) =
-                                ui.allocate_exact_size(Vec2::splat(16.0), egui::Sense::hover());
-                            let c = icon_r.center() - Vec2::new(1.5, 1.5);
-                            ui.painter()
-                                .circle_stroke(c, 4.5, egui::Stroke::new(1.5_f32, p.muted));
-                            ui.painter().line_segment(
-                                [c + Vec2::new(3.2, 3.2), c + Vec2::new(6.5, 6.5)],
-                                egui::Stroke::new(1.5_f32, p.muted),
-                            );
-                            ui.add(
-                                egui::TextEdit::singleline(&mut self.catalog_search)
-                                    .frame(false)
-                                    .desired_width(f32::INFINITY)
-                                    .hint_text(tr("Rechercher une action…")),
-                            );
-                        });
-                    });
+                theme::search_field(ui, &mut self.catalog_search, tr("Rechercher une action…"));
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     for (i, label) in [tr("Actions"), tr("Magasin"), tr("Mes binds"), tr("Plugins")]
@@ -2534,13 +2493,13 @@ impl App {
                         let selected = i == self.catalog_tab;
                         ui.painter().rect_filled(
                             r,
-                            10.0,
+                            8.0,
                             if selected {
-                                p.wash
+                                p.raised
                             } else if response.hovered() {
                                 p.hover
                             } else {
-                                p.surface
+                                p.sunken
                             },
                         );
                         iconset::paint(
@@ -2599,15 +2558,7 @@ impl App {
                                     ))
                                 };
                                 ui.push_id(i, |ui| {
-                                    let (r, response) = ui.allocate_exact_size(
-                                        Vec2::new(ui.available_width(), 50.0),
-                                        egui::Sense::click_and_drag(),
-                                    );
-                                    ui.painter().rect_filled(
-                                        r,
-                                        12.0,
-                                        if response.hovered() { p.hover } else { p.card },
-                                    );
+                                    let (r, response) = theme::list_row(ui, 50.0, false, egui::Sense::click_and_drag());
                                     let badge = egui::Rect::from_center_size(
                                         r.left_center() + Vec2::new(23.0, 0.0),
                                         Vec2::splat(32.0),
@@ -2623,8 +2574,8 @@ impl App {
                                         r.min + Vec2::new(47.0, 9.0),
                                         egui::Align2::LEFT_TOP,
                                         *label,
-                                        egui::FontId::proportional(12.5),
-                                        p.ink,
+                                        egui::FontId::new(13.0, egui::FontFamily::Name("strong".into())),
+                                        p.text_primary,
                                     );
                                     ui.painter().text(
                                         r.min + Vec2::new(47.0, 28.0),
@@ -2633,13 +2584,15 @@ impl App {
                                         egui::FontId::proportional(10.0),
                                         p.muted,
                                     );
-                                    ui.painter().text(
-                                        r.right_center() - Vec2::new(12.0, 0.0),
-                                        egui::Align2::RIGHT_CENTER,
-                                        "›",
-                                        egui::FontId::proportional(16.0),
-                                        p.muted,
-                                    );
+                                    if response.hovered() {
+                                        ui.painter().text(
+                                            r.right_center() - Vec2::new(12.0, 0.0),
+                                            egui::Align2::RIGHT_CENTER,
+                                            "›",
+                                            egui::FontId::proportional(16.0),
+                                            p.text_tertiary,
+                                        );
+                                    }
                                     self.drag_sources
                                         .push((response.rect.intersect(ui.clip_rect()), item.clone()));
                                     if response.clicked() {
@@ -2752,26 +2705,7 @@ impl App {
                                 found += 1;
                                 let response = ui
                                     .push_id(i, |ui| {
-                                        let (r, response) = ui.allocate_exact_size(
-                                            Vec2::new(ui.available_width(), 54.0),
-                                            egui::Sense::click_and_drag(),
-                                        );
-                                        let fill = if selected == Some(i) {
-                                            p.wash
-                                        } else if response.hovered() {
-                                            p.hover
-                                        } else {
-                                            p.card
-                                        };
-                                        ui.painter().rect_filled(r, 12.0, fill);
-                                        if selected == Some(i) {
-                                            ui.painter().rect_stroke(
-                                                r,
-                                                12.0,
-                                                egui::Stroke::new(1.5_f32, accent()),
-                                                egui::StrokeKind::Inside,
-                                            );
-                                        }
+                                        let (r, response) = theme::list_row(ui, 54.0, selected == Some(i), egui::Sense::click_and_drag());
                                         let color = Color32::from_rgb(
                                             key.color[0],
                                             key.color[1],
@@ -2800,8 +2734,8 @@ impl App {
                                         let mut title =
                                             egui::text::LayoutJob::simple_singleline(
                                                 if self.catalog_tab == 1 { catalog::display_name(&key.label).to_owned() } else { key.label.clone() },
-                                                egui::FontId::proportional(13.0),
-                                                p.ink,
+                                                theme::strong(13.0),
+                                                p.text_primary,
                                             );
                                         title.wrap.max_width = (r.width() - 72.0).max(20.0);
                                         title.wrap.max_rows = 1;
@@ -2821,13 +2755,15 @@ impl App {
                                             egui::FontId::proportional(10.0),
                                             p.muted,
                                         );
-                                        ui.painter().text(
-                                            r.right_center() - Vec2::new(12.0, 0.0),
-                                            egui::Align2::RIGHT_CENTER,
-                                            "›",
-                                            egui::FontId::proportional(16.0),
-                                            if selected == Some(i) { accent() } else { p.muted },
-                                        );
+                                        if response.hovered() {
+                                            ui.painter().text(
+                                                r.right_center() - Vec2::new(12.0, 0.0),
+                                                egui::Align2::RIGHT_CENTER,
+                                                "›",
+                                                egui::FontId::proportional(16.0),
+                                                p.text_tertiary,
+                                            );
+                                        }
                                         response
                                     })
                                     .inner;
@@ -2921,8 +2857,9 @@ impl App {
         egui::TopBottomPanel::bottom("footer")
             .frame(
                 egui::Frame::new()
-                    .fill(p.surface)
-                    .inner_margin(egui::Margin::symmetric(20, 7)),
+                    .fill(p.canvas)
+                    .stroke(egui::Stroke::new(1.0, p.hairline))
+                    .inner_margin(egui::Margin::symmetric(20, 3)),
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {

@@ -510,6 +510,15 @@ pub fn ghost_button(text: impl Into<egui::WidgetText>) -> egui::Button<'static> 
     egui::Button::new(text).fill(current_palette().raised).stroke(Stroke::NONE).corner_radius(RADIUS_SM)
 }
 
+pub fn icon_button(ui: &mut egui::Ui, icon: crate::iconset::Ico, label: &str) -> egui::Response {
+    let image = crate::iconset::image(ui.ctx(), icon, 16.0);
+    let button = match image {
+        Some(image) => egui::Button::image_and_text(image, ""),
+        None => ghost_button(label),
+    }.fill(Color32::TRANSPARENT).stroke(Stroke::NONE).corner_radius(RADIUS_SM).min_size(Vec2::splat(28.0));
+    ui.add(button).on_hover_text(label)
+}
+
 pub fn strong(size: f32) -> egui::FontId {
     egui::FontId::new(size, egui::FontFamily::Name("strong".into()))
 }
