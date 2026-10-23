@@ -1,6 +1,6 @@
 //! Fenêtre du magasin communautaire ; aucune requête tant que l'utilisateur n'a pas consenti.
 use super::App;
-use super::plugin_store_ui::community_state;
+use super::plugin_store_ui::{community_state,start_community_fetch};
 use crate::community_plugins::{self,Entry};
 use crate::i18n::{tr,trf};
 use eframe::egui::{self, RichText};
@@ -58,6 +58,13 @@ fn thumbnail(ui:&mut egui::Ui,url:Option<&str>,icon:bool,size:egui::Vec2) -> boo
  response.clicked()
 }
 fn meta(ui:&mut egui::Ui,text:String){let p=theme::palette(ui.ctx());theme::pill(ui,&text,p.text_secondary);}
+fn badge_pills(ui:&mut egui::Ui,b:community_plugins::Badges){
+ let p=theme::palette(ui.ctx());
+ if b.official{theme::pill(ui,tr("◆ Officiel"),p.accent);}
+ if b.scanned{theme::pill(ui,tr("✓ Analysé"),p.success);}
+ if b.tested{theme::pill(ui,tr("✓ Testé par NovyDeck"),p.success);}
+ if b.warning{theme::pill(ui,tr("! À vérifier"),p.warning);}
+}
 fn excerpt(text:&str,limit:usize)->String {
  let mut chars=text.chars();let short:String=chars.by_ref().take(limit).collect();
  if chars.next().is_some(){format!("{}…",short.trim_end())}else{short}
@@ -92,13 +99,13 @@ impl App {
     });
     ui.add_space(10.0);
     let mut state=community_state().lock().unwrap_or_else(|e|e.into_inner());
-    if let Some(rx)=state.fetching.as_ref(){if let Ok(result)=rx.try_recv(){state.fetching=None;state.loading=false;match result{Ok(entries)=>{state.entries=entries;state.message=tr("Bibliothèque actualisée.").into()},Err(error)=>state.message=trf("Bibliothèque indisponible : {error}",&[("error",&error)])}}}
+    if let Some(rx)=state.fetching.as_ref(){if let Ok(result)=rx.try_recv(){state.fetching=None;state.loading=false;match result{Ok((entries,scans))=>{state.entries=entries;state.scans=scans;state.message=tr("Bibliothèque actualisée.").into()},Err(error)=>state.message=trf("Bibliothèque indisponible : {error}",&[("error",&error)])}}}
     if let Some(rx)=state.installing.as_ref(){if let Ok(result)=rx.try_recv(){state.installing=None;match result{Ok(installed)=>{state.message=if installed{tr("Plugin communautaire importé.")}else{tr("Plugin déjà présent.")}.into();self.refresh_plugin_catalog();},Err(error)=>state.message=trf("Installation impossible : {error}",&[("error",&error)])}}}
     if !state.consent {
      ui.add_space(24.0);
      ui.add(egui::Label::new(tr("Le magasin se connecte à GitHub. Rien n'est installé sans confirmation.")).wrap());
      ui.add_space(8.0);
-     if ui.button(tr("Se connecter au magasin")).clicked(){state.consent=true;let(tx,rx)=mpsc::channel();state.fetching=Some(rx);state.loading=true;let ctx=ctx.clone();std::thread::spawn(move||{let _=tx.send(community_plugins::fetch().map_err(|e|e.to_string()));ctx.request_repaint();});}
+     if ui.button(tr("Se connecter au magasin")).clicked(){state.consent=true;start_community_fetch(&mut state,ctx);}
      return;
     }
     ui.horizontal(|ui|{
@@ -115,7 +122,7 @@ impl App {
         ui.add(egui::TextEdit::singleline(&mut view.search).frame(false).desired_width(f32::INFINITY).hint_text(tr("Rechercher un plugin…")));
        });
       });
-     if ui.add_enabled(!state.loading,iconset::secondary_button(ctx,Ico::Redo,tr("Actualiser"))).clicked(){let(tx,rx)=mpsc::channel();state.fetching=Some(rx);state.loading=true;let ctx=ctx.clone();std::thread::spawn(move||{let _=tx.send(community_plugins::fetch().map_err(|e|e.to_string()));ctx.request_repaint();});}
+     if ui.add_enabled(!state.loading,iconset::secondary_button(ctx,Ico::Redo,tr("Actualiser"))).clicked(){start_community_fetch(&mut state,ctx);}
     });
     if state.loading{ui.label(tr("Chargement de la bibliothèque…"));}
     if !state.message.is_empty(){ui.add(egui::Label::new(RichText::new(&state.message).color(p.text_secondary)).wrap());}
@@ -130,6 +137,7 @@ impl App {
          ui.label(RichText::new(&entry.name).size(26.0).strong());
          ui.label(RichText::new(&entry.author).color(p.text_secondary));
          theme::pill(ui,category_name(entry.category.as_deref().unwrap_or("")),p.accent);
+         ui.horizontal_wrapped(|ui|badge_pills(ui,community_plugins::badges(&entry,&state.scans)));
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{
          if ui.add_enabled_ui(entry.compatible && !installed && state.installing.is_none(),|ui|ui.add_sized([120.0,44.0],theme::primary(if installed{tr("Installé")}else{tr("Installer")}))).inner.clicked(){state.confirmation=Some(entry.clone());}
@@ -145,6 +153,18 @@ impl App {
        if !entry.tested_decks.is_empty(){meta(ui,trf("Decks testés : {decks}",&[("decks",&entry.tested_decks.join(", "))]));}
        if let Some(requires)=&entry.requires{meta(ui,trf("Prérequis : {requires}",&[("requires",requires)]));}
       });
+      ui.add_space(18.0);
+      theme::section_title(ui,tr("Sécurité"));ui.add_space(8.0);
+      let badges=community_plugins::badges(&entry,&state.scans);
+      ui.horizontal_wrapped(|ui|badge_pills(ui,badges));
+      if badges.official{ui.label(tr("Publication attribuée à NovyDeck dans le dépôt officiel."));}
+      if badges.scanned{ui.label(tr("L'archive exacte a passé l'analyse automatique, dont Microsoft Defender."));}
+      if badges.tested{ui.label(tr("Cette version a été testée manuellement par NovyDeck."));}
+      if badges.warning{ui.colored_label(p.warning,if badges.failed{tr("Analyse : problème détecté")}else{tr("Analyse à examiner avant installation.")});}
+      if let Some(date)=community_plugins::scan_date(&entry,&state.scans){ui.label(trf("Analyse du {date}",&[("date",&date)]));}
+      if let Some(tested)=entry.tested_by_novydeck.as_ref().filter(|t|t.version==entry.version){ui.label(trf("Test du {date}",&[("date",&tested.date)]));}
+      ui.label(tr("Une analyse réduit les risques sans les supprimer."));
+      if ui.link(tr("Comment c'est vérifié ?")).clicked(){ctx.open_url(egui::OpenUrl::new_tab(community_plugins::SECURITY_URL));}
       ui.add_space(18.0);
       if !entry.screenshots.is_empty(){
        theme::section_title(ui,tr("Captures"));ui.add_space(8.0);
@@ -189,6 +209,7 @@ impl App {
         ui.add_space(8.0);
         ui.horizontal_wrapped(|ui|{
          theme::pill(ui,category_name(entry.category.as_deref().unwrap_or("")),p.accent);
+         badge_pills(ui,community_plugins::badges(entry,&state.scans));
          let installed=entry.uuid.as_ref().is_some_and(|uuid|self.plugin_inventory().installed.iter().any(|item|&item.uuid==uuid));
          if installed{theme::pill(ui,tr("Installé"),p.success);}else if !entry.compatible{theme::pill(ui,tr("Incompatible"),p.warning);}
         });

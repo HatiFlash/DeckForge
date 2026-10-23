@@ -37,6 +37,7 @@
     "NovyDeck 0.9.0 (VM Windows 10, automated bench)"
    ],
    "min_novydeck": "0.9.0",
+   "tested_by_novydeck": {"version": "1.0.0", "date": "2026-10-23"},
    "requires": "Windows 10+",
    "download": "https://github.com/HatiFlash/novydeck-plugins/releases/download/first-party-v1.0.0/com.novydeck.clock.streamDeckPlugin",
    "sha256": "7504ccbc8959df1708eeedc181e8bb39f640c28fd5f7fe427e4e3366069cfe52",
@@ -359,6 +360,7 @@
     "NovyDeck 0.9.0 (VM Windows 10, automated bench)"
    ],
    "min_novydeck": "0.8.12",
+   "tested_by_novydeck": {"version": "1.1", "date": "2026-10-23"},
    "requires": "Windows 10+",
    "download": "https://github.com/BarRaider/streamdeck-stopwatchdemo/releases/download/v1.1/com.barraider.stopwatch.streamDeckPlugin",
    "sha256": "f7551a2b535c1956849c491369b1d85f4b9891edcd1ce759fbcc6fdc24c5f1dc"

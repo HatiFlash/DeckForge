@@ -7,6 +7,8 @@ use sha2::{Digest, Sha256};
 
 pub const REGISTRY_URL: &str = "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/registry.json";
 pub const CONTRIBUTE_URL: &str = "https://github.com/HatiFlash/novydeck-plugins/blob/main/CONTRIBUTING.md";
+pub const SECURITY_URL: &str = "https://github.com/HatiFlash/novydeck-plugins#use-the-community-library-in-novydeck";
+const SCAN_URL: &str = "https://raw.githubusercontent.com/HatiFlash/novydeck-plugins/main/security/scan-results.json";
 const ARCHIVE_LIMIT: usize = 50 * 1024 * 1024;
 const REGISTRY_LIMIT: usize = 1024 * 1024;
 
@@ -33,11 +35,45 @@ pub struct Entry {
     #[serde(default)] pub actions: Vec<Action>,
     #[serde(default)] pub tags: Vec<String>,
     #[serde(default)] pub requires: Option<String>,
+    #[serde(default)] pub tested_by_novydeck: Option<TestedBy>,
     #[serde(skip)] pub compatible: bool,
 }
 #[derive(Clone, Debug, Deserialize)]
+pub struct TestedBy { pub version: String, pub date: String }
+#[derive(Clone, Debug, Deserialize)]
 pub struct Action { pub name: String, #[serde(default)] pub name_fr: Option<String> }
 #[derive(Deserialize)] struct Registry { schema: u32, plugins: Vec<Entry> }
+#[derive(Clone, Debug, Deserialize)]
+pub struct Scan { pub id: String, pub version: String, pub sha256: String, pub date: String, pub defender: String, pub verdict: String }
+#[derive(Deserialize)] struct ScanResults { plugins: Vec<Scan> }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Badges { pub official: bool, pub scanned: bool, pub tested: bool, pub warning: bool, pub failed: bool }
+/// Only metadata matching the exact archive can provide a scan badge.
+pub fn badges(entry: &Entry, scans: &[Scan]) -> Badges {
+    let official = entry.id.starts_with("com.novydeck.") && entry.author == "NovyDeck" &&
+        url::Url::parse(&entry.download).ok().is_some_and(|url| url.scheme() == "https" && url.host_str() == Some("github.com") && url.path().starts_with("/HatiFlash/novydeck-plugins/releases/"));
+    let matching: Vec<_> = scans.iter().filter(|s| s.id == entry.id && s.version == entry.version && s.sha256 == entry.sha256).collect();
+    let scanned = matching.iter().any(|s| s.verdict == "passed" && s.defender == "clean");
+    let failed = matching.iter().any(|s| s.verdict == "failed");
+    let warning = !scanned && (failed || matching.iter().any(|s| s.verdict == "review"));
+    Badges { official, scanned, tested: entry.tested_by_novydeck.as_ref().is_some_and(|t| t.version == entry.version), warning, failed: warning && failed }
+}
+pub fn scan_date<'a>(entry: &Entry, scans: &'a [Scan]) -> Option<&'a str> {
+    scans.iter().find(|s| s.id == entry.id && s.version == entry.version && s.sha256 == entry.sha256 &&
+        ((s.verdict == "passed" && s.defender == "clean") || s.verdict == "review" || s.verdict == "failed")).map(|s| s.date.as_str())
+}
+pub fn parse_scans(bytes: &[u8]) -> Result<Vec<Scan>> {
+    anyhow::ensure!(bytes.len() <= REGISTRY_LIMIT, "Résultats d'analyse trop volumineux");
+    let results: ScanResults = serde_json::from_slice(bytes).context("Résultats d'analyse invalides")?;
+    anyhow::ensure!(results.plugins.len() <= 1000, "Résultats d'analyse trop volumineux");
+    Ok(results.plugins)
+}
+/// Invoke only from the consented store worker thread; scan failures leave the registry usable.
+pub fn fetch_with_scans() -> Result<(Vec<Entry>, Vec<Scan>)> {
+    let entries = fetch()?;
+    let scans = crate::https_get::get(SCAN_URL, REGISTRY_LIMIT).ok().and_then(|bytes| parse_scans(&bytes).ok()).unwrap_or_default();
+    Ok((entries, scans))
+}
 
 fn https_url(raw: &str) -> Result<url::Url> {
     let parsed = url::Url::parse(raw).context("URL de plugin invalide")?;
@@ -152,6 +188,35 @@ pub fn install(entry: &Entry, dest: &Path) -> Result<bool> {
         let mut value = entry(); value["download"] = "http://example.org/x.zip".into(); assert!(parse(&registry(value)).is_err());
         let mut value = entry(); value["homepage"] = "http://example.org/".into(); assert!(parse(&registry(value)).is_err());
         let mut value = entry(); value["sha256"] = "A".repeat(64).into(); assert!(parse(&registry(value)).is_err());
+    }
+    #[test] fn badges_require_exact_identity_archive_and_version() {
+        let mut value = entry();
+        value["id"] = "com.novydeck.clock".into();
+        value["author"] = "NovyDeck".into();
+        value["download"] = "https://github.com/HatiFlash/novydeck-plugins/releases/download/v1/clock.zip".into();
+        value["tested_by_novydeck"] = serde_json::json!({"version":"1.2.0","date":"2026-10-23"});
+        let mut plugin = parse(&registry(value)).unwrap().remove(0);
+        let mut scan = Scan { id:plugin.id.clone(),version:plugin.version.clone(),sha256:plugin.sha256.clone(),date:"2026-10-23".into(),defender:"clean".into(),verdict:"passed".into() };
+        assert_eq!(badges(&plugin,&[scan.clone()]), Badges { official:true,scanned:true,tested:true,warning:false,failed:false });
+        scan.sha256 = "b".repeat(64);
+        assert!(!badges(&plugin,&[scan.clone()]).scanned);
+        scan.sha256 = plugin.sha256.clone();
+        scan.version = "1.2.1".into();
+        assert!(!badges(&plugin,&[scan.clone()]).scanned);
+        plugin.tested_by_novydeck.as_mut().unwrap().version = "1.2.1".into();
+        assert!(!badges(&plugin,&[]).tested);
+        scan.version = plugin.version.clone(); scan.verdict = "failed".into();
+        assert_eq!((badges(&plugin,&[scan.clone()]).warning,badges(&plugin,&[scan.clone()]).failed), (true,true));
+        scan.verdict = "review".into();
+        assert!(badges(&plugin,&[scan.clone()]).warning);
+        scan.defender = "unknown".into(); scan.verdict = "passed".into();
+        assert!(!badges(&plugin,&[scan]).scanned);
+        plugin.author = "Impostor".into();
+        assert!(!badges(&plugin,&[]).official);
+    }
+    #[test] fn scans_are_optional_and_bounded() {
+        assert!(parse_scans(br#"{"plugins":[]}"#).unwrap().is_empty());
+        assert!(parse_scans(&vec![b' ';REGISTRY_LIMIT+1]).is_err());
     }
     #[test] fn rejects_oversized_registry_and_unknown_schema() {
         assert!(parse(&vec![b' '; REGISTRY_LIMIT + 1]).is_err());

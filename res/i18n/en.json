@@ -11,6 +11,7 @@
     " · expérimental": " · experimental",
     " · vérifié": " · verified",
     " à {x}, {y} ({relative_to})": " at {x}, {y} ({relative_to})",
+    "! À vérifier": "! Review needed",
     "+ Ajouter un bloc": "+ Add a block",
     "+ Ajouter une condition": "+ Add a condition",
     "+ Basculer deux entrées / micros": "+ Switch between two inputs / microphones",

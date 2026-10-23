@@ -2589,7 +2589,8 @@ fn readme_captures_plugin_store_workshop_and_startup() {
                 if let Ok(bytes) = std::fs::read(fixtures.join("shots").join(format!("{name}.png"))) { super::plugin_market_ui::test_image_png(&h.ctx, shot, &bytes); }
             }
         }
-        { let mut state = community_state().lock().unwrap(); state.consent = true; state.entries = entries; state.message.clear(); }
+        let scans = crate::community_plugins::parse_scans(&std::fs::read(fixtures.join("scan-results.json")).unwrap()).unwrap();
+        { let mut state = community_state().lock().unwrap(); state.consent = true; state.entries = entries; state.scans = scans; state.message.clear(); }
         super::plugin_market_ui::test_view(None);
         let grid = h.warm(size);
         h.png(size, grid, &out.join(format!("readme-store-{lang}.png")));
@@ -2597,7 +2598,7 @@ fn readme_captures_plugin_store_workshop_and_startup() {
         let detail = h.warm(size);
         h.png(size, detail, &out.join(format!("readme-store-detail-{lang}.png")));
         super::plugin_market_ui::test_view(None);
-        { let mut state = community_state().lock().unwrap(); state.consent = false; state.entries.clear(); }
+        { let mut state = community_state().lock().unwrap(); state.consent = false; state.entries.clear(); state.scans.clear(); }
         super::plugin_market_ui::test_close();
         drop(h);
         // 2. Atelier : deux plugins différents enchaînés dans la même macro.

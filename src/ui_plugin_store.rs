@@ -11,8 +11,9 @@ use std::sync::{mpsc::{self,Receiver},Mutex,OnceLock};
 pub(super) struct CommunityState {
  pub(super) consent:bool,
  pub(super) entries:Vec<Entry>,
+ pub(super) scans:Vec<community_plugins::Scan>,
  pub(super) loading:bool,
- pub(super) fetching:Option<Receiver<Result<Vec<Entry>,String>>>,
+ pub(super) fetching:Option<Receiver<Result<(Vec<Entry>,Vec<community_plugins::Scan>),String>>>,
  pub(super) installing:Option<Receiver<Result<bool,String>>>,
  pub(super) confirmation:Option<Entry>,
  pub(super) message:String,
@@ -157,7 +158,7 @@ impl App {
   let mut state=community_state().lock().unwrap_or_else(|e|e.into_inner());
   if let Some(rx)=state.fetching.as_ref(){if let Ok(result)=rx.try_recv(){
    state.loading=false;state.fetching=None;
-   match result{Ok(entries)=>{state.entries=entries;state.message=crate::i18n::tr("Bibliothèque actualisée.").into();},Err(error)=>state.message=crate::i18n::trf("Bibliothèque indisponible : {error}", &[("error", &(error))] )}
+   match result{Ok((entries,scans))=>{state.entries=entries;state.scans=scans;state.message=crate::i18n::tr("Bibliothèque actualisée.").into();},Err(error)=>state.message=crate::i18n::trf("Bibliothèque indisponible : {error}", &[("error", &(error))] )}
   }}
   if let Some(rx)=state.installing.as_ref(){if let Ok(result)=rx.try_recv(){
    state.installing=None;
@@ -202,6 +203,11 @@ impl App {
    ui.add(egui::Label::new(crate::i18n::trf("Téléchargement : {url}", &[("url", &(entry.download))] )).wrap());
    ui.add(egui::Label::new(crate::i18n::trf("SHA-256 attendu : {hash}", &[("hash", &(entry.sha256))] )).wrap());
    ui.label(crate::i18n::tr("Ce plugin exécute du code tiers avec vos droits utilisateur."));
+   let badges=community_plugins::badges(&entry,&state.scans);
+   if badges.warning{
+    let p=crate::theme::palette(ui.ctx());
+    ui.colored_label(p.warning,if badges.failed{crate::i18n::tr("Analyse : problème détecté")}else{crate::i18n::tr("Analyse à examiner avant installation.")});
+   }
    ui.horizontal(|ui|{
     if ui.add_enabled(state.installing.is_none(),egui::Button::new(crate::i18n::tr("Confirmer et installer"))).clicked(){
      let (tx,rx)=mpsc::channel();state.installing=Some(rx);state.confirmation=None;
@@ -260,9 +266,9 @@ impl App {
   Some(Box::new(move |app:&mut App|match result{Ok(copied)=>{app.refresh_plugin_catalog();app.notice=if copied{crate::i18n::tr("Plugin importé")}else{crate::i18n::tr("Plugin déjà présent")}.into();},Err(e)=>app.fail(crate::i18n::trf("Import plugin impossible : {error}", &[("error", &(e))] ))}))
  });}
 }
-fn start_community_fetch(state:&mut CommunityState,ctx:&egui::Context){
+pub(super) fn start_community_fetch(state:&mut CommunityState,ctx:&egui::Context){
  let (tx,rx)=mpsc::channel();state.fetching=Some(rx);state.loading=true;state.message.clear();
- let ctx=ctx.clone();std::thread::spawn(move||{let result=community_plugins::fetch().map_err(|e|e.to_string());let _=tx.send(result);ctx.request_repaint();});
+ let ctx=ctx.clone();std::thread::spawn(move||{let result=community_plugins::fetch_with_scans().map_err(|e|e.to_string());let _=tx.send(result);ctx.request_repaint();});
 }
 fn community_matches(entry:&Entry,search:&str)->bool{
  let search=search.trim().to_lowercase();
