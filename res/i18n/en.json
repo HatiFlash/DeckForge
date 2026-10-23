@@ -11,7 +11,6 @@
     " · expérimental": " · experimental",
     " · vérifié": " · verified",
     " à {x}, {y} ({relative_to})": " at {x}, {y} ({relative_to})",
-    "! À vérifier": "! Review needed",
     "+ Ajouter un bloc": "+ Add a block",
     "+ Ajouter une condition": "+ Add a condition",
     "+ Basculer deux entrées / micros": "+ Switch between two inputs / microphones",
@@ -105,6 +104,7 @@
     "Analyse : problème détecté": "Scan: issue detected",
     "Analyse du {date}": "Scanned on {date}",
     "Analyse à examiner avant installation.": "Scan findings to review before installing.",
+    "Analysé": "Scanned",
     "Animations GIF et vidéo sur les touches": "GIF and video animations on keys",
     "Annuler": "Cancel",
     "Annuler la demande IA": "Cancel AI request",
@@ -848,6 +848,7 @@
     "OBS : {scene} / {source} ({mode})": "OBS: {scene} / {source} ({mode})",
     "OBS Studio (WebSocket local)": "OBS Studio (local WebSocket)",
     "Observation : {observation} · délai {timeout} ms": "Observation: {observation} · timeout {timeout} ms",
+    "Officiel": "Official",
     "Onglet précédent": "Previous tab",
     "Onglet suivant": "Next tab",
     "Optimiser": "Optimize",
@@ -1142,6 +1143,8 @@
     "Tester mon périphérique…": "Test my device…",
     "Tester pour de vrai": "Run for real",
     "Tester pour de vrai (3 s)": "Run for real (3 s)",
+    "Testé": "Tested",
+    "Testé par NovyDeck": "Tested by NovyDeck",
     "Texte": "Text",
     "Texte (accepte {nom})": "Text (supports {nom})",
     "Texte recherché (accepte {variable}, non vide après interpolation)": "Search text (supports {variable}, nonempty after substitution)",
@@ -1314,6 +1317,7 @@
     "À jour (version {version})": "Up to date (version {version})",
     "À propos": "About",
     "À propos de NovyDeck": "About NovyDeck",
+    "À vérifier": "Review",
     "ÉCHEC : périphérique déconnecté": "FAILED: device disconnected",
     "ÉTAT 1": "STATE 1",
     "ÉTAT 2": "STATE 2",
@@ -1339,9 +1343,6 @@
     "× Fermer les propriétés": "× Close properties",
     "• {action}": "• {action}",
     "← Retour": "← Back",
-    "← Retour au deck": "← Back to deck",
-    "◆ Officiel": "◆ Official",
-    "✓ Analysé": "✓ Scanned",
-    "✓ Testé par NovyDeck": "✓ Tested by NovyDeck"
+    "← Retour au deck": "← Back to deck"
   }
 }

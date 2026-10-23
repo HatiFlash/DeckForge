@@ -1,11 +1,85 @@
 {
   "plugins": [
-    {"id":"com.novydeck.clock","version":"1.0.0","sha256":"7504ccbc8959df1708eeedc181e8bb39f640c28fd5f7fe427e4e3366069cfe52","date":"2026-10-23T12:00:00+00:00","defender":"clean","findings":[],"verdict":"passed"},
-    {"id":"com.novydeck.counter","version":"1.0.0","sha256":"911844ec70f54c5155747519d4109f072d65f8cb008f6da7962012646f1fd865","date":"2026-10-23T12:00:00+00:00","defender":"clean","findings":[],"verdict":"passed"},
-    {"id":"com.novydeck.sysmonitor","version":"1.0.0","sha256":"f87ba057be124898a2ef237a6165059efe26c3b61df99d7e455395be9a56e210","date":"2026-10-23T12:00:00+00:00","defender":"clean","findings":[],"verdict":"passed"},
-    {"id":"com.novydeck.nowplaying","version":"1.0.0","sha256":"0fb5a7a95a145e627920a47c847c8c09e274da167adafb60cd958a7de346cfd9","date":"2026-10-23T12:00:00+00:00","defender":"clean","findings":[],"verdict":"passed"},
-    {"id":"com.novydeck.oledsaver","version":"1.0.0","sha256":"e9f6515d3abf913884d44acbc373d33fb0c302cabc6e5a3f6fca5e052757423e","date":"2026-10-23T12:00:00+00:00","defender":"clean","findings":[],"verdict":"passed"},
-    {"id":"com.novydeck.homeassistant","version":"1.0.0","sha256":"22942bab893ccfc2e2620e60cc6aab564d22125c0dcc262a33da708369450594","date":"2026-10-23T12:00:00+00:00","defender":"clean","findings":[],"verdict":"passed"},
-    {"id":"com.novydeck.googleassistant","version":"1.0.0","sha256":"1431b2549323790de4e2d4e2f2bc4d176cada7c7c7990ac97ba0af2bfd48ee9b","date":"2026-10-23T12:00:00+00:00","defender":"clean","findings":[],"verdict":"passed"}
+    {
+      "id": "com.novydeck.clock",
+      "version": "1.0.0",
+      "sha256": "7504ccbc8959df1708eeedc181e8bb39f640c28fd5f7fe427e4e3366069cfe52",
+      "date": "2026-10-23T12:00:00+00:00",
+      "defender": "clean",
+      "findings": [],
+      "verdict": "passed"
+    },
+    {
+      "id": "com.novydeck.counter",
+      "version": "1.0.0",
+      "sha256": "911844ec70f54c5155747519d4109f072d65f8cb008f6da7962012646f1fd865",
+      "date": "2026-10-23T12:00:00+00:00",
+      "defender": "clean",
+      "findings": [],
+      "verdict": "passed"
+    },
+    {
+      "id": "com.novydeck.sysmonitor",
+      "version": "1.0.0",
+      "sha256": "f87ba057be124898a2ef237a6165059efe26c3b61df99d7e455395be9a56e210",
+      "date": "2026-10-23T12:00:00+00:00",
+      "defender": "clean",
+      "findings": [],
+      "verdict": "passed"
+    },
+    {
+      "id": "com.novydeck.nowplaying",
+      "version": "1.0.0",
+      "sha256": "0fb5a7a95a145e627920a47c847c8c09e274da167adafb60cd958a7de346cfd9",
+      "date": "2026-10-23T12:00:00+00:00",
+      "defender": "clean",
+      "findings": [],
+      "verdict": "passed"
+    },
+    {
+      "id": "com.novydeck.oledsaver",
+      "version": "1.0.0",
+      "sha256": "e9f6515d3abf913884d44acbc373d33fb0c302cabc6e5a3f6fca5e052757423e",
+      "date": "2026-10-23T12:00:00+00:00",
+      "defender": "clean",
+      "findings": [],
+      "verdict": "passed"
+    },
+    {
+      "id": "com.novydeck.homeassistant",
+      "version": "1.0.0",
+      "sha256": "22942bab893ccfc2e2620e60cc6aab564d22125c0dcc262a33da708369450594",
+      "date": "2026-10-23T12:00:00+00:00",
+      "defender": "clean",
+      "findings": [],
+      "verdict": "passed"
+    },
+    {
+      "id": "com.novydeck.googleassistant",
+      "version": "1.0.0",
+      "sha256": "1431b2549323790de4e2d4e2f2bc4d176cada7c7c7990ac97ba0af2bfd48ee9b",
+      "date": "2026-10-23T12:00:00+00:00",
+      "defender": "clean",
+      "findings": [],
+      "verdict": "passed"
+    },
+    {
+      "id": "com.elgato.cpu",
+      "version": "1.2",
+      "sha256": "582c03fa2c5118e4a083c5b32d411cede07383668d8f4be4c9f131a13a417276",
+      "date": "2026-10-23T12:00:00+00:00",
+      "defender": "clean",
+      "findings": [],
+      "verdict": "passed"
+    },
+    {
+      "id": "com.barraider.stopwatch",
+      "version": "1.1",
+      "sha256": "f7551a2b535c1956849c491369b1d85f4b9891edcd1ce759fbcc6fdc24c5f1dc",
+      "date": "2026-10-23T12:00:00+00:00",
+      "defender": "clean",
+      "findings": [],
+      "verdict": "passed"
+    }
   ]
 }

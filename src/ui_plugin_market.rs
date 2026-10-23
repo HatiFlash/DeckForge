@@ -58,12 +58,12 @@ fn thumbnail(ui:&mut egui::Ui,url:Option<&str>,icon:bool,size:egui::Vec2) -> boo
  response.clicked()
 }
 fn meta(ui:&mut egui::Ui,text:String){let p=theme::palette(ui.ctx());theme::pill(ui,&text,p.text_secondary);}
-fn badge_pills(ui:&mut egui::Ui,b:community_plugins::Badges){
+fn badge_pills(ui:&mut egui::Ui,b:community_plugins::Badges,compact:bool){
  let p=theme::palette(ui.ctx());
- if b.official{theme::pill(ui,tr("◆ Officiel"),p.accent);}
- if b.scanned{theme::pill(ui,tr("✓ Analysé"),p.success);}
- if b.tested{theme::pill(ui,tr("✓ Testé par NovyDeck"),p.success);}
- if b.warning{theme::pill(ui,tr("! À vérifier"),p.warning);}
+ if b.official{theme::pill(ui,tr("Officiel"),p.accent);}
+ if b.scanned{theme::pill(ui,tr("Analysé"),p.success);}
+ if b.tested{theme::pill(ui,if compact{tr("Testé")}else{tr("Testé par NovyDeck")},p.success);}
+ if b.warning{theme::pill(ui,tr("À vérifier"),p.warning);}
 }
 fn excerpt(text:&str,limit:usize)->String {
  let mut chars=text.chars();let short:String=chars.by_ref().take(limit).collect();
@@ -138,7 +138,7 @@ impl App {
          ui.label(RichText::new(&entry.author).color(p.text_secondary));
          theme::pill(ui,category_name(entry.category.as_deref().unwrap_or("")),p.accent);
          let header_badges=community_plugins::badges(&entry,&state.scans);
-         if header_badges.official||header_badges.scanned||header_badges.tested||header_badges.warning{ui.horizontal_wrapped(|ui|badge_pills(ui,header_badges));}
+         if header_badges.official||header_badges.scanned||header_badges.tested||header_badges.warning{ui.horizontal_wrapped(|ui|badge_pills(ui,header_badges,false));}
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{
          if ui.add_enabled_ui(entry.compatible && !installed && state.installing.is_none(),|ui|ui.add_sized([120.0,44.0],theme::primary(if installed{tr("Installé")}else{tr("Installer")}))).inner.clicked(){state.confirmation=Some(entry.clone());}
@@ -165,12 +165,12 @@ impl App {
       ui.add_space(18.0);
       theme::section_title(ui,tr("Sécurité"));ui.add_space(8.0);
       let badges=community_plugins::badges(&entry,&state.scans);
-      ui.horizontal_wrapped(|ui|badge_pills(ui,badges));
+      ui.horizontal_wrapped(|ui|badge_pills(ui,badges,false));
       if badges.official{ui.label(tr("Publication attribuée à NovyDeck dans le dépôt officiel."));}
       if badges.scanned{ui.label(tr("L'archive exacte a passé l'analyse automatique, dont Microsoft Defender."));}
       if badges.tested{ui.label(tr("Cette version a été testée manuellement par NovyDeck."));}
       if badges.warning{ui.colored_label(p.warning,if badges.failed{tr("Analyse : problème détecté")}else{tr("Analyse à examiner avant installation.")});}
-      if let Some(date)=community_plugins::scan_date(&entry,&state.scans){ui.label(trf("Analyse du {date}",&[("date",&date)]));}
+      if let Some(date)=community_plugins::scan_date(&entry,&state.scans){ui.label(trf("Analyse du {date}",&[("date",&date.get(..10).unwrap_or(date))]));}
       if let Some(tested)=entry.tested_by_novydeck.as_ref().filter(|t|t.version==entry.version){ui.label(trf("Test du {date}",&[("date",&tested.date)]));}
       ui.label(tr("Une analyse réduit les risques sans les supprimer."));
       if ui.link(tr("Comment c'est vérifié ?")).clicked(){ctx.open_url(egui::OpenUrl::new_tab(community_plugins::SECURITY_URL));}
@@ -210,7 +210,7 @@ impl App {
         ui.add_space(8.0);
         ui.horizontal_wrapped(|ui|{
          theme::pill(ui,category_name(entry.category.as_deref().unwrap_or("")),p.accent);
-         badge_pills(ui,community_plugins::badges(entry,&state.scans));
+         badge_pills(ui,community_plugins::badges(entry,&state.scans),true);
          let installed=entry.uuid.as_ref().is_some_and(|uuid|self.plugin_inventory().installed.iter().any(|item|&item.uuid==uuid));
          if installed{theme::pill(ui,tr("Installé"),p.success);}else if !entry.compatible{theme::pill(ui,tr("Incompatible"),p.warning);}
         });
