@@ -5,7 +5,7 @@
   <h1>NovyDeck</h1>
   <p>Logiciel libre pour Windows qui pilote les stream decks : touches, macros, médias et plugins, sans le logiciel officiel. Testé sur le FIFINE AmpliGame D6 et l'Elgato Stream Deck.</p>
   <p>
-    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.10.0"><img src="https://img.shields.io/badge/Release-v0.10.0-3478F6.svg" alt="Version 0.10.0"></a>
+    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.10.1"><img src="https://img.shields.io/badge/Release-v0.10.1-3478F6.svg" alt="Version 0.10.1"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/Licence-MIT-22C58B.svg" alt="Licence MIT"></a>
     <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-555.svg" alt="Windows 10/11">
   </p>
@@ -20,6 +20,18 @@
 [![Voir le film de présentation NovyDeck](docs/media/novydeck-demo-poster.png)](docs/media/novydeck-demo.mp4)
 
 Un film de présentation de 40 s en 1920 × 1080 à 60 i/s, avec son, réalisé avec Remotion et three.js. Il montre le pavé D6 en 3D, de vraies captures de l'interface et une musique synthétisée. Le film publié a été produit hors du dépôt.
+
+## Nouveautés 0.10.1
+
+### En-tête du deck plus propre
+
+L'en-tête de la scène du deck a été redessiné : le nom du profil et la phrase d'aide restent dans la carte arrondie avec de vraies marges (un nom de profil trop long est raccourci avec « … » et affiché en entier dans une infobulle), et la navigation entre pages devient un seul contrôle groupé à droite, avec des flèches nettes qui s'éclairent au survol et se grisent quand il n'y a qu'une page. Dans une fenêtre basse, l'en-tête se resserre pour garder des touches lisibles.
+
+![En-tête du deck redessiné avec la pagination groupée](docs/images/redesign-dark-fr.png)
+
+### Corrections de l'interface anglaise
+
+Le bouton Annuler s'affiche désormais **Undo** en anglais (il indiquait « Cancel »), et les catégories de la bibliothèque (**System**, **Media**…), les noms d'étapes dans l'inspecteur et le menu **Add** des étapes sont traduits.
 
 ## Nouveautés 0.10.0
 
@@ -238,6 +250,7 @@ NovyDeck fonctionne hors ligne. L'IA locale reste sur votre PC ; elle est facult
 
 ## Dernière version
 
+- **0.10.1 :** en-tête du deck plus propre (textes dans la carte, flèches de page groupées et grisées s'il n'y a qu'une page) ; corrections de l'interface anglaise (Undo, catégories, noms d'étapes, menu Add).
 - **0.10.0 :** interface redessinée avec un nouveau design system : scène du deck graphite sans néon, boutons sans contour, inspecteur de touche plus clair avec onglets soulignés, bibliothèque épurée, couleurs plus profondes dans tous les thèmes et titres en semi-gras. Profils, médias et plugins conservés.
 - **0.9.3 :** badges de sécurité dans le magasin (analyse automatique sur GitHub) ; plugins officiels 1.0.2 avec logos et réglages repensés ; plus de console pendant la mise à jour ; fenêtres secondaires fixes ; état ON/OFF conservé entre les pages.
 - **0.9.2 :** deux images Activé/Désactivé par touche alternent à l’appui court physique ; textes anglais et panneau Windows fixe ; plugins officiels 1.0.1 sans cadres noirs, aperçus CPU/RAM mesurés.

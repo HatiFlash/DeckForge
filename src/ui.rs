@@ -1843,7 +1843,7 @@ impl App {
                     });
                     ui.add_space(12.0);
                     if ui
-                        .add_enabled(!self.history.is_empty(), iconset::secondary_button(ctx, Ico::Undo, if ctx.screen_rect().width() < 1320.0 { "" } else { tr("Annuler") }))
+                        .add_enabled(!self.history.is_empty(), iconset::secondary_button(ctx, Ico::Undo, if ctx.screen_rect().width() < 1320.0 { "" } else { tr("Annuler ") }))
                         .on_hover_text(tr("Annuler — Ctrl+Z"))
                         .clicked()
                     {
@@ -2024,7 +2024,7 @@ impl App {
                         if self.gate.connected { p.success } else if self.wanted { p.warning } else { p.text_tertiary });
                     ui.add_space(12.0);
                     if ui
-                        .add_enabled(!self.history.is_empty(), iconset::secondary_button(ctx, Ico::Undo, if ctx.screen_rect().width() < 1320.0 { "" } else { tr("Annuler") }))
+                        .add_enabled(!self.history.is_empty(), iconset::secondary_button(ctx, Ico::Undo, if ctx.screen_rect().width() < 1320.0 { "" } else { tr("Annuler ") }))
                         .on_hover_text(tr("Annuler — Ctrl+Z"))
                         .clicked()
                     {
@@ -2747,10 +2747,9 @@ impl App {
                                         ui.painter().text(
                                             r.min + Vec2::new(49.0, 30.0),
                                             egui::Align2::LEFT_TOP,
-                                            format!(
-                                                "{} · {} action(s)",
-                                                category,
-                                                key.steps.len()
+                                            trf(
+                                                "{name} · {count} action(s)",
+                                                &[("name", &crate::catalog::display_category(category)), ("count", &key.steps.len())],
                                             ),
                                             egui::FontId::proportional(10.0),
                                             p.muted,
@@ -3193,7 +3192,7 @@ impl App {
                     if long_editor { ui.label(RichText::new(tr("L’atelier de blocs modifie uniquement l’appui court. Pour un fichier, renseigne son chemin dans l’action.")).small().color(p.muted)); }
                     ui.horizontal(|ui|{
                         ui.label(RichText::new(trf("Actions · {steps} étape(s)", &[("steps", &steps.len())])).strong());
-                        iconset::menu(ui, Ico::Add, "Ajouter",|ui|{for (i,label) in crate::automation::NAMES.iter().enumerate(){if ui.add_enabled(steps.len()<256,iconset::button(ui.ctx(), iconset::for_step(&crate::automation::step(i)), *label)).clicked(){add_kind=Some(i);ui.close_menu();}}});
+                        iconset::menu(ui, Ico::Add, tr("Ajouter"),|ui|{for (i,label) in crate::automation::NAMES.iter().enumerate(){if ui.add_enabled(steps.len()<256,iconset::button(ui.ctx(), iconset::for_step(&crate::automation::step(i)), tr(*label))).clicked(){add_kind=Some(i);ui.close_menu();}}});
                     });
                     let mut remove=None;let mut movement=None;
                     egui::ScrollArea::vertical().id_salt("step_list").auto_shrink([false, false]).max_height((body_height-40.0).max(100.0)).show(ui,|ui| {
@@ -3205,7 +3204,7 @@ impl App {
                                 ui.set_max_width(ui.available_width());
                                 ui.horizontal(|ui|{
                                     egui::Frame::new().fill(p.accent_soft).corner_radius(20).inner_margin(egui::Margin::symmetric(6, 3)).show(ui, |ui| { ui.label(RichText::new(format!("{:02}",i+1)).color(p.accent).size(11.0)); });
-                                    ui.label(RichText::new(step.name()).font(theme::strong(12.0)));
+                                    ui.label(RichText::new(tr(step.name())).font(theme::strong(12.0)));
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{
                                         if ui.add(theme::ghost_button("×").small()).on_hover_text(tr("Supprimer cette étape")).clicked(){remove=Some(i);}
                                         if ui.add_enabled(i+1<count,theme::ghost_button("↓").small()).clicked(){movement=Some((i,i+1));}
@@ -3797,7 +3796,7 @@ impl App {
                             ui.colored_label(Color32::from_rgb(222, 165, 77), warning);
                         }
                         for key in report.profile.keys.iter().filter(|k| !k.label.is_empty()) {
-                            ui.label(format!("{} · {} action(s)", key.label, key.steps.len()));
+                            ui.label(trf("{name} · {count} action(s)", &[("name", &key.label), ("count", &key.steps.len())]));
                         }
                     }
                 });

@@ -5,7 +5,7 @@ English · [Français](README.fr.md)
   <h1>NovyDeck</h1>
   <p>Open-source Windows software for stream decks: keys, macros, media and plugins, without the official software. Tested on the FIFINE AmpliGame D6 and the Elgato Stream Deck.</p>
   <p>
-    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.10.0"><img src="https://img.shields.io/badge/Release-v0.10.0-3478F6.svg" alt="Release v0.10.0"></a>
+    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.10.1"><img src="https://img.shields.io/badge/Release-v0.10.1-3478F6.svg" alt="Release v0.10.1"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-22C58B.svg" alt="MIT license"></a>
     <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-555.svg" alt="Windows 10/11">
   </p>
@@ -20,6 +20,18 @@ English · [Français](README.fr.md)
 [![Watch the NovyDeck presentation film](docs/media/novydeck-demo-poster.png)](docs/media/novydeck-demo.mp4)
 
 A 40-second presentation film in 1920 × 1080 at 60 fps with sound, made with Remotion and three.js. It features a 3D D6 deck, actual interface captures and synthesized music. The published film was produced outside this repository.
+
+## What's new in 0.10.1
+
+### Cleaner deck header
+
+The header of the deck stage was redrawn: the profile name and the help line now sit inside the rounded card with proper margins (a long profile name is shortened with "…" and shown in full in a tooltip), and page navigation is a single grouped control on the right, with crisp drawn arrows that highlight on hover and are greyed out when there is only one page. In low windows the header gets more compact so the keys stay large.
+
+![Redesigned deck header with grouped page navigation](docs/images/redesign-dark.png)
+
+### English interface fixes
+
+The Undo button now reads **Undo** (it said "Cancel"), and library categories (**System**, **Media**…), step names in the key inspector and the **Add** step menu are translated.
 
 ## What's new in 0.10.0
 
@@ -238,6 +250,7 @@ NovyDeck works offline. Local AI stays on your PC and is optional and disabled b
 
 ## Latest release
 
+- **0.10.1:** cleaner deck header (texts inside the card, grouped page arrows greyed out on a single page); English fixes (Undo, library categories, step names, Add menu).
 - **0.10.0:** redesigned interface with a new design system: graphite deck stage without neon glow, outline-free buttons, clearer key inspector with underlined tabs, cleaner action library, deeper colours in all themes and Semibold titles. Profiles, media and plugins are kept.
 - **0.9.3:** security badges in the plugin store (automatic GitHub scan); official plugins 1.0.2 with logos and cleaner settings; no console during in-app updates; fixed secondary windows; ON/OFF state kept across pages.
 - **0.9.2:** keys can alternate two user-selected ON/OFF images on short physical presses; English text and a fixed Windows and shortcuts dialog; official plugins 1.0.1 improve key text and CPU/RAM previews.
