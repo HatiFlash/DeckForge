@@ -154,6 +154,14 @@ impl App {
        if let Some(requires)=&entry.requires{meta(ui,trf("Prérequis : {requires}",&[("requires",requires)]));}
       });
       ui.add_space(18.0);
+      if !entry.screenshots.is_empty(){
+       theme::section_title(ui,tr("Captures"));ui.add_space(8.0);
+       egui::ScrollArea::horizontal().id_salt("market_shots").show(ui,|ui|{ui.horizontal(|ui|{for url in &entry.screenshots {if thumbnail(ui,Some(url),false,egui::vec2(320.0,180.0)){view.enlarged=Some(url.clone());}}});});
+       ui.add_space(18.0);
+      }
+      theme::section_title(ui,tr("À propos"));ui.add_space(8.0);
+      ui.add(egui::Label::new(localized(entry.description_fr.as_deref(),&entry.description)).wrap());
+      ui.add_space(18.0);
       theme::section_title(ui,tr("Sécurité"));ui.add_space(8.0);
       let badges=community_plugins::badges(&entry,&state.scans);
       ui.horizontal_wrapped(|ui|badge_pills(ui,badges));
@@ -165,14 +173,6 @@ impl App {
       if let Some(tested)=entry.tested_by_novydeck.as_ref().filter(|t|t.version==entry.version){ui.label(trf("Test du {date}",&[("date",&tested.date)]));}
       ui.label(tr("Une analyse réduit les risques sans les supprimer."));
       if ui.link(tr("Comment c'est vérifié ?")).clicked(){ctx.open_url(egui::OpenUrl::new_tab(community_plugins::SECURITY_URL));}
-      ui.add_space(18.0);
-      if !entry.screenshots.is_empty(){
-       theme::section_title(ui,tr("Captures"));ui.add_space(8.0);
-       egui::ScrollArea::horizontal().id_salt("market_shots").show(ui,|ui|{ui.horizontal(|ui|{for url in &entry.screenshots {if thumbnail(ui,Some(url),false,egui::vec2(320.0,180.0)){view.enlarged=Some(url.clone());}}});});
-       ui.add_space(18.0);
-      }
-      theme::section_title(ui,tr("À propos"));ui.add_space(8.0);
-      ui.add(egui::Label::new(localized(entry.description_fr.as_deref(),&entry.description)).wrap());
       ui.add_space(18.0);
       if !entry.actions.is_empty(){theme::section_title(ui,tr("Actions"));ui.add_space(8.0);for action in &entry.actions{ui.label(trf("• {action}",&[("action",&localized(action.name_fr.as_deref(),&action.name))]));}ui.add_space(18.0);}
       egui::Frame::new().fill(p.warning.gamma_multiply(0.12)).stroke(egui::Stroke::new(1.0,p.warning.gamma_multiply(0.65))).corner_radius(theme::RADIUS_MD).inner_margin(egui::Margin::same(16)).show(ui,|ui|{
