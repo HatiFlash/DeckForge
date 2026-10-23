@@ -297,13 +297,17 @@ fn simple_fields_visible(step: &Step, advanced: bool) -> bool {
     advanced || !matches!(step.active(), Step::AutoHotkey { .. })
 }
 /// Résumé avec les noms lisibles des plugins installés (« NovyDeck Clock › Stopwatch »).
+pub(super) fn plugin_names(plugin: &str, action: &str, label: &str, plugins: &[crate::plugins::Plugin]) -> (String, String) {
+    let owner = plugins.iter().find(|p| p.uuid == plugin);
+    let plugin_name = owner.map(|p| p.display_name()).unwrap_or(plugin).to_owned();
+    let action_name = owner.and_then(|p| p.actions.iter().find(|a| a.uuid == action))
+        .map(|a| if a.name.is_empty() { action } else { a.name.as_str() })
+        .unwrap_or_else(|| if label.is_empty() { action } else { label }).to_owned();
+    (plugin_name, action_name)
+}
 fn named_summary(step: &Step, plugins: &[crate::plugins::Plugin]) -> String {
     if let Step::PluginAction { plugin, action, label, .. } = step.active() {
-        let owner = plugins.iter().find(|p| &p.uuid == plugin);
-        let plugin_name = owner.map(|p| p.display_name()).unwrap_or(plugin);
-        let action_name = owner.and_then(|p| p.actions.iter().find(|a| &a.uuid == action))
-            .map(|a| if a.name.is_empty() { action.as_str() } else { a.name.as_str() })
-            .unwrap_or_else(|| if label.is_empty() { action.as_str() } else { label.as_str() });
+        let (plugin_name, action_name) = plugin_names(plugin, action, label, plugins);
         format!("{plugin_name} › {action_name}")
     } else { block_summary(step) }
 }
@@ -867,7 +871,7 @@ impl App {
     fn saved_variables_window(&mut self, ctx: &egui::Context) {
         if !self.show_saved_variables { return; }
         let mut open = self.show_saved_variables;
-        egui::Window::new(crate::i18n::tr("Variables enregistrées")).open(&mut open).resizable(true).show(ctx, |ui| {
+        crate::theme::fixed_window(crate::i18n::tr("Variables enregistrées")).open(&mut open).resizable(true).show(ctx, |ui| {
             ui.label(crate::i18n::tr("Conservées dans variables.json ; {nom} les utilise dans les macros suivantes."));
             let mut remove = None;
             for (name, original) in crate::persistent_variables::snapshot() {
@@ -1104,7 +1108,7 @@ impl App {
             }
         }
         if self.workshop_journal.confirm_real {
-            egui::Window::new(crate::i18n::tr("Confirmer l'exécution réelle")).collapsible(false).resizable(false)
+            crate::theme::fixed_window(crate::i18n::tr("Confirmer l'exécution réelle")).collapsible(false).resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
                     ui.label(crate::i18n::trf("Ceci va réellement exécuter {count} blocs sur ce PC.", &[("count", &(self.config.keys()[selected].steps.len()))] ));
                     ui.label(crate::i18n::tr("Les actions peuvent modifier les applications, le son et les périphériques."));

@@ -147,6 +147,7 @@ pub struct App {
     state_monitor: Sender<crate::state_display::Command>,
     state_generation: u64,
     state_values: [Option<bool>; 32],
+    toggle_faces: std::collections::HashMap<String, bool>,
     device_model: Option<DeviceGrid>,
     gate: InputGate,
     long_press: LongPress,
@@ -386,7 +387,7 @@ impl App {
             engine,
             device,
             events,
-            state_monitor, state_generation: 0, state_values: [None; 32], device_model: None,
+            state_monitor, state_generation: 0, state_values: [None; 32], toggle_faces: std::collections::HashMap::new(), device_model: None,
             gate,
             long_press: LongPress::default(),
             long_editor: false,
@@ -569,9 +570,17 @@ impl App {
         self.log(s);
         self.error = true;
     }
+    fn toggle_face_id(&self, index: usize) -> String {
+        crate::engine::identity(&self.config.profiles[self.config.active].name, &self.config.page, index)
+    }
     fn sync_state_display(&mut self) {
         self.state_generation = self.state_generation.wrapping_add(1);
         self.state_values = [None; 32];
+        for index in 0..self.config.keys().len().min(self.state_values.len()) {
+            if self.config.keys()[index].state_display.as_ref().is_some_and(|s| s.toggle) {
+                self.state_values[index] = Some(*self.toggle_faces.get(&self.toggle_face_id(index)).unwrap_or(&false));
+            }
+        }
         let _ = self.state_monitor.send(crate::state_display::Command::Page(
             self.state_generation, self.config.keys().clone()));
     }
@@ -585,6 +594,7 @@ impl App {
     fn toggle_key_face(&mut self, index: usize) {
         if self.applied.keys().get(index).and_then(|key| key.state_display.as_ref()).is_some_and(|state| state.toggle) {
             self.state_values[index] = Some(!self.state_values[index].unwrap_or(false));
+            self.toggle_faces.insert(self.toggle_face_id(index), self.state_values[index].unwrap());
             self.send_state_face(index);
         }
     }
@@ -1410,7 +1420,7 @@ impl App {
     fn connect_ai_window(&mut self, ctx: &egui::Context) {
         if !self.connect_window { return; }
         let mut open=true;
-        egui::Window::new(tr("Connecter une IA")).open(&mut open).default_width(530.0).resizable(true).vscroll(true).show(ctx,|ui|{
+        theme::fixed_window(tr("Connecter une IA")).open(&mut open).default_width(530.0).resizable(true).vscroll(true).show(ctx,|ui|{
             ui.label(tr("Choisis ton application IA. NovyDeck n'écrit jamais de clé dans ses réglages."));
             let locations=crate::mcp_connect::Locations::system();
             let exe=crate::mcp_connect::connector(&self.path);
@@ -1452,7 +1462,7 @@ impl App {
         let p = theme::palette(ctx);
         if self.assistant_settings {
             let mut open = true;
-            egui::Window::new(tr("Assistant IA")).open(&mut open).collapsible(false).resizable(true).default_width(510.0).vscroll(true).max_height((ctx.screen_rect().height()-100.0).max(400.0)).show(ctx,|ui|{
+            theme::fixed_window(tr("Assistant IA")).open(&mut open).collapsible(false).resizable(true).default_width(510.0).vscroll(true).max_height((ctx.screen_rect().height()-100.0).max(400.0)).show(ctx,|ui|{
             ui.horizontal(|ui| {
                 for (i, (ico, label)) in [(Ico::Brain, tr("IA locale (sur ce PC)")), (Ico::Connection, tr("IA connectée (Claude, ChatGPT…)"))].into_iter().enumerate() {
                     if iconset::tab(ui, self.assistant_tab == i as u8, ico, RichText::new(label).size(15.0)).clicked() { self.assistant_tab = i as u8; }
@@ -1490,7 +1500,7 @@ impl App {
         self.connect_ai_window(ctx);
         let mut decision = None;
         if let Some(p) = self.proposals.pending.front() {
-            egui::Window::new(tr("Proposition de ton assistant")).id(egui::Id::new("ai_review")).collapsible(false).resizable(true).default_width(570.0).show(ctx,|ui|{
+            theme::fixed_window(tr("Proposition de ton assistant")).id(egui::Id::new("ai_review")).collapsible(false).resizable(true).default_width(570.0).show(ctx,|ui|{
                 theme::pill(ui,tr("VALIDATION NÉCESSAIRE"),accent());ui.add_space(8.0);ui.label(RichText::new(&p.title).size(18.0).strong());
                 ui.label(RichText::new(tr("Aucun changement ni lancement n’a encore eu lieu. Vérifie les actions avant de continuer.")).color(theme::palette(ctx).muted));
                 egui::ScrollArea::vertical().max_height(360.0).show(ui,|ui|{ui.label(&p.details);});ui.add_space(12.0);
@@ -3060,17 +3070,17 @@ impl App {
             if let Some(binding)=key.plugin.clone(){
                 // Boutons d'abord, à droite : l'identifiant long du plugin est tronqué à gauche.
                 let status=self.plugin_errors.get(&binding.plugin).cloned();
-                let short=|id:&str|id.rsplit('.').next().unwrap_or(id).to_owned();
+                let (plugin_name, action_name) = ui_extras::plugin_names(&binding.plugin, &binding.action, "", self.plugins.as_ref().map(|m| m.catalog.as_slice()).unwrap_or(&[]));
                 let row=ui.spacing().interact_size.y;
                 ui.allocate_ui_with_layout(egui::vec2(ui.available_width(),row),egui::Layout::right_to_left(egui::Align::Center),|ui|{
                     if ui.button(tr("Retirer le plugin")).clicked(){key.plugin=None;changed=true;}
                     if self.plugins.as_ref().is_some_and(|m|m.inspector_path(selected).is_some())
                         && ui.button(tr("Réglages du plugin")).clicked(){if let Some(m)=&self.plugins {m.open_inspector(selected);}}
-                    let text=format!("Plugin {} · {} — {}",short(&binding.plugin),short(&binding.action),status.as_deref().unwrap_or("Actif"));
+                    let text=trf("Plugin {plugin} · {action} — {status}", &[("plugin", &plugin_name), ("action", &action_name), ("status", &status.as_deref().unwrap_or(tr("Actif")))]);
                     let color=if status.is_some(){theme::WARNING}else{ui.visuals().text_color()};
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center),|ui|{
                         ui.add(egui::Label::new(RichText::new(text).color(color)).truncate())
-                            .on_hover_text(format!("{} · {}\n{}",binding.plugin,binding.action,status.as_deref().unwrap_or("Actif")));
+                            .on_hover_text(format!("{} · {}\n{}",binding.plugin,binding.action,status.as_deref().unwrap_or(tr("Actif"))));
                     });
                 });
             }
@@ -3114,7 +3124,7 @@ impl App {
                              ui.horizontal(|ui| {
                                  ui.label(tr("Si une macro est en cours"));
                                  egui::ComboBox::from_id_salt("key_run_mode").selected_text(match key.run_mode.unwrap_or_default() {
-                                     crate::model::RunMode::Ignore => "Ignorer", crate::model::RunMode::Restart => tr("Redémarrer"), crate::model::RunMode::Queue => tr("Mettre en attente"),
+                                     crate::model::RunMode::Ignore => tr("Ignorer"), crate::model::RunMode::Restart => tr("Redémarrer"), crate::model::RunMode::Queue => tr("Mettre en attente"),
                                  }).show_ui(ui, |ui| {
                                      changed |= ui.selectable_value(&mut key.run_mode, None, tr("Ignorer (défaut)")).changed();
                                      changed |= ui.selectable_value(&mut key.run_mode, Some(crate::model::RunMode::Restart), tr("Redémarrer")).changed();
@@ -3713,7 +3723,7 @@ impl App {
         if let Some((_, _, _, _, enabled)) = self.recording.clone() {
             let mut open = true;
             let mut cancel = false;
-            egui::Window::new(tr("Enregistrer un raccourci")).open(&mut open).collapsible(false).resizable(false).default_width(410.0).show(ctx,|ui|{
+            theme::fixed_window(tr("Enregistrer un raccourci")).open(&mut open).collapsible(false).resizable(false).default_width(410.0).show(ctx,|ui|{
                 ui.label(RichText::new(tr("Appuie sur la combinaison souhaitée")).size(20.0).strong());
                 ui.label(tr("Exemple : maintiens Ctrl + Maj, puis appuie sur S."));
                 ui.label(RichText::new(tr("Seules les touches reçues par cette fenêtre sont capturées. Aucun enregistrement en arrière-plan. Les raccourcis réservés à Windows peuvent quitter la fenêtre.")).small().color(p.muted));
@@ -3731,7 +3741,7 @@ impl App {
             let mut target = None;
             let mut delete = None;
             let mut changed = false;
-            egui::Window::new(tr("Pages et dossiers"))
+            theme::fixed_window(tr("Pages et dossiers"))
                 .open(&mut open)
                 .default_width(480.0)
                 .show(ctx, |ui| {
@@ -3794,7 +3804,7 @@ impl App {
         if let Some(id) = self.delete_page.clone() {
             let mut open = true;
             let mut remove = false;
-            egui::Window::new(tr("Supprimer cette page ?")).open(&mut open).collapsible(false).resizable(false).default_width(380.0).show(ctx,|ui|{
+            theme::fixed_window(tr("Supprimer cette page ?")).open(&mut open).collapsible(false).resizable(false).default_width(380.0).show(ctx,|ui|{
                 ui.label(tr("Son contenu et les touches qui ouvrent cette page seront retirés du profil. Les autres pages seront conservées."));
                 if ui.add(iconset::button(ui.ctx(), Ico::Delete, RichText::new(tr("Supprimer la page")).color(Color32::LIGHT_RED))).clicked(){remove=true;}
             });
@@ -3808,7 +3818,7 @@ impl App {
         if !self.import_reports.is_empty() {
             let mut open = true;
             let mut install = false;
-            egui::Window::new(if self.import_reports.len() > 1 {
+            theme::fixed_window(if self.import_reports.len() > 1 {
                 tr("Import Sauvegarde Stream Deck — aperçu")
             } else {
                 tr("Import Stream Deck — aperçu")
@@ -3904,7 +3914,7 @@ impl App {
         if self.save_bind {
             let mut open = true;
             let mut save = false;
-            egui::Window::new(tr("Enregistrer dans Mes binds"))
+            theme::fixed_window(tr("Enregistrer dans Mes binds"))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
@@ -4015,7 +4025,7 @@ impl App {
         if self.startup_prompts && self.whats_new {
             let mut open = true;
             let mut understood = false;
-            egui::Window::new(trf("Quoi de neuf dans NovyDeck {version}", &[("version", &env!("CARGO_PKG_VERSION"))]))
+            theme::fixed_window(trf("Quoi de neuf dans NovyDeck {version}", &[("version", &env!("CARGO_PKG_VERSION"))]))
                 .open(&mut open).collapsible(false).resizable(true).default_width(450.0)
                 .show(ctx, |ui| {
                     about::notes(ui, &self.whats_new_notes);
@@ -4029,7 +4039,7 @@ impl App {
         } else if self.startup_prompts && self.preferences.update_check.is_none() {
             let mut open = true;
             let mut choice = None;
-            egui::Window::new(tr("Mises à jour automatiques"))
+            theme::fixed_window(tr("Mises à jour automatiques"))
                 .open(&mut open).collapsible(false).resizable(false).default_width(420.0)
                 .show(ctx, |ui| {
                     ui.label(tr("NovyDeck peut vérifier au démarrage si une nouvelle version est disponible. Il contacte seulement GitHub pour lire le numéro de la dernière version ; rien n'est installé sans votre accord."));
@@ -4050,7 +4060,7 @@ impl App {
         if let Some(latest) = self.startup_offer.clone() {
             let mut open = true;
             let mut later = false;
-            egui::Window::new(tr("Mise à jour disponible"))
+            theme::fixed_window(tr("Mise à jour disponible"))
                 .open(&mut open).collapsible(false).resizable(true).default_width(450.0)
                 .show(ctx, |ui| {
                     ui.label(trf("NovyDeck {version} est disponible (vous avez {current}).", &[("version", &latest.version), ("current", &env!("CARGO_PKG_VERSION"))]));
@@ -4072,7 +4082,7 @@ impl App {
         }
         if self.show_about {
             let mut open = true;
-            egui::Window::new(tr("À propos de NovyDeck"))
+            theme::fixed_window(tr("À propos de NovyDeck"))
                 .open(&mut open).collapsible(false).resizable(false).default_width(370.0)
                 .show(ctx, |ui| {
                     ui.label(RichText::new("NovyDeck").size(20.0).strong());
@@ -4135,7 +4145,7 @@ impl App {
         }
         if let Some(latest) = self.update_confirm.clone() {
             let mut confirm = true;
-            egui::Window::new(tr("Installer la mise à jour"))
+            theme::fixed_window(tr("Installer la mise à jour"))
                 .open(&mut confirm).collapsible(false).resizable(false).default_width(390.0)
                 .show(ctx, |ui| {
                     ui.label(trf("Nouvelle version {version} disponible", &[("version", &latest.version)]));
@@ -4167,7 +4177,7 @@ impl App {
             let mut open = true;
             let mut install = false;
             let installing = self.ffmpeg_installing;
-            egui::Window::new(tr("Importer une vidéo")).id(egui::Id::new("ffmpeg_offer"))
+            theme::fixed_window(tr("Importer une vidéo")).id(egui::Id::new("ffmpeg_offer"))
                 .open(&mut open).collapsible(false).resizable(false).default_width(380.0)
                 .show(ctx, |ui| {
                     ui.label(tr("Windows n’a pas réussi à convertir cette vidéo (format ou codec non pris en charge). NovyDeck peut télécharger son module vidéo FFmpeg, gratuit, une seule fois."));
@@ -4206,7 +4216,7 @@ impl App {
         }
         if self.show_apps {
             let mut open = true;
-            egui::Window::new(tr("Applications associées")).open(&mut open).show(ctx, |ui| {
+            theme::fixed_window(tr("Applications associées")).open(&mut open).show(ctx, |ui| {
                 ui.label(tr("Noms d'exécutables (ex. obs64.exe) associés à ce profil."));
                 let apps = &mut self.config.profiles[self.config.active].apps;
                 let mut changed = false;
@@ -4237,7 +4247,7 @@ impl App {
         }
         if self.show_hardware_test {
             let mut open=true;
-            egui::Window::new(tr("Tester mon périphérique")).open(&mut open).default_width(540.0).resizable(true).show(ctx,|ui| {
+            theme::fixed_window(tr("Tester mon périphérique")).open(&mut open).default_width(540.0).resizable(true).show(ctx,|ui| {
                 let p=theme::palette(ui.ctx());
                 ui.label(RichText::new(self.device_label()).strong());
                 theme::status_badge(ui, &self.status, if self.gate.connected { GREEN } else { theme::WARNING });
@@ -4283,7 +4293,7 @@ impl App {
         }
         if self.show_device_report {
             let mut open = true;
-            egui::Window::new(tr("Rapport périphérique")).open(&mut open)
+            theme::fixed_window(tr("Rapport périphérique")).open(&mut open)
                 .default_width(750.0).default_height(500.0).resizable(true).show(ctx, |ui| {
                     let folder = crate::devices::report::directory(&self.path);
                     match crate::devices::report::latest(&self.path) {
@@ -4313,11 +4323,13 @@ impl App {
         if self.settings {
             let mut open = true;
             let d6 = self.is_d6();
-            egui::Window::new(trf("Réglages — {device}", &[("device", &self.device_name())])).id(egui::Id::new("device_settings"))
+            theme::fixed_window(trf("Réglages — {device}", &[("device", &self.device_name())])).id(egui::Id::new("device_settings"))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
                 .default_width(460.0)
+                .default_height(540.0)
+                .vscroll(true)
                 .show(ctx, |ui| {
                     // Onglets : la fenêtre reste courte et tient sur un écran de portable.
                     ui.horizontal(|ui| {
@@ -4495,7 +4507,7 @@ impl App {
         }
         if self.rename {
             let mut open = true;
-            egui::Window::new(tr("Ce profil"))
+            theme::fixed_window(tr("Ce profil"))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)

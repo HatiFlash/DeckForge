@@ -937,4 +937,6 @@ pub fn fixed_window<'a>(title: impl Into<egui::WidgetText>) -> egui::Window<'a> 
         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
         .collapsible(false)
         .movable(false)
+        .max_width(920.0)
+        .max_height(620.0)
 }

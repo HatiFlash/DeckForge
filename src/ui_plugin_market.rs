@@ -207,6 +207,6 @@ impl App {
     self.community_confirmation(ui);
    });
   view.open=open;
-  if let Some(url)=view.enlarged.clone(){let mut enlarged=true;egui::Window::new(tr("Capture du plugin")).open(&mut enlarged).collapsible(false).movable(false).resizable(false).anchor(egui::Align2::CENTER_CENTER,egui::Vec2::ZERO).default_size(egui::vec2(800.0,480.0)).show(ctx,|ui|{let width=ui.available_width().min(800.0);thumbnail(ui,Some(&url),false,egui::vec2(width,width*9.0/16.0));});if !enlarged{view.enlarged=None;}}
+  if let Some(url)=view.enlarged.clone(){let mut enlarged=true;crate::theme::fixed_window(tr("Capture du plugin")).open(&mut enlarged).collapsible(false).movable(false).resizable(false).anchor(egui::Align2::CENTER_CENTER,egui::Vec2::ZERO).default_size(egui::vec2(800.0,480.0)).show(ctx,|ui|{let width=ui.available_width().min(800.0);thumbnail(ui,Some(&url),false,egui::vec2(width,width*9.0/16.0));});if !enlarged{view.enlarged=None;}}
  }
 }

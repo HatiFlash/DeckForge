@@ -2650,3 +2650,61 @@ fn readme_captures_plugin_store_workshop_and_startup() {
         files
     }
 }
+
+#[test]
+fn key_toggle_session_survives_navigation_but_not_app_restart() {
+    let mut h = Harness::new();
+    let mut key = Key::default();
+    key.state_display = Some(crate::model::StateDisplay {
+        toggle: true,
+        off: crate::model::StateFace { image: Some("off.png".into()), ..Default::default() },
+        on: crate::model::StateFace { image: Some("on.png".into()), ..Default::default() },
+        ..Default::default()
+    });
+    h.app.config.keys_mut()[0] = key.clone();
+    h.app.applied = h.app.config.clone();
+    h.app.sync_state_display();
+    h.app.toggle_key_face(0);
+    assert_eq!(h.app.state_key(0, key.clone()).image, "on.png");
+    h.app.config.page = "another-page".into();
+    h.app.sync_state_display();
+    h.app.config.page.clear();
+    h.app.sync_state_display();
+    assert_eq!(h.app.state_key(0, key.clone()).image, "on.png");
+    let ctx = egui::Context::default();
+    let mut restarted = App::init(&ctx, Some(h.dir.path().join("restarted.json")));
+    restarted.config.keys_mut()[0] = key.clone();
+    restarted.sync_state_display();
+    assert_eq!(restarted.state_key(0, key).image, "off.png");
+}
+
+#[test]
+fn fixed_windows_resist_title_drag_and_stay_onscreen() {
+    for size in [vec2(1366.0, 768.0), vec2(1000.0, 700.0)] {
+        for kind in 0..3 {
+            let mut h = Harness::new();
+            let title = match kind {
+                0 => { h.app.settings = true; "Réglages — FIFINE AmpliGame D6" },
+                1 => { h.app.show_about = true; "À propos de NovyDeck" },
+                _ => { h.app.assistant_settings = true; "Assistant IA" },
+            };
+            let output = h.warm(size);
+            let id = if kind == 0 { egui::Id::new("device_settings") } else { egui::Id::new(title) };
+            let before = h.ctx.memory(|m| m.area_rect(id)).expect("fenêtre affichée");
+            assert!(before.left() >= 0.0 && before.right() <= size.x && before.top() >= 0.0 && before.bottom() <= size.y, "{title} {size:?}: {before:?}");
+            let start = before.left_top() + vec2(50.0, 15.0);
+            let finish = start + vec2(140.0, 100.0);
+            h.frame(size, vec![Input::PointerMoved(start), button(start, true)]);
+            h.frame(size, vec![Input::PointerMoved(finish)]);
+            h.frame(size, vec![button(finish, false)]);
+            let after = h.ctx.memory(|m| m.area_rect(id)).expect("fenêtre après glisser");
+            assert_eq!(before.min, after.min, "{title} dragged at {size:?}");
+            assert!(after.right() <= size.x && after.bottom() <= size.y, "{title} overflow at {size:?}");
+            if let Some(dir) = std::env::var_os("NOVYDECK_UI_OUTPUT") {
+                let path = PathBuf::from(dir).join(format!("fixed-window-{kind}-{}.png", size.x as u32));
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                h.png(size, output, &path);
+            }
+        }
+    }
+}

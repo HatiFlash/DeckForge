@@ -189,7 +189,7 @@ impl CropSession {
             crate::i18n::tr("Recadrage image pour touche FIFINE D6")
         };
 
-        egui::Window::new(title)
+        crate::theme::fixed_window(title)
             .open(open)
             .collapsible(false)
             .default_width(740.0)

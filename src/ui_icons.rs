@@ -257,7 +257,7 @@ impl App {
         let mut rescan = false;
         let mut marketplace = false;
         let mut switch_target = None;
-        egui::Window::new(crate::i18n::tr("Icônes et extensions")).open(&mut open).default_width(780.0).default_height(610.0).show(ctx,|ui|{
+        crate::theme::fixed_window(crate::i18n::tr("Icônes et extensions")).open(&mut open).default_width(780.0).default_height(610.0).show(ctx,|ui|{
             ui.horizontal(|ui|{if iconset::tab(ui,self.asset_tab==0,Ico::Picture,crate::i18n::tr("Icônes")).clicked(){self.asset_tab=0;}if iconset::tab(ui,self.asset_tab==1,Ico::Plugin,crate::i18n::tr("Plugins installés")).clicked(){self.asset_tab=1;}ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{if ui.button(crate::i18n::tr("Terminé")).clicked(){done=true;}if ui.button(crate::i18n::tr("Marketplace Elgato ↗")).clicked(){marketplace=true;}});});
             if self.asset_tab==0{
                 ui.label(RichText::new(crate::i18n::trf("Choisir une icône · {title}", &[("title", &title)])).strong());

@@ -197,7 +197,7 @@ impl App {
   let mut state=community_state().lock().unwrap_or_else(|e|e.into_inner());
   let Some(entry)=state.confirmation.clone() else{return;};
   let mut open=true;
-  egui::Window::new(crate::i18n::tr("Confirmer l'installation communautaire")).open(&mut open).collapsible(false).movable(false).resizable(false).anchor(egui::Align2::CENTER_CENTER,egui::Vec2::ZERO).show(ui.ctx(),|ui|{
+  crate::theme::fixed_window(crate::i18n::tr("Confirmer l'installation communautaire")).open(&mut open).collapsible(false).movable(false).resizable(false).anchor(egui::Align2::CENTER_CENTER,egui::Vec2::ZERO).show(ui.ctx(),|ui|{
    ui.label(crate::i18n::trf("Plugin : {name} · Auteur : {author}", &[("name", &(entry.name)), ("author", &(entry.author))] ));
    ui.add(egui::Label::new(crate::i18n::trf("Téléchargement : {url}", &[("url", &(entry.download))] )).wrap());
    ui.add(egui::Label::new(crate::i18n::trf("SHA-256 attendu : {hash}", &[("hash", &(entry.sha256))] )).wrap());
@@ -220,7 +220,7 @@ impl App {
  fn plugin_confirm_real(&mut self,ui:&egui::Ui){
   if let Some(plugin)=self.plugin_real_confirmation.clone(){
    let mut open=true;
-   egui::Window::new(crate::i18n::tr("Confirmer l’essai réel du plugin")).open(&mut open).show(ui.ctx(),|ui|{
+   crate::theme::fixed_window(crate::i18n::tr("Confirmer l’essai réel du plugin")).open(&mut open).show(ui.ctx(),|ui|{
     ui.label(crate::i18n::tr("Un plugin tiers agit avec vos droits. Vérifiez les effets avant de confirmer :"));
     if let Some(oracle)=self.plugin_oracle_cache.get(&format!("{}-{}",plugin.uuid,plugin.version)).and_then(Option::as_ref){for action in oracle.actions.iter().filter(|a|a.real_effects){
      ui.label(crate::i18n::trf("Action : {action}", &[("action", &(action.action))] ));ui.label(crate::i18n::trf("Effet attendu : {effect}", &[("effect", &(action.expected_effect))] ));ui.label(crate::i18n::trf("Observation : {observation} · délai {timeout} ms", &[("observation", &(format!("{:?}",action.observation))), ("timeout", &(action.timeout_ms))] ));

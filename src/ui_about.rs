@@ -20,7 +20,7 @@ pub(super) fn hardware_report_window(ctx: &egui::Context, app: &mut App) {
     let mut open = true;
     let mut save = false;
     let mut cancel = false;
-    egui::Window::new(crate::i18n::tr("Signaler un problème avec mon deck"))
+    crate::theme::fixed_window(crate::i18n::tr("Signaler un problème avec mon deck"))
         .open(&mut open).collapsible(false).resizable(true).default_width(650.0)
         .show(ctx, |ui| {
             ui.label(crate::i18n::tr("Vérifie l’aperçu avant de continuer. Le rapport reste sur ton PC : rien n’est envoyé automatiquement. Indique la marque, le modèle exact et le problème sur GitHub, puis glisse le fichier texte dans l’issue."));

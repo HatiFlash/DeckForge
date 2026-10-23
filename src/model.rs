@@ -228,97 +228,109 @@ fn default_app_action() -> String { "up".into() }
 fn default_app_step() -> u8 { 5 }
 impl Step {
     pub fn text_op_summary(&self) -> Option<String> {
+        use crate::i18n::{tr, trf};
         let Self::TextOp { name, op, value, find, .. } = self else { return None };
+        let snippet = value.chars().take(40).collect::<String>();
+        let search = find.chars().take(40).collect::<String>();
         Some(match op.as_str() {
-            "set" => format!("Définir {name} à « {} »", value.chars().take(40).collect::<String>()),
-            "append" => format!("Ajouter « {} » à la fin de {name}", value.chars().take(40).collect::<String>()),
-            "prepend" => format!("Ajouter « {} » au début de {name}", value.chars().take(40).collect::<String>()),
-            "upper" => format!("Mettre {name} en majuscules"),
-            "lower" => format!("Mettre {name} en minuscules"),
-            "trim" => format!("Supprimer les espaces autour de {name}"),
-            "replace" => format!("Remplacer « {} » dans {name}", find.chars().take(40).collect::<String>()),
-            "length" => format!("Compter les caractères de {name}"),
-            _ => "Opération de texte inconnue".into(),
+            "set" => trf("Définir {name} à « {value} »", &[("name", name), ("value", &snippet)]),
+            "append" => trf("Ajouter « {value} » à la fin de {name}", &[("name", name), ("value", &snippet)]),
+            "prepend" => trf("Ajouter « {value} » au début de {name}", &[("name", name), ("value", &snippet)]),
+            "upper" => trf("Mettre {name} en majuscules", &[("name", name)]),
+            "lower" => trf("Mettre {name} en minuscules", &[("name", name)]),
+            "trim" => trf("Supprimer les espaces autour de {name}", &[("name", name)]),
+            "replace" => trf("Remplacer « {find} » dans {name}", &[("name", name), ("find", &search)]),
+            "length" => trf("Compter les caractères de {name}", &[("name", name)]),
+            _ => tr("Opération de texte inconnue").into(),
         })
     }
     pub fn math_summary(&self) -> Option<String> {
+        use crate::i18n::{tr, trf};
         let Self::Math { name, op, value, min, max, .. } = self else { return None };
         Some(match op.as_str() {
-            "set" => format!("Définir {name} à {value}"),
-            "add" => format!("Ajouter {value} à {name}"),
-            "subtract" => format!("Soustraire {value} de {name}"),
-            "multiply" => format!("Multiplier {name} par {value}"),
-            "divide" => format!("Diviser {name} par {value}"),
-            "modulo" => format!("Reste de {name} divisé par {value}"),
-            "min" => format!("Minimum de {name} et {value}"),
-            "max" => format!("Maximum de {name} et {value}"),
-            "random" => format!("Tirer {name} entre {min} et {max}"),
-            _ => "Calcul inconnu".into(),
+            "set" => trf("Définir {name} à {value}", &[("name", name), ("value", value)]),
+            "add" => trf("Ajouter {value} à {name}", &[("name", name), ("value", value)]),
+            "subtract" => trf("Soustraire {value} de {name}", &[("name", name), ("value", value)]),
+            "multiply" => trf("Multiplier {name} par {value}", &[("name", name), ("value", value)]),
+            "divide" => trf("Diviser {name} par {value}", &[("name", name), ("value", value)]),
+            "modulo" => trf("Reste de {name} divisé par {value}", &[("name", name), ("value", value)]),
+            "min" => trf("Minimum de {name} et {value}", &[("name", name), ("value", value)]),
+            "max" => trf("Maximum de {name} et {value}", &[("name", name), ("value", value)]),
+            "random" => trf("Tirer {name} entre {min} et {max}", &[("name", name), ("min", min), ("max", max)]),
+            _ => tr("Calcul inconnu").into(),
         })
     }
     pub fn device_volume_summary(&self) -> Option<String> {
+        use crate::i18n::{tr, trf};
         let Self::DeviceVolume { input, device, action, step, level } = self else { return None };
-        let who = if *input { "microphone" } else { "sortie audio" };
-        let target = if device == "default" { format!("{who} par défaut") } else { format!("{who} ({device})") };
+        let who = if *input { tr("microphone") } else { tr("sortie audio") };
+        let target = if device == "default" { trf("{who} par défaut", &[("who", &who)]) } else { trf("{who} ({device})", &[("who", &who), ("device", device)]) };
+        let args: &[(&str, &dyn std::fmt::Display)] = &[("target", &target), ("step", step), ("level", level)];
         Some(match action.as_str() {
-            "up" => format!("Augmenter le volume du {target} de {step} points"),
-            "down" => format!("Diminuer le volume du {target} de {step} points"),
-            "set" => format!("Régler le volume du {target} à {level} %"),
-            "mute" => format!("Couper le son du {target}"),
-            "unmute" => format!("Rétablir le son du {target}"),
-            "toggle_mute" => format!("Basculer le muet du {target}"),
-            _ => format!("Action de volume inconnue pour {target}"),
+            "up" => trf("Augmenter le volume du {target} de {step} points", args),
+            "down" => trf("Diminuer le volume du {target} de {step} points", args),
+            "set" => trf("Régler le volume du {target} à {level} %", args),
+            "mute" => trf("Couper le son du {target}", args),
+            "unmute" => trf("Rétablir le son du {target}", args),
+            "toggle_mute" => trf("Basculer le muet du {target}", args),
+            _ => trf("Action de volume inconnue pour {target}", args),
         })
     }
     pub fn app_volume_summary(&self) -> Option<String> {
+        use crate::i18n::{tr, trf};
         let Self::AppVolume { target, action, step, level, .. } = self else { return None };
-        let who = if target == "foreground" { "l’application active".to_owned() } else { target.clone() };
+        let who = if target == "foreground" { tr("l’application active").to_owned() } else { target.clone() };
+        let args: &[(&str, &dyn std::fmt::Display)] = &[("who", &who), ("step", step), ("level", level)];
         Some(match action.as_str() {
-            "up" => format!("Augmenter le volume de {who} de {step} points"),
-            "down" => format!("Diminuer le volume de {who} de {step} points"),
-            "set" => format!("Régler le volume de {who} à {level} %"),
-            "mute" => format!("Couper le son de {who}"),
-            "unmute" => format!("Rétablir le son de {who}"),
-            "toggle_mute" => format!("Basculer le muet de {who}"),
-            _ => format!("Volume de {who} : action inconnue"),
+            "up" => trf("Augmenter le volume de {who} de {step} points", args),
+            "down" => trf("Diminuer le volume de {who} de {step} points", args),
+            "set" => trf("Régler le volume de {who} à {level} %", args),
+            "mute" => trf("Couper le son de {who}", args),
+            "unmute" => trf("Rétablir le son de {who}", args),
+            "toggle_mute" => trf("Basculer le muet de {who}", args),
+            _ => trf("Volume de {who} : action inconnue", args),
         })
     }
 
     pub fn key_hold_summary(&self) -> Option<String> {
+        use crate::i18n::trf;
         let Self::KeyHold { keys, action, hold_ms } = self else { return None };
         Some(match (action.as_str(), hold_ms) {
-            ("down", 0) => format!("Maintenir {keys} jusqu’au bloc Relâcher ou à la fin de la macro"),
-            ("down", ms) => format!("Maintenir {keys} pendant {ms} ms"),
-            ("up", _) => format!("Relâcher {keys}"),
-            _ => format!("Action de maintien inconnue : {keys}"),
+            ("down", 0) => trf("Maintenir {keys} jusqu’au bloc Relâcher ou à la fin de la macro", &[("keys", keys)]),
+            ("down", ms) => trf("Maintenir {keys} pendant {ms} ms", &[("keys", keys), ("ms", ms)]),
+            ("up", _) => trf("Relâcher {keys}", &[("keys", keys)]),
+            _ => trf("Action de maintien inconnue : {keys}", &[("keys", keys)]),
         })
     }
     pub fn window_op_summary(&self) -> Option<String> {
+        use crate::i18n::{tr, trf};
         let Self::WindowOp { target, value, op, x, y, w, h, monitor } = self else { return None };
-        let who = if target == "foreground" { "la fenêtre active".to_owned() } else { format!("la fenêtre {value}") };
+        let who = if target == "foreground" { tr("la fenêtre active").to_owned() } else { trf("la fenêtre {value}", &[("value", value)]) };
+        let args: &[(&str, &dyn std::fmt::Display)] = &[("who", &who), ("x", x), ("y", y), ("w", w), ("h", h), ("monitor", monitor)];
         Some(match op.as_str() {
-            "activate" => format!("Activer {who}"), "minimize" => format!("Réduire {who}"),
-            "maximize" => format!("Maximiser {who}"), "restore" => format!("Restaurer {who}"),
-            "move" => format!("Déplacer {who} à {x}, {y}"),
-            "resize" => format!("Redimensionner {who} à {w} × {h}"),
-            "move_to_monitor" => format!("Déplacer {who} sur l’écran {monitor}"),
-            "toggle_always_on_top" => format!("Basculer toujours au premier plan pour {who}"),
-            "always_on_top_on" => format!("Garder {who} toujours au premier plan"),
-            "always_on_top_off" => format!("Désactiver toujours au premier plan pour {who}"),
-            "close_others" => format!("Fermer toutes les autres fenêtres (garder {who})"),
-            "minimize_others" => format!("Réduire toutes les autres fenêtres (garder {who})"),
-            _ => format!("Opération de fenêtre inconnue : {who}"),
+            "activate" => trf("Activer {who}", args), "minimize" => trf("Réduire {who}", args),
+            "maximize" => trf("Maximiser {who}", args), "restore" => trf("Restaurer {who}", args),
+            "move" => trf("Déplacer {who} à {x}, {y}", args),
+            "resize" => trf("Redimensionner {who} à {w} × {h}", args),
+            "move_to_monitor" => trf("Déplacer {who} sur l’écran {monitor}", args),
+            "toggle_always_on_top" => trf("Basculer toujours au premier plan pour {who}", args),
+            "always_on_top_on" => trf("Garder {who} toujours au premier plan", args),
+            "always_on_top_off" => trf("Désactiver toujours au premier plan pour {who}", args),
+            "close_others" => trf("Fermer toutes les autres fenêtres (garder {who})", args),
+            "minimize_others" => trf("Réduire toutes les autres fenêtres (garder {who})", args),
+            _ => trf("Opération de fenêtre inconnue : {who}", args),
         })
     }
     pub fn clipboard_summary(&self) -> Option<String> {
+        use crate::i18n::{tr, trf};
         let Self::Clipboard { op, value, name } = self else { return None };
         Some(match op.as_str() {
-            "copy_text" => format!("Copier du texte : {}", value.chars().take(50).collect::<String>()),
-            "read_to_variable" => format!("Lire le presse-papiers dans {name}"),
-            "clear" => "Vider le presse-papiers".into(),
-            "save" => "Sauvegarder le texte du presse-papiers".into(),
-            "restore" => "Restaurer le texte sauvegardé du presse-papiers".into(),
-            _ => "Opération de presse-papiers inconnue".into(),
+            "copy_text" => trf("Copier du texte : {value}", &[("value", &value.chars().take(50).collect::<String>())]),
+            "read_to_variable" => trf("Lire le presse-papiers dans {name}", &[("name", name)]),
+            "clear" => tr("Vider le presse-papiers").into(),
+            "save" => tr("Sauvegarder le texte du presse-papiers").into(),
+            "restore" => tr("Restaurer le texte sauvegardé du presse-papiers").into(),
+            _ => tr("Opération de presse-papiers inconnue").into(),
         })
     }
     pub fn is_disabled(&self) -> bool { matches!(self, Self::Disabled { .. }) }

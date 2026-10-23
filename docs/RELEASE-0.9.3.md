@@ -5,7 +5,9 @@
 - The in-app updater now launches its wait using a hidden console inherited by `ping`; the installer remains silent and relaunches NovyDeck. When upgrading **from 0.9.2 to 0.9.3**, the 0.9.2 launcher is still in use and its visible console may appear **one last time**.
 - Plugin settings use a smaller, resizable, named window associated with the NovyDeck window when its owner is available. The plugin receives the current interface language instead of always receiving French.
 - The settings window is still a separate isolated WebView2 process, for plugin isolation. Reopening settings may create another window; the existing limit of four inspector windows remains. Plugin-supplied HTML controls its own page appearance, so a completely dark page cannot be guaranteed.
-- No profiles, macros, or plugin actions are changed by this presentation update.
+- No profiles, macros, or plugin actions are changed by this presentation update. Toggle key faces now keep their on/off appearance across page changes during this app session only; on restart, they begin off. Condition-driven faces continue to follow the live condition.
+- Step summaries and the default Ignore choice are translated in the English interface. Installed plugin keys show the plugin and action's readable names; the tooltip retains their technical identifiers.
+- Secondary in-app windows are centered, fixed in place, non-collapsible and size-limited. Long settings content can scroll. Plugin-supplied WebView2 windows remain independently resizable and are not affected.
 
 ## Français
 
