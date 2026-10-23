@@ -3348,15 +3348,13 @@ impl App {
                                                     Color32::from_rgb(242, 126, 106),
                                                 );
                                             }
-                                            if width >= 70.0 {
-                                                ui.painter().text(
-                                                    r.right_bottom() + Vec2::new(0.0, 3.0),
-                                                    egui::Align2::RIGHT_TOP,
-                                                    format!("{:02}", i + 1),
-                                                    egui::FontId::proportional(8.0),
-                                                    p.muted,
-                                                );
-                                            }
+                                            ui.painter().text(
+                                                r.right_bottom() + Vec2::new(0.0, chassis.map_or(2.0, |s| s)),
+                                                egui::Align2::RIGHT_TOP,
+                                                format!("{:02}", i + 1),
+                                                egui::FontId::proportional(chassis.map_or(10.0, |s| (10.0 * s).clamp(3.0, 10.0))),
+                                                p.text_tertiary,
+                                            );
                                             self.drag_sources.push((
                                                 r.intersect(ui.clip_rect()),
                                                 DragItem::Position(
@@ -3544,8 +3542,11 @@ impl App {
                     let chassis = crate::deck_chassis::fit(available);
                     let halo = chassis.center() + Vec2::new(0.0, chassis.height() * 0.25);
                     let color = p.accent;
-                    for (radius, alpha) in [(0.61, 3), (0.45, 5), (0.30, 9)] {
-                        ui.painter().circle_filled(halo, chassis.width() * radius, Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha));
+                    // Superposition douce : 16 couronnes de faible opacité, quasi imperceptibles en clair.
+                    for ring in 0..16 {
+                        let radius = chassis.width() * (0.88 - ring as f32 * 0.042);
+                        let alpha = if ctx.style().visuals.dark_mode { 1 + u8::from(ring > 9) } else { u8::from(ring % 3 == 0) };
+                        ui.painter().circle_filled(halo, radius, Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha));
                     }
                     ui.allocate_rect(egui::Rect::from_min_max(available.min, egui::pos2(available.max.x, chassis.max.y)), egui::Sense::hover());
                     let s = crate::deck_chassis::scale(chassis);

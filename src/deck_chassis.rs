@@ -160,14 +160,14 @@ pub fn paint_face(painter: &egui::Painter, face: Rect, scale: f32, selected: boo
     };
     let bottom = if flashing { Color32::from_rgb(15, 46, 44) } else { p.sunken };
     crate::theme::rounded_gradient(painter, face, radius, top, bottom);
-    if selected || flashing || hovering {
-        let stroke = if flashing { crate::theme::GREEN } else if selected { p.accent_ring } else { p.hairline };
-        painter.rect_stroke(face, radius, Stroke::new(if selected || flashing { 2.0 } else { 1.0 }, stroke), egui::StrokeKind::Inside);
+    let stroke = if flashing { crate::theme::GREEN } else if selected { p.accent_ring } else { p.hairline };
+    painter.rect_stroke(face, radius, Stroke::new(if selected || flashing { 2.0 } else { 1.0 }, stroke), egui::StrokeKind::Inside);
+    if painter.ctx().style().visuals.dark_mode {
+        painter.line_segment([
+            face.left_top() + Vec2::new(20.0, 2.0) * scale,
+            face.right_top() + Vec2::new(-20.0, 2.0) * scale,
+        ], Stroke::new(1.0, Color32::from_white_alpha(25)));
     }
-    painter.line_segment([
-        face.left_top() + Vec2::new(20.0, 2.0) * scale,
-        face.right_top() + Vec2::new(-20.0, 2.0) * scale,
-    ], Stroke::new(1.0, Color32::from_white_alpha(25)));
 }
 
 #[cfg(test)]
