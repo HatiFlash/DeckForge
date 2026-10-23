@@ -5,7 +5,7 @@ English · [Français](README.fr.md)
   <h1>NovyDeck</h1>
   <p>Open-source Windows software for stream decks: keys, macros, media and plugins, without the official software. Tested on the FIFINE AmpliGame D6 and the Elgato Stream Deck.</p>
   <p>
-    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.9.3"><img src="https://img.shields.io/badge/Release-v0.9.3-3478F6.svg" alt="Release v0.9.3"></a>
+    <a href="https://github.com/HatiFlash/NovyDeck/releases/tag/v0.10.0"><img src="https://img.shields.io/badge/Release-v0.10.0-3478F6.svg" alt="Release v0.10.0"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-22C58B.svg" alt="MIT license"></a>
     <img src="https://img.shields.io/badge/Windows-10%20%2F%2011-555.svg" alt="Windows 10/11">
   </p>
@@ -20,6 +20,24 @@ English · [Français](README.fr.md)
 [![Watch the NovyDeck presentation film](docs/media/novydeck-demo-poster.png)](docs/media/novydeck-demo.mp4)
 
 A 40-second presentation film in 1920 × 1080 at 60 fps with sound, made with Remotion and three.js. It features a 3D D6 deck, actual interface captures and synthesized music. The published film was produced outside this repository.
+
+## What's new in 0.10.0
+
+### A redesigned interface
+
+NovyDeck has a new visual design, inspired by Linear, Raycast, Figma and the Stream Deck, still rendered natively in Rust with egui. The layout you know stays the same (navigation on the left, deck and key inspector in the middle, action library on the right); everything else was redrawn:
+
+- **The deck is the hero.** No more blue neon glow: a graphite chassis with a soft drop shadow, on a rounded stage. Keys are calmer, light up on hover and show the selected key with an accent ring.
+- **Calmer controls.** Secondary buttons no longer have outlines and brighten on hover; only the main action of each area (**Simulate**, **Use on key**) is highlighted. In small windows, Undo and Redo shrink to icon buttons.
+- **A clearer key inspector.** A header with the key preview, its name and a status badge; underlined **Action / Appearance / Advanced** tabs with the **Short press / Long press** switch on the same line; steps shown as cards.
+- **A cleaner action library.** Flat rows with a highlight bar on the selected item, semibold names and a details card.
+- **A real design system.** Deeper, less saturated colours in all four themes (your current theme changes too), Segoe UI Semibold for titles, small spaced capitals for section labels, a 4-pixel spacing grid, consistent radii, soft shadows on menus, and short hover transitions that turn off with **Reduce animations**.
+
+Your profiles, key images, macros and plugins are untouched, and the images sent to the device do not change.
+
+| Dark theme | Light theme |
+|:--:|:--:|
+| ![Redesigned NovyDeck interface, dark theme](docs/images/redesign-dark.png) | ![Redesigned NovyDeck interface, light theme](docs/images/redesign-light.png) |
 
 ## What's new in 0.9.3
 
@@ -220,6 +238,7 @@ NovyDeck works offline. Local AI stays on your PC and is optional and disabled b
 
 ## Latest release
 
+- **0.10.0:** redesigned interface with a new design system: graphite deck stage without neon glow, outline-free buttons, clearer key inspector with underlined tabs, cleaner action library, deeper colours in all themes and Semibold titles. Profiles, media and plugins are kept.
 - **0.9.3:** security badges in the plugin store (automatic GitHub scan); official plugins 1.0.2 with logos and cleaner settings; no console during in-app updates; fixed secondary windows; ON/OFF state kept across pages.
 - **0.9.2:** keys can alternate two user-selected ON/OFF images on short physical presses; English text and a fixed Windows and shortcuts dialog; official plugins 1.0.1 improve key text and CPU/RAM previews.
 - **0.9.1:** the plugin store is now a fixed page of the app (no floating window), with a back button and Esc; plugin blocks in the block editor show readable plugin and action names; README presents the 0.9.0 features with screenshots.

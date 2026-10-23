@@ -1,15 +1,65 @@
 # Identité visuelle de NovyDeck
 
-Ce document décrit les règles visuelles **déjà appliquées dans le code** (`src/theme.rs`). Il sert de référence pour les nouvelles fenêtres, la documentation et la vidéo. Il ne décrit pas une refonte.
+Ce document décrit les règles visuelles **appliquées dans le code** (`src/theme.rs`, `src/deck_chassis.rs`). Il sert de référence pour les nouvelles fenêtres, la documentation et la vidéo. Depuis la 0.10.0, l'interface suit le design system ci-dessous, inspiré de Linear, Raycast, Figma et du Stream Deck, rendu nativement avec egui.
 
 ## Principes
 
-- Thème sombre par défaut (bleu nuit et gris ardoise), thème clair complet. Les couleurs sont lues dans la palette courante (`theme::palette`), jamais codées en dur dans les écrans.
+- Thème sombre par défaut (bleu nuit profond et graphite), thèmes clairs complets. Les couleurs sont lues dans la palette courante (`theme::palette`), jamais codées en dur dans les écrans.
 - Un seul accent pour la sélection et l'action principale. Le vert signale ce qui est connecté ou réussi, l'orange un avertissement et le rouge un danger. Une couleur n'est jamais le seul indice : un texte ou une icône l'accompagne.
 - Pas d'émojis comme icônes de navigation, pas de lueurs néon ni d'effets coûteux image après image.
 - Le contenu des touches (images, GIF, vidéos, couleurs) appartient à l'utilisateur. Le style des icônes de l'interface ne lui est jamais imposé.
 
-## Jetons
+## Design system (0.10.0)
+
+**Principe :** calme, précis, matériel. La profondeur vient des niveaux de fond plutôt que de bordures partout ; un seul accent ; le chrome reste discret pour que le deck soit le héros. La disposition ne change pas : navigation à gauche, deck et inspecteur au centre, bibliothèque d'actions à droite.
+
+### Surfaces et textes (`Palette`)
+
+| Jeton | Bleu nuit | Graphite | Clair | Sable | Usage |
+|---|---|---|---|---|---|
+| `canvas` | `#0B0F17` | `#0C0D10` | `#F5F6F8` | `#F7F4EF` | fond de l'application |
+| `sunken` | `#090E16` | `#0A0B0E` | `#EBEDF1` | `#EEE9E1` | champs, zones encastrées, onglets segmentés |
+| `surface` | `#111723` | `#121418` | `#FFFFFF` | `#FFFDF9` | panneaux (navigation, bibliothèque, inspecteur), scène du deck |
+| `raised` | `#18202E` | `#191C21` | `#F0F2F5` | `#F2EDE5` | cartes, boutons secondaires, éléments survolés |
+| `overlay` | `#1E2737` | `#20242A` | `#FFFFFF` | `#FFFDF9` | menus, popovers |
+| `hairline` | `#222B3A` | `#23262D` | `#E4E7EC` | `#E3DCD2` | séparateurs 1 px |
+| `border_strong` | `#455266` | `#42464E` | `#C0C7D0` | `#C6BAAC` | contours marqués (châssis, focus hors accent) |
+| texte primaire | `#EFF3F9` | `#F3F4F6` | `#0E1116` | `#211D18` | titres et texte courant |
+| texte secondaire | `#C7D1DF` | `#CBCFD6` | `#434A55` | `#4D443A` | descriptions |
+| texte tertiaire | `#A9B4C5` | `#AEB3BB` | `#565D67` | `#63584C` | légendes, intitulés de section |
+
+`accent` vient du réglage d'accent (bleu par défaut `#3478F6`) ; `accent_hover`, `accent_soft` (fond de sélection, ~14 %), `accent_ring` et `on_accent` en sont dérivés. En clair, l'émeraude et l'orange sont assombris pour garder un contraste suffisant. Les couleurs sémantiques (succès, avertissement, danger) ont chacune une variante `*_soft` pour les fonds de pastilles. Le test `theme` vérifie les contrastes WCAG (texte ≥ 4,5:1, composants ≥ 3:1) pour les 4 thèmes × 5 accents.
+
+### Typographie
+
+Segoe UI pour le texte, **Segoe UI Semibold** (`theme::strong`, famille `strong`, repli sur Segoe UI si absente) pour les titres et les libellés actifs. Échelle : 11 (légende, intitulés de section en majuscules espacées via `theme::overline`), 12 (secondaire), 13 (corps dense et boutons), 15 (sous-titres de panneau), 20 (titre du profil).
+
+### Espacements, rayons, ombres
+
+Grille de 4 (`SPACE` = 4 · 8 · 12 · 16 · 24 · 32). Rayons : 6 contrôles (`RADIUS_SM`), 10 cartes et lignes (`RADIUS_MD`), 14 panneaux, fenêtres et scène (`RADIUS_LG`). Ombres douces uniquement sur fenêtres, menus et popovers, et ombre portée en couches sous le châssis du deck (pas de halo coloré).
+
+### Composants (`src/theme.rs`)
+
+| Composant | Rendu |
+|---|---|
+| `primary` | accent plein, texte `on_accent` ; une seule action principale par zone (Simuler, Utiliser sur la touche) |
+| `ghost_button` / `secondary_button` | fond `raised` discret, **aucun contour au repos**, plus clair au survol, `accent_soft` à l'appui |
+| `icon_button` | carré compact avec icône IconPark, infobulle et nom accessible (Annuler, Rétablir…) |
+| `segmented` | pilules sur fond `sunken`, élément actif en `raised` (pagination, Appui court / long, onglets de la bibliothèque) |
+| `underline_tabs` | onglets texte + icône avec indicateur accent de 2 px (Action / Apparence / Avancé) |
+| `list_row` | ligne sans cadre, fond au survol, sélection `accent_soft` + barre d'accent de 2 px à gauche |
+| `search_field` | champ encastré avec loupe et texte indicatif tertiaire |
+| `overline`, `pill`, `status_badge`, `card` | intitulés de section, pastilles d'état sans contour, cartes `raised` |
+
+### Deck
+
+Châssis graphite avec contour `border_strong`, reflet haut discret et ombre portée douce, posé sur une scène `surface` arrondie. Les faces ont des teintes graphite fixes dans tous les thèmes (elles sont sur le châssis), un contour presque invisible, un éclaircissement au survol (~100 ms) et un anneau d'accent de 2 px sur la touche sélectionnée ; le vert signale toujours un appui. Les images envoyées au périphérique ne changent pas.
+
+### Mouvement
+
+Transitions de survol et d'appui de 100 à 120 ms (`animate_bool_with_time`), uniquement sur l'opacité ou la couleur : aucune cible de clic ne se déplace. Elles sont coupées par **Réduire les animations**.
+
+## Jetons historiques
 
 | Jeton | Valeur | Usage |
 |---|---|---|
@@ -18,8 +68,8 @@ Ce document décrit les règles visuelles **déjà appliquées dans le code** (`
 | `WARNING` | `#F5AD42` | avertissement, plugin en erreur |
 | `DANGER` | `#F25F70` | action destructrice |
 | `SPACE` | 4 · 8 · 12 · 16 · 24 · 32 | espacements ; `item_spacing` = 8 |
-| `RADIUS_SM` | 8 | boutons, champs |
-| `RADIUS_MD` | 12 | menus, cartes, panneaux non interactifs |
+| `RADIUS_SM` | 6 | boutons, champs |
+| `RADIUS_MD` | 10 | menus, cartes, lignes de liste |
 | `RADIUS_LG` | 14 | fenêtres |
 | `KEY_LCD_RADIUS` | 6 | écran d'une touche hors châssis SVG |
 
@@ -47,5 +97,5 @@ La source utilisateur RGBA et son alpha sont conservés. Les déclinaisons sont 
 
 ## Captures et vidéo
 
-- Les captures `docs/images/*.png` sont produites par `readme_captures_from_the_demo_profile` (`src/ui_tests.rs`). Ce test exécute le vrai code d'interface hors écran, à **2560 × 1600 pixels** (1600 × 1000 points à 160 %), avec le profil « NovyDeck Demo / README ». Il ne fait aucun agrandissement après coup, et le filtrage des textures est bilinéaire comme dans le rendu GPU. Le contenu des touches reste l'image réelle de 126 × 126 pixels envoyée au D6.
+- Les captures `docs/images/*.png` sont produites par `readme_captures_from_the_demo_profile` et `readme_captures_redesign_in_both_themes_and_languages` (`src/ui_tests.rs`). Ce test exécute le vrai code d'interface hors écran, à **2560 × 1600 pixels** (1600 × 1000 points à 160 %), avec le profil « NovyDeck Demo / README ». Il ne fait aucun agrandissement après coup, et le filtrage des textures est bilinéaire comme dans le rendu GPU. Le contenu des touches reste l'image réelle de 126 × 126 pixels envoyée au D6.
 - La vidéo publiée `docs/media/novydeck-demo.mp4` est un film de présentation de 40 s en 1920 × 1080 à 60 i/s, avec son, réalisé hors du dépôt avec Remotion et three.js : pavé D6 en 3D, captures réelles de l'interface et musique synthétisée. Le pipeline `scripts/media/remotion/` du dépôt reste disponible pour la présentation précédente ; il ne produit pas ce film publié.
