@@ -102,7 +102,7 @@ fn attach_owner(window:&tao::window::Window, owner:isize,parent_pid:u32) {
             unsafe { SetWindowLongPtrW(raw.hwnd.get() as HWND,GWLP_HWNDPARENT,owner); }
         }
     }
-    let mut rect=RECT::default();
+    let mut rect=RECT{left:0,top:0,right:0,bottom:0};
     if unsafe { GetWindowRect(hwnd,&mut rect) } != 0 {
         let size=window.outer_size();
         window.set_outer_position(tao::dpi::PhysicalPosition::new(

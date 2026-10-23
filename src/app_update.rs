@@ -206,6 +206,30 @@ pub fn launch(setup: &Path) -> Result<()> {
             {"name":"NovyDeck-0.8.14-Setup.exe","browser_download_url":"https://github.com/x/setup.exe","size":100},
             {"name":"NovyDeck-0.8.14-Setup.exe.sha256","browser_download_url":"https://github.com/x/setup.sha256","size":80}]})
     }
+    #[test] #[ignore="requires interactive Windows desktop; uses a dummy .cmd, never an installer"]
+    fn lab_update_wait_opens_no_visible_console() {
+        use std::{thread,time::{Duration,Instant}};
+        use windows_sys::Win32::UI::WindowsAndMessaging::{EnumWindows,GetClassNameW,IsWindowVisible};
+        use windows_sys::Win32::Foundation::{BOOL,HWND,LPARAM};
+        unsafe extern "system" fn count(hwnd:HWND,data:LPARAM)->BOOL {
+            if IsWindowVisible(hwnd)==0 { return 1; }
+            let mut class=[0u16;80];let len=GetClassNameW(hwnd,class.as_mut_ptr(),80);
+            if len>0 && matches!(String::from_utf16_lossy(&class[..len as usize]).as_str(),"ConsoleWindowClass"|"CASCADIA_HOSTING_WINDOW_CLASS") {
+                *(data as *mut usize)+=1;
+            }
+            1
+        }
+        let consoles=||{let mut n=0usize;unsafe{EnumWindows(Some(count),&mut n as *mut _ as LPARAM)};n};
+        let dir=tempfile::tempdir().unwrap();let setup=dir.path().join("fake-setup.cmd");let marker=dir.path().join("started.txt");
+        fs::write(&setup,format!("@echo off\r\necho started > \"{}\"\r\n",marker.display())).unwrap();
+        let before=consoles();launch(&setup).unwrap();let until=Instant::now()+Duration::from_secs(12);
+        while Instant::now()<until && !marker.exists() {
+            assert_eq!(consoles(),before,"visible console appeared during the update wait");
+            thread::sleep(Duration::from_millis(30));
+        }
+        assert!(marker.exists(),"dummy setup did not run after the wait");
+        assert_eq!(consoles(),before);
+    }
     #[test] fn parses_published_release_only() {
         let mut value = release();
         assert_eq!(parse_latest(&serde_json::to_vec(&value).unwrap()).unwrap().setup_size, 100);
