@@ -1739,18 +1739,26 @@ fn inspector_step_remove_buttons_stay_inside_center_panel_at_both_sizes() {
             h.app.config.keys_mut()[0].steps = if script_first { vec![script, media] } else { vec![media, script] };
             h.app.selected = 0;
             let output = h.warm(size);
+            // L'inspecteur est un panneau inférieur dans l'espace restant APRÈS les
+            // colonnes de navigation et bibliothèque, et s'étend jusqu'au bord droit.
+            let panel = egui::containers::panel::PanelState::load(&h.ctx, egui::Id::new("key_inspector"))
+                .expect("inspector panel").rect;
+            assert!(panel.left() > 0.0 && panel.right() <= size.x + 1.0, "inspector {panel:?} at {size:?}");
             let buttons: Vec<_> = output.shapes.iter().filter_map(|clipped| {
                 if let egui::Shape::Text(text) = &clipped.shape {
-                    if text.galley.job.text == "×" && clipped.clip_rect.contains(text.pos + text.galley.size() * 0.5) {
-                        return Some((text.pos.x, text.pos.x + text.galley.size().x, clipped.clip_rect.max.x));
+                    let glyph = Rect::from_min_size(text.pos, text.galley.size());
+                    if text.galley.job.text == "×" && panel.contains(glyph.center()) {
+                        return Some((glyph, clipped.clip_rect));
                     }
                 }
                 None
             }).collect();
             assert!(!buttons.is_empty(), "remove button missing at {size:?}, script_first={script_first}");
-            for (left, right, clip_right) in buttons {
-                assert!(left > 240.0 && right <= clip_right && right < size.x - 296.0,
-                    "remove button outside inspector: {left}..{right}, clip={clip_right}, size={size:?}");
+            for (glyph, clip) in buttons {
+                assert!(glyph.left() >= panel.left() + 16.0 && glyph.right() <= panel.right() - 16.0
+                    && glyph.top() >= panel.top() && glyph.bottom() <= panel.bottom()
+                    && clip.contains(glyph.min) && clip.contains(glyph.max),
+                    "remove button outside inspector: {glyph:?}, clip={clip:?}, panel={panel:?}, size={size:?}");
             }
         }
     }
