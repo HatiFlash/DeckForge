@@ -550,7 +550,7 @@ pub fn segmented(ui: &mut egui::Ui, selected: bool, text: impl Into<egui::Widget
 pub fn chevron_button(ui: &mut egui::Ui, left: bool, enabled: bool) -> egui::Response {
     let p = palette(ui.ctx());
     let sense = if enabled { egui::Sense::click() } else { egui::Sense::hover() };
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(26.0), sense);
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(24.0), sense);
     let hover = ui.ctx().animate_bool_with_time(response.id, enabled && response.hovered(), ui.style().animation_time.min(0.1));
     if hover > 0.0 {
         ui.painter().rect_filled(rect, 7.0, p.raised.gamma_multiply(hover));

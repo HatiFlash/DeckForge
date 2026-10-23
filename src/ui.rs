@@ -3440,11 +3440,13 @@ impl App {
                 // En-tête de la scène : titre et aide à gauche, pagination groupée à droite,
                 // le tout dans la marge intérieure de la carte (rien ne déborde du cadre).
                 let show_help = ctx.screen_rect().width() >= 1200.0 && ctx.screen_rect().height() >= 700.0;
+                // Fenêtre basse : en-tête resserré pour laisser la hauteur au deck.
+                let compact = ctx.screen_rect().height() < 700.0;
                 egui::Frame::new()
-                    .inner_margin(egui::Margin { left: 18, right: 14, top: 10, bottom: 0 })
+                    .inner_margin(egui::Margin { left: 18, right: 14, top: if compact { 2 } else { 10 }, bottom: 0 })
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            ui.set_min_height(32.0);
+                            ui.set_min_height(if compact { 24.0 } else { 32.0 });
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 if in_folder {
                                     let name = self.config.profiles[self.config.active]
@@ -3505,7 +3507,7 @@ impl App {
                                 // Titre : prend la place restante, tronqué avec infobulle si besoin.
                                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                                     let name = self.config.profiles[self.config.active].name.clone();
-                                    ui.add(egui::Label::new(RichText::new(&name).font(theme::strong(20.0))).truncate())
+                                    ui.add(egui::Label::new(RichText::new(&name).font(theme::strong(if compact { 17.0 } else { 20.0 }))).truncate())
                                         .on_hover_text(&name);
                                     if self.auto_active {
                                         ui.label(RichText::new(format!("Auto : {name}")).small().color(p.muted));
