@@ -2921,7 +2921,7 @@ impl App {
     fn editor(&mut self, ctx: &egui::Context) {
         let p = theme::palette(ctx);
         let running = self.engine.running.load(Ordering::SeqCst);
-        egui::TopBottomPanel::bottom("key_inspector").default_height(if ctx.screen_rect().height()<800.0 {(ctx.screen_rect().height()*0.31).clamp(140.0,260.0)}else{260.0}).height_range(120.0..=(ctx.screen_rect().height()*if ctx.screen_rect().height()<600.0 {0.31} else {0.5}).max(140.0)).resizable(true).frame(egui::Frame::new().fill(p.surface).inner_margin(16)).show(ctx,|ui| {
+        egui::TopBottomPanel::bottom("key_inspector").default_height(if ctx.screen_rect().height()<800.0 {(ctx.screen_rect().height()*0.40).clamp(200.0,300.0)}else{320.0}).height_range(120.0..=(ctx.screen_rect().height()*if ctx.screen_rect().height()<600.0 {0.31} else {0.5}).max(140.0)).resizable(true).frame(egui::Frame::new().fill(p.surface).inner_margin(16)).show(ctx,|ui| {
             let tab_id = egui::Id::new("inspector_tab");
             let mut tab = ui.ctx().data_mut(|d| *d.get_persisted_mut_or_default::<u8>(tab_id));
             let configured = { let k = &self.config.keys()[self.selected]; !k.steps.is_empty() || !k.long_steps.is_empty() || k.plugin.is_some() };
